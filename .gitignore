@@ -161,3 +161,6 @@ cython_debug/
 poetry.lock
 **/wandb/*
 **/trained-models/*
+**/artifacts/*
+playground
+.idea/

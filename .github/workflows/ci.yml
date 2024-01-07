@@ -25,6 +25,10 @@ jobs:
         - python-version: "3.11"
           poetry-version: "1.7.1"
           os: windows-latest
+        - python-version: "3.11"
+          poetry-version: "1.7.1"
+          os: ubuntu-latest
+          annotate-errors: true
     runs-on: ${{ matrix.os }}
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ github.head_ref || github.run_id }}
@@ -50,8 +54,27 @@ jobs:
         key: venv-${{ hashFiles('pyproject.toml') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
     - name: Install the project dependencies
       run: poetry install
+    - uses: liskin/gh-problem-matcher-wrap@v3
+      with:
+        action: add
+        linters: flake8
+      if: matrix.annotate-errors
+    - name: Lint with flake8
+      run: |
+        # < 7 to avoid ./.venv/lib/python3.11/site-packages/sympy/polys/numberfields/resolvent_lookup.py: "pyflakes[F]" failed during execution due to RecursionError('maximum recursion depth exceeded')
+        pip install 'flake8<7'
+        # stop the build if there are Python syntax errors or undefined names
+        make git-lint FLAKE8_EXTRA_FLAGS=--exit-zero # TODO: remove --exit-zero
+        # exit-zero treats all errors as warnings
+        make git-lint-more FLAKE8_EXTRA_FLAGS=--exit-zero
+    - uses: liskin/gh-problem-matcher-wrap@v3
+      with:
+        action: remove
+        linters: flake8
+      if: matrix.annotate-errors
     #- name: Run the automated tests (for example)
     #  run: poetry run pytest -v
+    #- run: wandb login --anonymously
 
   check-all:
     runs-on: ubuntu-latest

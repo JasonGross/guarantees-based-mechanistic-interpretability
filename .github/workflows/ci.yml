@@ -40,8 +40,18 @@ jobs:
       name: Define a cache for the virtual environment based on the dependencies lock file
       with:
         path: ./.venv
-        key: venv-${{ hashFiles('poetry.lock') }}
+        key: venv-${{ hashFiles('pyproject.toml') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
     - name: Install the project dependencies
       run: poetry install
     #- name: Run the automated tests (for example)
     #  run: poetry run pytest -v
+
+  check-all:
+    runs-on: ubuntu-latest
+    needs: ci
+    if: always()
+    steps:
+    - run: echo 'ci passed'
+      if: ${{ needs.ci.result == 'success' }}
+    - run: echo 'ci failed' && false
+      if: ${{ needs.ci.result != 'success' }}

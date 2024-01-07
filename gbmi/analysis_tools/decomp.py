@@ -16,7 +16,7 @@ def analyze_svd(
     renderer=None,
 ):
     U, S, Vh = torch.linalg.svd(M)
-    V = gbmi.utils.T
+    V = Vh.T
     if scale_by_singular_value:
         U = U * S[None, :].sqrt()
         V = V * S[:, None].sqrt()

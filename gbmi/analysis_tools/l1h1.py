@@ -6,6 +6,24 @@ from gbmi.analysis_tools.decomp import analyze_svd
 from gbmi.analysis_tools.plot import imshow, line
 
 
+def analyze_QK(model: HookedTransformer, pos=None, colorscale="RdBu", renderer=None):
+    W_U, W_E, W_pos, W_Q, W_K = model.W_U, model.W_E, model.W_pos, model.W_Q, model.W_K
+
+    pos_enc = W_pos.mean(dim=0) if pos is None else W_pos[pos]
+    pos_str = "W_pos.mean(dim=0)" if pos is None else f"W_pos[{pos}]"
+
+    QK = (W_E + W_pos[-1]) @ W_Q[0, 0, :, :] @ W_K[0, 0, :, :].T @ (W_E + pos_enc).T
+
+    imshow(
+        QK,
+        title="Attention<br>(W_E + W_pos[-1]) @ W_Q @ W_K.T @ (W_E + W_pos.mean(dim=0)).T",
+        xaxis="Key Token",
+        yaxis="Query Token",
+        renderer=renderer,
+        colorscale=colorscale,
+    )
+
+
 def analyze_PVOU(model: HookedTransformer, colorscale="RdBu", renderer=None):
     W_U, W_E, W_pos, W_V, W_O = model.W_U, model.W_E, model.W_pos, model.W_V, model.W_O
     d_model, d_vocab, n_ctx = model.cfg.d_model, model.cfg.d_vocab, model.cfg.n_ctx

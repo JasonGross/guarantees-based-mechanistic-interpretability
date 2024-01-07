@@ -52,7 +52,12 @@ def find_size_and_query_direction(
         d_model,
     ), f"W_E.shape = {W_E.shape} != {(d_vocab, d_model)} = (d_vocab, d_model)"
 
-    QK = (W_E + W_pos[-1]) @ W_Q[0, 0, :, :] @ gbmi.utils.T @ gbmi.utils.T
+    QK = (
+        (W_E + W_pos[-1])
+        @ W_Q[0, 0, :, :]
+        @ W_K[0, 0, :, :].T
+        @ (W_E + W_pos.mean(dim=0)).T
+    )
     assert QK.shape == (
         d_vocab,
         d_vocab,

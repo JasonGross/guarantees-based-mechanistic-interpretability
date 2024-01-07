@@ -44,7 +44,7 @@ jobs:
         poetry config virtualenvs.create true --local
         poetry config virtualenvs.in-project true --local
     - uses: actions/cache@v3
-      name: Define a cache for the virtual environment based on the dependencies lock file
+      name: Define a cache for the virtual environment based
       with:
         path: ./.venv
         key: venv-${{ hashFiles('pyproject.toml') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}

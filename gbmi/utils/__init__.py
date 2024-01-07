@@ -126,6 +126,5 @@ def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
     x_centered = x - x.gather(dim=dim, index=x_max_idxs)
     x_exp = x_centered.exp()
     # x_exp[max] will be 1, so we can zero it and use log1p(x) = log(1 + x)
-    print(f"x_exp.shape: {x_exp.shape}, x_max_idxs.shape: {x_max_idxs.shape}")
     x_exp.scatter_(dim=dim, index=x_max_idxs, src=torch.zeros_like(x_max_idxs, device=x.device, dtype=x.dtype))
     return x_centered - x_exp.sum(dim=dim, keepdim=True).log1p()

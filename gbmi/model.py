@@ -6,6 +6,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
     TypeVar,
     Generic,
@@ -85,8 +86,11 @@ class Config(Generic[ExpT]):
     d_head: int = 32
     d_mlp: Optional[int] = None
     d_vocab: int = 64
+    d_vocab_out: Optional[int] = None,
     n_ctx: int = 2
     zero_biases: bool = True
+    # TODO: if we drop support for Python < 3.11, use Optional[Literal[*SUPPORTED_ACTIVATIONS]]
+    act_fn: Optional[Literal["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]] = None
 
     # Training
     deterministic: bool = True

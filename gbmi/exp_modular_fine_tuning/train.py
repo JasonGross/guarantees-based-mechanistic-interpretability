@@ -95,9 +95,6 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         labels: Integer[Tensor, "batch"],
     ) -> Float[Tensor, ""]:
         logits = logits[:, -1, :]
-        # TODO: FIXME
-        # ../aten/src/ATen/native/cuda/ScatterGatherKernel.cu:144: operator(): block: [7,0,0], thread: [40,0,0] Assertion `idx_dim >= 0 && idx_dim < index_size && "index out of bounds"` failed.
-
         log_probs = utils.log_softmax(logits, dim=-1)
         correct_log_probs = log_probs.gather(-1, labels.unsqueeze(-1))[:, 0]
         return -correct_log_probs.mean()

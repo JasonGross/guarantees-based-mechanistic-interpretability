@@ -61,6 +61,10 @@ The convention for this codebase is to store experiment-specific code in an `exp
 
 See the `exp_template` directory for more details.
 
+## Adding dependencies
+
+To add new dependencies, run `poetry add my-package`.
+
 ## Tests
 
 This codebase advocates for [expect tests](https://blog.janestreet.com/the-joy-of-expect-tests) in machine learning, and as such uses @ezyang's [expecttest](https://github.com/ezyang/expecttest) library for unit and regression tests.

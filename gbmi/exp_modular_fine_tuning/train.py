@@ -1,6 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-
+from dataclasses import dataclass
+from dataclasses import field
 
 import sys
 from typing import Optional, cast, Literal
@@ -39,7 +39,7 @@ class ModularFineTuning(ExperimentConfig):
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
-    training_ratio: float = 0.3  # fraction of dataset to use for training
+    training_ratio: float = 0.4  # fraction of dataset to use for training
     version_number: int = 0
 
     def get_training_wrapper(self):
@@ -67,6 +67,7 @@ def modular_addition_config(attn_rate: float, p: int = 113):
                 n_layers=1,
                 n_heads=4,
                 act_fn="relu",
+                init_weights=True,
                 attn_only=False,
                 normalization_type=None,
             ),
@@ -76,14 +77,12 @@ def modular_addition_config(attn_rate: float, p: int = 113):
         ),
         seed=999,
         deterministic=False,
-        batch_size=113**2,
+        batch_size=int(113**2 * 0.4),
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
-        optimizer_kwargs = {"lr":1e-3,"weight_decay": 1.0,
-"betas": (0.9, 0.98)}
+        optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
     )
-    
 
 
 MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(attn_rate=0)
@@ -167,11 +166,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         self.run_batch(batch, prefix="periodic_test_")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            lr=self.config.optimizer_kwargs["lr"],
-            betas=self.config.optimizer_kwargs["betas"],
-        )
+        return torch.optim.AdamW(self.parameters(), **self.config.optimizer_kwargs)
 
 
 class ModularFineTuningDataModule(DataModule):

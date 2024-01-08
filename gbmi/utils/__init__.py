@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from pathlib import Path
-from typing import TypeVar, List, Dict
+from typing import Optional, TypeVar, List, Dict
 from transformer_lens import HookedTransformer
 
 import numpy as np
@@ -116,3 +116,15 @@ def handle_size_warnings_and_prompts(
 
     if prompt_if_diff_larger_than is not None and size_kb > prompt_if_diff_larger_than:
         input("Press enter to continue or Ctrl+C to break")
+
+def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
+    """
+    log_softmax is only precise to around 2e-7, cf https://github.com/pytorch/pytorch/issues/113708
+    we can get better precision by using log1p
+    """
+    x_max_idxs = x.argmax(dim=dim, keepdim=True)
+    x_centered = x - x.gather(dim=dim, index=x_max_idxs)
+    x_exp = x_centered.exp()
+    # x_exp[max] will be 1, so we can zero it and use log1p(x) = log(1 + x)
+    x_exp = x_exp.scatter(dim=dim, index=x_max_idxs, src=torch.zeros_like(x_max_idxs, device=x.device, dtype=x.dtype))
+    return x_centered - x_exp.sum(dim=dim, keepdim=True).log1p()

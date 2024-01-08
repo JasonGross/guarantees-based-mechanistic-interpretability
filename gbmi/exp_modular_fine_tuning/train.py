@@ -62,6 +62,7 @@ MODULAR_ADDITION_113_CLOCK_CONFIG = Config(
     train_for=(25000, "epochs"),
     log_every_n_steps=1,
     act_fn="relu",
+    validate_every=(10, "epochs"),
 )
 
 MODULAR_ADDITION_113_PIZZA_CONFIG = Config(
@@ -82,7 +83,9 @@ MODULAR_ADDITION_113_PIZZA_CONFIG = Config(
     train_for=(25000, "epochs"),
     log_every_n_steps=1,
     act_fn="relu",
+    validate_every=(10, "epochs"),
 )
+
 
 class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
     def __init__(self, config: Config[ModularFineTuning], model: HookedTransformer):
@@ -206,8 +209,8 @@ class ModularFineTuningDataModule(DataModule):
     def train_dataloader(self):
         return DataLoader(self.data_train, batch_size=self.config.batch_size)
 
-    def validation_dataloader(self):
-        return DataLoader(self.data_test, batch_size=self.config.batch_size) 
+    def val_dataloader(self):
+        return DataLoader(self.data_test, batch_size=self.config.batch_size)
 
     def test_dataloader(self):
         return DataLoader(self.data_test, batch_size=self.config.batch_size)

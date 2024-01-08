@@ -232,12 +232,23 @@ def train_or_load_model(
     wrapped_model = ExpWrapper(config, ExpWrapper.build_model(config))
     datamodule = config.experiment.get_datamodule()(config)
 
+    trainer_args = {}
+
     # How long should we train for?
     n, unit = config.train_for
     if unit == "steps":
-        trainer_args = {"max_steps": n}
+        trainer_args["max_steps"] = n
     elif unit == "epochs":
-        trainer_args = {"max_epochs": n}
+        trainer_args["max_epochs"] = n
+    else:
+        raise ValueError
+
+    # How often should we validate?
+    n, unit = config.validate_every
+    if unit == "steps":
+        trainer_args["val_check_interval"] = n
+    elif unit == "epochs":
+        trainer_args["check_val_every_n_epoch"] = n
     else:
         raise ValueError
 

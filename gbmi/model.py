@@ -100,8 +100,7 @@ class Config(Generic[ExpT]):
     batch_size: int = 128
     train_for: Tuple[int, Literal["steps", "epochs"]] = (15000, "steps")
     log_every_n_steps: int = 10
-    # validate_every: Tuple[int, Literal["steps", "epochs"]] = (10, "steps")
-    # TODO: we don't validate yet, and just save the last epoch
+    validate_every: Tuple[int, Literal["steps", "epochs"]] = (10, "steps")
     optimizer_kwargs = {"lr": 1e-3, "betas": (0.9, 0.999)}
 
     def get_summary_slug(self):

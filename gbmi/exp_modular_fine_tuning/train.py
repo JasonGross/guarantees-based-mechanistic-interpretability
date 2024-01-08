@@ -64,6 +64,25 @@ MODULAR_ADDITION_113_CLOCK_CONFIG = Config(
     act_fn="relu",
 )
 
+MODULAR_ADDITION_113_PIZZA_CONFIG = Config(
+    experiment=ModularFineTuning(
+        attention_rate=1,
+        p=113,
+    ),
+    n_ctx=3,
+    d_model=128,
+    d_mlp=512,
+    d_head=32,
+    n_layers=1,
+    n_heads=4,
+    seed=999,
+    zero_biases=True,
+    deterministic=False,
+    batch_size=113**2,
+    train_for=(25000, "epochs"),
+    log_every_n_steps=1,
+    act_fn="relu",
+)
 
 class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
     def __init__(self, config: Config[ModularFineTuning], model: HookedTransformer):
@@ -140,6 +159,9 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
     def test_step(self, batch, batch_idx):
         self.run_batch(batch, prefix="test_")
 
+    def validation_step(self, batch, batch_idx):
+        self.run_batch(batch, prefix="periodic_test_")
+
     def configure_optimizers(self):
         return torch.optim.Adam(
             self.parameters(),
@@ -183,6 +205,9 @@ class ModularFineTuningDataModule(DataModule):
 
     def train_dataloader(self):
         return DataLoader(self.data_train, batch_size=self.config.batch_size)
+
+    def validation_dataloader(self):
+        return DataLoader(self.data_test, batch_size=self.config.batch_size) 
 
     def test_dataloader(self):
         return DataLoader(self.data_test, batch_size=self.config.batch_size)

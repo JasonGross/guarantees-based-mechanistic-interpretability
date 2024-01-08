@@ -41,7 +41,7 @@ class ModularFineTuning(ExperimentConfig):
         return ModularFineTuningDataModule
 
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
-        return f"ModularFineTuning-{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
+        return f"ModularFineTuning-{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}{'-nondeterministic' if not config.deterministic else ''}"
 
 
 MODULAR_ADDITION_113_CLOCK_CONFIG = Config(

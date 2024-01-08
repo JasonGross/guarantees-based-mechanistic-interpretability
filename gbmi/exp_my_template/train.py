@@ -30,7 +30,7 @@ class MyTemplate(ExperimentConfig):
     def get_summary_slug(self, config: Config[MyTemplate]) -> str:
         # Returns a brief summary of config settings.
         # e.g. "MyTemplate-1000-steps-setting-1"
-        return f"MyTemplate-{config.train_for[0]}-{config.train_for[1]}"
+        return f"MyTemplate-{config.train_for[0]}-{config.train_for[1]}{'-nondeterministic' if not config.deterministic else ''}"
 
 
 # Put any 'default' configs for your experiment type here.

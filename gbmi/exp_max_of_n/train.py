@@ -43,7 +43,7 @@ class MaxOfN(ExperimentConfig):
         return MaxOfNDataModule
 
     def get_summary_slug(self, config: Config[MaxOfN]) -> str:
-        return f"MaxOf{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}{'-adj' if self.force_adjacent else ''}"
+        return f"MaxOf{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}{'-adj' if self.force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
 
 
 MAX_OF_2_CONFIG = Config(

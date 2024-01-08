@@ -7,10 +7,10 @@ import subprocess
 import sys
 
 from pathlib import Path
-from typing import Optional, TypeVar, List, Dict, Tuple
+from typing import Optional, TypeVar, List, Dict, Tuple, Hashable, Any, Union, Sequence
 
 from torch.utils.data import Dataset
-from transformer_lens import HookedTransformer
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 import numpy as np
 import torch
@@ -21,6 +21,8 @@ from torch import Tensor
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_WANDB_ENTITY = "gbmi"
+
+T = TypeVar("T")
 
 
 def get_trained_model_dir(create: bool = True) -> Path:
@@ -38,9 +40,6 @@ def get_trained_model_dir(create: bool = True) -> Path:
 
 def default_device(deterministic: bool = False) -> str:
     return "cuda" if torch.cuda.is_available() and not deterministic else "cpu"
-
-
-T = TypeVar("T")
 
 
 def shuffle_data(data, rng: Generator):
@@ -155,3 +154,34 @@ def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
         src=torch.zeros_like(x_max_idxs, device=x.device, dtype=x.dtype),
     )
     return x_centered - x_exp.sum(dim=dim, keepdim=True).log1p()
+
+
+def set_params(
+    cfg: T,
+    params: Dict[Union[str, Sequence[str]], Any],
+    warn_if_not_default: bool = False,
+) -> T:
+    # TODO: warn if not default
+    for k, v in params.items():
+        if isinstance(k, str):
+            setattr(cfg, k, v)
+        elif len(k) == 1:
+            setattr(cfg, k[0], v)
+        else:
+            set_params(
+                getattr(cfg, k[0]), {k[1:]: v}, warn_if_not_default=warn_if_not_default
+            )
+    return cfg
+
+    #         if (
+    #             config.experiment.model_config.seed != config.seed
+    #             and config.experiment.model_config.seed is not None
+    #         ):
+    #             logging.warning(
+    #                 f"Overwriting transformer seed (set to {config.experiment.model_config.seed}) to {config.seed}"
+    #             )
+    #         config.experiment.model_config.seed = config.seed
+
+
+def reseed(x: Hashable, label: str) -> int:
+    return hash((x, label)) % (2**32 - 1)

@@ -21,6 +21,8 @@ from collections.abc import Collection
 from typing import Any
 from typing import Dict
 
+import torch
+
 # Implemented for https://github.com/lemon24/reader/issues/179
 
 
@@ -62,6 +64,8 @@ def _json_default(thing: object) -> Any:
         pass
     if isinstance(thing, datetime.datetime):
         return thing.isoformat(timespec="microseconds")
+    elif isinstance(thing, torch.device) or isinstance(thing, torch.dtype):
+        return str(thing)
     raise TypeError(f"Object of type {type(thing).__name__} is not JSON serializable")
 
 

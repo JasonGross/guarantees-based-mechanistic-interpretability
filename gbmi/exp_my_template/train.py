@@ -14,11 +14,23 @@ from gbmi.model import (
     train_or_load_model,
     DataModule,
 )
+from gbmi.utils import reseed, set_params
 
 
 @dataclass
 class MyTemplate(ExperimentConfig):
     # Experiment config dataclass. Add experiment-specific settings here.
+    model_config: HookedTransformerConfig = HookedTransformerConfig(
+        n_layers=1,
+        n_heads=1,
+        d_model=32,
+        d_head=32,
+        d_vocab=64,
+        attn_only=True,
+        normalization_type=None,
+        n_ctx=2,
+    )
+    zero_biases: bool = True
     some_setting: int = 1
 
     def get_training_wrapper(self):
@@ -46,19 +58,13 @@ class MyTemplateTrainingWrapper(TrainingWrapper[MyTemplate]):
     @staticmethod
     def build_model(config: Config[MyTemplate]) -> HookedTransformer:
         # Given a config, returns an untrained HookedTransformer.
-        simpler_cfg = HookedTransformerConfig(
-            d_model=config.d_model,
-            n_layers=config.n_layers,
-            n_heads=config.n_heads,
-            d_head=config.d_head,
-            n_ctx=config.n_ctx,
-            d_vocab=config.d_vocab,
-            seed=config.seed,
-            attn_only=True,
-            normalization_type=None,
+        set_params(
+            config.experiment.model_config,
+            {"seed": reseed(config.seed, "model")},
+            warn_if_not_default=True,
         )
-        model = HookedTransformer(simpler_cfg)
-        if config.zero_biases:
+        model = HookedTransformer(config.experiment.model_config)
+        if config.experiment.zero_biases:
             for name, param in model.named_parameters():
                 if "b_" in name:
                     param.requires_grad = False

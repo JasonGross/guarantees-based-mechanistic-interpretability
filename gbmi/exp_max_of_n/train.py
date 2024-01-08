@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 from typing import Optional, cast
 
@@ -21,11 +23,26 @@ from gbmi.utils import (
     shuffle_data,
     default_device,
     SingleTensorDataset,
+    reseed,
+    set_params,
 )
 
 
 @dataclass
 class MaxOfN(ExperimentConfig):
+    # Model config
+    model_config: HookedTransformerConfig = HookedTransformerConfig(
+        n_layers=1,
+        n_heads=1,
+        d_model=32,
+        d_head=32,
+        d_vocab=64,
+        attn_only=True,
+        normalization_type=None,
+        n_ctx=2,
+    )
+    zero_biases: bool = True
+
     # Max of n (iterable dataset)
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
@@ -43,21 +60,25 @@ class MaxOfN(ExperimentConfig):
         return MaxOfNDataModule
 
     def get_summary_slug(self, config: Config[MaxOfN]) -> str:
-        return f"MaxOf{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}{'-adj' if self.force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
+        return f"MaxOf{config.experiment.model_config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}{'-adj' if self.force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
 
 
-MAX_OF_2_CONFIG = Config(
-    experiment=MaxOfN(
-        force_adjacent=True,
+MAX_OF_2_CONFIG = set_params(
+    Config(
+        experiment=MaxOfN(
+            force_adjacent=True,
+        ),
     ),
-    n_ctx=2,
+    {("experiment", "model_config", "n_ctx"): 2},
 )
-MAX_OF_10_CONFIG = Config(
-    experiment=MaxOfN(
-        n_train_samples=None,
-        n_test_samples=1024,
+MAX_OF_10_CONFIG = set_params(
+    Config(
+        experiment=MaxOfN(
+            n_train_samples=None,
+            n_test_samples=1024,
+        ),
     ),
-    n_ctx=10,
+    {("experiment", "model_config", "n_ctx"): 10},
 )
 
 
@@ -69,20 +90,13 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     @staticmethod
     def build_model(config: Config[MaxOfN]) -> HookedTransformer:
-        simpler_cfg = HookedTransformerConfig(
-            d_model=config.d_model,
-            n_layers=config.n_layers,
-            n_heads=config.n_heads,
-            d_head=config.d_head,
-            n_ctx=config.n_ctx,
-            d_vocab=config.d_vocab,
-            seed=config.seed,
-            attn_only=True,
-            normalization_type=None,
-            # device=default_device(deterministic=config.deterministic),
+        set_params(
+            config.experiment.model_config,
+            {"seed": reseed(config.seed, "model")},
+            warn_if_not_default=True,
         )
-        model = HookedTransformer(simpler_cfg)
-        if config.zero_biases:
+        model = HookedTransformer(config.experiment.model_config)
+        if config.experiment.zero_biases:
             for name, param in model.named_parameters():
                 if "b_" in name:
                     param.requires_grad = False
@@ -142,14 +156,17 @@ class MaxOfNDataModule(DataModule):
     def __init__(self, config: Config[MaxOfN]):
         super().__init__(config)
         self.config = config
-        self.seq_len = config.n_ctx
-        self.dataset_seed = config.seed * 10 + 1
+        self.model_config = config.experiment.model_config
+        self.seq_len = config.experiment.model_config.n_ctx
+        self.dataset_seed = reseed(config.seed, "dataset_seed")
 
     def setup(self, stage: str):
-        if self.config.n_ctx == 2:
+        if self.model_config.n_ctx == 2:
             # Full dataset
             rng = np.random.default_rng(self.dataset_seed)
-            data = generate_all_sequences(self.config.d_vocab, self.config.n_ctx)
+            data = generate_all_sequences(
+                self.model_config.d_vocab, self.model_config.n_ctx
+            )
             data = shuffle_data(data, rng)
             if self.config.experiment.force_adjacent:
                 idxs = (data[:, 0] - data[:, 1]).abs() == 1
@@ -192,6 +209,7 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
         self, seed: int, config: Config[MaxOfN], max_length: Optional[int] = None
     ):
         self.config = config
+        self.model_config = config.experiment.model_config
         self.seed = seed
         if max_length is None:
             n, unit = config.train_for
@@ -211,8 +229,8 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
             while True:
                 yield torch.randint(
                     0,
-                    self.config.d_vocab,
-                    (self.config.n_ctx,),
+                    self.model_config.d_vocab,
+                    (self.model_config.n_ctx,),
                     generator=g,
                 )
                 n_samples += 1

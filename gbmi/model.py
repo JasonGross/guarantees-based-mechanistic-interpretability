@@ -22,7 +22,7 @@ from typing import (
 
 import torch
 import wandb
-from lightning import LightningModule, LightningDataModule, Trainer
+from lightning import LightningModule, LightningDataModule, Trainer, seed_everything
 from lightning.pytorch.callbacks import RichProgressBar
 from pytorch_lightning.loggers import WandbLogger
 from transformer_lens import HookedTransformer
@@ -32,7 +32,7 @@ from gbmi.utils import (
     MetricsCallback,
     handle_size_warnings_and_prompts,
 )
-from gbmi.utils.hash import get_hash, _json_dumps
+from gbmi.utils.hashing import get_hash, _json_dumps
 
 ConfigT = TypeVar("ConfigT")
 ExpT = TypeVar("ExpT", bound="ExperimentConfig")
@@ -78,22 +78,6 @@ class ExperimentConfig(ABC):
 @dataclass
 class Config(Generic[ExpT]):
     experiment: ExpT
-
-    # Architecture
-    n_layers: int = 1
-    n_heads: int = 1
-    d_model: int = 32
-    d_head: int = 32
-    d_mlp: Optional[int] = None
-    d_vocab: int = 64
-    d_vocab_out: Optional[int] = (None,)
-    n_ctx: int = 2
-    zero_biases: bool = True
-    # TODO: if we drop support for Python < 3.11, use Optional[Literal[*SUPPORTED_ACTIVATIONS]]
-    act_fn: Optional[
-        Literal["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
-    ] = None
-
     # Training
     deterministic: bool = True
     seed: int = 123
@@ -176,6 +160,9 @@ def train_or_load_model(
     @param accelerator: Accelerator to use (cpu or auto)
     @return:
     """
+    # Seed everything
+    seed_everything(config.seed)
+
     # Compute model name
     model_name = config.get_id()
 
@@ -221,7 +208,11 @@ def train_or_load_model(
     # Otherwise train the model...
 
     # Warn if using MPS
-    if torch.backends.mps.is_available() and accelerator != "cpu":
+    if (
+        torch.backends.mps.is_available()
+        and accelerator != "cpu"
+        and not config.deterministic
+    ):
         input(
             f"WARNING: currently training with MPS on Mac (accelerator={accelerator}, cfg.deterministic={config.deterministic}) -- here be bugs!\n"
             "Disable MPS training by calling train_or_load with accelerator=cpu, or press ENTER to continue."

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import sys
-from typing import Optional, cast
+from typing import Optional, cast, Literal
 from gbmi import utils
 
 import numpy as np
@@ -24,17 +24,22 @@ from gbmi.utils import (
     shuffle_data,
     default_device,
     SingleTensorDataset,
+    reseed,
+    set_params,
 )
 
 
 @dataclass
 class ModularFineTuning(ExperimentConfig):
+    model_config: HookedTransformerConfig
     p: int  # the prime
+    zero_biases: bool = True
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
     training_ratio: float = 0.3  # fraction of dataset to use for training
     version_number: int = 0
+
     def get_training_wrapper(self):
         return ModularFineTuningTrainingWrapper
 
@@ -42,32 +47,43 @@ class ModularFineTuning(ExperimentConfig):
         return ModularFineTuningDataModule
 
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
-        return f"ModularFineTuning-{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}{'-nondeterministic' if not config.deterministic else ''}"
+        return (
+            f"ModularFineTuning-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
+            f"{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
+            f"{'-nondeterministic' if not config.deterministic else ''}"
+        )
 
-def modular_addition_config(attn_rate):
+
+def modular_addition_config(attn_rate: float, p: int = 113):
     return Config(
-    experiment=ModularFineTuning(
-        attention_rate=attn_rate,
-        p=113,
-    ),
-    n_ctx=3,
-    d_model=128,
-    d_mlp=512,
-    d_head=32,
-    n_layers=1,
-    n_heads=4,
-    seed=999,
-    zero_biases=True,
-    deterministic=False,
-    batch_size=113**2,
-    train_for=(25000, "epochs"),
-    log_every_n_steps=1,
-    act_fn="relu",
-    validate_every=(10, "epochs"),
-)
-MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(0)
+        experiment=ModularFineTuning(
+            model_config=HookedTransformerConfig(
+                n_ctx=3,
+                d_model=128,
+                d_mlp=512,
+                d_head=32,
+                n_layers=1,
+                n_heads=4,
+                act_fn="relu",
+                attn_only=False,
+                normalization_type=None,
+            ),
+            p=p,
+            zero_biases=True,
+            attention_rate=attn_rate,
+        ),
+        seed=999,
+        deterministic=False,
+        batch_size=113**2,
+        train_for=(25000, "epochs"),
+        log_every_n_steps=1,
+        validate_every=(10, "epochs"),
+    )
 
-MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(1)
+
+MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(attn_rate=0)
+
+MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(attn_rate=1)
 
 
 class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
@@ -78,22 +94,19 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
     @staticmethod
     def build_model(config: Config[ModularFineTuning]) -> HookedTransformer:
-        simpler_cfg = HookedTransformerConfig(
-            d_model=config.d_model,
-            n_layers=config.n_layers,
-            n_heads=config.n_heads,
-            d_head=config.d_head,
-            n_ctx=config.n_ctx,
-            d_vocab=config.experiment.p + 1,
-            d_vocab_out=config.experiment.p,
-            seed=config.seed,
-            attn_only=False,
-            normalization_type=None,
-            act_fn=config.act_fn,
-            # device=default_device(deterministic=config.deterministic),
+        model_config = config.experiment.model_config
+        set_params(
+            model_config,
+            {
+                "seed": reseed(config.seed, "model"),
+                "d_vocab": config.experiment.p + 1,
+                "d_vocab_out": config.experiment.p,
+            },
+            warn_if_not_default=True,
         )
-        model = HookedTransformer(simpler_cfg)
-        if config.zero_biases:
+
+        model = HookedTransformer(config.experiment.model_config)
+        if config.experiment.zero_biases:
             for name, param in model.named_parameters():
                 if "b_" in name:
                     param.requires_grad = False
@@ -164,13 +177,16 @@ class ModularFineTuningDataModule(DataModule):
     def __init__(self, config: Config[ModularFineTuning]):
         super().__init__(config)
         self.config = config
-        self.seq_len = config.n_ctx
-        self.dataset_seed = config.seed * 10 + 1
+        self.model_config = config.experiment.model_config
+        self.seq_len = self.model_config.n_ctx
+        self.dataset_seed = reseed(self.config.seed, "dataset_seed")
 
     def setup(self, stage: str):
         # Full dataset
         rng = np.random.default_rng(self.dataset_seed)
-        pairs = generate_all_sequences(self.config.experiment.p, self.config.n_ctx - 1)
+        pairs = generate_all_sequences(
+            self.config.experiment.p, self.model_config.n_ctx - 1
+        )
         # concat a special token of value self.config.experiment.p to the end of each sequence for '='
         equals_token = self.config.experiment.p
         data = torch.cat(
@@ -234,21 +250,26 @@ class ModularFineTuningDataModule(DataModule):
 #         return iter(generator())
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a model with configurable attention rate.")
-    parser.add_argument("--attention-rate", type=float, default=0, help="Attention rate for the model.")
-    parser.add_argument("--force-train", action="store_true", help="Force training the model.")
-    parser.add_argument("--no-save", action="store_true", help="Disable saving the model.")
+    parser = argparse.ArgumentParser(
+        description="Train a model with configurable attention rate."
+    )
+    parser.add_argument(
+        "--attention-rate", type=float, default=0, help="Attention rate for the model."
+    )
+    parser.add_argument(
+        "--force-train", action="store_true", help="Force training the model."
+    )
+    parser.add_argument(
+        "--no-save", action="store_true", help="Disable saving the model."
+    )
     args = parser.parse_args()
 
     config = modular_addition_config(args.attention_rate)
     print("Training model:", config)
-    
-    force_train = "train" if args.force_train else None
-    save_to = None if args.no_save else "disk_and_wandb"
+
+    force_train: Optional[Literal["train"]] = "train" if args.force_train else None
+    save_to: Optional[Literal["disk_and_wandb"]] = (
+        None if args.no_save else "disk_and_wandb"
+    )
 
     train_or_load_model(config, force=force_train, save_to=save_to)
-
-
-
-
-

@@ -10,6 +10,7 @@ from jaxtyping import Float, Integer
 from torch import Tensor
 from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
+import argparse
 
 from gbmi.model import (
     TrainingWrapper,
@@ -33,6 +34,7 @@ class ModularFineTuning(ExperimentConfig):
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
     training_ratio: float = 0.3  # fraction of dataset to use for training
+    version_number: int = 0
     def get_training_wrapper(self):
         return ModularFineTuningTrainingWrapper
 
@@ -102,7 +104,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         logits: Float[Tensor, "batch pos d_vocab"],
         labels: Integer[Tensor, "batch"],
     ) -> Float[Tensor, ""]:
-        logits = logits[:, -1, :]
+        logits = logits[:, -1, :].to(torch.float64)
         log_probs = utils.log_softmax(logits, dim=-1)
         correct_log_probs = log_probs.gather(-1, labels.unsqueeze(-1))[:, 0]
         return -correct_log_probs.mean()
@@ -231,11 +233,22 @@ class ModularFineTuningDataModule(DataModule):
 
 #         return iter(generator())
 
-
 if __name__ == "__main__":
-    print("Training model:", MODULAR_ADDITION_113_CLOCK_CONFIG)
-    train_or_load_model(
-        MODULAR_ADDITION_113_CLOCK_CONFIG,
-        force="train" if "--force-train" in sys.argv[1:] else None,
-        save_to=None if "--no-save" in sys.argv[1:] else "disk_and_wandb",
-    )
+    parser = argparse.ArgumentParser(description="Train a model with configurable attention rate.")
+    parser.add_argument("--attention-rate", type=float, default=0, help="Attention rate for the model.")
+    parser.add_argument("--force-train", action="store_true", help="Force training the model.")
+    parser.add_argument("--no-save", action="store_true", help="Disable saving the model.")
+    args = parser.parse_args()
+
+    config = modular_addition_config(args.attention_rate)
+    print("Training model:", config)
+    
+    force_train = "train" if args.force_train else None
+    save_to = None if args.no_save else "disk_and_wandb"
+
+    train_or_load_model(config, force=force_train, save_to=save_to)
+
+
+
+
+

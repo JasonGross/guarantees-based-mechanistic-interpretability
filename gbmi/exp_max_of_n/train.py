@@ -16,7 +16,12 @@ from gbmi.model import (
     train_or_load_model,
     DataModule,
 )
-from gbmi.utils import generate_all_sequences, shuffle_data, default_device
+from gbmi.utils import (
+    generate_all_sequences,
+    shuffle_data,
+    default_device,
+    SingleTensorDataset,
+)
 
 
 @dataclass
@@ -160,8 +165,8 @@ class MaxOfNDataModule(DataModule):
                 data_train = shuffle_data(data_train, rng)
                 data_test = shuffle_data(data_test, rng)
 
-            self.data_train = cast(Dataset[Tensor], TensorDataset(data_train))
-            self.data_test = cast(Dataset[Tensor], TensorDataset(data_test))
+            self.data_train = cast(Dataset[Tensor], SingleTensorDataset(data_train))
+            self.data_test = cast(Dataset[Tensor], SingleTensorDataset(data_test))
         else:
             # Sampled dataset
             self.data_train = MaxOfNDataset(

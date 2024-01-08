@@ -10,6 +10,7 @@ from transformer_lens import HookedTransformer, utils as utils
 
 import gbmi.analysis_tools
 import gbmi.utils
+from gbmi.analysis_tools import plot
 from gbmi.analysis_tools.fit import (
     cubic_func,
     quintic_func,
@@ -391,7 +392,7 @@ def display_size_direction_stats(
             )
 
             # Plotting the original data and fitted curve
-            gbmi.analysis.plot.scatter(y_data, y_transposed, label="Data", color="blue")
+            plot.scatter(y_data, y_transposed, label="Data", color="blue")
             axs[0].plot(
                 y_data,
                 y_pred_transposed,
@@ -404,9 +405,7 @@ def display_size_direction_stats(
             axs[0].grid(True)
 
             # Plotting residuals
-            gbmi.analysis.plot.scatter(
-                y_data, residuals, color="green", label="Residuals"
-            )
+            plot.scatter(y_data, residuals, color="green", label="Residuals")
             axs[1].axhline(y=0, color="r", linestyle="--", label="y=0")
             axs[1].set_xlabel("Component in Normalized Size Vector")
             axs[1].set_ylabel("Residual")

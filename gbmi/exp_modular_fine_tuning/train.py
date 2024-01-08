@@ -18,13 +18,18 @@ from gbmi.model import (
     train_or_load_model,
     DataModule,
 )
-from gbmi.utils import generate_all_sequences, shuffle_data, default_device
+from gbmi.utils import (
+    generate_all_sequences,
+    shuffle_data,
+    default_device,
+    SingleTensorDataset,
+)
 
 
 @dataclass
 class ModularFineTuning(ExperimentConfig):
-    p: int # the prime
-    attention_rate: float = 0 # 0 is use attention, 1 is uniformly constant attention
+    p: int  # the prime
+    attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
     training_ratio: float = 0.3  # fraction of dataset to use for training
@@ -37,7 +42,6 @@ class ModularFineTuning(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
         return f"ModularFineTuning-{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
-
 
 
 MODULAR_ADDITION_113_CLOCK_CONFIG = Config(
@@ -60,6 +64,7 @@ MODULAR_ADDITION_113_CLOCK_CONFIG = Config(
     act_fn="relu",
 )
 
+
 class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
     def __init__(self, config: Config[ModularFineTuning], model: HookedTransformer):
         super().__init__(config, model)
@@ -74,7 +79,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
             n_heads=config.n_heads,
             d_head=config.d_head,
             n_ctx=config.n_ctx,
-            d_vocab=config.experiment.p+1,
+            d_vocab=config.experiment.p + 1,
             d_vocab_out=config.experiment.p,
             seed=config.seed,
             attn_only=False,
@@ -115,16 +120,13 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         return alpha / attnscore.shape[-1] + (1 - alpha) * attnscore
 
     def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):
-        # TODO(Euan, From Jason): Why is x a singleton list of a tensor???
-        assert type(x) == list # remove when this bug is fixed
-        assert len(x) == 1 # remove when bug is fixed
-        x = x[0] # remove when bug is fixed
         self.model.to(x.device, print_details=False)
         labels = (x[:, 0] + x[:, 1]) % self.config.experiment.p
-        assert len(labels.shape) == 1, f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"
+        assert (
+            len(labels.shape) == 1
+        ), f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"
         y_preds = self.model.run_with_hooks(
-            x,
-            fwd_hooks=[("blocks.0.attn.hook_pattern", self.attention_hook)]
+            x, fwd_hooks=[("blocks.0.attn.hook_pattern", self.attention_hook)]
         )
         loss = self.loss_fn(y_preds, labels)
         self.log(f"{prefix}loss", loss, prog_bar=True)
@@ -163,17 +165,21 @@ class ModularFineTuningDataModule(DataModule):
         pairs = generate_all_sequences(self.config.experiment.p, self.config.n_ctx - 1)
         # concat a special token of value self.config.experiment.p to the end of each sequence for '='
         equals_token = self.config.experiment.p
-        data = torch.cat([pairs, equals_token * torch.ones((len(pairs), 1))], dim=1).long()
+        data = torch.cat(
+            [pairs, equals_token * torch.ones((len(pairs), 1))], dim=1
+        ).long()
         data = shuffle_data(data, rng)
 
         split_idx = int(len(data) * self.config.experiment.training_ratio)
 
         data_train = data[:split_idx]
         data_test = data[split_idx:]
-        print(f"data_train.shape: {data_train.shape}, data_test.shape: {data_test.shape}")
+        print(
+            f"data_train.shape: {data_train.shape}, data_test.shape: {data_test.shape}"
+        )
 
-        self.data_train = cast(Dataset[Tensor], TensorDataset(data_train))
-        self.data_test = cast(Dataset[Tensor], TensorDataset(data_test))
+        self.data_train = cast(Dataset[Tensor], SingleTensorDataset(data_train))
+        self.data_test = cast(Dataset[Tensor], SingleTensorDataset(data_test))
 
     def train_dataloader(self):
         return DataLoader(self.data_train, batch_size=self.config.batch_size)
@@ -219,4 +225,8 @@ class ModularFineTuningDataModule(DataModule):
 
 if __name__ == "__main__":
     print("Training model:", MODULAR_ADDITION_113_CLOCK_CONFIG)
-    train_or_load_model(MODULAR_ADDITION_113_CLOCK_CONFIG, force="train" if "--force-train" in sys.argv[1:] else None)
+    train_or_load_model(
+        MODULAR_ADDITION_113_CLOCK_CONFIG,
+        force="train" if "--force-train" in sys.argv[1:] else None,
+        save_to=None if "--no-save" in sys.argv[1:] else "disk_and_wandb",
+    )

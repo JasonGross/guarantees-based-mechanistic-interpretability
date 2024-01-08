@@ -86,11 +86,13 @@ class Config(Generic[ExpT]):
     d_head: int = 32
     d_mlp: Optional[int] = None
     d_vocab: int = 64
-    d_vocab_out: Optional[int] = None,
+    d_vocab_out: Optional[int] = (None,)
     n_ctx: int = 2
     zero_biases: bool = True
     # TODO: if we drop support for Python < 3.11, use Optional[Literal[*SUPPORTED_ACTIVATIONS]]
-    act_fn: Optional[Literal["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]] = None
+    act_fn: Optional[
+        Literal["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
+    ] = None
 
     # Training
     deterministic: bool = True
@@ -158,7 +160,8 @@ def train_or_load_model(
     model_ckpt_path: Optional[Path] = None,
     wandb_entity: str = DEFAULT_WANDB_ENTITY,
     wandb_project: Optional[str] = None,  # otherwise default name
-    model_description: str = "trained model",  # uploaded to wandb
+    model_description: str = "trained model",  # uploaded to wandba
+    accelerator: str = "auto",
 ) -> Tuple[RunData, HookedTransformer]:
     """
     Train model, or load from disk / wandb.
@@ -171,6 +174,7 @@ def train_or_load_model(
     @param wandb_entity: WandB entity to log to (defaults to DEFAULT_WANDB_ENTITY)
     @param wandb_project: WandB project to log to; if not provided, defaults to `config`'s class name
     @param model_description: Description to provide for WandB project
+    @param accelerator: Accelerator to use (cpu or auto)
     @return:
     """
     # Compute model name
@@ -217,6 +221,13 @@ def train_or_load_model(
 
     # Otherwise train the model...
 
+    # Warn if using MPS
+    if torch.backends.mps.is_available() and accelerator != "cpu":
+        input(
+            f"WARNING: currently training with MPS on Mac (accelerator={accelerator}, cfg.deterministic={config.deterministic}) -- here be bugs!\n"
+            "Disable MPS training by calling train_or_load with accelerator=cpu, or press ENTER to continue."
+        )
+
     # Build model, wrapper and datamodule
     ExpWrapper = config.experiment.get_training_wrapper()
     wrapped_model = ExpWrapper(config, ExpWrapper.build_model(config))
@@ -250,7 +261,7 @@ def train_or_load_model(
     # Fit model
     train_metric_callback = MetricsCallback()
     trainer = Trainer(
-        accelerator="cpu" if config.deterministic else "auto",
+        accelerator="cpu" if config.deterministic else accelerator,
         callbacks=[
             train_metric_callback,
             RichProgressBar(),

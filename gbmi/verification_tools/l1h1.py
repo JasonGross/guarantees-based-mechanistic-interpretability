@@ -222,7 +222,7 @@ def find_min_d_attention_score(
 
 @torch.no_grad()
 def EU_PU_PVOU(
-    model: HookedTransformer, attention_pattern: TensorType["batch", "n_ctx"]
+    model: HookedTransformer, attention_pattern: Float[Tensor, "batch n_ctx"]
 ) -> TensorType["batch", "d_vocab_q", "d_vocab_out"]:  # noqa: F821
     """
     Calculates logits from EU, PU, and the positional part of the OV path for a given batch of attentions

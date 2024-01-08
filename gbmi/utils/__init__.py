@@ -7,7 +7,9 @@ import subprocess
 import sys
 
 from pathlib import Path
-from typing import Optional, TypeVar, List, Dict
+from typing import Optional, TypeVar, List, Dict, Tuple
+
+from torch.utils.data import Dataset
 from transformer_lens import HookedTransformer
 
 import numpy as np
@@ -87,6 +89,26 @@ class MetricsCallback(Callback):
         self.log_metrics(trainer)
 
 
+class SingleTensorDataset(Dataset[Tensor]):
+    r"""Dataset wrapping a single tensor.
+
+    Each sample will be retrieved by indexing tensor along the first dimension.
+
+    Args:
+        tensor (Tensor): a tensor to be contained within dataset
+    """
+    tensor: Tensor
+
+    def __init__(self, tensor: Tensor) -> None:
+        self.tensor = tensor
+
+    def __getitem__(self, index):
+        return self.tensor[index]
+
+    def __len__(self):
+        return self.tensor.size(0)
+
+
 # Function to check if current directory is a Git repository
 def is_git_repo():
     try:
@@ -117,6 +139,7 @@ def handle_size_warnings_and_prompts(
     if prompt_if_diff_larger_than is not None and size_kb > prompt_if_diff_larger_than:
         input("Press enter to continue or Ctrl+C to break")
 
+
 def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
     """
     log_softmax is only precise to around 2e-7, cf https://github.com/pytorch/pytorch/issues/113708
@@ -126,5 +149,9 @@ def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
     x_centered = x - x.gather(dim=dim, index=x_max_idxs)
     x_exp = x_centered.exp()
     # x_exp[max] will be 1, so we can zero it and use log1p(x) = log(1 + x)
-    x_exp = x_exp.scatter(dim=dim, index=x_max_idxs, src=torch.zeros_like(x_max_idxs, device=x.device, dtype=x.dtype))
+    x_exp = x_exp.scatter(
+        dim=dim,
+        index=x_max_idxs,
+        src=torch.zeros_like(x_max_idxs, device=x.device, dtype=x.dtype),
+    )
     return x_centered - x_exp.sum(dim=dim, keepdim=True).log1p()

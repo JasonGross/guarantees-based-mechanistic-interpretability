@@ -4,10 +4,11 @@ import datetime
 import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 from pathlib import Path
 from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
+    Any,
     TypeVar,
     Generic,
     Optional,
@@ -85,7 +86,7 @@ class Config(Generic[ExpT]):
     train_for: Tuple[int, Literal["steps", "epochs"]] = (15000, "steps")
     log_every_n_steps: int = 10
     validate_every: Tuple[int, Literal["steps", "epochs"]] = (10, "steps")
-    optimizer_kwargs = {"lr": 1e-3, "betas": (0.9, 0.999)}
+    optimizer_kwargs: Dict[str, Any] = field(default_factory= lambda:  {"lr": 1e-3, "betas": (0.9, 0.999)})
 
     def get_summary_slug(self):
         return self.experiment.get_summary_slug(self)

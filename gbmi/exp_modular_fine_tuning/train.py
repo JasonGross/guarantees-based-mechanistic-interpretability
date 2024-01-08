@@ -33,7 +33,6 @@ class ModularFineTuning(ExperimentConfig):
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
     training_ratio: float = 0.3  # fraction of dataset to use for training
-    #SubConfig: Config[ModularFineTuning]
     def get_training_wrapper(self):
         return ModularFineTuningTrainingWrapper
 

@@ -33,7 +33,7 @@ class ModularFineTuning(ExperimentConfig):
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
     training_ratio: float = 0.3  # fraction of dataset to use for training
-
+    #SubConfig: Config[ModularFineTuning]
     def get_training_wrapper(self):
         return ModularFineTuningTrainingWrapper
 
@@ -43,10 +43,10 @@ class ModularFineTuning(ExperimentConfig):
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
         return f"ModularFineTuning-{config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}{'-nondeterministic' if not config.deterministic else ''}"
 
-
-MODULAR_ADDITION_113_CLOCK_CONFIG = Config(
+def modular_addition_config(attn_rate):
+    return Config(
     experiment=ModularFineTuning(
-        attention_rate=0,
+        attention_rate=attn_rate,
         p=113,
     ),
     n_ctx=3,
@@ -64,27 +64,9 @@ MODULAR_ADDITION_113_CLOCK_CONFIG = Config(
     act_fn="relu",
     validate_every=(10, "epochs"),
 )
+MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(0)
 
-MODULAR_ADDITION_113_PIZZA_CONFIG = Config(
-    experiment=ModularFineTuning(
-        attention_rate=1,
-        p=113,
-    ),
-    n_ctx=3,
-    d_model=128,
-    d_mlp=512,
-    d_head=32,
-    n_layers=1,
-    n_heads=4,
-    seed=999,
-    zero_biases=True,
-    deterministic=False,
-    batch_size=113**2,
-    train_for=(25000, "epochs"),
-    log_every_n_steps=1,
-    act_fn="relu",
-    validate_every=(10, "epochs"),
-)
+MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(1)
 
 
 class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):

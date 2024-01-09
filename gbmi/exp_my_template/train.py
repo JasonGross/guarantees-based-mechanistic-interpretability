@@ -83,11 +83,7 @@ class MyTemplateTrainingWrapper(TrainingWrapper[MyTemplate]):
         self.run_batch(batch, prefix="test_")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            lr=self.config.optimizer_kwargs["lr"],
-            betas=self.config.optimizer_kwargs["betas"],
-        )
+        return torch.optim.Adam(self.parameters(), **self.config.optimizer_kwargs)
 
 
 class MyTemplateDataModule(DataModule):

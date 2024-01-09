@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, cast
+from functools import cache
+from typing import Optional, cast, Tuple, Dict, Literal
 
 import numpy as np
 import torch
@@ -29,6 +30,23 @@ from gbmi.utils import (
 
 
 @dataclass
+class IterableDatasetCfg:
+    n_samples: Optional[int] = None
+
+
+@dataclass
+class FullDatasetCfg:
+    force_adjacent: bool = False
+    # only for n_ctx=2: whether to force all adjacent-pair inputs to be in training set
+    # bounds: Optional[Tuple[int, int]] = None
+    # range of vocab tokens within which to sample
+    training_ratio: float = 0.7
+
+
+DatasetCfg = IterableDatasetCfg | FullDatasetCfg
+
+
+@dataclass
 class MaxOfN(ExperimentConfig):
     # Model config
     model_config: HookedTransformerConfig = HookedTransformerConfig(
@@ -43,15 +61,8 @@ class MaxOfN(ExperimentConfig):
     )
     zero_biases: bool = True
 
-    # Max of n (iterable dataset)
-    n_train_samples: Optional[int] = None  # if none, infinite dataset
-    n_test_samples: int = 1024
-
-    # Max of 2 (full dataset)
-    force_adjacent: bool = (
-        False  # whether to force all adjacent-pair inputs to be in training set
-    )
-    training_ratio: float = 0.7  # fraction of dataset to use for training
+    train_dataset_cfg: DatasetCfg = IterableDatasetCfg(n_samples=None)
+    test_dataset_cfg: DatasetCfg = IterableDatasetCfg(n_samples=1024)
 
     def get_training_wrapper(self):
         return MaxOfNTrainingWrapper
@@ -60,23 +71,34 @@ class MaxOfN(ExperimentConfig):
         return MaxOfNDataModule
 
     def get_summary_slug(self, config: Config[MaxOfN]) -> str:
-        return f"MaxOf{config.experiment.model_config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}{'-adj' if self.force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
+        if isinstance(config.experiment.train_dataset_cfg, FullDatasetCfg):
+            force_adjacent = config.experiment.train_dataset_cfg.force_adjacent
+        else:
+            force_adjacent = False
+        return (
+            f"MaxOf{config.experiment.model_config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}"
+            f"{'-adj' if force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
+        )
 
 
 MAX_OF_2_CONFIG = set_params(
     Config(
         experiment=MaxOfN(
-            force_adjacent=True,
+            train_dataset_cfg=FullDatasetCfg(force_adjacent=True, training_ratio=0.7),
+            test_dataset_cfg=FullDatasetCfg(force_adjacent=True, training_ratio=0.7),
         ),
+        validate_every=None,
     ),
     {("experiment", "model_config", "n_ctx"): 2},
 )
 MAX_OF_10_CONFIG = set_params(
     Config(
         experiment=MaxOfN(
-            n_train_samples=None,
-            n_test_samples=1024,
+            train_dataset_cfg=IterableDatasetCfg(n_samples=None),
+            test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
         ),
+        validate_every=None,
+        train_for=(50000, "steps"),
     ),
     {("experiment", "model_config", "n_ctx"): 10},
 )
@@ -137,15 +159,14 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     def training_step(self, batch, batch_idx):
         return self.run_batch(batch, prefix="")
 
+    def validation_step(self, batch, batch_idx):
+        self.run_batch(batch, prefix="periodic_test_")
+
     def test_step(self, batch, batch_idx):
         self.run_batch(batch, prefix="test_")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            lr=self.config.optimizer_kwargs["lr"],
-            betas=self.config.optimizer_kwargs["betas"],
-        )
+        return torch.optim.Adam(self.parameters(), **self.config.optimizer_kwargs)
 
 
 class MaxOfNDataModule(DataModule):
@@ -160,45 +181,57 @@ class MaxOfNDataModule(DataModule):
         self.seq_len = config.experiment.model_config.n_ctx
         self.dataset_seed = reseed(config.seed, "dataset_seed")
 
-    def setup(self, stage: str):
-        if self.model_config.n_ctx == 2:
-            # Full dataset
-            rng = np.random.default_rng(self.dataset_seed)
-            data = generate_all_sequences(
-                self.model_config.d_vocab, self.model_config.n_ctx
+    @cache
+    def get_full_dataset(self, force_adjacent: bool, training_ratio: float):
+        rng = np.random.default_rng(self.dataset_seed)
+        data = generate_all_sequences(
+            self.model_config.d_vocab, self.model_config.n_ctx
+        )
+        data = shuffle_data(data, rng)
+
+        if force_adjacent:
+            assert self.model_config.n_ctx == 2
+            idxs = (data[:, 0] - data[:, 1]).abs() == 1
+            data, extra_data = data[~idxs], data[idxs]
+            data = torch.cat([extra_data, data], dim=0)
+
+        split_idx = int(len(data) * training_ratio)
+
+        data_train = shuffle_data(data[:split_idx], rng)
+        data_test = shuffle_data(data[split_idx:], rng)
+        return data_train, data_test
+
+    def build_dataset(
+        self, cfg: DatasetCfg, mode: Literal["train", "test"]
+    ) -> Dataset[Tensor]:
+        # TODO: factor these out into the classes
+        if isinstance(cfg, IterableDatasetCfg):
+            return MaxOfNDataset(
+                reseed(self.dataset_seed, mode),
+                self.config,
+                cfg.n_samples,
             )
-            data = shuffle_data(data, rng)
-            if self.config.experiment.force_adjacent:
-                idxs = (data[:, 0] - data[:, 1]).abs() == 1
-                data, extra_data = data[~idxs], data[idxs]
-                data = torch.cat([extra_data, data], dim=0)
-
-            split_idx = int(len(data) * self.config.experiment.training_ratio)
-
-            data_train = data[:split_idx]
-            data_test = data[split_idx:]
-
-            if self.config.experiment.force_adjacent:
-                data_train = shuffle_data(data_train, rng)
-                data_test = shuffle_data(data_test, rng)
-
-            self.data_train = cast(Dataset[Tensor], SingleTensorDataset(data_train))
-            self.data_test = cast(Dataset[Tensor], SingleTensorDataset(data_test))
+        elif isinstance(cfg, FullDatasetCfg):
+            data_train, data_test = self.get_full_dataset(
+                cfg.force_adjacent, cfg.training_ratio
+            )
+            return {"train": data_train, "test": data_test}[mode]
         else:
-            # Sampled dataset
-            self.data_train = MaxOfNDataset(
-                self.dataset_seed * 2,
-                self.config,
-                self.config.experiment.n_train_samples,
-            )
-            self.data_test = MaxOfNDataset(
-                self.dataset_seed * 2 + 1,
-                self.config,
-                self.config.experiment.n_test_samples,
-            )
+            raise NotImplementedError
+
+    def setup(self, stage: str):
+        self.data_train = self.build_dataset(
+            self.config.experiment.train_dataset_cfg, "train"
+        )
+        self.data_test = self.build_dataset(
+            self.config.experiment.test_dataset_cfg, "test"
+        )
 
     def train_dataloader(self):
         return DataLoader(self.data_train, batch_size=self.config.batch_size)
+
+    def val_dataloader(self):
+        return DataLoader(self.data_test, batch_size=self.config.batch_size)
 
     def test_dataloader(self):
         return DataLoader(self.data_test, batch_size=self.config.batch_size)

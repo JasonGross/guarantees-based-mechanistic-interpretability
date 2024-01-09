@@ -80,10 +80,8 @@ def modular_addition_config(attn_rate: float, p: int = 113):
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
-        optimizer_kwargs = {"lr":1e-3,"weight_decay": 1.0,
-"betas": (0.9, 0.98)}
+        optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
     )
-    
 
 
 MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(attn_rate=0)
@@ -169,8 +167,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
     def configure_optimizers(self):
         return torch.optim.Adam(
             self.parameters(),
-            lr=self.config.optimizer_kwargs["lr"],
-            betas=self.config.optimizer_kwargs["betas"],
+            **self.config.optimizer_kwargs,
         )
 
 

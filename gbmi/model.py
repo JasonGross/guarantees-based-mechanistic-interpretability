@@ -4,7 +4,7 @@ import datetime
 import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass,field
+from dataclasses import dataclass, field
 from pathlib import Path
 from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
@@ -85,8 +85,10 @@ class Config(Generic[ExpT]):
     batch_size: int = 128
     train_for: Tuple[int, Literal["steps", "epochs"]] = (15000, "steps")
     log_every_n_steps: int = 10
-    validate_every: Tuple[int, Literal["steps", "epochs"]] = (10, "steps")
-    optimizer_kwargs: Dict[str, Any] = field(default_factory= lambda:  {"lr": 1e-3, "betas": (0.9, 0.999)})
+    validate_every: Optional[Tuple[int, Literal["steps", "epochs"]]] = (10, "steps")
+    optimizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
+    )
 
     def get_summary_slug(self):
         return self.experiment.get_summary_slug(self)
@@ -236,13 +238,17 @@ def train_or_load_model(
         raise ValueError
 
     # How often should we validate?
-    n, unit = config.validate_every
-    if unit == "steps":
-        trainer_args["val_check_interval"] = n
-    elif unit == "epochs":
-        trainer_args["check_val_every_n_epoch"] = n
+    if config.validate_every is not None:
+        n, unit = config.validate_every
+        if unit == "steps":
+            trainer_args["val_check_interval"] = n
+        elif unit == "epochs":
+            trainer_args["check_val_every_n_epoch"] = n
+        else:
+            raise ValueError
     else:
-        raise ValueError
+        trainer_args["limit_val_batches"] = 0
+        trainer_args["num_sanity_val_steps"] = 0
 
     # Initialise a wandb run if necessary
     loggers = []

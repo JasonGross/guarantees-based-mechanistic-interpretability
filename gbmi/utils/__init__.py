@@ -156,6 +156,15 @@ def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
     return x_centered - x_exp.sum(dim=dim, keepdim=True).log1p()
 
 
+def deep_getattr(obj: T, key: Union[str, Sequence[str]], **kwargs) -> Any:
+    if isinstance(key, str):
+        return getattr(obj, key, **kwargs)
+    elif len(key) == 1:
+        return getattr(obj, key[0], **kwargs)
+    else:
+        return deep_getattr(getattr(obj, key[0], **kwargs), key[1:], **kwargs)
+
+
 def set_params(
     cfg: T,
     params: Dict[Union[str, Sequence[str]], Any],

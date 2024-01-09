@@ -1,9 +1,10 @@
 from __future__ import annotations
+import argparse
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
-from typing import Optional, cast, Tuple, Dict, Literal
+from typing import Any, Dict, Optional, Literal
 
 import numpy as np
 import torch
@@ -49,20 +50,25 @@ DatasetCfg = IterableDatasetCfg | FullDatasetCfg
 @dataclass
 class MaxOfN(ExperimentConfig):
     # Model config
-    model_config: HookedTransformerConfig = HookedTransformerConfig(
-        n_layers=1,
-        n_heads=1,
-        d_model=32,
-        d_head=32,
-        d_vocab=64,
-        attn_only=True,
-        normalization_type=None,
-        n_ctx=2,
+    model_config: HookedTransformerConfig = field(
+        default_factory=lambda: HookedTransformerConfig(
+            n_layers=1,
+            n_heads=1,
+            d_model=32,
+            d_head=32,
+            d_vocab=64,
+            attn_only=True,
+            normalization_type=None,
+            n_ctx=2,
+        )
     )
     zero_biases: bool = True
 
     train_dataset_cfg: DatasetCfg = IterableDatasetCfg(n_samples=None)
     test_dataset_cfg: DatasetCfg = IterableDatasetCfg(n_samples=1024)
+    optimizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
+    )
 
     def get_training_wrapper(self):
         return MaxOfNTrainingWrapper
@@ -166,7 +172,9 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         self.run_batch(batch, prefix="test_")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), **self.config.optimizer_kwargs)
+        return torch.optim.Adam(
+            self.parameters(), **self.config.experiment.optimizer_kwargs
+        )
 
 
 class MaxOfNDataModule(DataModule):
@@ -215,7 +223,10 @@ class MaxOfNDataModule(DataModule):
             data_train, data_test = self.get_full_dataset(
                 cfg.force_adjacent, cfg.training_ratio
             )
-            return {"train": data_train, "test": data_test}[mode]
+            return {
+                "train": SingleTensorDataset(data_train),
+                "test": SingleTensorDataset(data_test),
+            }[mode]
         else:
             raise NotImplementedError
 
@@ -275,5 +286,25 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
 
 
 if __name__ == "__main__":
-    print("Training model:", MAX_OF_10_CONFIG)
-    train_or_load_model(MAX_OF_10_CONFIG, force="train")
+    parser = argparse.ArgumentParser(
+        description="Train a model with configurable attention rate."
+    )
+    parser.add_argument(
+        "--force",
+        choices=[None, "train", "load"],
+        default=None,
+        help="Force action: None (default), 'train', or 'load'.",
+    )
+    parser.add_argument(
+        "--train-for-steps",
+        type=int,
+        default=15000,
+        help="Number of steps to train for.",
+    )
+    args = parser.parse_args()
+
+    config = set_params(
+        MAX_OF_10_CONFIG, {"train_for": (args.train_for_steps, "steps")}
+    )
+    print("Training model:", config)
+    train_or_load_model(config, force=args.force)

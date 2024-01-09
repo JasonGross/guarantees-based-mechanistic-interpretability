@@ -1,5 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any, Dict
 
 import torch
 from jaxtyping import Float, Integer
@@ -32,6 +33,9 @@ class MyTemplate(ExperimentConfig):
     )
     zero_biases: bool = True
     some_setting: int = 1
+    optimizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
+    )
 
     def get_training_wrapper(self):
         return MyTemplateTrainingWrapper
@@ -83,7 +87,9 @@ class MyTemplateTrainingWrapper(TrainingWrapper[MyTemplate]):
         self.run_batch(batch, prefix="test_")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), **self.config.optimizer_kwargs)
+        return torch.optim.Adam(
+            self.parameters(), **self.config.experiment.optimizer_kwargs
+        )
 
 
 class MyTemplateDataModule(DataModule):

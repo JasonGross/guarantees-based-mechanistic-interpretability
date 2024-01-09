@@ -1,9 +1,9 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-
+from dataclasses import dataclass
+from dataclasses import field
 
 import sys
-from typing import Optional, cast, Literal
+from typing import Any, Dict, Optional, cast, Literal
 from gbmi import utils
 
 import numpy as np
@@ -39,8 +39,11 @@ class ModularFineTuning(ExperimentConfig):
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
-    training_ratio: float = 0.3  # fraction of dataset to use for training
-    version_number: int = 0
+    training_ratio: float = 0.4  # fraction of dataset to use for training
+    optimizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
+    )
+    version_number: int = 1
 
     def get_training_wrapper(self):
         return ModularFineTuningTrainingWrapper
@@ -67,20 +70,21 @@ def modular_addition_config(attn_rate: float, p: int = 113):
                 n_layers=1,
                 n_heads=4,
                 act_fn="relu",
+                init_weights=True,
                 attn_only=False,
                 normalization_type=None,
             ),
             p=p,
             zero_biases=True,
             attention_rate=attn_rate,
+            optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
         ),
         seed=999,
         deterministic=False,
-        batch_size=113**2,
+        batch_size=int(113**2 * 0.4),
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
-        optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
     )
 
 
@@ -165,9 +169,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         self.run_batch(batch, prefix="periodic_test_")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            **self.config.optimizer_kwargs,
+        return torch.optim.AdamW(
+            self.parameters(), **self.config.experiment.optimizer_kwargs
         )
 
 
@@ -259,8 +262,12 @@ if __name__ == "__main__":
         "--attention-rate", type=float, default=0, help="Attention rate for the model."
     )
     parser.add_argument(
-        "--force-train", action="store_true", help="Force training the model."
+        "--force",
+        choices=[None, "train", "load"],
+        default=None,
+        help="Force action: None (default), 'train', or 'load'.",
     )
+
     parser.add_argument(
         "--no-save", action="store_true", help="Disable saving the model."
     )
@@ -269,9 +276,8 @@ if __name__ == "__main__":
     config = modular_addition_config(args.attention_rate)
     print("Training model:", config)
 
-    force_train: Optional[Literal["train"]] = "train" if args.force_train else None
     save_to: Optional[Literal["disk_and_wandb"]] = (
         None if args.no_save else "disk_and_wandb"
     )
 
-    train_or_load_model(config, force=force_train, save_to=save_to)
+    train_or_load_model(config, force=args.force, save_to=save_to)

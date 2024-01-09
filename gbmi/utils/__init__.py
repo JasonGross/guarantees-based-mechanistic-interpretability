@@ -19,6 +19,8 @@ from lightning import Callback
 from numpy.random import Generator
 from torch import Tensor
 
+from gbmi.utils.hashing import get_hash
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_WANDB_ENTITY = "gbmi"
 
@@ -193,4 +195,5 @@ def set_params(
 
 
 def reseed(x: Hashable, label: str) -> int:
-    return hash((x, label)) % (2**32 - 1)
+    # 4 bytes make an int32!
+    return int.from_bytes(get_hash((x, label))[:4])

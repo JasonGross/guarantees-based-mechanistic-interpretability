@@ -1,4 +1,5 @@
 from __future__ import annotations
+import argparse
 
 import logging
 from dataclasses import dataclass, field
@@ -243,5 +244,16 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Train a model with configurable attention rate."
+    )
+    parser.add_argument(
+        "--force",
+        choices=[None, "train", "load"],
+        default=None,
+        help="Force action: None (default), 'train', or 'load'.",
+    )
+    args = parser.parse_args()
+
     print("Training model:", MAX_OF_10_CONFIG)
-    train_or_load_model(MAX_OF_10_CONFIG, force="train")
+    train_or_load_model(MAX_OF_10_CONFIG, force=args.force)

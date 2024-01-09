@@ -226,7 +226,10 @@ class SortedListDataModule(DataModule):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a sorted list model.")
     parser.add_argument(
-        "--force-train", action="store_true", help="Force training the model."
+        "--force",
+        choices=[None, "train", "load"],
+        default=None,
+        help="Force action: None (default), 'train', or 'load'.",
     )
     parser.add_argument(
         "--no-save", action="store_true", help="Disable saving the model."
@@ -236,9 +239,8 @@ if __name__ == "__main__":
     config = SORTED_LIST_CONFIG
     print("Training model:", config)
 
-    force_train: Optional[Literal["train"]] = "train" if args.force_train else None
     save_to: Optional[Literal["disk_and_wandb"]] = (
         None if args.no_save else "disk_and_wandb"
     )
 
-    train_or_load_model(config, force=force_train, save_to=save_to)
+    train_or_load_model(config, force=args.force, save_to=save_to)

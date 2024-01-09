@@ -262,8 +262,12 @@ if __name__ == "__main__":
         "--attention-rate", type=float, default=0, help="Attention rate for the model."
     )
     parser.add_argument(
-        "--force-train", action="store_true", help="Force training the model."
+        "--force",
+        choices=[None, "train", "load"],
+        default=None,
+        help="Force action: None (default), 'train', or 'load'.",
     )
+
     parser.add_argument(
         "--no-save", action="store_true", help="Disable saving the model."
     )
@@ -272,9 +276,8 @@ if __name__ == "__main__":
     config = modular_addition_config(args.attention_rate)
     print("Training model:", config)
 
-    force_train: Optional[Literal["train"]] = "train" if args.force_train else None
     save_to: Optional[Literal["disk_and_wandb"]] = (
         None if args.no_save else "disk_and_wandb"
     )
 
-    train_or_load_model(config, force=force_train, save_to=save_to)
+    train_or_load_model(config, force=args.force, save_to=save_to)

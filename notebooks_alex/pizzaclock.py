@@ -9,7 +9,8 @@ import tqdm
 
 device = "cuda"
 p = 113
-q = 2 * p
+q = p
+freeze_model = False
 config = MODULAR_ADDITION_113_CLOCK_CONFIG
 subtracting = False
 frac_train = 0.3
@@ -18,11 +19,12 @@ num_epochs = 25000
 
 rundata, model = train_or_load_model(config)
 model.to(device)
-for param in model.parameters():
-    param.requires_grad = False
-embeddingmatrix = model.embed.W_E.clone()
+if freeze_model:
+    for param in model.parameters():
+        param.requires_grad = False
+    embeddingmatrix = model.embed.W_E.clone()
 
-model.embed = torch.nn.Identity()
+    model.embed = torch.nn.Identity()
 
 
 def hook_fn(attnpattern, hook):
@@ -75,9 +77,11 @@ def loss_fn(logits, labels):
 
     return -correct_log_probs.mean()
 
+if freeze_model:
+    Clock = DifferentModClock()
+    Clock.to(device)
+full_model = Clock if freeze_model else model 
 
-Clock = DifferentModClock()
-Clock.to(device)
 a_vector = einops.repeat(torch.arange(q), "i -> (i j)", j=q)
 b_vector = einops.repeat(torch.arange(q), "j -> (i j)", i=q)
 equals_vector = einops.repeat(torch.tensor(q), " -> (i j)", i=q, j=q)
@@ -85,14 +89,18 @@ dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
 
 
 if subtracting:
+    
     subtractedset = (dataset[:, 0] - dataset[:, 1]) % q
-    labels = (
-        subtractedset - ((subtractedset > (q // 2)) * subtractedset) * 2
-    ) % q  # Finds either a-b or b-a depending on which one is lower than q//2. Symmetric in a and b.
+    if freeze_model:
+        labels = (
+            subtractedset - ((subtractedset > (q // 2)) * subtractedset) * 2
+        ) % q
+    else:
+        labels = subtractedset  # Finds either a-b or b-a depending on which one is lower than q//2. Symmetric in a and b.
 else:
     labels = (dataset[:, 0] + dataset[:, 1]) % q
 optimizer = torch.optim.AdamW(
-    Clock.parameters(), lr=1e-3, weight_decay=0.01, betas=(0.9, 0.98)
+    full_model.parameters(), lr=1e-3, weight_decay=0.01, betas=(0.9, 0.98)
 )
 
 torch.manual_seed(seed)
@@ -113,8 +121,10 @@ checkpoint_epochs = []
 
 
 for epoch in tqdm.tqdm(range(num_epochs)):
-    train_logits = Clock(train_data)
-
+    if freeze_model:
+        train_logits = full_model(train_data)
+    else:
+        train_logits = full_model.run_with_hooks(train_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
     train_loss = loss_fn(train_logits, train_labels)
     train_loss.backward()
     train_losses.append(train_loss.item())
@@ -123,7 +133,10 @@ for epoch in tqdm.tqdm(range(num_epochs)):
     optimizer.zero_grad()
 
     with torch.inference_mode():
-        test_logits = Clock(test_data)
+        if freeze_model:
+            test_logits = full_model(test_data)
+        else:
+            test_logits = full_model.run_with_hooks(test_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
         test_loss = loss_fn(test_logits, test_labels)
         test_losses.append(test_loss.item())
     if ((epoch + 1) % 10) == 0:

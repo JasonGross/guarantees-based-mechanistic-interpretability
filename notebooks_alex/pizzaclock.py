@@ -11,8 +11,8 @@ device = "cuda"
 p = 113
 q = p
 freeze_model = False
-config = MODULAR_ADDITION_113_CLOCK_CONFIG
-subtracting = False
+config = MODULAR_ADDITION_113_PIZZA_CONFIG
+subtracting = True
 frac_train = 0.3
 seed = 999
 num_epochs = 25000
@@ -68,8 +68,12 @@ class DifferentModClock(torch.nn.Module):
 
 
 def loss_fn(logits, labels):
+    print(logits.shape)
     if len(logits.shape) == 3:
-        logits = logits[:, :, -1]
+        if freeze_model:
+            logits = logits[:, :, -1]
+        else:
+            logits = logits[:,-1,:]
     logits = logits.to(torch.float64)
 
     log_probs = logits.log_softmax(dim=-1)

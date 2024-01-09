@@ -86,8 +86,8 @@ class SortedList(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[SortedList]) -> str:
         return (
-            f"SortedList-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
-            f"{config.train_for[1]}"
+            f"SortedList-{config.experiment.list_len}-{config.experiment.max_value}-tokens"
+            f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 

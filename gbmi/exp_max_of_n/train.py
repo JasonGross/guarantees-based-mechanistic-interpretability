@@ -32,15 +32,17 @@ from gbmi.utils import (
 @dataclass
 class MaxOfN(ExperimentConfig):
     # Model config
-    model_config: HookedTransformerConfig = HookedTransformerConfig(
-        n_layers=1,
-        n_heads=1,
-        d_model=32,
-        d_head=32,
-        d_vocab=64,
-        attn_only=True,
-        normalization_type=None,
-        n_ctx=2,
+    model_config: HookedTransformerConfig = field(
+        default_factory=lambda: HookedTransformerConfig(
+            n_layers=1,
+            n_heads=1,
+            d_model=32,
+            d_head=32,
+            d_vocab=64,
+            attn_only=True,
+            normalization_type=None,
+            n_ctx=2,
+        )
     )
     zero_biases: bool = True
 

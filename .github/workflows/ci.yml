@@ -72,8 +72,8 @@ jobs:
         action: remove
         linters: flake8
       if: matrix.annotate-errors
-    #- name: Run the automated tests (for example)
-    #  run: poetry run pytest -v
+    - name: Run the automated tests
+      run: poetry run pytest -v
     - run: wandb login --anonymously
     - run: make test-load-experiments -k || true
 

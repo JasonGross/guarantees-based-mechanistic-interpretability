@@ -99,7 +99,7 @@ SORTED_LIST_CONFIG = Config(
     batch_size=512,
     train_for=(25, "epochs"),
     log_every_n_steps=1,
-    validate_every=(1, "epochs"),
+    validate_every=(5, "epochs"),
 )
 
 

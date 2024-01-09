@@ -1,8 +1,28 @@
-PYTHON?=python
+PYTHON?=poetry run python
 FLAKE8_EXTRA_FLAGS?=
 FLAKE8_STANDARD_FLAGS?=--count --show-source --statistics
 # The GitHub editor is 127 chars wide
 FLAKE8_MORE_FLAGS?=--count --max-complexity=10 --max-line-length=127 --statistics
+
+TEST_LOAD_EXPERIMENTS = \
+	exp_max_of_n \
+	exp_modular_fine_tuning \
+	exp_sorted_list \
+	#
+
+define add_target
+# $(1) main target
+# $(2) intermediate target
+# $(3) recipe
+$(1): $(1)-$(2)
+
+.PHONY: $(1)-$(2)
+$(1)-$(2):
+	$(3)
+endef
+
+.PHONY: test-load-experiments
+$(foreach e,$(TEST_LOAD_EXPERIMENTS),$(eval $(call add_target,test-load-experiments,$(e),$(PYTHON) -m gbmi.$(e).train --force load)))
 
 # Python syntax errors or undefined names
 .PHONY: git-lint

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from typing import Optional, cast
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, cast
 
 import numpy as np
 import torch
@@ -52,6 +52,9 @@ class MaxOfN(ExperimentConfig):
         False  # whether to force all adjacent-pair inputs to be in training set
     )
     training_ratio: float = 0.7  # fraction of dataset to use for training
+    optimizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
+    )
 
     def get_training_wrapper(self):
         return MaxOfNTrainingWrapper
@@ -142,9 +145,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     def configure_optimizers(self):
         return torch.optim.Adam(
-            self.parameters(),
-            lr=self.config.optimizer_kwargs["lr"],
-            betas=self.config.optimizer_kwargs["betas"],
+            self.parameters(), **self.config.experiment.optimizer_kwargs
         )
 
 

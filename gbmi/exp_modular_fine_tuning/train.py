@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 import sys
-from typing import Optional, cast, Literal
+from typing import Any, Dict, Optional, cast, Literal
 from gbmi import utils
 
 import numpy as np
@@ -40,6 +40,9 @@ class ModularFineTuning(ExperimentConfig):
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
     training_ratio: float = 0.4  # fraction of dataset to use for training
+    optimizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
+    )
     version_number: int = 1
 
     def get_training_wrapper(self):
@@ -74,6 +77,7 @@ def modular_addition_config(attn_rate: float, p: int = 113):
             p=p,
             zero_biases=True,
             attention_rate=attn_rate,
+            optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
         ),
         seed=999,
         deterministic=False,
@@ -81,7 +85,6 @@ def modular_addition_config(attn_rate: float, p: int = 113):
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
-        optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
     )
 
 
@@ -166,7 +169,9 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         self.run_batch(batch, prefix="periodic_test_")
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), **self.config.optimizer_kwargs)
+        return torch.optim.AdamW(
+            self.parameters(), **self.config.experiment.optimizer_kwargs
+        )
 
 
 class ModularFineTuningDataModule(DataModule):

@@ -4,7 +4,7 @@ import datetime
 import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass,field
+from dataclasses import dataclass, field
 from pathlib import Path
 from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
@@ -75,6 +75,10 @@ class ExperimentConfig(ABC):
     def get_summary_slug(self: ExpT, config: Config[ExpT]) -> str:
         return self.__class__.__name__
 
+    def config_post_init(self: ExpT, config: Config[ExpT]) -> None:
+        """This function gets called on the post_init of the Config object."""
+        pass
+
 
 @dataclass
 class Config(Generic[ExpT]):
@@ -86,7 +90,9 @@ class Config(Generic[ExpT]):
     train_for: Tuple[int, Literal["steps", "epochs"]] = (15000, "steps")
     log_every_n_steps: int = 10
     validate_every: Tuple[int, Literal["steps", "epochs"]] = (10, "steps")
-    optimizer_kwargs: Dict[str, Any] = field(default_factory= lambda:  {"lr": 1e-3, "betas": (0.9, 0.999)})
+
+    def __post_init__(self):
+        self.experiment.config_post_init(self)
 
     def get_summary_slug(self):
         return self.experiment.get_summary_slug(self)

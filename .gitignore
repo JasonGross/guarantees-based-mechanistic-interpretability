@@ -165,3 +165,4 @@ poetry.lock
 playground
 .idea/
 checkpoints/
+*.bak

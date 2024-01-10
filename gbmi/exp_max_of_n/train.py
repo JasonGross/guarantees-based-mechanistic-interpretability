@@ -64,8 +64,8 @@ class MaxOfN(ExperimentConfig):
     )
     zero_biases: bool = True
 
-    train_dataset_cfg: DatasetCfg = IterableDatasetCfg(n_samples=None)
-    test_dataset_cfg: DatasetCfg = IterableDatasetCfg(n_samples=1024)
+    train_dataset_cfg: DatasetCfg = field(default_factory=lambda: IterableDatasetCfg(n_samples=None))
+    test_dataset_cfg: DatasetCfg = field(default_factory=lambda: IterableDatasetCfg(n_samples=1024))
     optimizer_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
     )

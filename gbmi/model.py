@@ -1,4 +1,5 @@
 from __future__ import annotations
+from argparse import ArgumentParser, Namespace
 
 import datetime
 import json
@@ -105,6 +106,83 @@ class Config(Generic[ExpT]):
     def to_dict(self) -> Dict:
         # TODO: hack
         return json.loads(_json_dumps(self))
+
+    @classmethod
+    def add_arguments(
+        cls: Type[Config[ExpT]], parser: ArgumentParser
+    ) -> ArgumentParser:
+        parser.add_argument(
+            "--deterministic",
+            action="store_true",
+            help="Force training on the CPU for avoiding non-deterministic floating point behavior",
+        )
+        parser.add_argument(
+            "--non-deterministic",
+            action="store_false",
+            dest="deterministic",
+            help="Allow training on the GPU for faster training",
+        )
+        parser.add_argument(
+            "--seed",
+            type=int,
+            default=None,
+            help="Seed for random number generators",
+        )
+        parser.add_argument(
+            "--batch-size",
+            type=int,
+            default=None,
+            help="Batch size",
+        )
+        parser.add_argument(
+            "--train-for-steps",
+            type=int,
+            default=None,
+            help="Number of steps to train for.",
+        )
+        parser.add_argument(
+            "--train-for-epochs",
+            type=int,
+            default=None,
+            help="Number of epochs to train for.",
+        )
+        parser.add_argument(
+            "--log-every-n-steps",
+            type=int,
+            metavar="N",
+            default=None,
+            help="Log every N steps",
+        )
+        parser.add_argument(
+            "--validate-every-steps",
+            type=int,
+            metavar="N",
+            default=None,
+            help="Validate every N steps",
+        )
+        parser.add_argument(
+            "--validate-every-epochs",
+            type=int,
+            metavar="N",
+            default=None,
+            help="Validate every N epochs",
+        )
+        return parser
+
+    def update_from_args(self: Config[ExpT], parsed: Namespace) -> Config[ExpT]:
+        cfg = self.replace(
+            {
+                k: v
+                for k, v in parsed.items()
+                if k in self.__dataclass_fields__ and v is not None
+            }
+        )
+        for field_name in ("train_for", "validate_every"):
+            if parsed[f"{field_name}_epochs"] is not None:
+                setattr(cfg, field_name, (parsed[f"{field_name}_epochs"], "epochs"))
+            elif parsed[f"{field_name}_steps"] is not None:
+                setattr(cfg, field_name, (parsed[f"{field_name}_steps"], "steps"))
+        return cfg
 
 
 @dataclass

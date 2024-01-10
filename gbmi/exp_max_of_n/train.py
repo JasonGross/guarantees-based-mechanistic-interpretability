@@ -295,16 +295,9 @@ if __name__ == "__main__":
         default=None,
         help="Force action: None (default), 'train', or 'load'.",
     )
-    parser.add_argument(
-        "--train-for-steps",
-        type=int,
-        default=15000,
-        help="Number of steps to train for.",
-    )
+    Config.add_arguments(parser)
     args = parser.parse_args()
 
-    config = set_params(
-        MAX_OF_10_CONFIG, {"train_for": (args.train_for_steps, "steps")}
-    )
+    config = MAX_OF_10_CONFIG.update_from_args(args)
     print("Training model:", config)
     train_or_load_model(config, force=args.force)

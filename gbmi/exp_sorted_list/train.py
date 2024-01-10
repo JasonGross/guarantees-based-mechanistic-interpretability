@@ -234,9 +234,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-save", action="store_true", help="Disable saving the model."
     )
+    Config.add_arguments(parser)
     args = parser.parse_args()
 
     config = SORTED_LIST_CONFIG
+    config = config.update_from_args(args)
     print("Training model:", config)
 
     save_to: Optional[Literal["disk_and_wandb"]] = (

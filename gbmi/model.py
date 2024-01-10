@@ -185,11 +185,12 @@ class Config(Generic[ExpT]):
         return parser
 
     def update_from_args(self: Config[ExpT], parsed: Namespace) -> Config[ExpT]:
+        parsed = vars(parsed)
         cfg = replace(
             self,
             **{
                 k: v
-                for k, v in vars(parsed).items()
+                for k, v in parsed.items()
                 if k in self.__dataclass_fields__ and v is not None
             },
         )

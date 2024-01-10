@@ -188,7 +188,7 @@ class Config(Generic[ExpT]):
         cfg = replace(self,
             {
                 k: v
-                for k, v in parsed.items()
+                for k, v in vars(parsed).items()
                 if k in self.__dataclass_fields__ and v is not None
             }
         )

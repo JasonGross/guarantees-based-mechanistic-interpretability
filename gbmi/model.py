@@ -5,7 +5,7 @@ import datetime
 import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
@@ -185,7 +185,7 @@ class Config(Generic[ExpT]):
         return parser
 
     def update_from_args(self: Config[ExpT], parsed: Namespace) -> Config[ExpT]:
-        cfg = self.replace(
+        cfg = replace(self,
             {
                 k: v
                 for k, v in parsed.items()

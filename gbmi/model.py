@@ -185,12 +185,13 @@ class Config(Generic[ExpT]):
         return parser
 
     def update_from_args(self: Config[ExpT], parsed: Namespace) -> Config[ExpT]:
-        cfg = replace(self,
-            {
+        cfg = replace(
+            self,
+            **{
                 k: v
                 for k, v in vars(parsed).items()
                 if k in self.__dataclass_fields__ and v is not None
-            }
+            },
         )
         for field_name in ("train_for", "validate_every", "checkpoint_every"):
             if parsed[f"{field_name}_epochs"] is not None:

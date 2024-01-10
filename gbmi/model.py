@@ -367,6 +367,7 @@ def train_or_load_model(
         run = None
 
     # Set up model checkpointing
+    # TODO(Euan or Jason, low-ish priority): fix model checkpointing, it doesn't seem to work
     if config.checkpoint_every is not None:
         if config.checkpoint_every[1] == "epochs":
             checkpoint_callback = ModelCheckpoint(

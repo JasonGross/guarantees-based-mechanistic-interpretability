@@ -25,7 +25,7 @@ from typing import (
 import torch
 import wandb
 from lightning import LightningModule, LightningDataModule, Trainer, seed_everything
-from lightning.pytorch.callbacks import RichProgressBar
+from lightning.pytorch.callbacks import RichProgressBar, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from transformer_lens import HookedTransformer
 from gbmi.utils import (
@@ -91,6 +91,7 @@ class Config(Generic[ExpT]):
     train_for: Tuple[int, Literal["steps", "epochs"]] = (15000, "steps")
     log_every_n_steps: int = 10
     validate_every: Optional[Tuple[int, Literal["steps", "epochs"]]] = (10, "steps")
+    checkpoint_every: Optional[Tuple[int, Literal["steps", "epochs"]]] = None
 
     def __post_init__(self):
         self.experiment.config_post_init(self)
@@ -167,6 +168,20 @@ class Config(Generic[ExpT]):
             default=None,
             help="Validate every N epochs",
         )
+        parser.add_argument(
+            "--checkpoint-every-steps",
+            type=int,
+            metavar="N",
+            default=None,
+            help="Checkpoint every N steps",
+        )
+        parser.add_argument(
+            "--checkpoint-every-epochs",
+            type=int,
+            metavar="N",
+            default=None,
+            help="Checkpoint every N epochs",
+        )
         return parser
 
     def update_from_args(self: Config[ExpT], parsed: Namespace) -> Config[ExpT]:
@@ -177,7 +192,7 @@ class Config(Generic[ExpT]):
                 if k in self.__dataclass_fields__ and v is not None
             }
         )
-        for field_name in ("train_for", "validate_every"):
+        for field_name in ("train_for", "validate_every", "checkpoint_every"):
             if parsed[f"{field_name}_epochs"] is not None:
                 setattr(cfg, field_name, (parsed[f"{field_name}_epochs"], "epochs"))
             elif parsed[f"{field_name}_steps"] is not None:
@@ -256,6 +271,7 @@ def train_or_load_model(
     run_name = f"{model_name}-{datetime_str}"
     if model_ckpt_path is None:
         model_ckpt_path = get_trained_model_dir(create=True) / f"{run_name}.pth"
+    model_ckpt_dir_path = Path(model_ckpt_path).parent
 
     # Set wandb project if not provided
     if wandb_project is None:
@@ -348,14 +364,33 @@ def train_or_load_model(
     else:
         run = None
 
+    # Set up model checkpointing
+    if config.checkpoint_every is not None:
+        if config.checkpoint_every[1] == "epochs":
+            checkpoint_callback = ModelCheckpoint(
+                dirpath=model_ckpt_dir_path,
+                filename=run_name + "-{epoch}-{step}",
+                every_n_epochs=1,
+                save_top_k=-1,  # Set to -1 to save all checkpoints
+            )
+        elif config.checkpoint_every[1] == "steps":
+            checkpoint_callback = ModelCheckpoint(
+                dirpath=model_ckpt_dir_path,
+                filename=run_name + "-{epoch}-{step}",
+                every_n_train_steps=config.checkpoint_every[0],
+                save_top_k=-1,  # Set to -1 to save all checkpoints
+            )
+    else:
+        checkpoint_callback = None
+
     # Fit model
     train_metric_callback = MetricsCallback()
+    callbacks = [train_metric_callback, RichProgressBar()]
+    if checkpoint_callback is not None:
+        callbacks.append(checkpoint_callback)
     trainer = Trainer(
         accelerator="cpu" if config.deterministic else accelerator,
-        callbacks=[
-            train_metric_callback,
-            RichProgressBar(),
-        ],
+        callbacks=callbacks,
         log_every_n_steps=config.log_every_n_steps,
         logger=loggers,
         **trainer_args,  # type: ignore

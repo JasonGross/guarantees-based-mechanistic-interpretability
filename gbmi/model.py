@@ -393,6 +393,7 @@ def train_or_load_model(
         callbacks=callbacks,
         log_every_n_steps=config.log_every_n_steps,
         logger=loggers,
+        deterministic=config.deterministic or "warn",
         **trainer_args,  # type: ignore
     )
     trainer.fit(wrapped_model, datamodule)

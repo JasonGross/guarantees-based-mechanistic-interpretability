@@ -1,0 +1,52 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import numpy as np
+import einops
+from fancy_einsum import einsum
+import os
+import tqdm.auto as tqdm
+import random
+from pathlib import Path
+import plotly.express as px
+from torch.utils.data import DataLoader
+
+from typing import List, Union, Optional
+from functools import partial
+import copy
+
+import itertools
+from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
+import dataclasses
+import datasets
+
+# from IPython.display import HTML
+
+import transformer_lens
+import transformer_lens.utils as utils
+from transformer_lens.hook_points import (
+    HookedRootModule,
+    HookPoint,
+)  # Hooking utilities
+from transformer_lens import (
+    HookedTransformer,
+    HookedTransformerConfig,
+    FactoredMatrix,
+    ActivationCache,
+)
+
+sequence_length = 40
+frac_train = 0.3
+
+# Optimizer config
+lr = 1e-3
+wd = 1.0
+betas = (0.9, 0.98)
+
+num_epochs = 25000
+checkpoint_every = 100
+
+dataset = []
+for i in range(10000):
+    dataset.append(torch.randint(0, 1, (sequence_length)))

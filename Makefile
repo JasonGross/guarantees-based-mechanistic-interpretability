@@ -32,3 +32,8 @@ git-lint:
 .PHONY: git-lint-more
 git-lint-more:
 	git ls-files "*.py" | xargs flake8 $(FLAKE8_MORE_FLAGS) $(FLAKE8_EXTRA_FLAGS)
+
+.PHONY: sort-mailmap
+sort-mailmap:
+	{ grep '^#' .mailmap; grep '^\s*$$' .mailmap; grep '^[^#]' .mailmap | sort -f; } > .mailmap.tmp
+	mv .mailmap.tmp .mailmap

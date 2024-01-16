@@ -37,3 +37,11 @@ git-lint-more:
 sort-mailmap:
 	{ grep '^#' .mailmap; grep '^\s*$$' .mailmap; grep '^[^#]' .mailmap | sort -f; } > .mailmap.tmp
 	mv .mailmap.tmp .mailmap
+
+.PHONY: pre-commit-install
+pre-commit-install:
+	pre-commit install
+
+.PHONY: pre-commit
+pre-commit:
+	pre-commit run --all-files

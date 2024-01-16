@@ -7,7 +7,7 @@ from gbmi.analysis_tools.plot import imshow, line
 
 
 def analyze_QK(model: HookedTransformer, pos=None, colorscale="RdBu", renderer=None):
-    W_U, W_E, W_pos, W_Q, W_K = model.W_U, model.W_E, model.W_pos, model.W_Q, model.W_K
+    W_E, W_pos, W_Q, W_K = model.W_E, model.W_pos, model.W_Q, model.W_K
 
     pos_enc = W_pos.mean(dim=0) if pos is None else W_pos[pos]
     pos_str = "W_pos.mean(dim=0)" if pos is None else f"W_pos[{pos}]"
@@ -16,7 +16,7 @@ def analyze_QK(model: HookedTransformer, pos=None, colorscale="RdBu", renderer=N
 
     imshow(
         QK,
-        title="Attention<br>(W_E + W_pos[-1]) @ W_Q @ W_K.T @ (W_E + W_pos.mean(dim=0)).T",
+        title=f"Attention<br>(W_E + W_pos[-1]) @ W_Q @ W_K.T @ (W_E + {pos_str}).T",
         xaxis="Key Token",
         yaxis="Query Token",
         renderer=renderer,

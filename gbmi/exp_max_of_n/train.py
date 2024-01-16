@@ -1,7 +1,6 @@
 from __future__ import annotations
 import argparse
 
-import logging
 from dataclasses import dataclass, field
 from functools import cache
 from typing import Any, Dict, Optional, Literal
@@ -10,7 +9,7 @@ import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
+from torch.utils.data import Dataset, DataLoader, IterableDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 from gbmi.model import (
@@ -23,7 +22,6 @@ from gbmi.model import (
 from gbmi.utils import (
     generate_all_sequences,
     shuffle_data,
-    default_device,
     SingleTensorDataset,
     reseed,
     set_params,
@@ -136,9 +134,9 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     @staticmethod
     def loss_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],
-        tokens: Integer[Tensor, "batch pos"],
-    ) -> Float[Tensor, ""]:
+        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F821, F722
+        tokens: Integer[Tensor, "batch pos"],  # noqa: F821, F722
+    ) -> Float[Tensor, ""]:  # noqa F722
         logits = logits[:, -1, :]
         true_maximum = torch.max(tokens, dim=1)[0]
         log_probs = logits.log_softmax(-1)
@@ -147,15 +145,17 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     @staticmethod
     def acc_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],
-        tokens: Integer[Tensor, "batch pos"],
+        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F821, F722
+        tokens: Integer[Tensor, "batch pos"],  # noqa: F821, F722
     ) -> float:
         pred_logits = logits[:, -1, :]
         pred_tokens = torch.argmax(pred_logits, dim=1)
         true_maximum = torch.max(tokens, dim=1)[0]
         return (pred_tokens == true_maximum).float().mean().item()
 
-    def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):
+    def run_batch(
+        self, x: Float[Tensor, "batch pos"], prefix: str  # noqa F722
+    ) -> Float[Tensor, ""]:  # noqa F722
         self.model.to(x.device, print_details=False)
         # print(self.model.)
         # print(x.device)
@@ -182,8 +182,8 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
 
 class MaxOfNDataModule(DataModule):
-    data_train: Dataset[Integer[Tensor, "seq_len"]]
-    data_test: Dataset[Integer[Tensor, "seq_len"]]
+    data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
+    data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     batch_size: Optional[int]
 
     def __init__(self, config: Config[MaxOfN]):

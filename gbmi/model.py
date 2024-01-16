@@ -5,11 +5,9 @@ import datetime
 import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from pathlib import Path
-from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
-    Any,
     TypeVar,
     Generic,
     Optional,
@@ -17,7 +15,6 @@ from typing import (
     Tuple,
     Type,
     Dict,
-    List,
     Mapping,
     Sequence,
 )

@@ -75,8 +75,8 @@ class MyTemplateTrainingWrapper(TrainingWrapper[MyTemplate]):
         return model
 
     def run_batch(
-        self, x: Float[Tensor, "batch pos"], prefix: str
-    ) -> Float[Tensor, ""]:
+        self, x: Float[Tensor, "batch pos"], prefix: str  # noqa: F722
+    ) -> Float[Tensor, ""]:  # noqa: F722
         # Given a batch of inputs, returns the model loss on those inputs (and logs appropriate values).
         raise NotImplementedError
 
@@ -93,8 +93,8 @@ class MyTemplateTrainingWrapper(TrainingWrapper[MyTemplate]):
 
 
 class MyTemplateDataModule(DataModule):
-    data_train: Dataset[Integer[Tensor, "seq_len"]]
-    data_test: Dataset[Integer[Tensor, "seq_len"]]
+    data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
+    data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
 
     def __init__(self, config: Config[MyTemplate]):
         super(MyTemplateDataModule, self).__init__(config)
@@ -104,11 +104,11 @@ class MyTemplateDataModule(DataModule):
         # Setup anything required for your dataloaders.
         raise NotImplementedError
 
-    def train_dataloader(self) -> DataLoader[Float[Tensor, "seq_length"]]:
+    def train_dataloader(self) -> DataLoader[Float[Tensor, "seq_length"]]:  # noqa: F821
         # Return a (batched) dataloader for training data.
         raise NotImplementedError
 
-    def test_dataloader(self) -> DataLoader[Float[Tensor, "seq_length"]]:
+    def test_dataloader(self) -> DataLoader[Float[Tensor, "seq_length"]]:  # noqa: F821
         # return a (batched) dataloader for test data.
         raise NotImplementedError
 

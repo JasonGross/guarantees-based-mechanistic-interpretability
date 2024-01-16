@@ -7,7 +7,7 @@ from gbmi.model import train_or_load_model
 import torch
 import einops
 from torch import tensor
-from math import *
+from math import sqrt
 import tqdm
 
 device = "cuda"

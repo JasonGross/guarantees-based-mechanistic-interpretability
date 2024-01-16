@@ -7,10 +7,10 @@ import subprocess
 import sys
 
 from pathlib import Path
-from typing import Optional, TypeVar, List, Dict, Tuple, Hashable, Any, Union, Sequence
+from typing import Optional, TypeVar, List, Dict, Hashable, Any, Union, Sequence
 
 from torch.utils.data import Dataset
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from transformer_lens import HookedTransformer
 
 import numpy as np
 import torch
@@ -53,14 +53,14 @@ def shuffle_data(data, rng: Generator):
 
 def generate_all_sequences(
     n_digits: int, sequence_length: int = 2
-) -> Float[Tensor, "n_seqs sequence_length"]:
+) -> Float[Tensor, "n_seqs sequence_length"]:  # noqa: F722
     data = list(itertools.product(range(n_digits), repeat=sequence_length))
     return torch.tensor(data)
 
 
 def generate_all_sequences_for_model(
     model: HookedTransformer,
-) -> Float[Tensor, "n_seqs sequence_length"]:
+) -> Float[Tensor, "n_seqs sequence_length"]:  # noqa: F722
     return generate_all_sequences(
         n_digits=model.cfg.d_vocab, sequence_length=model.cfg.n_ctx
     )

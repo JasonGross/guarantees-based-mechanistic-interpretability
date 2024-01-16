@@ -121,9 +121,9 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
     @staticmethod
     def loss_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],
-        labels: Integer[Tensor, "batch"],
-    ) -> Float[Tensor, ""]:
+        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch"],  # noqa: F821
+    ) -> Float[Tensor, ""]:  # noqa: F722
         logits = logits[:, -1, :].to(torch.float64)
         log_probs = utils.log_softmax(logits, dim=-1)
         correct_log_probs = log_probs.gather(-1, labels.unsqueeze(-1))[:, 0]
@@ -131,8 +131,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
     @staticmethod
     def acc_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],
-        labels: Integer[Tensor, "batch"],
+        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch"],  # noqa: F821
     ) -> float:
         logits = logits[:, -1, :]
         predictions = logits.argmax(dim=-1)
@@ -144,7 +144,9 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         # that the attention scores add up to 1
         return alpha / attnscore.shape[-1] + (1 - alpha) * attnscore
 
-    def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):
+    def run_batch(
+        self, x: Float[Tensor, "batch pos"], prefix: str  # noqa: F722
+    ) -> Float[Tensor, ""]:  # noqa: F722
         self.model.to(x.device, print_details=False)
         labels = (x[:, 0] + x[:, 1]) % self.config.experiment.p
         assert (
@@ -175,8 +177,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
 
 class ModularFineTuningDataModule(DataModule):
-    data_train: Dataset[Integer[Tensor, "seq_len"]]
-    data_test: Dataset[Integer[Tensor, "seq_len"]]
+    data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
+    data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     batch_size: Optional[int]
 
     def __init__(self, config: Config[ModularFineTuning]):

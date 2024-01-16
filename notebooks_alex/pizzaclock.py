@@ -2,7 +2,7 @@ from gbmi.exp_modular_fine_tuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG
 from gbmi.exp_modular_fine_tuning.train import MODULAR_ADDITION_113_PIZZA_CONFIG
 from gbmi.model import train_or_load_model
 import torch
-from math import *
+from math import sqrt
 from torch import tensor
 import einops
 import tqdm

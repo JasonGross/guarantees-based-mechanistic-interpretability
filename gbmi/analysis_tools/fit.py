@@ -240,7 +240,7 @@ def show_fits(
         subplot_titles=[
             title
             for fit_func in fit_funcs
-            for title in (f"{fit_name_of_func(fit_func)} Fit", f"Residuals")
+            for title in (f"{fit_name_of_func(fit_func)} Fit", "Residuals")
         ],
     )
     for i, fit_func in enumerate(fit_funcs):

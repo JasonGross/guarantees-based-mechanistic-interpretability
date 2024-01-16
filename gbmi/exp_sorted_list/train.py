@@ -2,15 +2,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 
-import sys
 from typing import Any, Dict, Optional, Sequence, cast, Literal
 from gbmi import utils
 
-import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
+from torch.utils.data import Dataset, DataLoader
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 import argparse
 
@@ -25,12 +23,8 @@ from gbmi.model import (
     DataModule,
 )
 from gbmi.utils import (
-    generate_all_sequences,
-    shuffle_data,
-    default_device,
     SingleTensorDataset,
     reseed,
-    set_params,
 )
 
 
@@ -120,9 +114,9 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
 
     @staticmethod
     def loss_fn(
-        logits: Float[Tensor, "batch list_len d_vocab"],
-        labels: Integer[Tensor, "batch list_len"],
-    ) -> Float[Tensor, ""]:
+        logits: Float[Tensor, "batch list_len d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch list_len"],  # noqa: F722
+    ) -> Float[Tensor, ""]:  # noqa: F722
         log_probs = utils.log_softmax(logits, dim=-1)
         loss = F.cross_entropy(
             einops.rearrange(log_probs, "batch seq vocab_out -> (batch seq) vocab_out"),
@@ -133,8 +127,8 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
 
     @staticmethod
     def acc_fn(
-        logits: Float[Tensor, "batch list_len d_vocab"],
-        labels: Integer[Tensor, "batch list_len"],
+        logits: Float[Tensor, "batch list_len d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch list_len"],  # noqa: F722
         per_token: bool = True,
     ) -> float:
         predictions = logits.argmax(dim=-1)
@@ -143,7 +137,7 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
             correct = correct.all(dim=-1)
         return correct.float().mean().item()
 
-    def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):
+    def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):  # noqa: F722
         self.model.to(x.device, print_details=False)
         logits = self.model(x)[:, self.config.experiment.list_len : -1, :]
         labels = x[:, self.config.experiment.list_len + 1 :]
@@ -169,8 +163,8 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
 
 
 class SortedListDataModule(DataModule):
-    data_train: Dataset[Integer[Tensor, "seq_len"]]
-    data_test: Dataset[Integer[Tensor, "seq_len"]]
+    data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
+    data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     data_train_str: Sequence[str]
     data_test_str: Sequence[str]
 

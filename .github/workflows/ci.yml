@@ -29,6 +29,8 @@ jobs:
           poetry-version: "1.7.1"
           os: ubuntu-latest
           annotate-errors: true
+        - poetry-version: "1.7.1"
+          poetry-install-extra-args: "--compile"
     runs-on: ${{ matrix.os }}
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ github.head_ref || github.run_id }}
@@ -53,7 +55,7 @@ jobs:
         path: ./.venv
         key: venv-${{ hashFiles('pyproject.toml') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
     - name: Install the project dependencies
-      run: poetry install --compile
+      run: poetry install ${{ matrix.poetry-install-extra-args }}
     - uses: liskin/gh-problem-matcher-wrap@v3
       with:
         action: add

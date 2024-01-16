@@ -53,7 +53,7 @@ jobs:
         path: ./.venv
         key: venv-${{ hashFiles('pyproject.toml') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
     - name: Install the project dependencies
-      run: poetry install --compiled
+      run: poetry install --compile
     - uses: liskin/gh-problem-matcher-wrap@v3
       with:
         action: add

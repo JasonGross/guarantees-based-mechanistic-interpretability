@@ -68,9 +68,12 @@ jobs:
         # stop the build if there are Python syntax errors or undefined names
         make git-lint
         # exit-zero treats all errors as warnings
-        printf '%s\n\n%s\n' '<details><summary><code>make git-lint-more</code></summary>' '```' >> "$GITHUB_STEP_SUMMARY"
-        make git-lint-more FLAKE8_EXTRA_FLAGS=--exit-zero | tee -a "$GITHUB_STEP_SUMMARY"
-        printf '\n%s\n%s\n' '```' '</details>' >> "$GITHUB_STEP_SUMMARY"
+        printf '%s\n\n%s\n' '<details><summary><code>make git-lint-more</code></summary>' '```' > flake8-log
+        make git-lint-more FLAKE8_EXTRA_FLAGS=--exit-zero | tee -a flake8-log
+        printf '\n%s\n%s\n' '```' '</details>' >> flake8-log
+        if [ '${{ matrix.annotate-errors }}' = 'true' ]; then
+          cat flake8-log >> "$GITHUB_STEP_SUMMARY"
+        fi
     - uses: liskin/gh-problem-matcher-wrap@v3
       with:
         action: remove

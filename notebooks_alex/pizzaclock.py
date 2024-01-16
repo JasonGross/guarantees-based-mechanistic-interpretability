@@ -73,7 +73,7 @@ def loss_fn(logits, labels):
         if freeze_model:
             logits = logits[:, :, -1]
         else:
-            logits = logits[:,-1,:]
+            logits = logits[:, -1, :]
     logits = logits.to(torch.float64)
 
     log_probs = logits.log_softmax(dim=-1)
@@ -81,10 +81,11 @@ def loss_fn(logits, labels):
 
     return -correct_log_probs.mean()
 
+
 if freeze_model:
     Clock = DifferentModClock()
     Clock.to(device)
-full_model = Clock if freeze_model else model 
+full_model = Clock if freeze_model else model
 
 a_vector = einops.repeat(torch.arange(q), "i -> (i j)", j=q)
 b_vector = einops.repeat(torch.arange(q), "j -> (i j)", i=q)
@@ -93,12 +94,9 @@ dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
 
 
 if subtracting:
-    
     subtractedset = (dataset[:, 0] - dataset[:, 1]) % q
     if freeze_model:
-        labels = (
-            subtractedset - ((subtractedset > (q // 2)) * subtractedset) * 2
-        ) % q
+        labels = (subtractedset - ((subtractedset > (q // 2)) * subtractedset) * 2) % q
     else:
         labels = subtractedset  # Finds either a-b or b-a depending on which one is lower than q//2. Symmetric in a and b.
 else:
@@ -128,7 +126,9 @@ for epoch in tqdm.tqdm(range(num_epochs)):
     if freeze_model:
         train_logits = full_model(train_data)
     else:
-        train_logits = full_model.run_with_hooks(train_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
+        train_logits = full_model.run_with_hooks(
+            train_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
+        )
     train_loss = loss_fn(train_logits, train_labels)
     train_loss.backward()
     train_losses.append(train_loss.item())
@@ -140,7 +140,9 @@ for epoch in tqdm.tqdm(range(num_epochs)):
         if freeze_model:
             test_logits = full_model(test_data)
         else:
-            test_logits = full_model.run_with_hooks(test_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
+            test_logits = full_model.run_with_hooks(
+                test_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
+            )
         test_loss = loss_fn(test_logits, test_labels)
         test_losses.append(test_loss.item())
     if ((epoch + 1) % 10) == 0:

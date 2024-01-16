@@ -77,7 +77,7 @@ jobs:
     - name: Run the automated tests
       run: poetry run pytest -v || true
       if: always()
-    - run: wandb login --anonymously
+    - run: poetry run wandb login --anonymously
       if: always()
     - run: make test-load-experiments -k || true
       if: always()

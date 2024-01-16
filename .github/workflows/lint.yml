@@ -1,0 +1,30 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+  release:
+    types: [published]
+  schedule:
+    - cron: '0 0 1 * *'
+
+
+jobs:
+  black-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: psf/black@stable
+
+  lint-check-all:
+    runs-on: ubuntu-latest
+    needs: black-lint
+    if: always()
+    steps:
+    - run: echo 'black-lint passed'
+      if: ${{ needs.black-lint.result == 'success' }}
+    - run: echo 'black-lint failed' && false
+      if: ${{ needs.black-lint.result != 'success' }}

@@ -96,7 +96,7 @@ jobs:
       group: ${{ github.workflow }}-black-lint-${{ github.head_ref || github.run_id }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: psf/black@stable
         with:
           jupyter: true

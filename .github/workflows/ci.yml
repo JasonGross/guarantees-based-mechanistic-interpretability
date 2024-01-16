@@ -25,15 +25,13 @@ jobs:
         - python-version: "3.11"
           poetry-version: "1.7.1"
           os: windows-latest
+          poetry-install-extra-args: "--compile"
         - python-version: "3.11"
           poetry-version: "1.7.1"
           os: ubuntu-latest
           annotate-errors: true
         - poetry-version: "1.7.1"
           os: ubuntu-latest
-          poetry-install-extra-args: "--compile"
-        - poetry-version: "1.7.1"
-          os: windows-latest
           poetry-install-extra-args: "--compile"
     runs-on: ${{ matrix.os }}
     concurrency:

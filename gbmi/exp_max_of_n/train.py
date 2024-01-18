@@ -18,6 +18,8 @@ from gbmi.model import (
     ExperimentConfig,
     train_or_load_model,
     DataModule,
+    add_force_argument,
+    add_no_save_argument,
 )
 from gbmi.utils import (
     generate_all_sequences,
@@ -293,12 +295,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train a model with configurable attention rate."
     )
-    parser.add_argument(
-        "--force",
-        choices=[None, "train", "load"],
-        default=None,
-        help="Force action: None (default), 'train', or 'load'.",
-    )
+    add_force_argument(parser)
+    add_no_save_argument(parser)
     # add --max-of N argument accepting 2 and 10
     parser.add_argument(
         "--max-of",
@@ -315,4 +313,4 @@ if __name__ == "__main__":
         {("experiment", "model_config", "n_ctx"): args.max_of},
     ).update_from_args(args)
     print("Training model:", config)
-    train_or_load_model(config, force=args.force)
+    train_or_load_model(config, force=args.force, no_save=args.no_save)

@@ -21,6 +21,8 @@ from gbmi.model import (
     ExperimentConfig,
     train_or_load_model,
     DataModule,
+    add_force_argument,
+    add_no_save_argument,
 )
 from gbmi.utils import (
     SingleTensorDataset,
@@ -219,15 +221,8 @@ class SortedListDataModule(DataModule):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a sorted list model.")
-    parser.add_argument(
-        "--force",
-        choices=[None, "train", "load"],
-        default=None,
-        help="Force action: None (default), 'train', or 'load'.",
-    )
-    parser.add_argument(
-        "--no-save", action="store_true", help="Disable saving the model."
-    )
+    add_force_argument(parser)
+    add_no_save_argument(parser)
     Config.add_arguments(parser)
     args = parser.parse_args()
 
@@ -235,8 +230,4 @@ if __name__ == "__main__":
     config = config.update_from_args(args)
     print("Training model:", config)
 
-    save_to: Optional[Literal["disk_and_wandb"]] = (
-        None if args.no_save else "disk_and_wandb"
-    )
-
-    train_or_load_model(config, force=args.force, save_to=save_to)
+    train_or_load_model(config, force=args.force, save_to=args.save_to)

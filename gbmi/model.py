@@ -373,6 +373,7 @@ def train_or_load_model(
 
     # Set up model checkpointing
     # TODO(Euan or Jason, low-ish priority): fix model checkpointing, it doesn't seem to work
+    checkpoint_callback = None
     if config.checkpoint_every is not None:
         if config.checkpoint_every[1] == "epochs":
             checkpoint_callback = ModelCheckpoint(
@@ -388,8 +389,6 @@ def train_or_load_model(
                 every_n_train_steps=config.checkpoint_every[0],
                 save_top_k=-1,  # Set to -1 to save all checkpoints
             )
-    else:
-        checkpoint_callback = None
 
     # Fit model
     train_metric_callback = MetricsCallback()
@@ -442,3 +441,25 @@ def train_or_load_model(
         ),
         wrapped_model.model,
     )
+
+
+def add_force_argument(parser: ArgumentParser) -> ArgumentParser:
+    parser.add_argument(
+        "--force",
+        choices=[None, "train", "load"],
+        default=None,
+        help="Force action: None (default), 'train', or 'load'.",
+    )
+    return parser
+
+
+def add_no_save_argument(parser: ArgumentParser) -> ArgumentParser:
+    parser.add_argument(
+        "--no-save",
+        dest="save_to",
+        action="store_const",
+        const=None,
+        default="disk_and_wandb",
+        help="Disable saving the model.",
+    )
+    return parser

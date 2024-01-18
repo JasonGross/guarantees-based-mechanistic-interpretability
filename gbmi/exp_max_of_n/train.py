@@ -404,7 +404,7 @@ if __name__ == "__main__":
         "--use-end-of-sequence",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Use an end-of-sequence token",
+        help="Use an end-of-sequence token so the query-side attention vector is fixed.",
     )
     parser.add_argument("--weight-decay", type=float, default=None, help="Weight decay")
     parser.add_argument(

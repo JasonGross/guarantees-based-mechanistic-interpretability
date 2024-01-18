@@ -84,8 +84,8 @@ class MaxOfN(ExperimentConfig):
     def __post_init__(self):
         self.model_config.n_ctx = self.seq_len
         if self.use_end_of_sequence:
-            self.model_config.n_ctx += 1
-            self.model_config.d_vocab += 1
+            self.model_config.n_ctx = self.seq_len + 1
+            self.model_config.d_vocab = self.model_config.d_vocab_out + 1
 
     def config_post_init(self, config: Config[MaxOfN]) -> None:
         self.model_config.seed = reseed(config.seed, "model")
@@ -235,7 +235,7 @@ class MaxOfNDataModule(DataModule):
                 data,
                 torch.full(
                     (len(data), 1),
-                    self.model_config.d_vocab_out - 1,
+                    self.model_config.d_vocab - 1,
                     dtype=torch.long,
                     device=data.device,
                 ),
@@ -246,7 +246,7 @@ class MaxOfNDataModule(DataModule):
     @cache
     def get_full_dataset(self, force_adjacent: Sequence[int], training_ratio: float):
         rng = np.random.default_rng(self.dataset_seed)
-        data = generate_all_sequences(self.model_config.d_vocab, self.seq_len)
+        data = generate_all_sequences(self.model_config.d_vocab_out, self.seq_len)
         data = shuffle_data(data, rng)
 
         if force_adjacent:
@@ -261,7 +261,7 @@ class MaxOfNDataModule(DataModule):
 
         data_train = shuffle_data(data[:split_idx], rng)
         data_test = shuffle_data(data[split_idx:], rng)
-        # concatenate on a tensor of self.mode_config.d_vocab_out-1, if needed
+        # concatenate on a tensor of self.mode_config.d_vocab-1, if needed
         data_train = self.cat_eos(data_train)
         data_test = self.cat_eos(data_test)
         return data_train, data_test
@@ -334,7 +334,7 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
                 data,
                 torch.full(
                     (len(data), 1),
-                    self.model_config.d_vocab_out - 1,
+                    self.model_config.d_vocab - 1,
                     dtype=torch.long,
                     device=data.device,
                 ),
@@ -354,7 +354,7 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
                 yield self.cat_eos(
                     torch.randint(
                         0,
-                        self.model_config.d_vocab,
+                        self.model_config.d_vocab_out,
                         (self.seq_len,),
                         generator=g,
                     )

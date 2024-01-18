@@ -276,6 +276,9 @@ def train_or_load_model(
 
     # Compute model name
     model_name = config.get_id()
+    # Artifact name may only contain alphanumeric characters, dashes, underscores, and dots.
+    # replace all other characters with _ using re.sub
+    model_name = re.sub(r"[^a-zA-Z0-9\-_.]", "_", model_name)
 
     # Set model save path if not provided
     datetime_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -425,10 +428,8 @@ def train_or_load_model(
 
         if run is not None:
             print("Saving to WandB...")
-            # Artifact name may only contain alphanumeric characters, dashes, underscores, and dots.
-            # replace all other characters with _ using re.sub
             trained_model_artifact = wandb.Artifact(
-                re.sub(r"[^a-zA-Z0-9\-_.]", "_", model_name),
+                model_name,
                 type="model",
                 description=model_description,
                 metadata=wrapped_model.model.cfg.to_dict(),

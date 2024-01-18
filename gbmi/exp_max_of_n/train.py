@@ -3,12 +3,13 @@ import argparse
 
 from dataclasses import dataclass, field
 from functools import cache
-from typing import Any, Dict, Optional, Literal, Sequence
+from typing import Any, Callable, Dict, Optional, Literal, Sequence
 
 import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
@@ -21,6 +22,7 @@ from gbmi.model import (
     add_force_argument,
     add_no_save_argument,
 )
+import gbmi.utils as utils
 from gbmi.utils import (
     generate_all_sequences,
     shuffle_data,
@@ -63,6 +65,7 @@ class MaxOfN(ExperimentConfig):
         )
     )
     zero_biases: bool = True
+    use_log1p: bool = False
 
     train_dataset_cfg: DatasetCfg = field(
         default_factory=lambda: IterableDatasetCfg(n_samples=None)
@@ -82,12 +85,18 @@ class MaxOfN(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[MaxOfN]) -> str:
         if isinstance(config.experiment.train_dataset_cfg, FullDatasetCfg):
-            force_adjacent = config.experiment.train_dataset_cfg.force_adjacent
+            force_adjacent = ",".join(
+                map(str, config.experiment.train_dataset_cfg.force_adjacent)
+            )
+            training_ratio = config.experiment.train_dataset_cfg.training_ratio
         else:
             force_adjacent = tuple()
+            training_ratio = None
         return (
             f"MaxOf{config.experiment.model_config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}"
-            f"{f'-adj-{force_adjacent}' if force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
+            f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
+            f"{f'-training-ratio-{training_ratio}' if training_ratio is not None else ''}"
+            f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
 
@@ -138,10 +147,11 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     def loss_fn(
         logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F821, F722
         tokens: Integer[Tensor, "batch pos"],  # noqa: F821, F722
+        log_softmax: Callable = F.log_softmax,
     ) -> Float[Tensor, ""]:  # noqa F722
         logits = logits[:, -1, :]
         true_maximum = torch.max(tokens, dim=1)[0]
-        log_probs = logits.log_softmax(-1)
+        log_probs = log_softmax(logits, dim=-1)
         correct_log_probs = log_probs.gather(-1, true_maximum.unsqueeze(-1))
         return -correct_log_probs.mean()
 
@@ -158,11 +168,18 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     def run_batch(
         self, x: Float[Tensor, "batch pos"], prefix: str  # noqa F722
     ) -> Float[Tensor, ""]:  # noqa F722
+        log_softmax = (
+            F.log_softmax if not self.config.experiment.use_log1p else utils.log_softmax
+        )
         self.model.to(x.device, print_details=False)
         # print(self.model.)
         # print(x.device)
         y_preds = self.model(x)
-        loss = self.loss_fn(y_preds, x)
+        loss = self.loss_fn(
+            y_preds,
+            x,
+            log_softmax=log_softmax,
+        )
         self.log(f"{prefix}loss", loss, prog_bar=True)
         acc = self.acc_fn(y_preds, x)
         self.log(f"{prefix}acc", acc, prog_bar=True)
@@ -196,7 +213,7 @@ class MaxOfNDataModule(DataModule):
         self.dataset_seed = reseed(config.seed, "dataset_seed")
 
     @cache
-    def get_full_dataset(self, force_adjacent: bool, training_ratio: float):
+    def get_full_dataset(self, force_adjacent: Sequence[int], training_ratio: float):
         rng = np.random.default_rng(self.dataset_seed)
         data = generate_all_sequences(
             self.model_config.d_vocab, self.model_config.n_ctx
@@ -205,7 +222,9 @@ class MaxOfNDataModule(DataModule):
 
         if force_adjacent:
             assert self.model_config.n_ctx == 2
-            idxs = (data[:, 0] - data[:, 1]).abs() == 1
+            idxs = torch.zeros_like(data[:, 0], dtype=torch.bool)
+            for k in force_adjacent:
+                idxs |= (data[:, 0] - data[:, 1]).abs() == k
             data, extra_data = data[~idxs], data[idxs]
             data = torch.cat([extra_data, data], dim=0)
 
@@ -305,12 +324,76 @@ if __name__ == "__main__":
         default=10,
         help="The length of the list to take the maximum of.",
     )
+    parser.add_argument(
+        "--force-adjacent-gap",
+        metavar="K",
+        type=str,
+        action="append",
+        help="For --max-of 2, include all sequences (n, n±K) in training set. Accepts int and comma-separated-list.",
+    )
+    parser.add_argument(
+        "--training-ratio",
+        type=float,
+        default=0.7,
+        help="For --max-of 2, the fraction of sequences to include in training.",
+    )
+    parser.add_argument(
+        "--use-log1p",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use a more accurate implementation of log_softmax.",
+    )
     Config.add_arguments(parser)
     args = parser.parse_args()
 
     config = set_params(
         (MAX_OF_2_CONFIG if args.max_of <= 2 else MAX_OF_10_CONFIG),
-        {("experiment", "model_config", "n_ctx"): args.max_of},
+        {
+            ("experiment", "model_config", "n_ctx"): args.max_of,
+            ("experiment", "use_log1p"): args.use_log1p,
+        },
     ).update_from_args(args)
+    if args.max_of <= 2:
+        if args.force_adjacent_gap:
+            force_adjacent = tuple(
+                sorted(
+                    set(
+                        int(k.strip())
+                        for s in args.force_adjacent_gap
+                        for k in s.split(",")
+                    )
+                )
+            )
+            config = set_params(
+                config,
+                {
+                    (
+                        "experiment",
+                        "train_dataset_cfg",
+                        "force_adjacent",
+                    ): force_adjacent,
+                    (
+                        "experiment",
+                        "test_dataset_cfg",
+                        "force_adjacent",
+                    ): force_adjacent,
+                },
+            )
+        config = set_params(
+            config,
+            {
+                (
+                    "experiment",
+                    "train_dataset_cfg",
+                    "training_ratio",
+                ): args.training_ratio,
+                (
+                    "experiment",
+                    "test_dataset_cfg",
+                    "training_ratio",
+                ): args.training_ratio,
+            },
+        )
+
     print("Training model:", config)
     train_or_load_model(config, force=args.force, save_to=args.save_to)

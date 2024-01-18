@@ -25,6 +25,7 @@ endef
 
 .PHONY: test-load-experiments
 $(foreach e,$(TEST_LOAD_EXPERIMENTS),$(eval $(call add_target,test-load-experiments,$(e),$(PYTHON) -m gbmi.$(e).train --force load)))
+$(eval $(call add_target,test-load-experiments,max-of-2-grok,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 1500 --validate-every-epochs 1 --force-adjacent-gap 0,1 --use-log1p --training-ratio 0.04638671875 --force --force load))
 
 # Python syntax errors or undefined names
 .PHONY: git-lint

@@ -3,7 +3,7 @@ import argparse
 
 from dataclasses import dataclass, field
 from functools import cache
-from typing import Any, Callable, Dict, Optional, Literal, Sequence
+from typing import Any, Callable, Dict, Optional, Literal, Sequence, Union
 
 import numpy as np
 import torch
@@ -66,6 +66,9 @@ class MaxOfN(ExperimentConfig):
     )
     zero_biases: bool = True
     use_log1p: bool = False
+    # TODO(Euan, from Jason): Should this go in DatasetCfg?  In some shared dataset cfg?
+    use_end_of_sequence: bool = False
+    seq_len: int = 64
 
     train_dataset_cfg: DatasetCfg = field(
         default_factory=lambda: IterableDatasetCfg(n_samples=None)
@@ -77,6 +80,15 @@ class MaxOfN(ExperimentConfig):
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
     )
     optimizer: Literal["Adam", "AdamW"] = "Adam"
+
+    def __post_init__(self):
+        self.model_config.n_ctx = self.seq_len
+        if self.use_end_of_sequence:
+            self.model_config.n_ctx += 1
+            self.model_config.d_vocab += 1
+
+    def config_post_init(self, config: Config[MaxOfN]) -> None:
+        self.model_config.seed = reseed(config.seed, "model")
 
     def get_training_wrapper(self):
         return MaxOfNTrainingWrapper
@@ -94,33 +106,30 @@ class MaxOfN(ExperimentConfig):
             force_adjacent = tuple()
             training_ratio = None
         return (
-            f"MaxOf{config.experiment.model_config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}"
+            f"MaxOf{config.experiment.seq_len}-{config.train_for[0]}-{config.train_for[1]}"
             f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
             f"{f'-training-ratio-{training_ratio:.3f}' if training_ratio is not None else ''}"
+            f"{'-with-eos' if config.experiment.use_end_of_sequence else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
 
-MAX_OF_2_CONFIG = set_params(
-    Config(
-        experiment=MaxOfN(
-            train_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
-            test_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
-        ),
-        validate_every=None,
+MAX_OF_2_CONFIG = Config(
+    experiment=MaxOfN(
+        train_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
+        test_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
+        seq_len=2,
     ),
-    {("experiment", "model_config", "n_ctx"): 2},
+    validate_every=None,
 )
-MAX_OF_10_CONFIG = set_params(
-    Config(
-        experiment=MaxOfN(
-            train_dataset_cfg=IterableDatasetCfg(n_samples=None),
-            test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
-        ),
-        validate_every=None,
-        train_for=(50000, "steps"),
+MAX_OF_10_CONFIG = Config(
+    experiment=MaxOfN(
+        train_dataset_cfg=IterableDatasetCfg(n_samples=None),
+        test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
+        seq_len=10,
     ),
-    {("experiment", "model_config", "n_ctx"): 10},
+    validate_every=None,
+    train_for=(50000, "steps"),
 )
 
 
@@ -132,11 +141,6 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     @staticmethod
     def build_model(config: Config[MaxOfN]) -> HookedTransformer:
-        set_params(
-            config.experiment.model_config,
-            {"seed": reseed(config.seed, "model")},
-            warn_if_not_default=True,
-        )
         model = HookedTransformer(config.experiment.model_config)
         if config.experiment.zero_biases:
             for name, param in model.named_parameters():
@@ -146,11 +150,10 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     @staticmethod
     def loss_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F821, F722
-        tokens: Integer[Tensor, "batch pos"],  # noqa: F821, F722
+        logits: Float[Tensor, "batch d_vocab"],  # noqa: F821, F722
+        tokens: Integer[Tensor, "batch seq_len"],  # noqa: F821, F722
         log_softmax: Callable = F.log_softmax,
     ) -> Float[Tensor, ""]:  # noqa F722
-        logits = logits[:, -1, :]
         true_maximum = torch.max(tokens, dim=1)[0]
         log_probs = log_softmax(logits, dim=-1)
         correct_log_probs = log_probs.gather(-1, true_maximum.unsqueeze(-1))
@@ -158,11 +161,10 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     @staticmethod
     def acc_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F821, F722
-        tokens: Integer[Tensor, "batch pos"],  # noqa: F821, F722
+        logits: Float[Tensor, "batch d_vocab"],  # noqa: F821, F722
+        tokens: Integer[Tensor, "batch seq_len"],  # noqa: F821, F722
     ) -> float:
-        pred_logits = logits[:, -1, :]
-        pred_tokens = torch.argmax(pred_logits, dim=1)
+        pred_tokens = torch.argmax(logits, dim=1)
         true_maximum = torch.max(tokens, dim=1)[0]
         return (pred_tokens == true_maximum).float().mean().item()
 
@@ -175,7 +177,9 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         self.model.to(x.device, print_details=False)
         # print(self.model.)
         # print(x.device)
-        y_preds = self.model(x)
+        y_preds = self.model(x)[:, -1, :]
+        if self.config.experiment.use_end_of_sequence:
+            x = x[:, :-1]
         loss = self.loss_fn(
             y_preds,
             x,
@@ -206,24 +210,47 @@ class MaxOfNDataModule(DataModule):
     data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     batch_size: Optional[int]
+    seq_len: int
+    use_end_of_sequence: bool
+    dataset_seed: int
 
     def __init__(self, config: Config[MaxOfN]):
         super().__init__(config)
         self.config = config
         self.model_config = config.experiment.model_config
-        self.seq_len = config.experiment.model_config.n_ctx
+        self.seq_len = config.experiment.seq_len
+        self.use_end_of_sequence = config.experiment.use_end_of_sequence
         self.dataset_seed = reseed(config.seed, "dataset_seed")
+
+    def cat_eos(
+        self,
+        data: Integer[Tensor, "... seq_len"],  # noqa: F722
+    ) -> Union[
+        Integer[Tensor, "... seq_len+1"], Integer[Tensor, "... seq_len"]  # noqa: F722
+    ]:
+        if not self.use_end_of_sequence:
+            return data
+        return torch.cat(
+            [
+                data,
+                torch.full(
+                    (len(data), 1),
+                    self.model_config.d_vocab_out - 1,
+                    dtype=torch.long,
+                    device=data.device,
+                ),
+            ],
+            dim=1,
+        )
 
     @cache
     def get_full_dataset(self, force_adjacent: Sequence[int], training_ratio: float):
         rng = np.random.default_rng(self.dataset_seed)
-        data = generate_all_sequences(
-            self.model_config.d_vocab, self.model_config.n_ctx
-        )
+        data = generate_all_sequences(self.model_config.d_vocab, self.seq_len)
         data = shuffle_data(data, rng)
 
         if force_adjacent:
-            assert self.model_config.n_ctx == 2
+            assert self.seq_len == 2
             idxs = torch.zeros_like(data[:, 0], dtype=torch.bool)
             for k in force_adjacent:
                 idxs |= (data[:, 0] - data[:, 1]).abs() == k
@@ -234,6 +261,9 @@ class MaxOfNDataModule(DataModule):
 
         data_train = shuffle_data(data[:split_idx], rng)
         data_test = shuffle_data(data[split_idx:], rng)
+        # concatenate on a tensor of self.mode_config.d_vocab_out-1, if needed
+        data_train = self.cat_eos(data_train)
+        data_test = self.cat_eos(data_test)
         return data_train, data_test
 
     def build_dataset(
@@ -281,6 +311,8 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
     ):
         self.config = config
         self.model_config = config.experiment.model_config
+        self.seq_len = config.experiment.seq_len
+        self.use_end_of_sequence = config.experiment.use_end_of_sequence
         self.seed = seed
         if max_length is None:
             n, unit = config.train_for
@@ -288,6 +320,27 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
             self.max_length = n * config.batch_size
         else:
             self.max_length = max_length
+
+    def cat_eos(
+        self,
+        data: Integer[Tensor, "... seq_len"],  # noqa: F722
+    ) -> Union[
+        Integer[Tensor, "... seq_len+1"], Integer[Tensor, "... seq_len"]  # noqa: F722
+    ]:
+        if not self.use_end_of_sequence:
+            return data
+        return torch.cat(
+            [
+                data,
+                torch.full(
+                    (len(data), 1),
+                    self.model_config.d_vocab_out - 1,
+                    dtype=torch.long,
+                    device=data.device,
+                ),
+            ],
+            dim=1,
+        )
 
     def __len__(self):
         return self.max_length
@@ -298,11 +351,13 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
             g.manual_seed(self.seed)
             n_samples = 0
             while True:
-                yield torch.randint(
-                    0,
-                    self.model_config.d_vocab,
-                    (self.model_config.n_ctx,),
-                    generator=g,
+                yield self.cat_eos(
+                    torch.randint(
+                        0,
+                        self.model_config.d_vocab,
+                        (self.seq_len,),
+                        generator=g,
+                    )
                 )
                 n_samples += 1
                 if self.max_length is not None and n_samples >= self.max_length:
@@ -345,6 +400,12 @@ if __name__ == "__main__":
         default=False,
         help="Use a more accurate implementation of log_softmax.",
     )
+    parser.add_argument(
+        "--use-end-of-sequence",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use an end-of-sequence token",
+    )
     parser.add_argument("--weight-decay", type=float, default=None, help="Weight decay")
     parser.add_argument(
         "--optimizer",
@@ -366,11 +427,13 @@ if __name__ == "__main__":
     config = set_params(
         (MAX_OF_2_CONFIG if args.max_of <= 2 else MAX_OF_10_CONFIG),
         {
-            ("experiment", "model_config", "n_ctx"): args.max_of,
+            ("experiment", "seq_len"): args.max_of,
+            ("experiment", "use_end_of_sequence"): args.use_end_of_sequence,
             ("experiment", "use_log1p"): args.use_log1p,
             ("experiment", "optimizer"): args.optimizer,
         },
     ).update_from_args(args)
+    config.experiment.__post_init__()  # for seq_len
     if args.weight_decay is not None:
         config.experiment.optimizer_kwargs["weight_decay"] = args.weight_decay
     config.experiment.optimizer_kwargs.update(

@@ -3,7 +3,7 @@ import argparse
 
 from dataclasses import dataclass, field
 from functools import cache
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Dict, Optional, Literal, Sequence
 
 import numpy as np
 import torch
@@ -35,8 +35,8 @@ class IterableDatasetCfg:
 
 @dataclass
 class FullDatasetCfg:
-    force_adjacent: bool = False
-    # only for n_ctx=2: whether to force all adjacent-pair inputs to be in training set
+    force_adjacent: Sequence[int] = tuple()
+    # only for n_ctx=2: for all i in force_adjacent, force all sequences (n, n±i) to be in training set
     # bounds: Optional[Tuple[int, int]] = None
     # range of vocab tokens within which to sample
     training_ratio: float = 0.7
@@ -82,18 +82,18 @@ class MaxOfN(ExperimentConfig):
         if isinstance(config.experiment.train_dataset_cfg, FullDatasetCfg):
             force_adjacent = config.experiment.train_dataset_cfg.force_adjacent
         else:
-            force_adjacent = False
+            force_adjacent = tuple()
         return (
             f"MaxOf{config.experiment.model_config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}"
-            f"{'-adj' if force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
+            f"{f'-adj-{force_adjacent}' if force_adjacent else ''}{'-nondeterministic' if not config.deterministic else ''}"
         )
 
 
 MAX_OF_2_CONFIG = set_params(
     Config(
         experiment=MaxOfN(
-            train_dataset_cfg=FullDatasetCfg(force_adjacent=True, training_ratio=0.7),
-            test_dataset_cfg=FullDatasetCfg(force_adjacent=True, training_ratio=0.7),
+            train_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
+            test_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
         ),
         validate_every=None,
     ),

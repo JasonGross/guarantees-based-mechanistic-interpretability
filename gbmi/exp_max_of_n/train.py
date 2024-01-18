@@ -95,7 +95,7 @@ class MaxOfN(ExperimentConfig):
         return (
             f"MaxOf{config.experiment.model_config.n_ctx}-{config.train_for[0]}-{config.train_for[1]}"
             f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
-            f"{f'-training-ratio-{training_ratio}' if training_ratio is not None else ''}"
+            f"{f'-training-ratio-{training_ratio:.2f}' if training_ratio is not None else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 

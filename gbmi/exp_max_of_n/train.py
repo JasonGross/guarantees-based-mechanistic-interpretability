@@ -1,5 +1,7 @@
+# %%
 from __future__ import annotations
 import argparse
+import sys
 
 from dataclasses import dataclass, field
 from functools import cache
@@ -367,7 +369,7 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
         return iter(generator())
 
 
-if __name__ == "__main__":
+def main(argv=sys.argv):
     parser = argparse.ArgumentParser(
         description="Train a model with configurable attention rate."
     )
@@ -422,7 +424,7 @@ if __name__ == "__main__":
         help="coefficients used for computing running averages of gradient and its square",
     )
     Config.add_arguments(parser)
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
 
     config = set_params(
         (MAX_OF_2_CONFIG if args.max_of <= 2 else MAX_OF_10_CONFIG),
@@ -482,4 +484,13 @@ if __name__ == "__main__":
         )
 
     print("Training model:", config)
-    train_or_load_model(config, force=args.force, save_to=args.save_to)
+    return train_or_load_model(config, force=args.force, save_to=args.save_to)
+
+
+# %%
+if __name__ == "__main__":
+    main()
+
+# %%
+# model, runtime = main([i for i in "train  --max-of 2 --non-deterministic --train-for-epochs 3000 --validate-every-epochs 20 --force-adjacent-gap 0,1,2 --use-log1p --training-ratio 0.095 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --force load".strip().split(" ") if i])
+# %%

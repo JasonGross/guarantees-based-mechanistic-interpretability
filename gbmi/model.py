@@ -32,7 +32,7 @@ from gbmi.utils import (
     MetricsCallback,
     handle_size_warnings_and_prompts,
 )
-from gbmi.utils.hashing import get_hash, _json_dumps
+from gbmi.utils.hashing import get_hash, _json_dumps, _EXCLUDE
 
 ConfigT = TypeVar("ConfigT")
 ExpT = TypeVar("ExpT", bound="ExperimentConfig")
@@ -92,6 +92,9 @@ class Config(Generic[ExpT]):
     checkpoint_every: Optional[Tuple[int, Literal["steps", "epochs"]]] = None
 
     def __post_init__(self):
+        setattr(
+            self, _EXCLUDE, ("log_every_n_steps", "validate_every", "checkpoint_every")
+        )
         self.experiment.config_post_init(self)
 
     def get_summary_slug(self):

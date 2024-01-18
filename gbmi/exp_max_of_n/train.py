@@ -19,10 +19,12 @@ from gbmi.model import (
     TrainingWrapper,
     Config,
     ExperimentConfig,
+    add_HookedTransformerConfig_arguments,
     train_or_load_model,
     DataModule,
     add_force_argument,
     add_no_save_argument,
+    update_HookedTransformerConfig_from_args,
 )
 import gbmi.utils as utils
 from gbmi.utils import (
@@ -88,6 +90,7 @@ class MaxOfN(ExperimentConfig):
         if self.use_end_of_sequence:
             self.model_config.n_ctx = self.seq_len + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
+        self.model_config.__post_init__()
 
     def config_post_init(self, config: Config[MaxOfN]) -> None:
         self.model_config.seed = reseed(config.seed, "model")
@@ -423,7 +426,20 @@ def main(argv=sys.argv):
         default=(0.9, 0.999),
         help="coefficients used for computing running averages of gradient and its square",
     )
+    HOOKED_TRANSFORMER_CONFIG_ARGS = set(
+        (
+            "normalization_type",
+            "d_model",
+            "d_head",
+            "n_layers",
+            "n_heads",
+            "d_vocab",
+            "dtype",
+            "eps",
+        )
+    )
     Config.add_arguments(parser)
+    add_HookedTransformerConfig_arguments(parser, HOOKED_TRANSFORMER_CONFIG_ARGS)
     args = parser.parse_args(argv[1:])
 
     config = set_params(
@@ -435,7 +451,10 @@ def main(argv=sys.argv):
             ("experiment", "optimizer"): args.optimizer,
         },
     ).update_from_args(args)
-    config.experiment.__post_init__()  # for seq_len
+    update_HookedTransformerConfig_from_args(
+        config.experiment.model_config, args, HOOKED_TRANSFORMER_CONFIG_ARGS
+    )
+    config.experiment.__post_init__()  # for seq_len, d_vocab
     if args.weight_decay is not None:
         config.experiment.optimizer_kwargs["weight_decay"] = args.weight_decay
     config.experiment.optimizer_kwargs.update(

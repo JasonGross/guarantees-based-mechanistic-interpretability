@@ -1,15 +1,21 @@
 from __future__ import annotations
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser, Namespace, BooleanOptionalAction
 
 import datetime
+import logging
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
 import re
 from transformer_lens import HookedTransformerConfig
+from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
+    Any,
+    Collection,
+    List,
     TypeVar,
     Generic,
     Optional,
@@ -19,6 +25,7 @@ from typing import (
     Dict,
     Mapping,
     Sequence,
+    Union,
 )
 
 import torch
@@ -470,3 +477,135 @@ def add_no_save_argument(parser: ArgumentParser) -> ArgumentParser:
         help="Disable saving the model.",
     )
     return parser
+
+
+def _parse_HookedTransformerConfig_arguments():
+    """parses HookedTransformerConfig.__doc__ for various simple arguments"""
+    spaces = " " * 8
+    doc = HookedTransformerConfig.__doc__
+    assert doc is not None
+    assert "Args:" in doc, f"HookedTransformerConfig.__doc__ is missing 'Args:'\n{doc}"
+    simple_args: List[Tuple[str, Union[dict, type, Any], str]] = [
+        (
+            "act_fn",
+            dict(choices=SUPPORTED_ACTIVATIONS),
+            "The activation function to use.",
+        ),
+        (
+            "normalization_type",
+            dict(choices=[None, "LN", "LNPre"]),
+            "the type of normalization to use. Options are None (no normalization), 'LN' (use LayerNorm, including weights & biases) and 'LNPre' (use LayerNorm, but no weights & biases). Defaults to LN (optional)",
+        ),
+        (
+            "attention_dir",
+            dict(choices=["causal", "bidirectional"]),
+            "Whether to use causal (aka unidirectional aka GPT-2 style) or bidirectional attention. Defaults to 'causal'",
+        ),
+        (
+            "positional_embedding_type",
+            dict(choices=["standard", "rotary", "shortformer"]),
+            "The positional embedding used. Options are 'standard' (ie GPT-2 style, absolute, randomly initialized learned positional embeddings, directly added to the residual stream), 'rotary' (described here: https://blog.eleuther.ai/rotary-embeddings/ ) and 'shortformer' (GPT-2 style absolute & learned, but rather than being added to the residual stream they're only added to the inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and MLPs don't get any positional info)). Sinusoidal are not currently supported. Defaults to 'standard'.",
+        ),
+        (
+            "attn_types",
+            dict(choices=["global", "local"], action="append"),
+            "the types of attention to use for local attention",
+        ),
+        (
+            "weight_init_mode",
+            dict(choices=["gpt2"]),
+            "the initialization mode to use for the weights. Only relevant for custom models, ignored for pre-trained. Currently the only supported mode is 'gpt2', where biases are initialized to 0 and weights are standard normals of range initializer_range.",
+        ),
+    ]
+    valid_dtypes = [torch.float32, torch.float64, torch.bool]
+    valid_dtypes += [
+        getattr(torch, attr)
+        for attr in dir(torch)
+        if isinstance(getattr(torch, attr), torch.dtype)
+        and getattr(torch, attr) not in valid_dtypes
+    ]
+    known_names = set(name for name, _, _ in simple_args)
+    known_types = {
+        "int": int,
+        "bool": BooleanOptionalAction,
+        "float": float,
+        "torch.dtype": dict(type=torch.dtype, choices=valid_dtypes),
+    }
+    for name, ty, description in re.findall(
+        rf"\n{spaces}([^ ]+) \(([^\)]*)\): ([^\n]*(?:\n{spaces} [^\n]*)*)",
+        doc[doc.index("Args:") + len("Args:") :],
+    ):
+        if name in known_names:
+            continue
+        description = re.sub(rf"\n{spaces}\s*", " ", description).strip()
+        if ty.endswith(", *optional*"):
+            ty = ty[: -len(", *optional*")]
+            description += " (optional)"
+        elif ty.endswith(", optional"):
+            ty = ty[: -len(", optional")]
+            description += " (optional)"
+        if ty in known_types.keys():
+            simple_args.append((name, known_types[ty], description))
+            continue
+        if ty == "str" and name in ("tokenizer_name", "model_name"):
+            simple_args.append((name, str, description))
+            continue
+        if name in ("original_architecture", "checkpoint_label_type"):
+            # deliberately not yet handled, because it's not clear we'd want to set these
+            continue
+        logging.warning(
+            f"Unknown type {ty} for unrecognized {name} in HookedTransformerConfig.__doc__ while parsing doc for CLI arguments ({description})"
+        )
+    return simple_args
+
+
+def add_HookedTransformerConfig_arguments(
+    parser: ArgumentParser,
+    arguments: Optional[Collection[str]] = None,
+    exclude_arguments: Optional[Collection[str]] = None,
+    underscores_to_dashes: bool = True,
+    prefix: str = "",
+) -> ArgumentParser:
+    """Adds arguments from HookedTransformerConfig.__doc__ to parser
+
+    Args:
+        parser: parser to add arguments to
+        arguments: if provided, only add arguments with names in this collection
+        exclude_arguments: if provided, exclude arguments with names in this collection
+    """
+    for name, ty, description in _parse_HookedTransformerConfig_arguments():
+        if arguments is not None and name not in arguments:
+            continue
+        if exclude_arguments is not None and name in exclude_arguments:
+            continue
+        dest = name
+        if underscores_to_dashes:
+            name = name.replace("_", "-")
+        kwargs = ty if isinstance(ty, dict) else dict(type=ty)
+        parser.add_argument(
+            f"--{prefix}{name}", dest=dest, default=None, help=description, **kwargs
+        )
+    return parser
+
+
+def update_HookedTransformerConfig_from_args(
+    cfg: HookedTransformerConfig,
+    parsed: Namespace,
+    arguments: Optional[Collection[str]] = None,
+    exclude_arguments: Optional[Collection[str]] = None,
+) -> HookedTransformerConfig:
+    parsed_vars = vars(parsed)
+    htc_names = set(name for name, _, _ in _parse_HookedTransformerConfig_arguments())
+    cfg = replace(
+        cfg,
+        **{
+            k: v
+            for k, v in parsed_vars.items()
+            if k in htc_names
+            and (arguments is None or k in arguments)
+            and (exclude_arguments is None or k not in exclude_arguments)
+            and v is not None
+            and k in cfg.__dataclass_fields__
+        },
+    )
+    return cfg

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 import sys
-from typing import Any, Dict, Optional, cast, Literal
+from typing import Any, Dict, List, Optional, cast, Literal
 from gbmi import utils
 
 import numpy as np
@@ -18,10 +18,12 @@ from gbmi.model import (
     TrainingWrapper,
     Config,
     ExperimentConfig,
+    add_HookedTransformerConfig_arguments,
     train_or_load_model,
     DataModule,
     add_force_argument,
     add_no_save_argument,
+    update_HookedTransformerConfig_from_args,
 )
 from gbmi.utils import (
     generate_all_sequences,
@@ -258,20 +260,40 @@ class ModularFineTuningDataModule(DataModule):
 
 #         return iter(generator())
 
-if __name__ == "__main__":
+
+def main(argv: List[str] = sys.argv):
     parser = argparse.ArgumentParser(
         description="Train a model with configurable attention rate."
     )
+    parser.add_argument("--p", type=int, default=113, help="The prime to use.")
     parser.add_argument(
         "--attention-rate", type=float, default=0, help="Attention rate for the model."
     )
     add_force_argument(parser)
     add_no_save_argument(parser)
+    HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS = set(
+        (
+            "d_vocab",
+            "d_vocab_out",
+        )
+    )
     Config.add_arguments(parser)
-    args = parser.parse_args()
+    add_HookedTransformerConfig_arguments(
+        parser, exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS
+    )
+    args = parser.parse_args(argv[1:])
 
-    config = modular_addition_config(args.attention_rate)
+    config = modular_addition_config(attn_rate=args.attention_rate, p=args.p)
+    update_HookedTransformerConfig_from_args(
+        config.experiment.model_config,
+        args,
+        exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS,
+    )
     config = config.update_from_args(args)
     print("Training model:", config)
 
     train_or_load_model(config, force=args.force, save_to=args.save_to)
+
+
+if __name__ == "__main__":
+    main()

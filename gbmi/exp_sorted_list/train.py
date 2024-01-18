@@ -165,8 +165,8 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
 class SortedListDataModule(DataModule):
     data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
-    data_train_str: Sequence[str]
-    data_test_str: Sequence[str]
+    data_train_str: Sequence[Sequence[str]]
+    data_test_str: Sequence[Sequence[str]]
 
     def __init__(self, config: Config[SortedList]):
         super().__init__(config)

@@ -313,4 +313,4 @@ if __name__ == "__main__":
         {("experiment", "model_config", "n_ctx"): args.max_of},
     ).update_from_args(args)
     print("Training model:", config)
-    train_or_load_model(config, force=args.force, no_save=args.no_save)
+    train_or_load_model(config, force=args.force, save_to=args.save_to)

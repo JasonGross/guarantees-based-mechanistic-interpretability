@@ -76,6 +76,7 @@ class MaxOfN(ExperimentConfig):
     optimizer_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
     )
+    optimizer: Literal["Adam", "AdamW"] = "Adam"
 
     def get_training_wrapper(self):
         return MaxOfNTrainingWrapper
@@ -195,9 +196,10 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         self.run_batch(batch, prefix="test_")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(), **self.config.experiment.optimizer_kwargs
-        )
+        optimizer = {"Adam": torch.optim.Adam, "AdamW": torch.optim.AdamW}[
+            self.config.experiment.optimizer
+        ]
+        return optimizer(self.parameters(), **self.config.experiment.optimizer_kwargs)
 
 
 class MaxOfNDataModule(DataModule):
@@ -344,6 +346,12 @@ if __name__ == "__main__":
         help="Use a more accurate implementation of log_softmax.",
     )
     parser.add_argument("--weight-decay", type=float, default=None, help="Weight decay")
+    parser.add_argument(
+        "--optimizer",
+        choices=["Adam", "AdamW"],
+        default="Adam",
+        help="The optimizer to use.",
+    )
     Config.add_arguments(parser)
     args = parser.parse_args()
 
@@ -352,6 +360,7 @@ if __name__ == "__main__":
         {
             ("experiment", "model_config", "n_ctx"): args.max_of,
             ("experiment", "use_log1p"): args.use_log1p,
+            ("experiment", "optimizer"): args.optimizer,
         },
     ).update_from_args(args)
     if args.weight_decay is not None:

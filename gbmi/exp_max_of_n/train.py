@@ -352,6 +352,14 @@ if __name__ == "__main__":
         default="Adam",
         help="The optimizer to use.",
     )
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument(
+        "--betas",
+        type=float,
+        nargs=2,
+        default=(0.9, 0.999),
+        help="coefficients used for computing running averages of gradient and its square",
+    )
     Config.add_arguments(parser)
     args = parser.parse_args()
 
@@ -365,6 +373,9 @@ if __name__ == "__main__":
     ).update_from_args(args)
     if args.weight_decay is not None:
         config.experiment.optimizer_kwargs["weight_decay"] = args.weight_decay
+    config.experiment.optimizer_kwargs.update(
+        {"lr": args.lr, "betas": tuple(args.betas)}
+    )
     if args.max_of <= 2:
         if args.force_adjacent_gap:
             force_adjacent = tuple(

@@ -7,6 +7,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
+from transformer_lens import HookedTransformerConfig
 from typing import (
     TypeVar,
     Generic,
@@ -98,7 +99,14 @@ class Config(Generic[ExpT]):
 
     def get_id(self):
         config_summary_slug = self.get_summary_slug()
-        config_hash = get_hash(self).hex()
+        config_hash = get_hash(
+            self,
+            exclude_filter=(
+                lambda obj: (
+                    ["device"] if isinstance(obj, HookedTransformerConfig) else None
+                )
+            ),
+        ).hex()
         return f"{config_summary_slug}-{config_hash}"
 
     def to_dict(self) -> Dict:

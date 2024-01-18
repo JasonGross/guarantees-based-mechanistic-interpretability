@@ -13,13 +13,15 @@ The dataclass type is ignored: two instances of different types
 will have the same hash if they have the same attribute/value pairs.
 
 """
+from __future__ import annotations
 import dataclasses
 import datetime
 import hashlib
 import json
 from collections.abc import Collection
-from typing import Any
+from typing import Any, Callable, Mapping, Optional, TypeVar, Union
 from typing import Dict
+from functools import partial
 
 import torch
 
@@ -38,17 +40,38 @@ import torch
 _VERSION = 0
 _EXCLUDE = "_hash_exclude_"
 
+ExcludeFilter = Union[
+    None,
+    bool,
+    Collection[str],
+    Mapping[str, bool],
+    Callable[[object], Union[None, bool, Collection[str], Mapping[str, bool]]],
+]
 
-def get_hash(thing: object) -> bytes:
+
+def get_hash(thing: object, exclude_filter: ExcludeFilter = None) -> bytes:
+    """
+    Returns a stable hash for the given object.
+
+    exclude_filter is a callable that takes an object and returns either:
+    - False indicates exclusion
+    - True indicates inclusion
+    - None indicates default behavior (inclusion or recursive application of a parent filter)
+    - Collection[str] indicates exclusion of the listed attributes
+    - Mapping[str, ExcludeFilter] indicates an exclusion filter to apply to specified attributes
+    - Callable[[object], ExcludeFilter] indicates a filter to apply recursively to any object which is mapped to None by
+    """
     prefix = _VERSION.to_bytes(1, "big")
-    digest = hashlib.md5(_json_dumps(thing).encode("utf-8")).digest()
+    digest = hashlib.md5(
+        _json_dumps(thing, exclude_filter=exclude_filter).encode("utf-8")
+    ).digest()
     return prefix + digest[:-1]
 
 
-def _json_dumps(thing: object) -> str:
+def _json_dumps(thing: object, exclude_filter: ExcludeFilter = None) -> str:
     return json.dumps(
         thing,
-        default=_json_default,
+        default=partial(_json_default, exclude_filter=exclude_filter),
         # force formatting-related options to known values
         ensure_ascii=False,
         sort_keys=True,
@@ -57,9 +80,11 @@ def _json_dumps(thing: object) -> str:
     )
 
 
-def _json_default(thing: object) -> Any:
+def _json_default(thing: object, exclude_filter: ExcludeFilter = None) -> Any:
+    if exclude_filter is True:
+        return None
     try:
-        return _dataclass_dict(thing)
+        return _dataclass_dict(thing, exclude_filter=exclude_filter)
     except TypeError:
         pass
     if isinstance(thing, datetime.datetime):
@@ -69,7 +94,36 @@ def _json_default(thing: object) -> Any:
     raise TypeError(f"Object of type {type(thing).__name__} is not JSON serializable")
 
 
-def _dataclass_dict(thing: object) -> Dict[str, Any]:
+def getattr_or_exlcude(
+    field_name: str, thing: object, exclude_filter: ExcludeFilter = None
+) -> Optional[Any]:
+    # first we check for any fields listed in the _EXCLUDE attribute
+    if field_name in getattr(thing, _EXCLUDE, ()):
+        return None
+    # now we exclude None and empty collections
+    value = getattr(thing, field_name)
+    if value is None or not value and isinstance(value, Collection):
+        return None
+
+    # if the exclude filter contains no exclusions, we're done
+    if exclude_filter is None or exclude_filter is False:
+        return value
+    # if the exclude filter is a collection of field names or maps field names to booleans, we can just check the field name
+    if isinstance(exclude_filter, Collection):
+        return value if field_name not in exclude_filter else None
+    if isinstance(exclude_filter, Mapping):
+        return value if not exclude_filter[field_name] else None
+    # if the exclude filter is callable, we will pre-emptively exclude the child if the filter returns True on the child
+    if callable(exclude_filter):
+        value = getattr_or_exlcude(field_name, thing, exclude_filter(thing))
+        if value is None or exclude_filter(value) is True:
+            return None
+        return value
+
+
+def _dataclass_dict(
+    thing: object, exclude_filter: ExcludeFilter = None
+) -> Dict[str, Any]:
     # we could have used dataclasses.asdict()
     # with a dict_factory that drops empty values,
     # but asdict() is recursive and we need to intercept and check
@@ -82,17 +136,10 @@ def _dataclass_dict(thing: object) -> Dict[str, Any]:
     if isinstance(thing, type):
         raise TypeError("got type, expected instance")
 
-    exclude = getattr(thing, _EXCLUDE, ())
-
     rv = {}
     for field in fields:
-        if field.name in exclude:
-            continue
-
-        value = getattr(thing, field.name)
-        if value is None or not value and isinstance(value, Collection):
-            continue
-
-        rv[field.name] = value
+        value = getattr_or_exlcude(field.name, thing, exclude_filter=exclude_filter)
+        if value is not None:
+            rv[field.name] = value
 
     return {"__name__": thing.__class__.__name__, **rv}

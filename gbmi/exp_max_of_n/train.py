@@ -299,9 +299,20 @@ if __name__ == "__main__":
         default=None,
         help="Force action: None (default), 'train', or 'load'.",
     )
+    # add --max-of N argument accepting 2 and 10
+    parser.add_argument(
+        "--max-of",
+        metavar="N",
+        type=int,
+        default=10,
+        help="The length of the list to take the maximum of.",
+    )
     Config.add_arguments(parser)
     args = parser.parse_args()
 
-    config = MAX_OF_10_CONFIG.update_from_args(args)
+    config = set_params(
+        (MAX_OF_2_CONFIG if args.max_of <= 2 else MAX_OF_10_CONFIG),
+        {("experiment", "model_config", "n_ctx"): args.max_of},
+    ).update_from_args(args)
     print("Training model:", config)
     train_or_load_model(config, force=args.force)

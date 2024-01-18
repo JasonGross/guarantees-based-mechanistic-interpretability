@@ -491,6 +491,15 @@ def main(argv=sys.argv):
 if __name__ == "__main__":
     main()
 
-# %%
-# model, runtime = main([i for i in "train  --max-of 2 --non-deterministic --train-for-epochs 3000 --validate-every-epochs 20 --force-adjacent-gap 0,1,2 --use-log1p --training-ratio 0.095 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --force load".strip().split(" ") if i])
-# %%
+# # %%
+# runtime, model = main([i for i in "train  --max-of 2 --non-deterministic --train-for-epochs 3000 --validate-every-epochs 20 --force-adjacent-gap 0,1,2 --use-log1p --training-ratio 0.095 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --force load".strip().split(" ") if i])
+# # %%
+# from gbmi.analysis_tools.plot import imshow, line
+# # %%
+# line((model.W_E[-1] + model.W_pos[-1]) @ model.W_Q[0, 0, :, :] @ model.W_K[0, 0, :, :].T @ (model.W_E[:-1] + model.W_pos[:-1].mean(dim=0)).T, renderer='png')
+# # %%
+# res = model(torch.tensor([[39, 40, model.cfg.d_vocab - 1]]))[:, -1, :]
+# print(res.softmax(dim=-1))
+# print(res[:, 39:41])
+# print(res.argmax(dim=-1))
+# # %%

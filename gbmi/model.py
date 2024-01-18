@@ -7,6 +7,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
+import re
 from transformer_lens import HookedTransformerConfig
 from typing import (
     TypeVar,
@@ -424,8 +425,10 @@ def train_or_load_model(
 
         if run is not None:
             print("Saving to WandB...")
+            # Artifact name may only contain alphanumeric characters, dashes, underscores, and dots.
+            # replace all other characters with _ using re.sub
             trained_model_artifact = wandb.Artifact(
-                model_name,
+                re.sub(r"[^a-zA-Z0-9\-_.]", "_", model_name),
                 type="model",
                 description=model_description,
                 metadata=wrapped_model.model.cfg.to_dict(),

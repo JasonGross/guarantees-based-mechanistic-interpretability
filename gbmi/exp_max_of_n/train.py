@@ -343,6 +343,7 @@ if __name__ == "__main__":
         default=False,
         help="Use a more accurate implementation of log_softmax.",
     )
+    parser.add_argument("--weight-decay", type=float, default=None, help="Weight decay")
     Config.add_arguments(parser)
     args = parser.parse_args()
 
@@ -353,6 +354,8 @@ if __name__ == "__main__":
             ("experiment", "use_log1p"): args.use_log1p,
         },
     ).update_from_args(args)
+    if args.weight_decay is not None:
+        config.experiment.optimizer_kwargs["weight_decay"] = args.weight_decay
     if args.max_of <= 2:
         if args.force_adjacent_gap:
             force_adjacent = tuple(

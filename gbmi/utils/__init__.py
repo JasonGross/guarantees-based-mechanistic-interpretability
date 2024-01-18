@@ -167,20 +167,38 @@ def deep_getattr(obj: T, key: Union[str, Sequence[str]], **kwargs) -> Any:
         return deep_getattr(getattr(obj, key[0], **kwargs), key[1:], **kwargs)
 
 
+def setattr_or_item(obj: T, key: str, value: Any) -> T:
+    if hasattr(obj, "__setitem__"):  # dict-like
+        obj[key] = value  # type: ignore
+    else:
+        setattr(obj, key, value)
+    return obj
+
+
+def getattr_or_item(obj: Any, key: str) -> Any:
+    if hasattr(obj, "__getitem__"):  # dict-like
+        return obj[key]  # type: ignore
+    else:
+        return getattr(obj, key)
+
+
 def set_params(
     cfg: T,
     params: Dict[Union[str, Sequence[str]], Any],
     warn_if_not_default: bool = False,
 ) -> T:
     # TODO: warn if not default
+    assert not warn_if_not_default, "Not implemented"
     for k, v in params.items():
         if isinstance(k, str):
-            setattr(cfg, k, v)
+            setattr_or_item(cfg, k, v)
         elif len(k) == 1:
-            setattr(cfg, k[0], v)
+            setattr_or_item(cfg, k[0], v)
         else:
             set_params(
-                getattr(cfg, k[0]), {k[1:]: v}, warn_if_not_default=warn_if_not_default
+                getattr_or_item(cfg, k[0]),
+                {k[1:]: v},
+                warn_if_not_default=warn_if_not_default,
             )
     return cfg
 

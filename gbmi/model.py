@@ -379,6 +379,7 @@ def train_or_load_model(
             name=run_name,
             config=config.to_dict(),
             job_type="train",
+            log_model="all",
         )
         loggers.append(wandb_logger)
         run = wandb_logger.experiment

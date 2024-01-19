@@ -31,6 +31,7 @@ rich = "^13.7.0"
 expecttest = "^0.2.1"
 prettyprinter = "^0.18.0"
 kaleido = "0.2.1"
+imageio = "^2.33.1"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -1,6 +1,8 @@
 # %%
 from dataclasses import replace
 from tqdm import tqdm
+import os
+import imageio
 from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
     MaxOfN,
@@ -13,6 +15,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import torch
+import numpy as np
 import wandb
 from typing import (
     Tuple,
@@ -64,8 +67,8 @@ cfg = Config(
     batch_size=389,
     train_for=(1500, "epochs"),
     log_every_n_steps=10,
-    validate_every=(1, "epochs"),
-    checkpoint_every=(1, "epochs"),
+    validate_every=(10, "epochs"),
+    checkpoint_every=(10, "epochs"),
 )
 
 # %%
@@ -95,15 +98,17 @@ def evaluate_model(
 
 
 # %%
-models = runtime.model_versions(cfg, max_count=1200, step=20)
+models = runtime.model_versions(cfg, max_count=1500, step=2)
 assert models is not None
 models = list(models)
 # %%
 training_losses, test_losses = [], []
 training_accuracies, test_accuracies = [], []
+epochs = []
 for _version, old_data, _artifact in tqdm(models):
     assert old_data is not None
     old_runtime, old_model = old_data
+    epochs.append(old_runtime.epoch)
     (training_loss, training_acc), (test_loss, test_acc) = evaluate_model(old_model)
     training_losses.append(training_loss)
     test_losses.append(test_loss)
@@ -114,8 +119,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import torch
 
-# Create a subplot with 2 rows
-fig = make_subplots(rows=2, cols=1)
+# Assuming 'epochs' list is available
+# Create a subplot with 3 rows (1 for attention, 2 for losses, 3 for accuracies)
+fig = make_subplots(
+    rows=3, cols=1, subplot_titles=("Attention Plot", "Loss Plot", "Accuracy Plot")
+)
 
 # Lists to hold frames and slider steps
 frames = []
@@ -123,7 +131,11 @@ slider_steps = []
 
 # Variable to track the maximum values for each plot
 max_abs_value_attention = 0
-max_value_losses_accuracies = 0
+max_value_losses = 0
+max_value_accuracies = 0
+all_max_abs_value_attention = []
+all_max_value_losses = []
+all_max_value_accuracies = []
 
 with torch.no_grad():
     for i, (_version, old_data, _artifact) in enumerate(models):
@@ -147,30 +159,30 @@ with torch.no_grad():
         current_max_attention = torch.max(torch.abs(overlap)).item()
         max_abs_value_attention = max(max_abs_value_attention, current_max_attention)
 
-        # Update the max_value for the losses and accuracies plot
-        current_max_losses_accuracies = max(
-            training_losses[i],
-            test_losses[i],
-            training_accuracies[i],
-            test_accuracies[i],
-        )
-        max_value_losses_accuracies = max(
-            max_value_losses_accuracies, current_max_losses_accuracies
-        )
+        # Update the max_value for the loss and accuracy plots
+        current_max_loss = max(training_losses[i], test_losses[i])
+        max_value_losses = max(max_value_losses, current_max_loss)
+        current_max_accuracy = max(training_accuracies[i], test_accuracies[i])
+        max_value_accuracies = max(max_value_accuracies, current_max_accuracy)
 
-        # Add a trace for the initial plot (first epoch) in both subplots
-        if epoch == 0:
+        # Update the max values for all plots
+        all_max_abs_value_attention.append(max_abs_value_attention)
+        all_max_value_losses.append(max_value_losses)
+        all_max_value_accuracies.append(max_value_accuracies)
+
+        # Add a trace for the initial plot (first data point) in all subplots
+        if i == 0:
             # Attention plot trace
             fig.add_trace(
                 go.Scatter(x=list(range(len(overlap))), y=overlap, mode="lines"),
                 row=1,
                 col=1,
             )
-            # Losses and accuracies plot traces
+            # Loss plot traces
             fig.add_trace(
                 go.Scatter(
-                    x=list(range(i + 1)),
-                    y=training_losses[: i + 1],
+                    x=[epochs[0]],
+                    y=[training_losses[0]],
                     mode="lines",
                     name="Training Loss",
                 ),
@@ -179,32 +191,30 @@ with torch.no_grad():
             )
             fig.add_trace(
                 go.Scatter(
-                    x=list(range(i + 1)),
-                    y=test_losses[: i + 1],
-                    mode="lines",
-                    name="Test Loss",
+                    x=[epochs[0]], y=[test_losses[0]], mode="lines", name="Test Loss"
                 ),
                 row=2,
                 col=1,
             )
+            # Accuracy plot traces
             fig.add_trace(
                 go.Scatter(
-                    x=list(range(i + 1)),
-                    y=training_accuracies[: i + 1],
+                    x=[epochs[0]],
+                    y=[training_accuracies[0]],
                     mode="lines",
                     name="Training Accuracy",
                 ),
-                row=2,
+                row=3,
                 col=1,
             )
             fig.add_trace(
                 go.Scatter(
-                    x=list(range(i + 1)),
-                    y=test_accuracies[: i + 1],
+                    x=[epochs[0]],
+                    y=[test_accuracies[0]],
                     mode="lines",
                     name="Test Accuracy",
                 ),
-                row=2,
+                row=3,
                 col=1,
             )
 
@@ -213,49 +223,47 @@ with torch.no_grad():
             x=list(range(len(overlap))), y=overlap, mode="lines"
         )
 
-        # Frame data for the losses and accuracies plot
+        # Frame data for the loss and accuracy plots
         frame_data_losses = [
             go.Scatter(
-                x=list(range(i + 1)),
+                x=epochs[: i + 1],
                 y=training_losses[: i + 1],
                 mode="lines",
                 name="Training Loss",
             ),
             go.Scatter(
-                x=list(range(i + 1)),
+                x=epochs[: i + 1],
                 y=test_losses[: i + 1],
                 mode="lines",
                 name="Test Loss",
             ),
+        ]
+        frame_data_accuracies = [
             go.Scatter(
-                x=list(range(i + 1)),
+                x=epochs[: i + 1],
                 y=training_accuracies[: i + 1],
                 mode="lines",
                 name="Training Accuracy",
             ),
             go.Scatter(
-                x=list(range(i + 1)),
+                x=epochs[: i + 1],
                 y=test_accuracies[: i + 1],
                 mode="lines",
                 name="Test Accuracy",
             ),
         ]
 
-        # Create a frame combining both plots
+        # Create a frame combining all plots
         frame = go.Frame(
-            data=[frame_data_attention] + frame_data_losses,
+            data=[frame_data_attention] + frame_data_losses + frame_data_accuracies,
             name=str(epoch),
-            traces=[0, 1, 2, 3, 4, 5, 6, 7],  # Indices of the traces in this frame
+            traces=[0, 1, 2, 3, 4, 5, 6],  # Indices of the traces in this frame
             layout=go.Layout(
                 yaxis={
                     "range": [-max_abs_value_attention, max_abs_value_attention]
                 },  # Attention plot
-                yaxis2={
-                    "range": [0, max_value_losses_accuracies]
-                },  # Losses and accuracies plot
-                xaxis2={
-                    "range": [0, i]
-                },  # x-axis range for the losses and accuracies plot
+                yaxis2={"range": [0, max_value_losses]},  # Loss plot
+                yaxis3={"range": [0, max_value_accuracies]},  # Accuracy plot
             ),
         )
         frames.append(frame)
@@ -278,12 +286,12 @@ with torch.no_grad():
 # Add frames to the figure
 fig.frames = frames
 
-# Update layout for the subplot (the attention plot)
+# Update layout for the figure
 fig.update_layout(
     xaxis_title="Input Token",
-    yaxis_title="Attention",
     xaxis2_title="Epoch",
-    title="Pre-softmax Attention by Input Token / Training and Test Losses/Accuracies",
+    xaxis3_title="Epoch",
+    title="Model Analysis: Attention, Losses, and Accuracies Over Epochs",
     updatemenus=[
         {
             "type": "buttons",
@@ -321,5 +329,49 @@ fig.update_layout(
 
 # Show the figure
 fig.show()
+
+# %%
+import plotly.graph_objects as go
+import imageio
+import numpy as np
+
+# Assuming 'fig', 'models', and the lists 'max_abs_value_attention', 'max_value_losses', 'max_value_accuracies' are defined
+
+# Prepare a directory to save frames
+import os
+
+frames_dir = "frames"
+os.makedirs(frames_dir, exist_ok=True)
+
+filenames = []
+for i, frame in enumerate(fig.frames):
+    # Update data for each trace
+    for j, data in enumerate(frame.data):
+        fig.data[j].x = data.x
+        fig.data[j].y = data.y
+
+    # Update layout (axis bounds)
+    fig.update_layout(
+        yaxis={
+            "range": [-all_max_abs_value_attention[i], all_max_abs_value_attention[i]]
+        },
+        yaxis2={"range": [0, all_max_value_losses[i]]},
+        yaxis3={"range": [0, all_max_value_accuracies[i]]},
+    )
+
+    # Save as image
+    filename = f"{frames_dir}/frame_{i}.png"
+    fig.write_image(filename)
+    filenames.append(filename)
+
+# Create the GIF
+with imageio.get_writer("my_animation.gif", mode="I", duration=0.5) as writer:
+    for filename in filenames:
+        image = imageio.imread(filename)
+        writer.append_data(image)
+
+# Optionally, cleanup the frames
+for filename in filenames:
+    os.remove(filename)
 
 # %%

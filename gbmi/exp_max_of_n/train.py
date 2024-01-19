@@ -372,7 +372,7 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
         return iter(generator())
 
 
-def main(argv=sys.argv):
+def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
     parser = argparse.ArgumentParser(
         description="Train a model with configurable attention rate."
     )
@@ -501,9 +501,13 @@ def main(argv=sys.argv):
                 ): args.training_ratio,
             },
         )
+    return config, dict(force=args.force, save_to=args.save_to)
 
+
+def main(argv=sys.argv):
+    config, kwargs = config_of_argv(argv)
     print("Training model:", config)
-    return train_or_load_model(config, force=args.force, save_to=args.save_to)
+    return train_or_load_model(config, **kwargs)
 
 
 # %%

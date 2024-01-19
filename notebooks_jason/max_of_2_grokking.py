@@ -114,7 +114,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import torch
 
-# Assuming 'models', 'training_losses', 'test_losses', 'training_accuracies', 'test_accuracies' are defined
 # Create a subplot with 2 rows
 fig = make_subplots(rows=2, cols=1)
 
@@ -122,8 +121,9 @@ fig = make_subplots(rows=2, cols=1)
 frames = []
 slider_steps = []
 
-# Variable to track the maximum absolute value across all epochs for the attention plot
-max_abs_value = 0
+# Variable to track the maximum values for each plot
+max_abs_value_attention = 0
+max_value_losses_accuracies = 0
 
 with torch.no_grad():
     for i, (_version, old_data, _artifact) in enumerate(models):
@@ -144,8 +144,19 @@ with torch.no_grad():
         )
 
         # Update the max_abs_value for the attention plot
-        current_max = torch.max(torch.abs(overlap)).item()
-        max_abs_value = max(max_abs_value, current_max)
+        current_max_attention = torch.max(torch.abs(overlap)).item()
+        max_abs_value_attention = max(max_abs_value_attention, current_max_attention)
+
+        # Update the max_value for the losses and accuracies plot
+        current_max_losses_accuracies = max(
+            training_losses[i],
+            test_losses[i],
+            training_accuracies[i],
+            test_accuracies[i],
+        )
+        max_value_losses_accuracies = max(
+            max_value_losses_accuracies, current_max_losses_accuracies
+        )
 
         # Add a trace for the initial plot (first epoch) in both subplots
         if epoch == 0:
@@ -237,8 +248,14 @@ with torch.no_grad():
             traces=[0, 1, 2, 3, 4, 5, 6, 7],  # Indices of the traces in this frame
             layout=go.Layout(
                 yaxis={
-                    "range": [-max_abs_value, max_abs_value]
-                }  # Setting y-axis range for the first subplot
+                    "range": [-max_abs_value_attention, max_abs_value_attention]
+                },  # Attention plot
+                yaxis2={
+                    "range": [0, max_value_losses_accuracies]
+                },  # Losses and accuracies plot
+                xaxis2={
+                    "range": [0, i]
+                },  # x-axis range for the losses and accuracies plot
             ),
         )
         frames.append(frame)
@@ -263,8 +280,9 @@ fig.frames = frames
 
 # Update layout for the subplot (the attention plot)
 fig.update_layout(
-    xaxis_title="input token",
+    xaxis_title="Input Token",
     yaxis_title="Attention",
+    xaxis2_title="Epoch",
     title="Pre-softmax Attention by Input Token / Training and Test Losses/Accuracies",
     updatemenus=[
         {
@@ -300,10 +318,6 @@ fig.update_layout(
     ],
     sliders=[{"steps": slider_steps, "active": 0}],
 )
-
-# Update layout for the second subplot (losses and accuracies)
-fig.update_xaxes(title_text="Epoch", row=2, col=1)
-fig.update_yaxes(title_text="", row=2, col=1)
 
 # Show the figure
 fig.show()

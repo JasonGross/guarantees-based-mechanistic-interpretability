@@ -122,7 +122,10 @@ import torch
 # Assuming 'epochs' list is available
 # Create a subplot with 3 rows (1 for attention, 2 for losses, 3 for accuracies)
 fig = make_subplots(
-    rows=3, cols=1, subplot_titles=("Attention Plot", "Loss Plot", "Accuracy Plot")
+    rows=3,
+    cols=1,
+    subplot_titles=("Attention Plot", "Loss Plot", "Accuracy Plot"),
+    # vertical_spacing=0.15,
 )
 
 # Lists to hold frames and slider steps
@@ -174,7 +177,12 @@ with torch.no_grad():
         if i == 0:
             # Attention plot trace
             fig.add_trace(
-                go.Scatter(x=list(range(len(overlap))), y=overlap, mode="lines"),
+                go.Scatter(
+                    x=list(range(len(overlap))),
+                    y=overlap,
+                    mode="lines",
+                    name="(E+P)<sub>-1</sub>QK<sup>T</sup>(E+P)<sup>T</sup>",
+                ),
                 row=1,
                 col=1,
             )
@@ -327,6 +335,10 @@ fig.update_layout(
     sliders=[{"steps": slider_steps, "active": 0}],
 )
 
+# Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
+fig.update_layout(width=600)
+fig.update_layout(height=800)  # Double the original height
+
 # Show the figure
 fig.show()
 
@@ -344,7 +356,7 @@ frames_dir = "frames"
 os.makedirs(frames_dir, exist_ok=True)
 
 filenames = []
-for i, frame in enumerate(fig.frames):
+for i, frame in enumerate(tqdm(fig.frames)):
     # Update data for each trace
     for j, data in enumerate(frame.data):
         fig.data[j].x = data.x
@@ -361,17 +373,22 @@ for i, frame in enumerate(fig.frames):
 
     # Save as image
     filename = f"{frames_dir}/frame_{i}.png"
+    if os.path.exists(filename):
+        os.remove(filename)
     fig.write_image(filename)
     filenames.append(filename)
 
+# %%
 # Create the GIF
-with imageio.get_writer("my_animation.gif", mode="I", duration=0.5) as writer:
+with imageio.get_writer(
+    "max_of_2_grokking.gif", mode="I", duration=0.5, loop=0
+) as writer:
     for filename in filenames:
         image = imageio.imread(filename)
         writer.append_data(image)
 
 # Optionally, cleanup the frames
-for filename in filenames:
-    os.remove(filename)
+# for filename in filenames:
+#     os.remove(filename)
 
 # %%

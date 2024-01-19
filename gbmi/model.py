@@ -253,6 +253,30 @@ def _load_model(
         raise RuntimeError(f"Could not load model from {model_pth_path}:\n", e)
 
 
+def try_load_model_from_wandb_download(
+    config: Config, model_dir: Union[str, Path]
+) -> Optional[Tuple[RunData, HookedTransformer]]:
+    for model_path in Path(model_dir).glob("*.pth"):
+        res = _load_model(config, model_path)
+        if res is not None:
+            return res
+
+
+def try_load_model_from_wandb(
+    config: Config, wandb_model_path: str
+) -> Optional[Tuple[RunData, HookedTransformer]]:
+    # Try loading the model from wandb
+    model_dir = None
+    try:
+        api = wandb.Api()
+        model_at = api.artifact(wandb_model_path)
+        model_dir = Path(model_at.download())
+    except Exception as e:
+        logging.warning(f"Could not load model {wandb_model_path} from wandb:\n", e)
+    if model_dir is not None:
+        return try_load_model_from_wandb_download(config, model_dir)
+
+
 def train_or_load_model(
     config: Config,
     force: Optional[Literal["train", "load"]] = None,
@@ -263,6 +287,7 @@ def train_or_load_model(
     wandb_project: Optional[str] = None,  # otherwise default name
     model_description: str = "trained model",  # uploaded to wandba
     accelerator: str = "auto",
+    model_version: str = "latest",
 ) -> Tuple[RunData, HookedTransformer]:
     """
     Train model, or load from disk / wandb.
@@ -276,6 +301,7 @@ def train_or_load_model(
     @param wandb_project: WandB project to log to; if not provided, defaults to `config`'s class name
     @param model_description: Description to provide for WandB project
     @param accelerator: Accelerator to use (cpu or auto)
+    @param model_version: Version of model to load from wandb (must be "latest" if force != "load")
     @return:
     """
     # Seed everything
@@ -297,7 +323,11 @@ def train_or_load_model(
     # Set wandb project if not provided
     if wandb_project is None:
         wandb_project = config.get_summary_slug()
-    wandb_model_path = f"{wandb_entity}/{wandb_project}/{model_name}:latest"
+    if force != "load":
+        assert (
+            model_version == "latest"
+        ), f"model_version must be 'latest' (not {model_version}) if force != 'load' (force == {force})"
+    wandb_model_path = f"{wandb_entity}/{wandb_project}/{model_name}:{model_version}"
 
     # If we aren't forcing a re-train:
     if force != "train":
@@ -307,19 +337,9 @@ def train_or_load_model(
             if res is not None:
                 return res
 
-        # Try loading the model from wandb
-        model_dir = None
-        try:
-            api = wandb.Api()
-            model_at = api.artifact(wandb_model_path)
-            model_dir = Path(model_at.download())
-        except Exception as e:
-            print(f"Could not load model {wandb_model_path} from wandb:\n", e)
-        if model_dir is not None:
-            for model_path in model_dir.glob("*.pth"):
-                res = _load_model(config, model_path)
-                if res is not None:
-                    return res
+        res = try_load_model_from_wandb(config, wandb_model_path)
+        if res is not None:
+            return res
 
     # Fail if we couldn't load model and we forced a load.
     if force == "load":

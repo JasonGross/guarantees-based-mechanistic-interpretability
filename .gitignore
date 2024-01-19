@@ -169,3 +169,4 @@ playground
 checkpoints/
 *.bak
 .*.swp
+*~

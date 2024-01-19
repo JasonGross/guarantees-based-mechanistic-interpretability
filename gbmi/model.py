@@ -393,7 +393,7 @@ def train_or_load_model(
             checkpoint_callback = ModelCheckpoint(
                 dirpath=model_ckpt_dir_path,
                 filename=run_name + "-{epoch}-{step}",
-                every_n_epochs=1,
+                every_n_epochs=config.checkpoint_every[0],
                 save_top_k=-1,  # Set to -1 to save all checkpoints
             )
         elif config.checkpoint_every[1] == "steps":

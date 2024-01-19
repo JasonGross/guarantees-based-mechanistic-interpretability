@@ -263,16 +263,14 @@ def try_load_model_from_wandb_download(
 
 
 def try_load_model_from_wandb(
-    config: Config, wandb_model_path: str, root: Optional[Union[str, Path]] = None
+    config: Config, wandb_model_path: str
 ) -> Optional[Tuple[RunData, HookedTransformer]]:
     # Try loading the model from wandb
-    if root is None:
-        root = get_trained_model_dir(create=True)
     model_dir = None
     try:
         api = wandb.Api()
         model_at = api.artifact(wandb_model_path)
-        model_dir = Path(model_at.download(str(root)))
+        model_dir = Path(model_at.download())
     except Exception as e:
         logging.warning(f"Could not load model {wandb_model_path} from wandb:\n", e)
     if model_dir is not None:

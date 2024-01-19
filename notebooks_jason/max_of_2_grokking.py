@@ -10,8 +10,6 @@ from transformer_lens import HookedTransformerConfig
 import torch
 import wandb
 
-from gbmi.utils import get_trained_model_dir
-
 api = wandb.Api()
 
 # %%
@@ -67,9 +65,8 @@ artifact = api.artifact(runtime.wandb_id)
 # %%
 model_artifacts = list(artifact.logged_by().logged_artifacts())
 # %%
-root = get_trained_model_dir(create=True)
 models = [
-    (a.version, try_load_model_from_wandb_download(cfg, a.download(str(root))), a)
+    (a.version, try_load_model_from_wandb_download(cfg, a.download()), a)
     for a in model_artifacts
     if a.type == "model"
 ]

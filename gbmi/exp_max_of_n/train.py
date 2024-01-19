@@ -5,7 +5,17 @@ import sys
 
 from dataclasses import dataclass, field
 from functools import cache
-from typing import Any, Callable, Dict, Optional, Literal, Sequence, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Literal,
+    Sequence,
+    Tuple,
+    Union,
+    overload,
+)
 
 import numpy as np
 import torch
@@ -173,15 +183,37 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         true_maximum = torch.max(tokens, dim=1)[0]
         return (pred_tokens == true_maximum).float().mean().item()
 
+    @overload
     def run_batch(
-        self, x: Float[Tensor, "batch pos"], prefix: str  # noqa F722
+        self,
+        x: Float[Tensor, "batch pos"],  # noqa F722
+        prefix: str,
+        return_accuracy: Literal[True],
+        log_output: bool = True,
+    ) -> Tuple[Float[Tensor, ""], float]:  # noqa F722
+        ...
+
+    @overload
+    def run_batch(
+        self,
+        x: Float[Tensor, "batch pos"],  # noqa F722
+        prefix: str,
+        return_accuracy: Literal[False] = False,
+        log_output: bool = True,
     ) -> Float[Tensor, ""]:  # noqa F722
+        ...
+
+    def run_batch(
+        self,
+        x: Float[Tensor, "batch pos"],  # noqa F722
+        prefix: str,
+        return_accuracy: bool = False,
+        log_output: bool = True,
+    ) -> Union[Float[Tensor, ""], Tuple[Float[Tensor, ""], float]]:  # noqa F722
         log_softmax = (
             F.log_softmax if not self.config.experiment.use_log1p else utils.log_softmax
         )
         self.model.to(x.device, print_details=False)
-        # print(self.model.)
-        # print(x.device)
         y_preds = self.model(x)[:, -1, :]
         if self.config.experiment.use_end_of_sequence:
             x = x[:, :-1]
@@ -190,9 +222,13 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
             x,
             log_softmax=log_softmax,
         )
-        self.log(f"{prefix}loss", loss, prog_bar=True)
+        if log_output:
+            self.log(f"{prefix}loss", loss, prog_bar=True)
         acc = self.acc_fn(y_preds, x)
-        self.log(f"{prefix}acc", acc, prog_bar=True)
+        if log_output:
+            self.log(f"{prefix}acc", acc, prog_bar=True)
+        if return_accuracy:
+            return loss, acc
         return loss
 
     def training_step(self, batch, batch_idx):

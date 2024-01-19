@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import re
+from tqdm import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -14,7 +15,9 @@ from transformer_lens import HookedTransformerConfig
 from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
 from typing import (
     Any,
+    Callable,
     Collection,
+    Iterable,
     List,
     TypeVar,
     Generic,
@@ -30,10 +33,14 @@ from typing import (
 
 import torch
 import wandb
+import wandb.apis.public.runs
+import wandb.apis.public.artifacts
+from wandb.sdk.lib.paths import FilePathStr
 from lightning import LightningModule, LightningDataModule, Trainer, seed_everything
 from lightning.pytorch.callbacks import RichProgressBar, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from transformer_lens import HookedTransformer
+from gbmi.utils.lazy import lazy
 from gbmi.utils import (
     get_trained_model_dir,
     DEFAULT_WANDB_ENTITY,
@@ -221,20 +228,91 @@ class Config(Generic[ExpT]):
 @dataclass
 class RunData:
     wandb_id: Optional[str]
-    train_metrics: Sequence[Mapping[str, float]]
-    test_metrics: Sequence[Mapping[str, float]]
+    train_metrics: Optional[Sequence[Mapping[str, float]]]
+    test_metrics: Optional[Sequence[Mapping[str, float]]]
+    epoch: Optional[int] = None
+    global_step: Optional[int] = None
+
+    def artifact(self) -> Optional[wandb.Artifact]:
+        if self.wandb_id is None:
+            return None
+        return wandb.Api().artifact(self.wandb_id)
+
+    def run(self) -> Optional[wandb.apis.public.runs.Run]:
+        artifact = self.artifact()
+        if artifact is None:
+            return None
+        return artifact.logged_by()
+
+    def logged_artifacts(self) -> Optional[wandb.apis.public.artifacts.RunArtifacts]:
+        run = self.run()
+        if run is None:
+            return None
+        return run.logged_artifacts()
+
+    def model_versions(
+        self,
+        config: Config,
+        max_count: Optional[int] = None,
+        step: int = 1,
+        tqdm: Optional[Callable] = tqdm,
+        types: Collection[str] = ("model",),
+    ) -> Optional[
+        Iterable[
+            Tuple[str, Optional[Tuple[RunData, HookedTransformer]], wandb.Artifact]
+        ]
+    ]:
+        if not hasattr(self, "_lazy_model_versions"):
+            logged_artifacts = self.logged_artifacts()
+            if logged_artifacts is None:
+                return None
+            self._lazy_model_versions: Sequence[
+                Tuple[wandb.Artifact, lazy[FilePathStr]]
+            ] = tuple(
+                (artifact, lazy(artifact.download)) for artifact in logged_artifacts
+            )
+        relevant_model_versions = [
+            (artifact, download)
+            for artifact, download in self._lazy_model_versions
+            if artifact.type in types
+        ]
+        if max_count is None:
+            max_count = len(relevant_model_versions)
+        relevant_model_versions = relevant_model_versions[:max_count:step]
+        if tqdm is not None:
+            relevant_model_versions = tqdm(relevant_model_versions)
+        for artifact, download in relevant_model_versions:
+            yield (
+                artifact.version,
+                try_load_model_from_wandb_download(config, download.force()),
+                artifact,
+            )
+
+
+# TODO(Euan or Jason): figure out why we need this for .ckpt state_dicts and write documentation or remove
+def _adjust_statedict_to_model(state_dict: Optional[dict]) -> Optional[dict]:
+    """removes 'model.' prefixes from the keys of state_dict; I have no idea why this is necessary"""
+    if state_dict is None:
+        return None
+
+    return dict(
+        ((key[len("model.") :] if key.startswith("model.") else key), value)
+        for key, value in state_dict.items()
+    )
 
 
 def _load_model(
-    config: Config, model_pth_path: Path
+    config: Config, model_pth_path: Path, wandb_id: Optional[str] = None
 ) -> Tuple[RunData, HookedTransformer]:
     model = config.experiment.get_training_wrapper().build_model(config)
     try:
         cached_data = torch.load(str(model_pth_path))
-        model.load_state_dict(cached_data["model"])
-        wandb_id = cached_data["wandb_id"] if "wandb_id" in cached_data else None
-        train_metrics = cached_data["train_metrics"]
-        test_metrics = cached_data["test_metrics"]
+        model.load_state_dict(
+            cached_data.get(
+                "model", _adjust_statedict_to_model(cached_data.get("state_dict"))
+            )
+        )
+        wandb_id = cached_data.get("wandb_id", wandb_id)
         # model_checkpoints = cached_data["checkpoints"]
         # checkpoint_epochs = cached_data["checkpoint_epochs"]
         # test_losses = cached_data['test_losses']
@@ -244,19 +322,23 @@ def _load_model(
         return (
             RunData(
                 wandb_id=wandb_id,
-                train_metrics=train_metrics,
-                test_metrics=test_metrics,
+                train_metrics=cached_data.get("train_metrics"),
+                test_metrics=cached_data.get("test_metrics"),
+                epoch=cached_data.get("epoch"),
+                global_step=cached_data.get("global_step"),
             ),
             model,
         )
     except Exception as e:
+        logging.warning(f"Could not load model from {model_pth_path}:\n{e}")
         raise RuntimeError(f"Could not load model from {model_pth_path}:\n", e)
 
 
 def try_load_model_from_wandb_download(
     config: Config, model_dir: Union[str, Path]
 ) -> Optional[Tuple[RunData, HookedTransformer]]:
-    for model_path in Path(model_dir).glob("*.pth"):
+    model_dir = Path(model_dir)
+    for model_path in list(model_dir.glob("*.pth")) + list(model_dir.glob("*.ckpt")):
         res = _load_model(config, model_path)
         if res is not None:
             return res
@@ -272,7 +354,7 @@ def try_load_model_from_wandb(
         model_at = api.artifact(wandb_model_path)
         model_dir = Path(model_at.download())
     except Exception as e:
-        logging.warning(f"Could not load model {wandb_model_path} from wandb:\n", e)
+        logging.warning(f"Could not download model {wandb_model_path} from wandb:\n{e}")
     if model_dir is not None:
         return try_load_model_from_wandb_download(config, model_dir)
 

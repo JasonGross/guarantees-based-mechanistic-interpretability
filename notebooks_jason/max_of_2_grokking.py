@@ -98,7 +98,7 @@ def evaluate_model(
 
 
 # %%
-models = runtime.model_versions(cfg, max_count=1500, step=2)
+models = runtime.model_versions(cfg, max_count=1500, step=1)
 assert models is not None
 models = list(models)
 # %%
@@ -336,8 +336,8 @@ fig.update_layout(
 )
 
 # Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
-fig.update_layout(width=600)
-fig.update_layout(height=800)  # Double the original height
+fig.update_layout(width=500)
+fig.update_layout(height=600)  # Double the original height
 
 # Show the figure
 fig.show()
@@ -373,9 +373,9 @@ for i, frame in enumerate(tqdm(fig.frames)):
 
     # Save as image
     filename = f"{frames_dir}/frame_{i}.png"
-    if os.path.exists(filename):
-        os.remove(filename)
-    fig.write_image(filename)
+    # if os.path.exists(filename):
+    #     os.remove(filename)
+    fig.write_image(filename, height=fig.layout.height, width=fig.layout.width)
     filenames.append(filename)
 
 # %%

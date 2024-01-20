@@ -481,7 +481,7 @@ def train_or_load_model(
             name=run_name,
             config=config.to_dict(),
             job_type="train",
-            log_model="all",
+            log_model=("all" if config.checkpoint_every is not None else False),
         )
         loggers.append(wandb_logger)
         run = wandb_logger.experiment

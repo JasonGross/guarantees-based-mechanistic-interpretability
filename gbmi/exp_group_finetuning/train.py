@@ -1,9 +1,12 @@
 from __future__ import annotations
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from dataclasses import field
+from collections.abc import Callable
 
+from groups import Group, GroupDict, CyclicGroup
 import sys
-from typing import Any, Dict, List, Optional, cast, Literal
+from typing import Any, Dict, List, Optional, cast, Literal, Generic, TypeVar
 from gbmi import utils
 
 import numpy as np
@@ -38,7 +41,9 @@ from gbmi.utils import (
 @dataclass
 class ModularFineTuning(ExperimentConfig):
     model_config: HookedTransformerConfig
-    p: int  # the prime
+    # using int instead of abstract class because i'm clueless what's going on with typing
+    group: Group
+    group_name: str
     zero_biases: bool = True
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
@@ -57,17 +62,17 @@ class ModularFineTuning(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
         return (
-            f"ModularFineTuning-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
+            f"GroupFineTuning-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
             f"{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
 
-def modular_addition_config(attn_rate: float, p: int = 113):
+def modular_addition_config(attn_rate: float, group: Group, elements: int):
     return Config(
         experiment=ModularFineTuning(
             model_config=HookedTransformerConfig(
-                n_ctx=3,
+                n_ctx=elements + 1,
                 d_model=128,
                 d_mlp=512,
                 d_head=32,
@@ -78,23 +83,28 @@ def modular_addition_config(attn_rate: float, p: int = 113):
                 attn_only=False,
                 normalization_type=None,
             ),
-            p=p,
+            group=group,
+            group_name=group.name(),
             zero_biases=True,
             attention_rate=attn_rate,
             optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
         ),
         seed=999,
         deterministic=False,
-        batch_size=int(113**2 * 0.4),
+        batch_size=int((group.size()) ** (elements + 1) * 0.4),
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
     )
 
 
-MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(attn_rate=0)
+MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(
+    attn_rate=0, group=CyclicGroup(113), elements=2
+)
 
-MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(attn_rate=1)
+MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(
+    attn_rate=1, group=CyclicGroup(113), elements=2
+)
 
 
 class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
@@ -110,8 +120,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
             model_config,
             {
                 "seed": reseed(config.seed, "model"),
-                "d_vocab": config.experiment.p + 1,
-                "d_vocab_out": config.experiment.p,
+                "d_vocab": config.experiment.group.size() + 1,
+                "d_vocab_out": config.experiment.group.size(),
             },
             warn_if_not_default=False,
         )
@@ -152,7 +162,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         self, x: Float[Tensor, "batch pos"], prefix: str  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
         self.model.to(x.device, print_details=False)
-        labels = (x[:, 0] + x[:, 1]) % self.config.experiment.p
+        labels = self.config.experiment.group.reduce(list(x[:, :-1]))
         assert (
             len(labels.shape) == 1
         ), f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"
@@ -196,10 +206,10 @@ class ModularFineTuningDataModule(DataModule):
         # Full dataset
         rng = np.random.default_rng(self.dataset_seed)
         pairs = generate_all_sequences(
-            self.config.experiment.p, self.model_config.n_ctx - 1
+            self.config.experiment.group.size(), self.model_config.n_ctx - 1
         )
         # concat a special token of value self.config.experiment.p to the end of each sequence for '='
-        equals_token = self.config.experiment.p
+        equals_token = self.config.experiment.group.size()
         data = torch.cat(
             [pairs, equals_token * torch.ones((len(pairs), 1))], dim=1
         ).long()
@@ -265,10 +275,25 @@ def main(argv: List[str] = sys.argv):
     parser = argparse.ArgumentParser(
         description="Train a model with configurable attention rate."
     )
-    parser.add_argument("--p", type=int, default=113, help="The prime to use.")
+    parser.add_argument(
+        "--group", type=str, default="Cyclic", help="The family of group to use."
+    )
+    parser.add_argument(
+        "--index",
+        type=int,
+        default=113,
+        help="The index of the group among the specified family.",
+    )
+    parser.add_argument(
+        "--sequence-length",
+        type=float,
+        default=2,
+        help="The number of elements to reduce.",
+    )
     parser.add_argument(
         "--attention-rate", type=float, default=0, help="Attention rate for the model."
     )
+
     add_force_argument(parser)
     add_no_save_argument(parser)
     HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS = set(
@@ -283,7 +308,11 @@ def main(argv: List[str] = sys.argv):
     )
     args = parser.parse_args(argv[1:])
 
-    config = modular_addition_config(attn_rate=args.attention_rate, p=args.p)
+    config = modular_addition_config(
+        attn_rate=args.attention_rate,
+        group=GroupDict[args.group](args.index),
+        elements=args.sequence_length,
+    )
     config.experiment.model_config = update_HookedTransformerConfig_from_args(
         config.experiment.model_config,
         args,

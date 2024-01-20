@@ -11,7 +11,7 @@ device = "cuda"
 p = 113
 q = p
 freeze_model = False
-config = MODULAR_ADDITION_113_CLOCK_CONFIG
+config = MODULAR_ADDITION_113_PIZZA_CONFIG
 
 frac_train = 0.3
 seed = 999
@@ -115,11 +115,9 @@ equals_vector = einops.repeat(torch.tensor(q), " -> (i j)", i=q, j=q)
 dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
 
 
-labels = (dataset[:, 0] + dataset[:, 1]) % q
-
-    full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
+labels = (dataset[:, 0] - dataset[:, 1]) % q
+optimizer = torch.optim.AdamW(full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
 )
-
 torch.manual_seed(seed)
 indices = torch.randperm(q * q)
 cutoff = int(q * q * frac_train)

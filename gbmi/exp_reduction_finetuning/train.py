@@ -1,7 +1,8 @@
 from __future__ import annotations
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from dataclasses import field
-
+from collections.abc import Callable
 import sys
 from typing import Any, Dict, List, Optional, cast, Literal
 from gbmi import utils
@@ -33,12 +34,16 @@ from gbmi.utils import (
     reseed,
     set_params,
 )
-
+class Group(AB)
 
 @dataclass
 class ModularFineTuning(ExperimentConfig):
     model_config: HookedTransformerConfig
-    p: int  # the prime
+
+    group_name: str
+    group_parameters: List[int]
+    group_operation: Callable[[List[int]], int]
+    n_ctx: int = 3  # Number of group elements + 1 for '=' token
     zero_biases: bool = True
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
@@ -57,13 +62,18 @@ class ModularFineTuning(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
         return (
-            f"ModularFineTuning-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
+            f"GroupFineTuning-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
             f"{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
 
-def modular_addition_config(attn_rate: float, p: int = 113):
+def modular_addition_config(
+    attn_rate: float,
+    group_name,
+    group_parameters,
+    group_operation,
+):
     return Config(
         experiment=ModularFineTuning(
             model_config=HookedTransformerConfig(

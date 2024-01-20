@@ -27,6 +27,7 @@ api = wandb.Api()
 
 # %%
 # config, kwargs = config_of_argv("gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 1500 --validate-every-epochs 1 --force-adjacent-gap 0,1,2 --use-log1p --training-ratio 0.095 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --checkpoint-every-epochs 1 --batch-size 389 --force train".split(" "))
+# config, kwargs = config_of_argv("gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 3000 --validate-every-epochs 10 --force-adjacent-gap 0,1,2,17 --use-log1p --training-ratio 0.099609375 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --batch-size 408 --force train --checkpoint-every-epochs 10".split(" "))
 # %%
 # print(config)
 # %%
@@ -70,6 +71,47 @@ cfg = Config(
     validate_every=(10, "epochs"),
     checkpoint_every=(10, "epochs"),
 )
+cfg = Config(
+    experiment=MaxOfN(
+        model_config=HookedTransformerConfig(
+            act_fn=None,
+            attn_only=True,
+            d_head=32,
+            d_mlp=None,
+            d_model=32,
+            d_vocab=vocab + 1,
+            d_vocab_out=vocab,
+            default_prepend_bos=True,
+            device="cpu",
+            dtype=torch.float32,
+            n_ctx=seq_len + 1,
+            n_heads=1,
+            n_layers=1,
+            normalization_type=None,
+            seed=613947648,
+        ),
+        zero_biases=True,
+        use_log1p=True,
+        use_end_of_sequence=True,
+        seq_len=2,
+        train_dataset_cfg=FullDatasetCfg(
+            force_adjacent=(0, 1, 2, 17),
+            training_ratio=0.099609375,
+        ),
+        test_dataset_cfg=FullDatasetCfg(
+            force_adjacent=(0, 1, 2, 17), training_ratio=0.099609375
+        ),
+        optimizer_kwargs=dict(lr=0.001, betas=(0.9, 0.98), weight_decay=1.0),
+        optimizer="AdamW",
+    ),
+    deterministic=True,
+    seed=123,
+    batch_size=408,
+    train_for=(3000, "epochs"),
+    log_every_n_steps=10,
+    validate_every=(10, "epochs"),
+    checkpoint_every=(10, "epochs"),
+)
 
 # %%
 runtime, model = train_or_load_model(cfg, force="load")
@@ -98,7 +140,7 @@ def evaluate_model(
 
 
 # %%
-models = runtime.model_versions(cfg, max_count=1500, step=1)
+models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None
 models = list(models)
 # %%
@@ -381,7 +423,7 @@ for i, frame in enumerate(tqdm(fig.frames)):
 # %%
 # Create the GIF
 with imageio.get_writer(
-    "max_of_2_grokking.gif", mode="I", duration=0.5, loop=0
+    "max_of_2_grokking_17.gif", mode="I", duration=0.5, loop=0
 ) as writer:
     for filename in filenames:
         image = imageio.imread(filename)

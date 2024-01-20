@@ -284,7 +284,7 @@ def main(argv: List[str] = sys.argv):
     args = parser.parse_args(argv[1:])
 
     config = modular_addition_config(attn_rate=args.attention_rate, p=args.p)
-    update_HookedTransformerConfig_from_args(
+    config.experiment.model_config = update_HookedTransformerConfig_from_args(
         config.experiment.model_config,
         args,
         exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS,

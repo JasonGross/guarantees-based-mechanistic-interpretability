@@ -487,7 +487,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             ("experiment", "optimizer"): args.optimizer,
         },
     ).update_from_args(args)
-    update_HookedTransformerConfig_from_args(
+    config.experiment.model_config = update_HookedTransformerConfig_from_args(
         config.experiment.model_config, args, HOOKED_TRANSFORMER_CONFIG_ARGS
     )
     config.experiment.__post_init__()  # for seq_len, d_vocab

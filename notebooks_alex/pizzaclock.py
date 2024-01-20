@@ -11,11 +11,11 @@ device = "cuda"
 p = 113
 q = p
 freeze_model = False
-config = MODULAR_ADDITION_113_PIZZA_CONFIG
-subtracting = True
+config = MODULAR_ADDITION_113_CLOCK_CONFIG
+
 frac_train = 0.3
 seed = 999
-num_epochs = 25000
+num_epochs = 5000
 
 rundata, model = train_or_load_model(config)
 model.to(device)
@@ -47,9 +47,7 @@ class DifferentModClock(torch.nn.Module):
         self.W_e = torch.nn.Parameter(
             -0.5 / sqrt(p + 1) + torch.rand((q + 1, p + 1)) / sqrt(p + 1)
         )
-        self.W_u = torch.nn.Parameter(
-            -0.5 / sqrt(p) + torch.rand((p // 2 + 1 if subtracting else q, p)) / sqrt(p)
-        )
+        self.W_u = torch.nn.Parameter(-0.5 / sqrt(p) + torch.rand((q, p)) / sqrt(p))
 
     def forward(self, x):
         z = torch.nn.functional.one_hot(x).to(torch.float).to(device)
@@ -67,6 +65,7 @@ class DifferentModClock(torch.nn.Module):
         )
 
 
+<<<<<<< HEAD
 def loss_fn(logits, labels):
     print(logits.shape)
     if len(logits.shape) == 3:
@@ -75,11 +74,38 @@ def loss_fn(logits, labels):
         else:
             logits = logits[:, -1, :]
     logits = logits.to(torch.float64)
+||||||| constructed merge base
+def loss_fn(logits, labels):
+    print(logits.shape)
+    if len(logits.shape) == 3:
+        if freeze_model:
+            logits = logits[:, :, -1]
+        else:
+            logits = logits[:,-1,:]
+    logits = logits.to(torch.float64)
+=======
+def loss_fn(logits, labels, softmax=True):
+    if softmax:
+        if len(logits.shape) == 3:
+            if freeze_model:
+                logits = logits[:, :, -1].squeeze(-1)
+            else:
+                logits = logits[:, -1, :]
+        logits = logits.to(torch.float64)
+        log_probs = logits.log_softmax(dim=-1)
+        correct_log_probs = log_probs.gather(dim=-1, index=labels[:, None])[:, 0]
+>>>>>>> changed pizzaclock slightly
 
-    log_probs = logits.log_softmax(dim=-1)
-    correct_log_probs = log_probs.gather(dim=-1, index=labels[:, None])[:, 0]
+        return -correct_log_probs.mean()
+    else:
+        if len(logits.shape) == 3:
+            if freeze_model:
+                logits = logits[:, :, -1].squeeze(-1)
+            else:
+                logits = logits[:, -1, :]
+        logits = logits.to(torch.float64)
+        return torch.linalg.vector_norm(logits - labels) / len(logits)
 
-    return -correct_log_probs.mean()
 
 
 if freeze_model:
@@ -92,6 +118,7 @@ b_vector = einops.repeat(torch.arange(q), "j -> (i j)", i=q)
 equals_vector = einops.repeat(torch.tensor(q), " -> (i j)", i=q, j=q)
 dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
 
+<<<<<<< HEAD
 
 if subtracting:
     subtractedset = (dataset[:, 0] - dataset[:, 1]) % q
@@ -101,8 +128,24 @@ if subtracting:
         labels = subtractedset  # Finds either a-b or b-a depending on which one is lower than q//2. Symmetric in a and b.
 else:
     labels = (dataset[:, 0] + dataset[:, 1]) % q
+||||||| constructed merge base
+
+if subtracting:
+    
+    subtractedset = (dataset[:, 0] - dataset[:, 1]) % q
+    if freeze_model:
+        labels = (
+            subtractedset - ((subtractedset > (q // 2)) * subtractedset) * 2
+        ) % q
+    else:
+        labels = subtractedset  # Finds either a-b or b-a depending on which one is lower than q//2. Symmetric in a and b.
+else:
+    labels = (dataset[:, 0] + dataset[:, 1]) % q
+=======
+labels = ((dataset[:, 0] - dataset[:, 1]) ) % q
+>>>>>>> changed pizzaclock slightly
 optimizer = torch.optim.AdamW(
-    full_model.parameters(), lr=1e-3, weight_decay=0.01, betas=(0.9, 0.98)
+    full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
 )
 
 torch.manual_seed(seed)
@@ -112,41 +155,56 @@ train_indices = indices[:cutoff]
 test_indices = indices[cutoff:]
 train_data = dataset[train_indices]
 train_labels = labels[train_indices]
-
 test_data = dataset[test_indices]
 test_labels = labels[test_indices]
 
-train_losses = []
-test_losses = []
-model_checkpoints = []
-checkpoint_epochs = []
-
-
 for epoch in tqdm.tqdm(range(num_epochs)):
+<<<<<<< HEAD
     if freeze_model:
         train_logits = full_model(train_data)
     else:
         train_logits = full_model.run_with_hooks(
             train_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
         )
+||||||| constructed merge base
+    if freeze_model:
+        train_logits = full_model(train_data)
+    else:
+        train_logits = full_model.run_with_hooks(train_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
+=======
+    train_logits = full_model.run_with_hooks(
+        train_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
+    )
+>>>>>>> changed pizzaclock slightly
     train_loss = loss_fn(train_logits, train_labels)
     train_loss.backward()
-    train_losses.append(train_loss.item())
-
     optimizer.step()
     optimizer.zero_grad()
-
     with torch.inference_mode():
+<<<<<<< HEAD
         if freeze_model:
             test_logits = full_model(test_data)
         else:
             test_logits = full_model.run_with_hooks(
                 test_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
             )
+||||||| constructed merge base
+        if freeze_model:
+            test_logits = full_model(test_data)
+        else:
+            test_logits = full_model.run_with_hooks(test_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
+=======
+        test_logits = full_model.run_with_hooks(
+            test_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
+        )
+
+        test_logits = full_model.run_with_hooks(
+            test_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
+        )
+>>>>>>> changed pizzaclock slightly
         test_loss = loss_fn(test_logits, test_labels)
-        test_losses.append(test_loss.item())
+
     if ((epoch + 1) % 10) == 0:
-        checkpoint_epochs.append(epoch)
         print(
             f"Epoch {epoch} Train Loss {train_loss.item()} Test Loss {test_loss.item()}"
         )

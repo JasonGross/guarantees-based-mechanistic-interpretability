@@ -73,14 +73,18 @@ def loss_fn(logits, labels):
         else:
             logits = logits[:, -1, :]
     logits = logits.to(torch.float64)
+
+
 def loss_fn(logits, labels):
     print(logits.shape)
     if len(logits.shape) == 3:
         if freeze_model:
             logits = logits[:, :, -1]
         else:
-            logits = logits[:,-1,:]
+            logits = logits[:, -1, :]
     logits = logits.to(torch.float64)
+
+
 def loss_fn(logits, labels, softmax=True):
     if softmax:
         if len(logits.shape) == 3:
@@ -103,7 +107,6 @@ def loss_fn(logits, labels, softmax=True):
         return torch.linalg.vector_norm(logits - labels) / len(logits)
 
 
-
 if freeze_model:
     Clock = DifferentModClock()
     Clock.to(device)
@@ -116,7 +119,8 @@ dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
 
 
 labels = (dataset[:, 0] - dataset[:, 1]) % q
-optimizer = torch.optim.AdamW(full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
+optimizer = torch.optim.AdamW(
+    full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
 )
 torch.manual_seed(seed)
 indices = torch.randperm(q * q)
@@ -138,7 +142,9 @@ for epoch in tqdm.tqdm(range(num_epochs)):
     if freeze_model:
         train_logits = full_model(train_data)
     else:
-        train_logits = full_model.run_with_hooks(train_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
+        train_logits = full_model.run_with_hooks(
+            train_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
+        )
     train_logits = full_model.run_with_hooks(
         train_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
     )
@@ -156,7 +162,9 @@ for epoch in tqdm.tqdm(range(num_epochs)):
         if freeze_model:
             test_logits = full_model(test_data)
         else:
-            test_logits = full_model.run_with_hooks(test_data,fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)])
+            test_logits = full_model.run_with_hooks(
+                test_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
+            )
         test_logits = full_model.run_with_hooks(
             test_data, fwd_hooks=[("blocks.0.attn.hook_pattern", hook_fn)]
         )

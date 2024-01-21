@@ -34,7 +34,11 @@ from gbmi.utils import (
     reseed,
     set_params,
 )
-class Group(AB)
+
+
+# class Group(AB):
+#     pass
+
 
 @dataclass
 class ModularFineTuning(ExperimentConfig):
@@ -69,10 +73,7 @@ class ModularFineTuning(ExperimentConfig):
 
 
 def modular_addition_config(
-    attn_rate: float,
-    group_name,
-    group_parameters,
-    group_operation,
+    attn_rate: float, group_name, group_parameters, group_operation, p=113
 ):
     return Config(
         experiment=ModularFineTuning(

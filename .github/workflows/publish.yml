@@ -5,9 +5,9 @@ on:
     types: [published] # Only publish to pip when we formally publish a release
   # For more on how to formally release on Github, read https://help.github.com/en/articles/creating-releases
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:

@@ -55,7 +55,7 @@ jobs:
       name: Define a cache for the virtual environment based
       with:
         path: ./.venv
-        key: venv-${{ hashFiles('pyproject.toml') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
+        key: venv-${{ hashFiles('poetry.lock') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
     - name: Install the project dependencies
       run: poetry install ${{ matrix.poetry-install-extra-args }}
     - uses: liskin/gh-problem-matcher-wrap@v3

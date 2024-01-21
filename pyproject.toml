@@ -1,12 +1,14 @@
 [tool.poetry]
 name = "gbmi"
 version = "0.1.0"
-description = ""
-authors = ["Euan Ong <euan.l.y.ong@gmail.com>"
-, "Jason Gross <jgross@mit.edu>"
+description = "Guarantees-Based Mechanistic Interpretability Experiments and Tools"
+authors = ["Jason Gross <jgross@mit.edu>"
+, "Euan Ong <euan.l.y.ong@gmail.com>"
 , "Alex Gibson <mapessentials@gmail.com>"
 , "Soufiane Noubir <noubir.soufiane@gmail.com>"
-, "Som Bagchi <somsubhro.bagchi@gmail.com>"]
+, "Som Bagchi <somsubhro.bagchi@gmail.com>"
+, "Chun Hei Yip <chy34@cam.ac.uk>"
+, "Rajashree Agrawal <rajashree.agrawal@gmail.com>"]
 readme = "README.md"
 packages = [{include = "gbmi"}]
 
@@ -38,6 +40,7 @@ imageio = "^2.33.1"
 pre-commit = "^3.6.0"
 black = {extras = ["jupyter"], version = "^23.12.1"}
 flake8 = "^7.0.0"
+
 
 [build-system]
 requires = ["poetry-core"]

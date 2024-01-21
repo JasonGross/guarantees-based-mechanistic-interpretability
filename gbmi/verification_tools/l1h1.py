@@ -3,9 +3,10 @@ from typing import Union
 
 import numpy as np
 import torch
+from torch import Tensor
 from fancy_einsum import einsum
-from torchtyping import TensorType
 from transformer_lens import HookedTransformer
+from jaxtyping import Float
 
 from gbmi.verification_tools.general import EU_PU
 
@@ -13,7 +14,7 @@ from gbmi.verification_tools.general import EU_PU
 @torch.no_grad()
 def all_EVOU(
     model: HookedTransformer,
-) -> TensorType["d_vocab", "d_vocab_out"]:  # noqa: F821
+) -> Float[Tensor, "d_vocab d_vocab_out"]:  # noqa: F722
     """
     Returns all OV results, ignoring position, of shape (d_vocab, d_vocab_out)
     Complexity: O(d_vocab * (d_model^2 * d_head + d_head^2 * d_model + d_model^2 * d_vocab_out)) ~ O(d_vocab^2 * d_model^2)
@@ -43,7 +44,7 @@ def all_EVOU(
 @torch.no_grad()
 def all_PVOU(
     model: HookedTransformer,
-) -> TensorType["n_ctx", "d_vocab_out"]:  # noqa: F821
+) -> Float[Tensor, "n_ctx d_vocab_out"]:  # noqa: F722
     """
     Returns all OV results, position only, of shape (n_ctx, d_vocab_out)
     Complexity: O(n_ctx * (d_model^2 * d_head + d_head^2 * d_model + d_model^2 * d_vocab_out)) ~ O(n_ctx * d_vocab * d_model^2)
@@ -73,7 +74,7 @@ def all_PVOU(
 @torch.no_grad()
 def all_attention_scores(
     model: HookedTransformer,
-) -> TensorType["n_ctx_k", "d_vocab_q", "d_vocab_k"]:  # noqa: F821
+) -> Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]:  # noqa: F722
     """
     Returns pre-softmax attention of shape (n_ctx_k, d_vocab_q, d_vocab_k)
     Complexity: O(d_vocab * d_head^2 * d_model * n_ctx)
@@ -137,11 +138,12 @@ def all_attention_scores(
 def find_all_d_attention_scores(
     model: HookedTransformer, min_gap: int = 1
 ) -> Union[
-    TensorType["d_vocab_q", "d_vocab_k"],
-    TensorType[
-        "d_vocab_q", "n_ctx_max", "n_ctx_non_max", "d_vocab_k_max", "d_vocab_k_nonmax"
+    Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+    Float[
+        Tensor,
+        "d_vocab_q n_ctx_max n_ctx_non_max d_vocab_k_max d_vocab_k_nonmax",  # noqa: F722
     ],
-]:  # noqa: F821
+]:
     """
     If input tokens are x, y, with x - y > min_gap, the minimum values of
     score(x) - score(y).
@@ -204,7 +206,7 @@ def find_all_d_attention_scores(
 @torch.no_grad()
 def find_min_d_attention_score(
     model: HookedTransformer, min_gap: int = 1, reduce_over_query=False
-) -> Union[float, TensorType["d_vocab_q"]]:  # noqa: F821
+) -> Union[float, Float[Tensor, "d_vocab_q"]]:  # noqa: F821
     """
     If input tokens are x, y, with x - y > min_gap, the minimum value of
     score(x) - score(y).
@@ -222,8 +224,9 @@ def find_min_d_attention_score(
 
 @torch.no_grad()
 def EU_PU_PVOU(
-    model: HookedTransformer, attention_pattern: Float[Tensor, "batch n_ctx"]
-) -> TensorType["batch", "d_vocab_q", "d_vocab_out"]:  # noqa: F821
+    model: HookedTransformer,
+    attention_pattern: Float[Tensor, "batch n_ctx"],  # noqa F722
+) -> Float[Tensor, "batch d_vocab_q d_vocab_out"]:  # noqa: F722
     """
     Calculates logits from EU, PU, and the positional part of the OV path for a given batch of attentions
     attention_pattern: (batch, n_ctx) # post softmax

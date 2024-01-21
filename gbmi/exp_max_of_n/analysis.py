@@ -442,7 +442,7 @@ def compute_singular_contribution(
         singular_value_str = (
             f"first {singular_value_count} singular values"
             if singular_value_count != 1
-            else f"first singular value"
+            else "first singular value"
         )
         to_description = f" to {description}" if description is not None else ""
         description = f"{description} " if description is not None else ""
@@ -451,7 +451,7 @@ def compute_singular_contribution(
         fig = make_subplots(
             rows=1,
             cols=3,
-            subplot_titles=[f"Contribution", f"Residual", f"Residual (rescaled)"],
+            subplot_titles=["Contribution", "Residual", "Residual (rescaled)"],
         )
         fig.add_trace(
             go.Heatmap(

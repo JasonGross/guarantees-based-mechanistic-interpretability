@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 import sys
-from typing import Any, Dict, Optional, cast, Literal
+from typing import Any, Dict, List, Optional, cast, Literal
 from gbmi import utils
 
 import numpy as np
@@ -18,8 +18,12 @@ from gbmi.model import (
     TrainingWrapper,
     Config,
     ExperimentConfig,
+    add_HookedTransformerConfig_arguments,
     train_or_load_model,
     DataModule,
+    add_force_argument,
+    add_no_save_argument,
+    update_HookedTransformerConfig_from_args,
 )
 from gbmi.utils import (
     generate_all_sequences,
@@ -109,7 +113,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
                 "d_vocab": config.experiment.p + 1,
                 "d_vocab_out": config.experiment.p,
             },
-            warn_if_not_default=True,
+            warn_if_not_default=False,
         )
 
         model = HookedTransformer(config.experiment.model_config)
@@ -121,9 +125,9 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
     @staticmethod
     def loss_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],
-        labels: Integer[Tensor, "batch"],
-    ) -> Float[Tensor, ""]:
+        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch"],  # noqa: F821
+    ) -> Float[Tensor, ""]:  # noqa: F722
         logits = logits[:, -1, :].to(torch.float64)
         log_probs = utils.log_softmax(logits, dim=-1)
         correct_log_probs = log_probs.gather(-1, labels.unsqueeze(-1))[:, 0]
@@ -131,8 +135,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
     @staticmethod
     def acc_fn(
-        logits: Float[Tensor, "batch pos d_vocab"],
-        labels: Integer[Tensor, "batch"],
+        logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch"],  # noqa: F821
     ) -> float:
         logits = logits[:, -1, :]
         predictions = logits.argmax(dim=-1)
@@ -144,7 +148,9 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         # that the attention scores add up to 1
         return alpha / attnscore.shape[-1] + (1 - alpha) * attnscore
 
-    def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):
+    def run_batch(
+        self, x: Float[Tensor, "batch pos"], prefix: str  # noqa: F722
+    ) -> Float[Tensor, ""]:  # noqa: F722
         self.model.to(x.device, print_details=False)
         labels = (x[:, 0] + x[:, 1]) % self.config.experiment.p
         assert (
@@ -175,8 +181,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
 
 class ModularFineTuningDataModule(DataModule):
-    data_train: Dataset[Integer[Tensor, "seq_len"]]
-    data_test: Dataset[Integer[Tensor, "seq_len"]]
+    data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
+    data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     batch_size: Optional[int]
 
     def __init__(self, config: Config[ModularFineTuning]):
@@ -254,30 +260,40 @@ class ModularFineTuningDataModule(DataModule):
 
 #         return iter(generator())
 
-if __name__ == "__main__":
+
+def main(argv: List[str] = sys.argv):
     parser = argparse.ArgumentParser(
         description="Train a model with configurable attention rate."
     )
+    parser.add_argument("--p", type=int, default=113, help="The prime to use.")
     parser.add_argument(
         "--attention-rate", type=float, default=0, help="Attention rate for the model."
     )
-    parser.add_argument(
-        "--force",
-        choices=[None, "train", "load"],
-        default=None,
-        help="Force action: None (default), 'train', or 'load'.",
+    add_force_argument(parser)
+    add_no_save_argument(parser)
+    HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS = set(
+        (
+            "d_vocab",
+            "d_vocab_out",
+        )
     )
-
-    parser.add_argument(
-        "--no-save", action="store_true", help="Disable saving the model."
+    Config.add_arguments(parser)
+    add_HookedTransformerConfig_arguments(
+        parser, exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
 
-    config = modular_addition_config(args.attention_rate)
+    config = modular_addition_config(attn_rate=args.attention_rate, p=args.p)
+    config.experiment.model_config = update_HookedTransformerConfig_from_args(
+        config.experiment.model_config,
+        args,
+        exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS,
+    )
+    config = config.update_from_args(args)
     print("Training model:", config)
 
-    save_to: Optional[Literal["disk_and_wandb"]] = (
-        None if args.no_save else "disk_and_wandb"
-    )
+    train_or_load_model(config, force=args.force, save_to=args.save_to)
 
-    train_or_load_model(config, force=args.force, save_to=save_to)
+
+if __name__ == "__main__":
+    main()

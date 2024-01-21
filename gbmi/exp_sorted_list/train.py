@@ -2,15 +2,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 
-import sys
 from typing import Any, Dict, Optional, Sequence, cast, Literal
 from gbmi import utils
 
-import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
+from torch.utils.data import Dataset, DataLoader
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 import argparse
 
@@ -23,14 +21,12 @@ from gbmi.model import (
     ExperimentConfig,
     train_or_load_model,
     DataModule,
+    add_force_argument,
+    add_no_save_argument,
 )
 from gbmi.utils import (
-    generate_all_sequences,
-    shuffle_data,
-    default_device,
     SingleTensorDataset,
     reseed,
-    set_params,
 )
 
 
@@ -120,9 +116,9 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
 
     @staticmethod
     def loss_fn(
-        logits: Float[Tensor, "batch list_len d_vocab"],
-        labels: Integer[Tensor, "batch list_len"],
-    ) -> Float[Tensor, ""]:
+        logits: Float[Tensor, "batch list_len d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch list_len"],  # noqa: F722
+    ) -> Float[Tensor, ""]:  # noqa: F722
         log_probs = utils.log_softmax(logits, dim=-1)
         loss = F.cross_entropy(
             einops.rearrange(log_probs, "batch seq vocab_out -> (batch seq) vocab_out"),
@@ -133,8 +129,8 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
 
     @staticmethod
     def acc_fn(
-        logits: Float[Tensor, "batch list_len d_vocab"],
-        labels: Integer[Tensor, "batch list_len"],
+        logits: Float[Tensor, "batch list_len d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch list_len"],  # noqa: F722
         per_token: bool = True,
     ) -> float:
         predictions = logits.argmax(dim=-1)
@@ -143,7 +139,7 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
             correct = correct.all(dim=-1)
         return correct.float().mean().item()
 
-    def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):
+    def run_batch(self, x: Float[Tensor, "batch pos"], prefix: str):  # noqa: F722
         self.model.to(x.device, print_details=False)
         logits = self.model(x)[:, self.config.experiment.list_len : -1, :]
         labels = x[:, self.config.experiment.list_len + 1 :]
@@ -169,10 +165,10 @@ class SortedListTrainingWrapper(TrainingWrapper[SortedList]):
 
 
 class SortedListDataModule(DataModule):
-    data_train: Dataset[Integer[Tensor, "seq_len"]]
-    data_test: Dataset[Integer[Tensor, "seq_len"]]
-    data_train_str: Sequence[str]
-    data_test_str: Sequence[str]
+    data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
+    data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
+    data_train_str: Sequence[Sequence[str]]
+    data_test_str: Sequence[Sequence[str]]
 
     def __init__(self, config: Config[SortedList]):
         super().__init__(config)
@@ -225,22 +221,13 @@ class SortedListDataModule(DataModule):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a sorted list model.")
-    parser.add_argument(
-        "--force",
-        choices=[None, "train", "load"],
-        default=None,
-        help="Force action: None (default), 'train', or 'load'.",
-    )
-    parser.add_argument(
-        "--no-save", action="store_true", help="Disable saving the model."
-    )
+    add_force_argument(parser)
+    add_no_save_argument(parser)
+    Config.add_arguments(parser)
     args = parser.parse_args()
 
     config = SORTED_LIST_CONFIG
+    config = config.update_from_args(args)
     print("Training model:", config)
 
-    save_to: Optional[Literal["disk_and_wandb"]] = (
-        None if args.no_save else "disk_and_wandb"
-    )
-
-    train_or_load_model(config, force=args.force, save_to=save_to)
+    train_or_load_model(config, force=args.force, save_to=args.save_to)

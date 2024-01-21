@@ -7,10 +7,10 @@ import subprocess
 import sys
 
 from pathlib import Path
-from typing import Optional, TypeVar, List, Dict, Tuple, Hashable, Any, Union, Sequence
+from typing import Optional, TypeVar, List, Dict, Hashable, Any, Union, Sequence
 
 from torch.utils.data import Dataset
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from transformer_lens import HookedTransformer
 
 import numpy as np
 import torch
@@ -53,14 +53,14 @@ def shuffle_data(data, rng: Generator):
 
 def generate_all_sequences(
     n_digits: int, sequence_length: int = 2
-) -> Float[Tensor, "n_seqs sequence_length"]:
+) -> Float[Tensor, "n_seqs sequence_length"]:  # noqa: F722
     data = list(itertools.product(range(n_digits), repeat=sequence_length))
     return torch.tensor(data)
 
 
 def generate_all_sequences_for_model(
     model: HookedTransformer,
-) -> Float[Tensor, "n_seqs sequence_length"]:
+) -> Float[Tensor, "n_seqs sequence_length"]:  # noqa: F722
     return generate_all_sequences(
         n_digits=model.cfg.d_vocab, sequence_length=model.cfg.n_ctx
     )
@@ -167,20 +167,38 @@ def deep_getattr(obj: T, key: Union[str, Sequence[str]], **kwargs) -> Any:
         return deep_getattr(getattr(obj, key[0], **kwargs), key[1:], **kwargs)
 
 
+def setattr_or_item(obj: T, key: str, value: Any) -> T:
+    if hasattr(obj, "__setitem__"):  # dict-like
+        obj[key] = value  # type: ignore
+    else:
+        setattr(obj, key, value)
+    return obj
+
+
+def getattr_or_item(obj: Any, key: str) -> Any:
+    if hasattr(obj, "__getitem__"):  # dict-like
+        return obj[key]  # type: ignore
+    else:
+        return getattr(obj, key)
+
+
 def set_params(
     cfg: T,
     params: Dict[Union[str, Sequence[str]], Any],
     warn_if_not_default: bool = False,
 ) -> T:
     # TODO: warn if not default
+    assert not warn_if_not_default, "Not implemented"
     for k, v in params.items():
         if isinstance(k, str):
-            setattr(cfg, k, v)
+            setattr_or_item(cfg, k, v)
         elif len(k) == 1:
-            setattr(cfg, k[0], v)
+            setattr_or_item(cfg, k[0], v)
         else:
             set_params(
-                getattr(cfg, k[0]), {k[1:]: v}, warn_if_not_default=warn_if_not_default
+                getattr_or_item(cfg, k[0]),
+                {k[1:]: v},
+                warn_if_not_default=warn_if_not_default,
             )
     return cfg
 
@@ -196,4 +214,4 @@ def set_params(
 
 def reseed(x: Hashable, label: str) -> int:
     # 4 bytes make an int32!
-    return int.from_bytes(get_hash((x, label))[:4], byteorder="big")
+    return int.from_bytes(get_hash((x, label))[:4], byteorder="little")

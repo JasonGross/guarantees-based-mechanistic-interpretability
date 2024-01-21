@@ -14,8 +14,8 @@ from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU, all_attention_score
 
 @torch.no_grad()
 def logit_delta_of_results(
-    all_tokens: Integer[Tensor, "batch n_ctx"],
-    predicted_logits: Float[Tensor, "d_vocab_out"],
+    all_tokens: Integer[Tensor, "batch n_ctx"],  # noqa: F722
+    predicted_logits: Float[Tensor, "d_vocab_out"],  # noqa: F821
     renderer=None,
     histogram_all_incorrect_logit_differences: bool = False,
     return_summary: bool = False,
@@ -125,7 +125,7 @@ def logit_delta(
 
 @torch.no_grad()
 def compute_gap(
-    all_tokens: Integer[Tensor, "batch n_ctx"]
+    all_tokens: Integer[Tensor, "batch n_ctx"]  # noqa: F722
 ) -> Integer[Tensor, "batch"]:  # noqa: F821
     """
     computes the gap between the max token and the second max token in each row of all_tokens
@@ -141,7 +141,7 @@ def compute_gap(
 @torch.no_grad()
 def all_tokens_small_gap(
     model: HookedTransformer, max_min_gap: int = 1
-) -> Integer[Tensor, "batch n_ctx"]:
+) -> Integer[Tensor, "batch n_ctx"]:  # noqa: F722
     """
     All sequences of tokens with the constraint that some token z in the sequence satisfies true_max - max_min_gap <= z < true_max
     Complexity: O(d_vocab ^ (n_ctx - 1) * (max_min_gap * 2 + 1))
@@ -316,10 +316,10 @@ def worst_PVOU_gap_for(
     query_tok: int,
     max_tok: int,
     min_gap: int = 0,
-    PVOU: Optional[Float[Tensor, "n_ctx d_vocab_out"]] = None,
+    PVOU: Optional[Float[Tensor, "n_ctx d_vocab_out"]] = None,  # noqa: F722
     attention_score_map: Optional[
-        Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]
-    ] = None,  # noqa: F821
+        Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]  # noqa: F722
+    ] = None,
     optimize_max_query_comparison=True,
 ) -> Float[Tensor, "d_vocab_out"]:  # noqa: F821
     """
@@ -433,7 +433,7 @@ def worst_PVOU_gap_for(
 @torch.no_grad()
 def all_worst_PVOU(
     model: HookedTransformer, min_gap: int = 0, tqdm=None, **kwargs
-) -> Float[Tensor, "d_vocab_q d_vocab_max d_vocab_out"]:  # noqa: F821
+) -> Float[Tensor, "d_vocab_q d_vocab_max d_vocab_out"]:  # noqa: F722
     """
     Returns the mixture of PVOUs with the worst (largest) value of PVOU[non_max_output_tok] - PVOU[max_tok], across all possible attention scalings for the query token and for token values <= max_tok - min_gap.
     Complexity: O(PVOU + attention_score_map + n_ctx^2 * d_vocab^3)
@@ -483,10 +483,10 @@ def worst_EVOU_gap_for(
     query_tok: int,
     max_tok: int,
     min_gap: int = 0,
-    EVOU: Optional[Float[Tensor, "d_vocab d_vocab_out"]] = None,
+    EVOU: Optional[Float[Tensor, "d_vocab d_vocab_out"]] = None,  # noqa: F722
     attention_score_map: Optional[
-        Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]
-    ] = None,  # noqa: F821
+        Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]  # noqa: F722
+    ] = None,
     optimize_max_query_comparison=True,
 ) -> Float[Tensor, "d_vocab_out"]:  # noqa: F821
     """
@@ -631,7 +631,7 @@ def worst_EVOU_gap_for(
 @torch.no_grad()
 def all_worst_EVOU(
     model: HookedTransformer, min_gap: int = 0, tqdm=None, **kwargs
-) -> Float[Tensor, "d_vocab_q d_vocab_max d_vocab_out"]:
+) -> Float[Tensor, "d_vocab_q d_vocab_max d_vocab_out"]:  # noqa: F722
     """
     Returns the mixture of EVOUs with the worst (largest) value of EVOU[non_max_output_tok] - EVOU[max_tok], across all possible attention scalings for the query token and for token values <= max_tok - min_gap.
     Complexity: O(EVOU + attention_score_map + (n_ctx + d_vocab) * d_vocab^3)

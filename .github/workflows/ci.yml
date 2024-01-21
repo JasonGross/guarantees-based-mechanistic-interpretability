@@ -25,10 +25,14 @@ jobs:
         - python-version: "3.11"
           poetry-version: "1.7.1"
           os: windows-latest
+          poetry-install-extra-args: "--compile"
         - python-version: "3.11"
           poetry-version: "1.7.1"
           os: ubuntu-latest
           annotate-errors: true
+        - poetry-version: "1.7.1"
+          os: ubuntu-latest
+          poetry-install-extra-args: "--compile"
     runs-on: ${{ matrix.os }}
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ github.head_ref || github.run_id }}
@@ -40,20 +44,20 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - uses: abatilo/actions-poetry@v2
+    - uses: abatilo/actions-poetry@v3
       with:
         poetry-version: ${{ matrix.poetry-version }}
     - name: Setup a local virtual environment
       run: |
         poetry config virtualenvs.create true --local
         poetry config virtualenvs.in-project true --local
-    - uses: actions/cache@v3
+    - uses: actions/cache@v4
       name: Define a cache for the virtual environment based
       with:
         path: ./.venv
         key: venv-${{ hashFiles('pyproject.toml') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
     - name: Install the project dependencies
-      run: poetry install
+      run: poetry install ${{ matrix.poetry-install-extra-args }}
     - uses: liskin/gh-problem-matcher-wrap@v3
       with:
         action: add
@@ -61,10 +65,10 @@ jobs:
       if: matrix.annotate-errors
     - name: Lint with flake8
       run: |
-        # < 7 to avoid ./.venv/lib/python3.11/site-packages/sympy/polys/numberfields/resolvent_lookup.py: "pyflakes[F]" failed during execution due to RecursionError('maximum recursion depth exceeded')
-        pip install 'flake8<7'
+        # # < 7 to avoid ./.venv/lib/python3.11/site-packages/sympy/polys/numberfields/resolvent_lookup.py: "pyflakes[F]" failed during execution due to RecursionError('maximum recursion depth exceeded')
+        # pip install 'flake8<7'
         # stop the build if there are Python syntax errors or undefined names
-        make git-lint FLAKE8_EXTRA_FLAGS=--exit-zero # TODO: remove --exit-zero
+        make git-lint
         # exit-zero treats all errors as warnings
         make git-lint-more FLAKE8_EXTRA_FLAGS=--exit-zero
     - uses: liskin/gh-problem-matcher-wrap@v3
@@ -72,18 +76,41 @@ jobs:
         action: remove
         linters: flake8
       if: matrix.annotate-errors
+    - name: Summarize lint with flake8
+      run: |
+        printf '%s\n\n%s\n' '<details><summary><code>make git-lint-more</code></summary>' '```' >> "$GITHUB_STEP_SUMMARY"
+        make git-lint-more FLAKE8_EXTRA_FLAGS=--exit-zero >> "$GITHUB_STEP_SUMMARY"
+        printf '\n%s\n%s\n' '```' '</details>' >> "$GITHUB_STEP_SUMMARY"
+      if: matrix.annotate-errors
     - name: Run the automated tests
-      run: poetry run pytest -v
-    - run: pip install wandb
-    - run: wandb login --anonymously
+      run: poetry run pytest -v || true
+      if: always()
+    - run: poetry run wandb login --anonymously
+      if: always()
     - run: make test-load-experiments -k || true
+      if: always()
+
+  black-lint:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-black-lint-${{ github.head_ref || github.run_id }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: psf/black@stable
+        with:
+          jupyter: true
 
   check-all:
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, black-lint]
     if: always()
     steps:
     - run: echo 'ci passed'
       if: ${{ needs.ci.result == 'success' }}
+    - run: echo 'black-lint passed'
+      if: ${{ needs.black-lint.result == 'success' }}
     - run: echo 'ci failed' && false
       if: ${{ needs.ci.result != 'success' }}
+    - run: echo 'black-lint failed' && false
+      if: ${{ needs.black-lint.result != 'success' }}

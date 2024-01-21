@@ -4,7 +4,7 @@ This is the codebase for the [_Guarantees-Based Mechanistic Interpretability_](h
 
 ## Setup
 
-The code can be run under any environment with Python 3.9 and above. 
+The code can be run under any environment with Python 3.9 and above.
 
 We use [poetry](https://python-poetry.org) for dependency management, which can be installed following the instructions [here](https://python-poetry.org/docs/#installation).
 
@@ -19,7 +19,7 @@ Notes
 
 ## Running notebooks
 
-To open a Jupyter notebook, run 
+To open a Jupyter notebook, run
 
 ```bash
 poetry run jupyter lab
@@ -33,7 +33,7 @@ poetry run python -m ipykernel install --user --name=gbmi
 
 ## Training models
 
-Models for existing experiments can be trained by running e.g. 
+Models for existing experiments can be trained by running e.g.
 
 ```bash
 poetry run python -m gbmi.exp_max_of_n.train
@@ -48,13 +48,13 @@ from gbmi.model import train_or_load_model
 rundata, model = train_or_load_model(MAX_OF_10_CONFIG)
 ```
 
-from a Jupyter notebook. 
+from a Jupyter notebook.
 
 This function will attempt to pull a trained model with the specified config from Weights and Biases; if such a model does not exist, it will train the relevant model and save the weights to Weights and Biases.
 
 ## Adding new experiments
 
-The convention for this codebase is to store experiment-specific code in an `exp_[NAME]/` folder, with 
+The convention for this codebase is to store experiment-specific code in an `exp_[NAME]/` folder, with
 - `exp_[NAME]/analysis.py` storing functions for visualisation / interpretability
 - `exp_[NAME]/verification.py` storing functions for verification
 - `exp_[NAME]/train.py` storing training / dataset code

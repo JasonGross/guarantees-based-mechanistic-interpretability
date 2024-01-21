@@ -131,6 +131,9 @@ class Config(Generic[ExpT]):
         # TODO: hack
         return json.loads(_json_dumps(self))
 
+    def build_model(self) -> HookedTransformer:
+        return self.experiment.get_training_wrapper().build_model(self)
+
     @classmethod
     def add_arguments(
         cls: Type[Config[ExpT]], parser: ArgumentParser
@@ -342,6 +345,7 @@ def try_load_model_from_wandb_download(
         res = _load_model(config, model_path)
         if res is not None:
             return res
+    return None
 
 
 def try_load_model_from_wandb(
@@ -357,6 +361,8 @@ def try_load_model_from_wandb(
         logging.warning(f"Could not download model {wandb_model_path} from wandb:\n{e}")
     if model_dir is not None:
         return try_load_model_from_wandb_download(config, model_dir)
+    else:
+        return None
 
 
 def train_or_load_model(
@@ -419,9 +425,9 @@ def train_or_load_model(
             if res is not None:
                 return res
 
-        res = try_load_model_from_wandb(config, wandb_model_path)
-        if res is not None:
-            return res
+        res2 = try_load_model_from_wandb(config, wandb_model_path)
+        if res2 is not None:
+            return res2
 
     # Fail if we couldn't load model and we forced a load.
     if force == "load":
@@ -520,7 +526,7 @@ def train_or_load_model(
         deterministic=config.deterministic or "warn",
         **trainer_args,  # type: ignore
     )
-    trainer.fit(wrapped_model, datamodule)
+    result = trainer.fit(wrapped_model, datamodule)
     test_metrics = trainer.test(wrapped_model, datamodule)
 
     if save_to is not None:

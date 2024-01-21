@@ -158,21 +158,29 @@ def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
     return x_centered - x_exp.sum(dim=dim, keepdim=True).log1p()
 
 
-def deep_getattr(obj: T, key: Union[str, Sequence[str]], **kwargs) -> Any:
+def deep_getattr_or_item(obj: T, key: Union[str, Sequence[str]]) -> Any:
     if isinstance(key, str):
-        return getattr(obj, key, **kwargs)
+        return getattr_or_item(obj, key)
     elif len(key) == 1:
-        return getattr(obj, key[0], **kwargs)
+        return getattr_or_item(obj, key[0])
     else:
-        return deep_getattr(getattr(obj, key[0], **kwargs), key[1:], **kwargs)
+        return deep_getattr_or_item(getattr_or_item(obj, key[0]), key[1:])
 
 
-def setattr_or_item(obj: T, key: str, value: Any) -> T:
+def deep_setattr_or_item(obj: T, key: Union[str, Sequence[str]], value: Any) -> None:
+    if isinstance(key, str):
+        setattr_or_item(obj, key, value)
+    elif len(key) == 1:
+        setattr_or_item(obj, key[0], value)
+    else:
+        deep_setattr_or_item(getattr_or_item(obj, key[0]), key[1:], value)
+
+
+def setattr_or_item(obj: T, key: str, value: Any) -> None:
     if hasattr(obj, "__setitem__"):  # dict-like
         obj[key] = value  # type: ignore
     else:
         setattr(obj, key, value)
-    return obj
 
 
 def getattr_or_item(obj: Any, key: str) -> Any:
@@ -188,18 +196,10 @@ def set_params(
     warn_if_not_default: bool = False,
 ) -> T:
     # TODO: warn if not default
+    cfg = copy.deepcopy(cfg)
     assert not warn_if_not_default, "Not implemented"
     for k, v in params.items():
-        if isinstance(k, str):
-            setattr_or_item(cfg, k, v)
-        elif len(k) == 1:
-            setattr_or_item(cfg, k[0], v)
-        else:
-            set_params(
-                getattr_or_item(cfg, k[0]),
-                {k[1:]: v},
-                warn_if_not_default=warn_if_not_default,
-            )
+        deep_setattr_or_item(cfg, k, v)
     return cfg
 
     #         if (

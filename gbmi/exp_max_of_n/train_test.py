@@ -8,7 +8,7 @@ from gbmi.utils.testing import TestCase
 
 class TestOneLayerTransformer(TestCase):
     def test_forward_pass(self):
-        rundata, model = train_or_load_model(MAX_OF_10_CONFIG)
+        model = MAX_OF_10_CONFIG.build_model()
         model.to("cpu")
         W_U, W_E, W_pos, W_Q, W_K, W_V, W_O = [
             i.squeeze().clone().detach()
@@ -49,12 +49,12 @@ class TestOneLayerTransformer(TestCase):
         # last element logits (y[i]: last element logit for input token i)
         y = ein.sum(n, lambda i: a_softmax[i] * v[i]) + r[9]
         self.assertExpectedPretty(y.shape, """Size((64,))""")
-        self.assertExpectedPretty(y.argmax(-1), """tensor(39)""")
+        self.assertExpectedPretty(y.argmax(-1), """tensor(59)""")
 
         # === True logits ===
         true_logits, cache = model.run_with_cache(torch.tensor(seq))
         self.assertTrue(torch.allclose(y, true_logits.squeeze()[-1], atol=1e-5))
         self.assertExpectedPretty(
             true_logits.argmax(-1).squeeze()[-1],
-            """tensor(39)""",
+            """tensor(59)""",
         )

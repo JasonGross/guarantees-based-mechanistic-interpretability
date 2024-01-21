@@ -94,7 +94,7 @@ def _json_default(thing: object, exclude_filter: ExcludeFilter = None) -> Any:
     raise TypeError(f"Object of type {type(thing).__name__} is not JSON serializable")
 
 
-def getattr_or_exlcude(
+def getattr_or_exclude(
     field_name: str, thing: object, exclude_filter: ExcludeFilter = None
 ) -> Optional[Any]:
     # first we check for any fields listed in the _EXCLUDE attribute
@@ -102,23 +102,25 @@ def getattr_or_exlcude(
         return None
     # now we exclude None and empty collections
     value = getattr(thing, field_name)
-    if value is None or not value and isinstance(value, Collection):
+    if value is None or (not value and isinstance(value, Collection)):
         return None
 
     # if the exclude filter contains no exclusions, we're done
     if exclude_filter is None or exclude_filter is False:
         return value
     # if the exclude filter is a collection of field names or maps field names to booleans, we can just check the field name
-    if isinstance(exclude_filter, Collection):
+    elif isinstance(exclude_filter, Collection):
         return value if field_name not in exclude_filter else None
-    if isinstance(exclude_filter, Mapping):
+    elif isinstance(exclude_filter, Mapping):
         return value if not exclude_filter[field_name] else None
     # if the exclude filter is callable, we will pre-emptively exclude the child if the filter returns True on the child
-    if callable(exclude_filter):
-        value = getattr_or_exlcude(field_name, thing, exclude_filter(thing))
+    elif callable(exclude_filter):
+        value = getattr_or_exclude(field_name, thing, exclude_filter(thing))
         if value is None or exclude_filter(value) is True:
             return None
         return value
+    else:
+        assert False
 
 
 def _dataclass_dict(
@@ -138,7 +140,7 @@ def _dataclass_dict(
 
     rv = {}
     for field in fields:
-        value = getattr_or_exlcude(field.name, thing, exclude_filter=exclude_filter)
+        value = getattr_or_exclude(field.name, thing, exclude_filter=exclude_filter)
         if value is not None:
             rv[field.name] = value
 

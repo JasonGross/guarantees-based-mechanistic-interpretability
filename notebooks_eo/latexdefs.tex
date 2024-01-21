@@ -1,0 +1,164 @@
+\newcommand{\f}[2]{\frac{#1}{#2}}
+\newcommand{\at}[]{\Bigr|}
+\newcommand{\im}[]{\mathop{\text{im}}}
+\newcommand{\ker}[]{\mathop{\text{ker}}}
+\newcommand{\span}[]{\mathop{\text{span}}}
+\newcommand{\actson}[]{\mathop{↷}}
+\newcommand{\stab}[]{\mathop{\text{Stab}}}
+\newcommand{\vv}[1]{\mathbf{#1}}
+\newcommand{\Q}[]{\mathbb{Q}}
+\newcommand{\B}[]{\mathbb{B}}
+\newcommand{\L}[]{\mathbb{L}}
+\newcommand{\Z}[]{\mathbb{Z}}
+\newcommand{\V}[]{\mathbb{V}}
+\newcommand{\X}[]{\mathbb{X}}
+\newcommand{\C}[]{\mathbb{C}}
+\newcommand{\eps}[]{\varepsilon}
+\newcommand{\true}[]{\textbf{true}}
+\newcommand{\false}[]{\textbf{false}}
+\newcommand{\skip}[]{\textbf{skip}}
+\newcommand{\ite}[3]{\textbf{if }#1\textbf{ then }#2\textbf{ else }#3}
+\newcommand{\while}[2]{\textbf{while }#1\textbf{ do }#2}
+\newcommand{\tb}[1]{\textbf{#1}}
+\newcommand{\abr}[1]{\left\langle #1 \right\rangle}
+\newcommand{\br}[1]{\left( #1 \right)}
+\newcommand{\dv}[2]{\frac{d #1}{d #2}}
+\newcommand{\pdv}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\lik}[]{\mathop{\text{lik}}}
+\newcommand{\pdf}[]{\text{pdf}}
+\newcommand{\pp}[]{\mathbb{P}}
+\newcommand{\cvvv}[3]{\begin{pmatrix} #1 \\ #2 \\ #3 \end{pmatrix}}
+\newcommand{\cvv}[2]{\begin{pmatrix} #1 \\ #2 \end{pmatrix}}
+\newcommand{\mat}[4]{\begin{bmatrix} #1 & #2 \\ #3 & #4 \end{bmatrix}}
+\newcommand{\Pr}[]{\mathop{\rm{Pr}}}
+\newcommand{\config}[]{\text{Config}}
+\newcommand{\dom}[]{\mathop{\text{dom}}}
+\newcommand{\ran}[]{\mathop{\text{ran}}}
+\newcommand{\intref}[]{\mathop{\text{intref}}}
+\newcommand{\typeenv}[]{\mathop{\text{TypeEnv}}}
+\newcommand{\store}[]{\text{store}}
+\newcommand{\fn}[2]{\textbf{fn }#1\ldotp#2}
+\newcommand{\let}[2]{\textbf{let val } #1 \textbf{ in } #2 \textbf{ end}}
+\newcommand{\letrec}[4]{\textbf{let val rec } #1 = \fn{#2}{#3} \textbf{ in } #4 \textbf{ end}}
+\newcommand{\inl}[]{\mathop{\textbf{inl}}}
+\newcommand{\inr}[]{\mathop{\textbf{inr}}}
+\newcommand{\conc}[]{\mathop{\Vert}}
+\newcommand{\aabr}[1]{\left\langle\negthinspace\left\langle #1\right\rangle\negthinspace\right\rangle}
+\newcommand{\cbr}[1]{\left\{ #1 \right\}}
+\newcommand{\sbr}[1]{\llbracket #1 \rrbracket}
+\newcommand{\sqbr}[1]{\left[ #1 \right]}
+\newcommand{\abs}[1]{\left| #1 \right|}
+\newcommand{\lonepar}[]{L_{1\mid}}
+\newcommand{\lock}[1]{\textbf{lock }#1}
+\newcommand{\unlock}[1]{\textbf{unlock }#1}
+\newcommand{\oto}[1]{\overset{#1}{\longrightarrow}}
+\newcommand{\cN}[]{\mathcal{N}}
+\newcommand{\halts}[]{\downarrow}
+\newcommand{\defined}[]{\downarrow}
+\newcommand{\undefined}[]{\uparrow}
+\newcommand{\if}[]{\text{ if }}
+\newcommand{\otherwise}[]{\text{ otherwise }}
+\newcommand{\halt}[]{\texttt{HALT}}
+\newcommand{\partialto}[]{\rightharpoonup}
+\newcommand{\entails}[]{\vDash}
+\newcommand{\qquote}[1]{\ulcorner #1 \urcorner}
+\newcommand{\tto}[]{\Rightarrow}
+\newcommand{\mbt}[]{\mathbf{t}}
+\newcommand{\mbf}[]{\mathbf{f}}
+\newcommand{\siff}[]{\leftrightarrow}
+\newcommand{\cA}[]{\mathcal{A}}
+\newcommand{\cB}[]{\mathcal{B}}
+\newcommand{\cC}[]{\mathcal{C}}
+\newcommand{\cD}[]{\mathcal{D}}
+\newcommand{\cE}[]{\mathcal{E}}
+\newcommand{\cF}[]{\mathcal{F}}
+\newcommand{\cG}[]{\mathcal{G}}
+\newcommand{\cH}[]{\mathcal{H}}
+\newcommand{\cI}[]{\mathcal{I}}
+\newcommand{\cJ}[]{\mathcal{J}}
+\newcommand{\cK}[]{\mathcal{K}}
+\newcommand{\cL}[]{\mathcal{L}}
+\newcommand{\cM}[]{\mathcal{M}}
+\newcommand{\cO}[]{\mathcal{O}}
+\newcommand{\cP}[]{\mathcal{P}}
+\newcommand{\cQ}[]{\mathcal{Q}}
+\newcommand{\cR}[]{\mathcal{R}}
+\newcommand{\cS}[]{\mathcal{S}}
+\newcommand{\cT}[]{\mathcal{T}}
+\newcommand{\cU}[]{\mathcal{U}}
+\newcommand{\cV}[]{\mathcal{V}}
+\newcommand{\cW}[]{\mathcal{W}}
+\newcommand{\cX}[]{\mathcal{X}}
+\newcommand{\cY}[]{\mathcal{Y}}
+\newcommand{\cZ}[]{\mathcal{Z}}
+\newcommand{\bA}[]{\mathbb{A}}
+\newcommand{\bB}[]{\mathbb{B}}
+\newcommand{\bC}[]{\mathbb{C}}
+\newcommand{\bD}[]{\mathbb{D}}
+\newcommand{\bE}[]{\mathbb{E}}
+\newcommand{\bF}[]{\mathbb{F}}
+\newcommand{\bG}[]{\mathbb{G}}
+\newcommand{\bH}[]{\mathbb{H}}
+\newcommand{\bI}[]{\mathbb{I}}
+\newcommand{\bJ}[]{\mathbb{J}}
+\newcommand{\bK}[]{\mathbb{K}}
+\newcommand{\bL}[]{\mathbb{L}}
+\newcommand{\bM}[]{\mathbb{M}}
+\newcommand{\bN}[]{\mathbb{N}}
+\newcommand{\bO}[]{\mathbb{O}}
+\newcommand{\bP}[]{\mathbb{P}}
+\newcommand{\bQ}[]{\mathbb{Q}}
+\newcommand{\bR}[]{\mathbb{R}}
+\newcommand{\bS}[]{\mathbb{S}}
+\newcommand{\bT}[]{\mathbb{T}}
+\newcommand{\bU}[]{\mathbb{U}}
+\newcommand{\bV}[]{\mathbb{V}}
+\newcommand{\bW}[]{\mathbb{W}}
+\newcommand{\bX}[]{\mathbb{X}}
+\newcommand{\bY}[]{\mathbb{Y}}
+\newcommand{\bZ}[]{\mathbb{Z}}
+\newcommand{\proj}[]{\text{proj}}
+\newcommand{\zero}[]{\text{zero}}
+\newcommand{\succ}[]{\text{succ}}
+\newcommand{\lto}[]{\leftarrow}
+\newcommand{\pto}[]{\rightharpoonup}
+\newcommand{\leftem}[]{\triangleright}
+\newcommand{\mbeta}[]{\twoheadrightarrow}
+\newcommand{\lmbeta}[]{\twoheadleftarrow}
+\newcommand{\epsclosure}[1]{\varepsilon\text{-} closure(#1)}
+\newcommand{\TIME}[]{\mathsf{TIME}}
+\newcommand{\SPACE}[]{\mathsf{SPACE}}
+\newcommand{\PTIME}[]{\mathsf{P}}
+\newcommand{\NPTIME}[]{\mathsf{NP}}
+\newcommand{\coNPTIME}[]{\textsf{co-NP}}
+\newcommand{\obj}[]{\mathop{\texttt{obj}}}
+\newcommand{\id}[]{\mathop{\texttt{id}}}
+\newcommand{\istrue}[1]{#1\text{ true}}
+\newcommand{\istype}[1]{#1\text{ type}}
+\newcommand{\type}[]{\mathop{\,\text{type}}}
+\newcommand{\ctx}[]{\mathop{\,\text{ctx}}}
+\newcommand{\list}[1]{\texttt{List}\,#1}
+\newcommand{\nil}[]{\texttt{nil}}
+\newcommand{\yo}[]{\text{y}}
+\newcommand{\seq}[]{\sqsubseteq}
+\newcommand{\lub}[]{\bigsqcup}
+\newcommand{\enc}[]{\textsf{Enc}}
+\newcommand{\dec}[]{\textsf{Dec}}
+\newcommand{\gen}[]{\mathsf{Gen}}
+\newcommand{\mac}[]{\mathsf{Mac}}
+\newcommand{\vrfy}[]{\mathsf{Vrfy}}
+\newcommand{\F}[]{\mathbb{F}}
+\newcommand{\concat}[]{\mathop{||}}
+\newcommand{\PP}[]{\mathbf{P}}
+\newcommand{\EE}[]{\mathbb{E}}
+\newcommand{\EEwrt}[1]{\underset{#1}{\mathbb{E}}}
+\newcommand{\sgn}[]{\text{sgn}}
+\newcommand{\sneg}[]{\mathop{\sim}}
+\newcommand{\null}[]{\text{null}}
+\newcommand{\fail}[]{\text{↯}}
+\newcommand{\head}[]{\text{HEAD}}
+\newcommand{\doubleplus}[]{\mathop{\text{⧺}}}
+\newcommand{\bigstep}[]{\Downarrow}
+\newcommand{\dlog}[]{\textsf{DLog}}
+\newcommand{\ts}[1]{\textsf{#1}}
+\newcommand{\tc}[1]{\texttt{#1}}

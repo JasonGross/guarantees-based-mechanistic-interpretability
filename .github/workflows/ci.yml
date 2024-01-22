@@ -58,9 +58,6 @@ jobs:
         key: venv-${{ hashFiles('poetry.lock') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-annotate-errors=${{ matrix.annotate-errors }}
     - name: Install the project dependencies
       run: poetry install ${{ matrix.poetry-install-extra-args }}
-    - name: Install annotations for pytest
-      run: poetry run python -m pip install pytest-github-actions-annotate-failures
-      if: matrix.annotate-errors
     - uses: liskin/gh-problem-matcher-wrap@v3
       with:
         action: add
@@ -84,7 +81,19 @@ jobs:
         printf '%s\n\n%s\n' '<details><summary><code>make git-lint-more</code></summary>' '```' >> "$GITHUB_STEP_SUMMARY"
         make git-lint-more FLAKE8_EXTRA_FLAGS=--exit-zero >> "$GITHUB_STEP_SUMMARY"
         printf '\n%s\n%s\n' '```' '</details>' >> "$GITHUB_STEP_SUMMARY"
+      if: always() && matrix.annotate-errors
+    - name: Remove annotations for pytest
+      run: poetry run python -m pip uninstall pytest-github-actions-annotate-failures
       if: matrix.annotate-errors
+    - name: Summarize pytest results
+      run: |
+        printf '%s\n\n%s\n' '<details><summary><code>poetry run pytest -v</code></summary>' '```' >> "$GITHUB_STEP_SUMMARY"
+        poetry run pytest -v 2>&1 >> "$GITHUB_STEP_SUMMARY"
+        printf '\n%s\n%s\n' '```' '</details>' >> "$GITHUB_STEP_SUMMARY"
+      if: always() && matrix.annotate-errors
+    - name: Install annotations for pytest
+      run: poetry run python -m pip install pytest-github-actions-annotate-failures
+      if: always() && matrix.annotate-errors
     - name: Run the automated tests
       run: poetry run pytest -v
       if: always()

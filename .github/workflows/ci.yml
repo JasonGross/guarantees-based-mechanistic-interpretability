@@ -55,9 +55,12 @@ jobs:
       name: Define a cache for the virtual environment based
       with:
         path: ./.venv
-        key: venv-${{ hashFiles('poetry.lock') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
+        key: venv-${{ hashFiles('poetry.lock') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-annotate-errors=${{ matrix.annotate-errors }}
     - name: Install the project dependencies
       run: poetry install ${{ matrix.poetry-install-extra-args }}
+    - name: Install annotations for pytest
+      run: poetry run python -m pip install pytest-github-actions-annotate-failures
+      if: matrix.annotate-errors
     - uses: liskin/gh-problem-matcher-wrap@v3
       with:
         action: add

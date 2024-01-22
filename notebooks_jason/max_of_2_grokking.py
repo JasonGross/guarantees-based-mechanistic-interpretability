@@ -1,5 +1,4 @@
 # %%
-from dataclasses import replace
 from tqdm import tqdm
 import os
 import imageio
@@ -7,21 +6,17 @@ from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
     MaxOfN,
     train_or_load_model,
-    config_of_argv,
 )
-from gbmi.model import Config, try_load_model_from_wandb_download
+from gbmi.model import Config
 from transformer_lens import HookedTransformerConfig, HookedTransformer
-import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import torch
-import numpy as np
 import wandb
 from typing import (
     Tuple,
 )
 
-from gbmi.utils import set_params
 
 api = wandb.Api()
 

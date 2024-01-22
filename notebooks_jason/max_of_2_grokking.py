@@ -14,10 +14,17 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import torch
 import wandb
+from jaxtyping import Float
+from torch import Tensor
+from IPython.display import display, Markdown
 from typing import (
+    Any,
     Dict,
+    List,
+    Literal,
     Optional,
     Tuple,
+    Union,
 )
 
 
@@ -136,48 +143,106 @@ runtime, model = train_or_load_model(cfg, force="load")
 #         )
 #     return (training_loss.item(), training_acc), (test_loss.item(), test_acc)
 
+
 # %%
-with torch.no_grad():
-    W_E, W_pos, W_Q, W_K, W_U, W_V, W_O = (
+# @title display basic interpretation
+@torch.no_grad()
+def compute_QK(model: HookedTransformer = model) -> dict:
+    W_E, W_pos, W_Q, W_K = (
         model.W_E,
         model.W_pos,
         model.W_Q,
         model.W_K,
-        model.W_U,
+    )
+    QK = (
+        (W_E[-1] + W_pos[-1])
+        @ W_Q[0, 0]
+        @ W_K[0, 0].T
+        @ (W_E[:-1] + W_pos[:-1].mean(dim=0, keepdim=True)).T
+    )
+    QK_last = (W_E[-1] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E[-1] + W_pos[-1]).T
+    return {
+        "data": QK - QK_last,
+        "title": "Attention Score<br>QK[p] := (W<sub>E</sub>[-1] + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>E</sub> + W<sub>pos</sub>[p])<sup>T</sup><br>QK[:-1,:-1].mean(dim=0) - QK[-1, -1]",
+        "xaxis": "input token",
+        "yaxis": "attention score pre-softmax",
+    }
+
+
+@torch.no_grad()
+def compute_OV(model: HookedTransformer = model, centered: bool = True) -> dict:
+    W_E, W_pos, W_V, W_O, W_U = (
+        model.W_E,
+        model.W_pos,
         model.W_V,
         model.W_O,
+        model.W_U,
     )
+    OV = (W_E[:-1] + W_pos[:-1].mean(dim=0)) @ W_V[0, 0] @ W_O[0, 0] @ W_U
+    result: dict = {"xaxis": "output logit token", "yaxis": "input token"}
+    if not centered:
+        result.update(
+            {
+                "data": OV,
+                "title": "Attention Computation: (W<sub>E</sub>[:-1] + W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
+            }
+        )
+        return result
+    result.update(
+        {
+            "data": OV - OV.diag()[:, None],
+            "title": "Attention Computation (centered)<br>OV := (W<sub>E</sub>[:-1] + W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub><br>OV - OV.diag()[:, None]",
+        }
+    )
+    return result
 
-    px.line(
-        {"QK": W_E[-1] @ W_Q[0, 0] @ W_K[0, 0].T @ W_E[:-1].T},
-        title="W<sub>E</sub>[-1] @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ W<sub>E</sub>[:-1]<sup>T</sup>",
-        labels={
-            "index": "input token",
-            "variable": "",
-            "value": "attention score pre-softmax",
-        },
-    ).show()
 
-    OV = W_E[:-1] @ W_V[0, 0] @ W_O[0, 0] @ W_U
-    px.imshow(
-        OV,
-        title="W<sub>E</sub>[:-1] @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
-        color_continuous_scale="Picnic_r",
-        color_continuous_midpoint=0,
-        labels={"x": "output logit token", "y": "input token"},
-    ).show()
-    px.imshow(
-        OV.log_softmax(dim=-1),
-        title="(W<sub>E</sub>[:-1] @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>).log_softmax()",
-        color_continuous_scale="Picnic_r",
-        labels={"x": "output logit token", "y": "input token"},
-    ).show()
+@torch.no_grad()
+def compute_QK_by_position(model: HookedTransformer = model) -> dict:
+    W_E, W_pos, W_Q, W_K = (
+        model.W_E,
+        model.W_pos,
+        model.W_Q,
+        model.W_K,
+    )
+    QK = (
+        (W_E[-1] + W_pos[-1])
+        @ W_Q[0, 0]
+        @ W_K[0, 0].T
+        @ (W_pos[:-1] - W_pos[:-1].mean(dim=0)).T
+    )
+    return {
+        "data": {"QK": QK},
+        "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub>[-1] + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>pos</sub>[:-1] - W<sub>pos</sub>[:-1].mean(dim=0))<sup>T</sup>",
+        "xaxis": "position",
+        "yaxis": "attention score pre-softmax",
+    }
 
+
+@torch.no_grad()
+def compute_irrelevant(
+    model: HookedTransformer = model, include_equals_OV: bool = False
+) -> dict:
+    W_E, W_pos, W_V, W_O, W_U = (
+        model.W_E,
+        model.W_pos,
+        model.W_V,
+        model.W_O,
+        model.W_U,
+    )
     data = {
         "(W<sub>E</sub>[-1]+W<sub>pos</sub>[-1]) @ W<sub>U</sub>": (
             (W_E[-1] + W_pos[-1]) @ W_U
-        )
+        ),
     }
+    if include_equals_OV:
+        data.update(
+            {
+                "(W<sub>E</sub>[-1]+W<sub>pos</sub>[-1]) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>": (
+                    (W_E[-1] + W_pos[-1]) @ W_V[0, 0] @ W_O[0, 0] @ W_U
+                ),
+            }
+        )
     data.update(
         {
             f"(W<sub>pos</sub>[{i}] - W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>": (
@@ -189,25 +254,122 @@ with torch.no_grad():
             for i in range(W_pos.shape[0] - 1)
         }
     )
+
+    return {
+        "data": data,
+        "title": "Irrelevant Contributions to logits",
+        "xaxis": "output logit token",
+        "yaxis": "logit value",
+    }
+
+
+@torch.no_grad()
+def display_basic_interpretation(
+    model: HookedTransformer = model,
+    include_uncentered: bool = False,
+    legend_at_bottom: bool = False,
+    include_equals_OV: bool = False,
+):
+    QK = compute_QK(model)
+    px.line(
+        {"QK": QK["data"]},
+        title=QK["title"],
+        labels={
+            "index": QK["xaxis"],
+            "variable": "",
+            "value": QK["yaxis"],
+        },
+    ).show()
+
+    if include_uncentered:
+        OV = compute_OV(model, centered=False)
+        px.imshow(
+            OV["data"],
+            title=OV["title"],
+            color_continuous_scale="Picnic_r",
+            color_continuous_midpoint=0,
+            labels={"x": OV["xaxis"], "y": OV["yaxis"]},
+        ).show()
+    OV = compute_OV(model, centered=True)
+    px.imshow(
+        OV["data"],
+        title=OV["title"],
+        color_continuous_scale="Picnic_r",
+        labels={"x": OV["xaxis"], "y": OV["yaxis"]},
+    ).show()
+
+    pos_QK = compute_QK_by_position(model)
+    px.scatter(
+        pos_QK["data"],
+        title=pos_QK["title"],
+        labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
+    ).show()
+
+    irrelevant = compute_irrelevant(model, include_equals_OV=include_equals_OV)
     fig = px.scatter(
-        data,
-        title="Irrelevant Contributions to logits",
-        labels={"index": "output logit token", "variable": ""},
+        irrelevant["data"],
+        title=irrelevant["title"],
+        labels={
+            "index": irrelevant["xaxis"],
+            "variable": "",
+            "value": irrelevant["yaxis"],
+        },
     )
-    fig.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.5,  # You might need to adjust this value
-            xanchor="center",
-            x=0.5,
+    if legend_at_bottom:
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.5,
+                xanchor="center",
+                x=0.5,
+            )
         )
-    )
     fig.show()
 
 
+display_basic_interpretation()
 # %%
-def group_metrics_by_epoch(runtime: RunData):
+# first_nonnegative = int(torch.nonzero(QK >= 0)[0, 0].item())
+# assert (
+#     QK[:first_nonnegative] < 0
+# ).all(), f"The negatives don't form a contiguous block: {QK}"
+# assert (
+#     QK[first_nonnegative:] >= 0
+# ).all(), f"The nonnegatives don't form a contiguous block: {QK}"
+# wrong_sequences = int(
+#     1 + sum(1 + seq_len * (i - 1) for i in range(1, first_nonnegative))
+# )
+# display(
+#     Markdown(
+#         f"The model pays more attention to '=' than to numbers less than or equal to {first_nonnegative - 1}, but "
+#         f"that only occurs in {wrong_sequences} sequences ({100 * wrong_sequences / vocab ** seq_len:.1f}% of the sequences)."
+#     )
+# )
+# print(model(torch.tensor([[4, 5, vocab]]))[:, -1, :].argmax(dim=-1))
+
+# %%
+# with torch.no_grad():
+#     W_E, W_pos, W_Q, W_K, W_U, W_V, W_O = (
+#         model.W_E,
+#         model.W_pos,
+#         model.W_Q,
+#         model.W_K,
+#         model.W_U,
+#         model.W_V,
+#         model.W_O,
+#     )
+#     OV = W_E[:-1] @ W_V[0, 0] @ W_O[0, 0] @ W_U
+#     QK = W_E[-1] @ W_Q[0, 0] @ W_K[0, 0].T @ W_E.T
+#     EUPU = (W_E[-1] + W_pos[-1]) @ W_U
+
+#     toks = torch.tensor([[0, 1, vocab]])
+#     print(QK_orig[toks].softmax(dim=-1))
+#     print(OV[toks])
+
+
+# %%
+def group_metrics_by_epoch(runtime: RunData) -> Dict[str, Dict[int, Any]]:
     result = {}
     max_epoch = 0
     for metric in runtime.train_metrics or []:
@@ -230,7 +392,7 @@ def get_epochs_and_metric(
     metric_name: str,
     epoch: Optional[int],
     metrics: Dict[str, Dict[int, float]] = metrics,
-):
+) -> Tuple[List[int], List[Any]]:
     values = metrics[metric_name]
     epochs = [i for i in sorted(values.keys()) if epoch is None or i <= epoch]
     return epochs, [values[i] for i in epochs]

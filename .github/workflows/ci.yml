@@ -83,7 +83,7 @@ jobs:
         printf '\n%s\n%s\n' '```' '</details>' >> "$GITHUB_STEP_SUMMARY"
       if: always() && matrix.annotate-errors
     - name: Remove annotations for pytest
-      run: poetry run python -m pip uninstall pytest-github-actions-annotate-failures
+      run: poetry run python -m pip uninstall -y pytest-github-actions-annotate-failures
       if: matrix.annotate-errors
     - name: Summarize pytest results
       run: |
@@ -92,7 +92,7 @@ jobs:
         printf '\n%s\n%s\n' '```' '</details>' >> "$GITHUB_STEP_SUMMARY"
       if: always() && matrix.annotate-errors
     - name: Install annotations for pytest
-      run: poetry run python -m pip install pytest-github-actions-annotate-failures
+      run: poetry run python -m pip install -y pytest-github-actions-annotate-failures
       if: always() && matrix.annotate-errors
     - name: Run the automated tests
       run: poetry run pytest -v

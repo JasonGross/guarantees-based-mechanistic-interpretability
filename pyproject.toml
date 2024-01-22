@@ -35,12 +35,10 @@ prettyprinter = "^0.18.0"
 kaleido = "0.2.1"
 imageio = "^2.33.1"
 
-
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"
 black = {extras = ["jupyter"], version = "^23.12.1"}
 flake8 = "^7.0.0"
-
 
 [build-system]
 requires = ["poetry-core"]

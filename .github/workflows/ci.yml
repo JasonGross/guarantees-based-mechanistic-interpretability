@@ -83,7 +83,7 @@ jobs:
         printf '\n%s\n%s\n' '```' '</details>' >> "$GITHUB_STEP_SUMMARY"
       if: matrix.annotate-errors
     - name: Run the automated tests
-      run: poetry run pytest -v || true
+      run: poetry run pytest -v
       if: always()
     - run: poetry run wandb login --anonymously
       if: always()

@@ -11,14 +11,16 @@ from gbmi.model import Config, RunData
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 from plotly.subplots import make_subplots
 import torch
 import wandb
 from jaxtyping import Float
 from torch import Tensor
-from IPython.display import display, Markdown
+from IPython.display import display, Markdown, Image
 from typing import (
     Any,
+    Collection,
     Dict,
     List,
     Literal,
@@ -146,6 +148,7 @@ runtime, model = train_or_load_model(cfg, force="load")
 
 # %%
 # @title display basic interpretation
+# @title interpretation functions
 @torch.no_grad()
 def compute_QK(model: HookedTransformer = model) -> dict:
     W_E, W_pos, W_Q, W_K = (
@@ -160,9 +163,9 @@ def compute_QK(model: HookedTransformer = model) -> dict:
         @ W_K[0, 0].T
         @ (W_E[:-1] + W_pos[:-1].mean(dim=0, keepdim=True)).T
     )
-    QK_last = (W_E[-1] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E[-1] + W_pos[-1]).T
+    QK_last = (W_E[-1] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E[-1] + W_pos[-1])
     return {
-        "data": QK - QK_last,
+        "data": (QK - QK_last).numpy(),
         "title": "Attention Score<br>QK[p] := (W<sub>E</sub>[-1] + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>E</sub> + W<sub>pos</sub>[p])<sup>T</sup><br>QK[:-1,:-1].mean(dim=0) - QK[-1, -1]",
         "xaxis": "input token",
         "yaxis": "attention score pre-softmax",
@@ -183,14 +186,14 @@ def compute_OV(model: HookedTransformer = model, centered: bool = True) -> dict:
     if not centered:
         result.update(
             {
-                "data": OV,
+                "data": OV.numpy(),
                 "title": "Attention Computation: (W<sub>E</sub>[:-1] + W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
             }
         )
         return result
     result.update(
         {
-            "data": OV - OV.diag()[:, None],
+            "data": (OV - OV.diag()[:, None]).numpy(),
             "title": "Attention Computation (centered)<br>OV := (W<sub>E</sub>[:-1] + W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub><br>OV - OV.diag()[:, None]",
         }
     )
@@ -212,7 +215,7 @@ def compute_QK_by_position(model: HookedTransformer = model) -> dict:
         @ (W_pos[:-1] - W_pos[:-1].mean(dim=0)).T
     )
     return {
-        "data": {"QK": QK},
+        "data": {"QK": QK.numpy()},
         "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub>[-1] + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>pos</sub>[:-1] - W<sub>pos</sub>[:-1].mean(dim=0))<sup>T</sup>",
         "xaxis": "position",
         "yaxis": "attention score pre-softmax",
@@ -232,7 +235,7 @@ def compute_irrelevant(
     )
     data = {
         "(W<sub>E</sub>[-1]+W<sub>pos</sub>[-1]) @ W<sub>U</sub>": (
-            (W_E[-1] + W_pos[-1]) @ W_U
+            ((W_E[-1] + W_pos[-1]) @ W_U).numpy()
         ),
     }
     if include_equals_OV:
@@ -246,10 +249,12 @@ def compute_irrelevant(
     data.update(
         {
             f"(W<sub>pos</sub>[{i}] - W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>": (
-                (W_pos[i] - W_pos[:-1].mean(dim=0))
-                @ W_V[0, 0, :, :]
-                @ W_O[0, 0, :, :]
-                @ W_U
+                (
+                    (W_pos[i] - W_pos[:-1].mean(dim=0))
+                    @ W_V[0, 0, :, :]
+                    @ W_O[0, 0, :, :]
+                    @ W_U
+                ).numpy()
             )
             for i in range(W_pos.shape[0] - 1)
         }
@@ -261,6 +266,9 @@ def compute_irrelevant(
         "xaxis": "output logit token",
         "yaxis": "logit value",
     }
+
+
+# %%
 
 
 @torch.no_grad()
@@ -391,10 +399,16 @@ metrics = group_metrics_by_epoch(runtime)
 def get_epochs_and_metric(
     metric_name: str,
     epoch: Optional[int],
+    include_only_epochs: Optional[Collection[int]] = None,
     metrics: Dict[str, Dict[int, float]] = metrics,
 ) -> Tuple[List[int], List[Any]]:
     values = metrics[metric_name]
-    epochs = [i for i in sorted(values.keys()) if epoch is None or i <= epoch]
+    epochs = [
+        i
+        for i in sorted(values.keys())
+        if (epoch is None or i <= epoch)
+        and (include_only_epochs is None or i in include_only_epochs)
+    ]
     return epochs, [values[i] for i in epochs]
 
 
@@ -402,63 +416,51 @@ def get_epochs_and_metric(
 models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None
 models = list(models)
+
+
 # %%
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import torch
+@torch.no_grad()
+def compute_traces_and_frames(
+    models: List[Tuple[Any, Optional[Tuple[RunData, HookedTransformer]], Any]]
+):
+    # Lists to hold frames and slider steps
+    frames = []
+    slider_steps = []
+    traces = []
 
-# Assuming 'epochs' list is available
-# Create a subplot with 3 rows (1 for attention, 2 for losses, 3 for accuracies)
-fig = make_subplots(
-    rows=3,
-    cols=1,
-    subplot_titles=("Attention Plot", "Loss Plot", "Accuracy Plot"),
-    # vertical_spacing=0.15,
-)
+    # Variable to track the maximum values for each plot
+    max_value_attention = 0
+    max_value_losses = 0
+    max_value_accuracies = 0
+    all_min_value_attention = []
+    all_max_value_attention = []
+    all_max_value_losses = []
+    all_max_value_accuracies = []
+    epochs_so_far = set()
 
-# Lists to hold frames and slider steps
-frames = []
-slider_steps = []
-
-# Variable to track the maximum values for each plot
-max_abs_value_attention = 0
-max_value_losses = 0
-max_value_accuracies = 0
-all_max_abs_value_attention = []
-all_max_value_losses = []
-all_max_value_accuracies = []
-
-with torch.no_grad():
-    for i, (_version, old_data, _artifact) in enumerate(models):
+    for i, (_version, old_data, _artifact) in enumerate(tqdm(models)):
         assert old_data is not None
         old_runtime, old_model = old_data
         epoch = old_runtime.epoch
-        W_E, W_pos, W_Q, W_K = (
-            old_model.W_E,
-            old_model.W_pos,
-            old_model.W_Q[0, 0, :, :],
-            old_model.W_K[0, 0, :, :],
-        )
-        overlap = (
-            (W_E[-1] + W_pos[-1])
-            @ W_Q
-            @ W_K.T
-            @ (W_E[:-1, :] + W_pos[:-1, 0].mean(dim=0)).T
-        )
+        epochs_so_far.add(epoch)
+        overlap = compute_QK(old_model)["data"]
 
         # Update the max_abs_value for the attention plot
-        current_max_attention = torch.max(torch.abs(overlap)).item()
-        max_abs_value_attention = max(max_abs_value_attention, current_max_attention)
+        cur_min_attention = min(0, np.min(overlap))
+        current_max_attention = np.max(overlap)
+        max_value_attention = max(max_value_attention, current_max_attention)
 
-        training_losses_epochs, training_losses = get_epochs_and_metric("loss", epoch)
+        training_losses_epochs, training_losses = get_epochs_and_metric(
+            "loss", epoch, include_only_epochs=epochs_so_far
+        )
         training_accuracies_epochs, training_accuracies = get_epochs_and_metric(
-            "acc", epoch
+            "acc", epoch, include_only_epochs=epochs_so_far
         )
         test_losses_epochs, test_losses = get_epochs_and_metric(
-            "periodic_test_loss", epoch
+            "periodic_test_loss", epoch, include_only_epochs=epochs_so_far
         )
         test_accuracies_epochs, test_accuracies = get_epochs_and_metric(
-            "periodic_test_acc", epoch
+            "periodic_test_acc", epoch, include_only_epochs=epochs_so_far
         )
 
         # Update the max_value for the loss and accuracy plots
@@ -466,62 +468,88 @@ with torch.no_grad():
         max_value_accuracies = max(max(training_accuracies), max(test_accuracies))
 
         # Update the max values for all plots
-        all_max_abs_value_attention.append(max_abs_value_attention)
+        all_min_value_attention.append(cur_min_attention)
+        all_max_value_attention.append(max_value_attention)
         all_max_value_losses.append(max_value_losses)
         all_max_value_accuracies.append(max_value_accuracies)
 
         # Add a trace for the initial plot (first data point) in all subplots
         if i == 0:
-            # Attention plot trace
-            fig.add_trace(
-                go.Scatter(
-                    x=list(range(len(overlap))),
-                    y=overlap,
-                    mode="lines",
-                    name="(E+P)<sub>-1</sub>QK<sup>T</sup>(E+P)<sup>T</sup>",
+            traces = [
+                # Attention plot trace
+                (
+                    (
+                        go.Scatter(
+                            x=list(range(len(overlap))),
+                            y=overlap,
+                            mode="lines",
+                            name="(E+P)<sub>-1</sub>QK<sup>T</sup>(E+P)<sup>T</sup>",
+                        ),
+                    ),
+                    dict(
+                        row=1,
+                        col=1,
+                    ),
                 ),
-                row=1,
-                col=1,
-            )
-            # Loss plot traces
-            fig.add_trace(
-                go.Scatter(
-                    x=training_losses_epochs,
-                    y=training_losses,
-                    mode="lines",
-                    name="Training Loss",
+                # Loss plot traces
+                (
+                    (
+                        go.Scatter(
+                            x=training_losses_epochs,
+                            y=training_losses,
+                            mode="lines",
+                            name="Training Loss",
+                        ),
+                    ),
+                    dict(
+                        row=2,
+                        col=1,
+                    ),
                 ),
-                row=2,
-                col=1,
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=test_losses_epochs, y=test_losses, mode="lines", name="Test Loss"
+                (
+                    (
+                        go.Scatter(
+                            x=test_losses_epochs,
+                            y=test_losses,
+                            mode="lines",
+                            name="Test Loss",
+                        ),
+                    ),
+                    dict(
+                        row=2,
+                        col=1,
+                    ),
                 ),
-                row=2,
-                col=1,
-            )
-            # Accuracy plot traces
-            fig.add_trace(
-                go.Scatter(
-                    x=training_accuracies_epochs,
-                    y=training_accuracies,
-                    mode="lines",
-                    name="Training Accuracy",
+                # Accuracy plot traces
+                (
+                    (
+                        go.Scatter(
+                            x=training_accuracies_epochs,
+                            y=training_accuracies,
+                            mode="lines",
+                            name="Training Accuracy",
+                        ),
+                    ),
+                    dict(
+                        row=3,
+                        col=1,
+                    ),
                 ),
-                row=3,
-                col=1,
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=test_accuracies_epochs,
-                    y=test_accuracies,
-                    mode="lines",
-                    name="Test Accuracy",
+                (
+                    (
+                        go.Scatter(
+                            x=test_accuracies_epochs,
+                            y=test_accuracies,
+                            mode="lines",
+                            name="Test Accuracy",
+                        ),
+                    ),
+                    dict(
+                        row=3,
+                        col=1,
+                    ),
                 ),
-                row=3,
-                col=1,
-            )
+            ]
 
         # Frame data for the attention plot
         frame_data_attention = go.Scatter(
@@ -565,7 +593,7 @@ with torch.no_grad():
             traces=[0, 1, 2, 3, 4, 5, 6],  # Indices of the traces in this frame
             layout=go.Layout(
                 yaxis={
-                    "range": [-max_abs_value_attention, max_abs_value_attention]
+                    "range": [cur_min_attention, max_value_attention]
                 },  # Attention plot
                 yaxis2={"range": [0, max_value_losses]},  # Loss plot
                 yaxis3={"range": [0, max_value_accuracies]},  # Accuracy plot
@@ -588,56 +616,101 @@ with torch.no_grad():
         )
         slider_steps.append(slider_step)
 
-# Add frames to the figure
-fig.frames = frames
+    layout = dict(
+        xaxis_title="Input Token",
+        xaxis2_title="Epoch",
+        xaxis3_title="Epoch",
+        title="Model Analysis: Attention, Losses, and Accuracies Over Epochs",
+        updatemenus=[
+            {
+                "type": "buttons",
+                "showactive": False,
+                "buttons": [
+                    {
+                        "label": "Play",
+                        "method": "animate",
+                        "args": [
+                            None,
+                            {
+                                "frame": {"duration": 100, "redraw": True},
+                                "fromcurrent": True,
+                                "transition": {"duration": 60, "easing": "linear"},
+                                "mode": "immediate",
+                                "repeat": True,
+                            },
+                        ],
+                    },
+                    {
+                        "label": "Pause",
+                        "method": "animate",
+                        "args": [
+                            [None],
+                            {
+                                "frame": {"duration": 0, "redraw": False},
+                                "mode": "immediate",
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+        sliders=[{"steps": slider_steps, "active": len(slider_steps) - 1}],
+    )
 
-# Update layout for the figure
-fig.update_layout(
-    xaxis_title="Input Token",
-    xaxis2_title="Epoch",
-    xaxis3_title="Epoch",
-    title="Model Analysis: Attention, Losses, and Accuracies Over Epochs",
-    updatemenus=[
-        {
-            "type": "buttons",
-            "showactive": False,
-            "buttons": [
-                {
-                    "label": "Play",
-                    "method": "animate",
-                    "args": [
-                        None,
-                        {
-                            "frame": {"duration": 500, "redraw": True},
-                            "fromcurrent": True,
-                            "transition": {"duration": 300, "easing": "linear"},
-                            "mode": "immediate",
-                            "repeat": True,
-                        },
-                    ],
-                },
-                {
-                    "label": "Pause",
-                    "method": "animate",
-                    "args": [
-                        [None],
-                        {
-                            "frame": {"duration": 0, "redraw": False},
-                            "mode": "immediate",
-                            "transition": {"duration": 0},
-                        },
-                    ],
-                },
-            ],
-        }
-    ],
-    sliders=[{"steps": slider_steps, "active": 0}],
+    return dict(
+        frames=frames,
+        traces=traces,
+        layout=layout,
+        all_max_value_accuracies=all_max_value_accuracies,
+        all_max_value_attention=all_max_value_attention,
+        all_max_value_losses=all_max_value_losses,
+        all_min_value_attention=all_min_value_attention,
+    )
+
+
+# %%
+traces_and_frames = compute_traces_and_frames(models)
+
+# %%
+
+# # Add frames to the figure
+# fig.frames = frames
+
+# # Update layout for the figure
+# fig.update_layout(
+
+
+# # Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
+# fig.update_layout(width=500)
+# fig.update_layout(height=600)  # Double the original height
+
+# # Show the figure
+# fig.show()
+
+
+# %%
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import torch
+
+# Assuming 'epochs' list is available
+# Create a subplot with 3 rows (1 for attention, 2 for losses, 3 for accuracies)
+fig = make_subplots(
+    rows=3,
+    cols=1,
+    subplot_titles=("Attention Plot", "Loss Plot", "Accuracy Plot"),
+    # vertical_spacing=0.15,
 )
-
+for trace_args, trace_kwargs in traces_and_frames["traces"]:
+    fig.add_trace(*trace_args, **trace_kwargs)  # type: ignore
+# Add frames to the figure
+fig.frames = traces_and_frames["frames"]
+# Update layout for the figure
+fig.update_layout(**traces_and_frames["layout"])  # type: ignore
 # Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
-fig.update_layout(width=500)
+fig.update_layout(width=600)
 fig.update_layout(height=600)  # Double the original height
-
 # Show the figure
 fig.show()
 
@@ -654,6 +727,11 @@ import os
 frames_dir = "frames"
 os.makedirs(frames_dir, exist_ok=True)
 
+all_min_value_attention = traces_and_frames["all_min_value_attention"]
+all_max_value_attention = traces_and_frames["all_max_value_attention"]
+all_max_value_losses = traces_and_frames["all_max_value_losses"]
+all_max_value_accuracies = traces_and_frames["all_max_value_accuracies"]
+
 filenames = []
 for i, frame in enumerate(tqdm(fig.frames)):
     # Update data for each trace
@@ -663,9 +741,7 @@ for i, frame in enumerate(tqdm(fig.frames)):
 
     # Update layout (axis bounds)
     fig.update_layout(
-        yaxis={
-            "range": [-all_max_abs_value_attention[i], all_max_abs_value_attention[i]]
-        },
+        yaxis={"range": [all_min_value_attention[i], all_max_value_attention[i]]},
         yaxis2={"range": [0, all_max_value_losses[i]]},
         yaxis3={"range": [0, all_max_value_accuracies[i]]},
     )
@@ -679,9 +755,8 @@ for i, frame in enumerate(tqdm(fig.frames)):
 
 # %%
 # Create the GIF
-with imageio.get_writer(
-    "max_of_2_grokking_17.gif", mode="I", duration=0.5, loop=0
-) as writer:
+grokking_gif = "max_of_2_grokking_17.gif"
+with imageio.get_writer(grokking_gif, mode="I", duration=0.5, loop=0) as writer:
     for filename in filenames:
         image = imageio.imread(filename)
         writer.append_data(image)  # type: ignore
@@ -690,4 +765,8 @@ with imageio.get_writer(
 # for filename in filenames:
 #     os.remove(filename)
 
+# %%
+grokking_gif = "max_of_2_grokking_17.gif"
+with open(grokking_gif, mode="rb") as f:
+    display(Image(f.read()))
 # %%

@@ -7,13 +7,16 @@ from gbmi.exp_max_of_n.train import (
     MaxOfN,
     train_or_load_model,
 )
-from gbmi.model import Config
+from gbmi.model import Config, RunData
 from transformer_lens import HookedTransformerConfig, HookedTransformer
+import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import torch
 import wandb
 from typing import (
+    Dict,
+    Optional,
     Tuple,
 )
 
@@ -111,46 +114,132 @@ cfg = Config(
 # %%
 runtime, model = train_or_load_model(cfg, force="load")
 # %%
-ExpWrapper = cfg.experiment.get_training_wrapper()
-# wrapped_model = ExpWrapper(config, ExpWrapper.build_model(config))
-datamodule = cfg.experiment.get_datamodule()(cfg)
-datamodule.setup("")
-training_batches = torch.cat([batch for batch in datamodule.train_dataloader()], dim=0)
-test_batches = torch.cat([batch for batch in datamodule.test_dataloader()], dim=0)
+# ExpWrapper = cfg.experiment.get_training_wrapper()
+# # wrapped_model = ExpWrapper(config, ExpWrapper.build_model(config))
+# datamodule = cfg.experiment.get_datamodule()(cfg)
+# datamodule.setup("")
+# training_batches = torch.cat([batch for batch in datamodule.train_dataloader()], dim=0)
+# test_batches = torch.cat([batch for batch in datamodule.test_dataloader()], dim=0)
 
 
 # %%
-def evaluate_model(
-    model: HookedTransformer,
-) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-    with torch.no_grad():
-        wrapped_model = ExpWrapper(cfg, model)
-        training_loss, training_acc = wrapped_model.run_batch(
-            training_batches, prefix="", log_output=False, return_accuracy=True
+# def evaluate_model(
+#     model: HookedTransformer,
+# ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+#     with torch.no_grad():
+#         wrapped_model = ExpWrapper(cfg, model)
+#         training_loss, training_acc = wrapped_model.run_batch(
+#             training_batches, prefix="", log_output=False, return_accuracy=True
+#         )
+#         test_loss, test_acc = wrapped_model.run_batch(
+#             test_batches, prefix="", log_output=False, return_accuracy=True
+#         )
+#     return (training_loss.item(), training_acc), (test_loss.item(), test_acc)
+
+# %%
+with torch.no_grad():
+    W_E, W_pos, W_Q, W_K, W_U, W_V, W_O = (
+        model.W_E,
+        model.W_pos,
+        model.W_Q,
+        model.W_K,
+        model.W_U,
+        model.W_V,
+        model.W_O,
+    )
+
+    px.line(
+        {"QK": W_E[-1] @ W_Q[0, 0] @ W_K[0, 0].T @ W_E[:-1].T},
+        title="W<sub>E</sub>[-1] @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ W<sub>E</sub>[:-1]<sup>T</sup>",
+        labels={
+            "index": "input token",
+            "variable": "",
+            "value": "attention score pre-softmax",
+        },
+    ).show()
+
+    OV = W_E[:-1] @ W_V[0, 0] @ W_O[0, 0] @ W_U
+    px.imshow(
+        OV,
+        title="W<sub>E</sub>[:-1] @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
+        color_continuous_scale="Picnic_r",
+        color_continuous_midpoint=0,
+        labels={"x": "output logit token", "y": "input token"},
+    ).show()
+    px.imshow(
+        OV.log_softmax(dim=-1),
+        title="(W<sub>E</sub>[:-1] @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>).log_softmax()",
+        color_continuous_scale="Picnic_r",
+        labels={"x": "output logit token", "y": "input token"},
+    ).show()
+
+    data = {
+        "(W<sub>E</sub>[-1]+W<sub>pos</sub>[-1]) @ W<sub>U</sub>": (
+            (W_E[-1] + W_pos[-1]) @ W_U
         )
-        test_loss, test_acc = wrapped_model.run_batch(
-            test_batches, prefix="", log_output=False, return_accuracy=True
+    }
+    data.update(
+        {
+            f"(W<sub>pos</sub>[{i}] - W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>": (
+                (W_pos[i] - W_pos[:-1].mean(dim=0))
+                @ W_V[0, 0, :, :]
+                @ W_O[0, 0, :, :]
+                @ W_U
+            )
+            for i in range(W_pos.shape[0] - 1)
+        }
+    )
+    fig = px.scatter(
+        data,
+        title="Irrelevant Contributions to logits",
+        labels={"index": "output logit token", "variable": ""},
+    )
+    fig.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.5,  # You might need to adjust this value
+            xanchor="center",
+            x=0.5,
         )
-    return (training_loss.item(), training_acc), (test_loss.item(), test_acc)
+    )
+    fig.show()
+
+
+# %%
+def group_metrics_by_epoch(runtime: RunData):
+    result = {}
+    max_epoch = 0
+    for metric in runtime.train_metrics or []:
+        epoch = metric["epoch"]
+        max_epoch = max(max_epoch, epoch)
+        for k, v in metric.items():
+            if k not in ("epoch", "step"):
+                result.setdefault(k, {})[epoch] = (
+                    v.item() if isinstance(v, torch.Tensor) else v
+                )
+    return result
+
+
+# %%
+
+metrics = group_metrics_by_epoch(runtime)
+
+
+def get_epochs_and_metric(
+    metric_name: str,
+    epoch: Optional[int],
+    metrics: Dict[str, Dict[int, float]] = metrics,
+):
+    values = metrics[metric_name]
+    epochs = [i for i in sorted(values.keys()) if epoch is None or i <= epoch]
+    return epochs, [values[i] for i in epochs]
 
 
 # %%
 models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None
 models = list(models)
-# %%
-training_losses, test_losses = [], []
-training_accuracies, test_accuracies = [], []
-epochs = []
-for _version, old_data, _artifact in tqdm(models):
-    assert old_data is not None
-    old_runtime, old_model = old_data
-    epochs.append(old_runtime.epoch)
-    (training_loss, training_acc), (test_loss, test_acc) = evaluate_model(old_model)
-    training_losses.append(training_loss)
-    test_losses.append(test_loss)
-    training_accuracies.append(training_acc)
-    test_accuracies.append(test_acc)
 # %%
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -199,11 +288,20 @@ with torch.no_grad():
         current_max_attention = torch.max(torch.abs(overlap)).item()
         max_abs_value_attention = max(max_abs_value_attention, current_max_attention)
 
+        training_losses_epochs, training_losses = get_epochs_and_metric("loss", epoch)
+        training_accuracies_epochs, training_accuracies = get_epochs_and_metric(
+            "acc", epoch
+        )
+        test_losses_epochs, test_losses = get_epochs_and_metric(
+            "periodic_test_loss", epoch
+        )
+        test_accuracies_epochs, test_accuracies = get_epochs_and_metric(
+            "periodic_test_acc", epoch
+        )
+
         # Update the max_value for the loss and accuracy plots
-        current_max_loss = max(training_losses[i], test_losses[i])
-        max_value_losses = max(max_value_losses, current_max_loss)
-        current_max_accuracy = max(training_accuracies[i], test_accuracies[i])
-        max_value_accuracies = max(max_value_accuracies, current_max_accuracy)
+        max_value_losses = max(max(training_losses), max(test_losses))
+        max_value_accuracies = max(max(training_accuracies), max(test_accuracies))
 
         # Update the max values for all plots
         all_max_abs_value_attention.append(max_abs_value_attention)
@@ -226,8 +324,8 @@ with torch.no_grad():
             # Loss plot traces
             fig.add_trace(
                 go.Scatter(
-                    x=[epochs[0]],
-                    y=[training_losses[0]],
+                    x=training_losses_epochs,
+                    y=training_losses,
                     mode="lines",
                     name="Training Loss",
                 ),
@@ -236,7 +334,7 @@ with torch.no_grad():
             )
             fig.add_trace(
                 go.Scatter(
-                    x=[epochs[0]], y=[test_losses[0]], mode="lines", name="Test Loss"
+                    x=test_losses_epochs, y=test_losses, mode="lines", name="Test Loss"
                 ),
                 row=2,
                 col=1,
@@ -244,8 +342,8 @@ with torch.no_grad():
             # Accuracy plot traces
             fig.add_trace(
                 go.Scatter(
-                    x=[epochs[0]],
-                    y=[training_accuracies[0]],
+                    x=training_accuracies_epochs,
+                    y=training_accuracies,
                     mode="lines",
                     name="Training Accuracy",
                 ),
@@ -254,8 +352,8 @@ with torch.no_grad():
             )
             fig.add_trace(
                 go.Scatter(
-                    x=[epochs[0]],
-                    y=[test_accuracies[0]],
+                    x=test_accuracies_epochs,
+                    y=test_accuracies,
                     mode="lines",
                     name="Test Accuracy",
                 ),
@@ -271,28 +369,28 @@ with torch.no_grad():
         # Frame data for the loss and accuracy plots
         frame_data_losses = [
             go.Scatter(
-                x=epochs[: i + 1],
-                y=training_losses[: i + 1],
+                x=training_losses_epochs,
+                y=training_losses,
                 mode="lines",
                 name="Training Loss",
             ),
             go.Scatter(
-                x=epochs[: i + 1],
-                y=test_losses[: i + 1],
+                x=test_losses_epochs,
+                y=test_losses,
                 mode="lines",
                 name="Test Loss",
             ),
         ]
         frame_data_accuracies = [
             go.Scatter(
-                x=epochs[: i + 1],
-                y=training_accuracies[: i + 1],
+                x=training_accuracies_epochs,
+                y=training_accuracies,
                 mode="lines",
                 name="Training Accuracy",
             ),
             go.Scatter(
-                x=epochs[: i + 1],
-                y=test_accuracies[: i + 1],
+                x=test_accuracies_epochs,
+                y=test_accuracies,
                 mode="lines",
                 name="Test Accuracy",
             ),
@@ -351,6 +449,8 @@ fig.update_layout(
                             "frame": {"duration": 500, "redraw": True},
                             "fromcurrent": True,
                             "transition": {"duration": 300, "easing": "linear"},
+                            "mode": "immediate",
+                            "repeat": True,
                         },
                     ],
                 },
@@ -422,7 +522,7 @@ with imageio.get_writer(
 ) as writer:
     for filename in filenames:
         image = imageio.imread(filename)
-        writer.append_data(image)
+        writer.append_data(image)  # type: ignore
 
 # Optionally, cleanup the frames
 # for filename in filenames:

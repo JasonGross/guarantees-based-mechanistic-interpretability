@@ -83,6 +83,7 @@ class MaxOfN(ExperimentConfig):
     # TODO(Euan, from Jason): Should this go in DatasetCfg?  In some shared dataset cfg?
     use_end_of_sequence: bool = False
     seq_len: int = 64
+    summary_slug_extra: str = ""
 
     train_dataset_cfg: DatasetCfg = field(
         default_factory=lambda: IterableDatasetCfg(n_samples=None)
@@ -125,6 +126,7 @@ class MaxOfN(ExperimentConfig):
             f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
             f"{f'-training-ratio-{training_ratio:.3f}' if training_ratio is not None else ''}"
             f"{'-with-eos' if config.experiment.use_end_of_sequence else ''}"
+            f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
@@ -462,6 +464,9 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
         default=(0.9, 0.999),
         help="coefficients used for computing running averages of gradient and its square",
     )
+    parser.add_argument(
+        "--summary-slug-extra", type=str, default="", help="Extra model description"
+    )
     HOOKED_TRANSFORMER_CONFIG_ARGS = set(
         (
             "normalization_type",
@@ -485,6 +490,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             ("experiment", "use_end_of_sequence"): args.use_end_of_sequence,
             ("experiment", "use_log1p"): args.use_log1p,
             ("experiment", "optimizer"): args.optimizer,
+            ("experiment", "summary_slug_extra"): args.summary_slug_extra,
         },
     ).update_from_args(args)
     config.experiment.model_config = update_HookedTransformerConfig_from_args(

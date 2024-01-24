@@ -60,7 +60,7 @@ class FullDatasetCfg:
     training_ratio: float = 0.7
 
 
-DatasetCfg = IterableDatasetCfg | FullDatasetCfg
+DatasetCfg = Union[IterableDatasetCfg, FullDatasetCfg]
 
 
 @dataclass

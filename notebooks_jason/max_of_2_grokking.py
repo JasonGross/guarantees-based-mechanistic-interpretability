@@ -1,5 +1,13 @@
+# -*- coding: utf-8 -*-
+# %% [markdown]
+## Exploring Grokking in a Very Simple Max of 2 Model
+#
+### Introduction
+#
+### Setup
 # %%
 from tqdm import tqdm
+import math
 import os
 import imageio
 from gbmi.exp_max_of_n.train import (
@@ -11,143 +19,119 @@ from gbmi.model import Config, RunData
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np
 from plotly.subplots import make_subplots
+from IPython.display import Image, display
 import torch
+import numpy as np
 import wandb
 from jaxtyping import Float
 from torch import Tensor
-from IPython.display import display, Markdown, Image
 from typing import (
-    Any,
-    Collection,
-    Dict,
-    List,
-    Literal,
-    Optional,
     Tuple,
-    Union,
+    Dict,
+    Optional,
+    Any,
+    List,
+    Collection,
 )
-
 
 api = wandb.Api()
-
+# %% [markdown]
+### Introduction
+#
+# Consider a 1 layer attention-only transformer with no normalization trained on inputs of the form $(a, b, =)$ (for $0 \le a, b < 64$) to predict $\max(a, b)$.  Inputs are one-hot encoded.
+#
+# The training dataset is all sequences of the form $(a, a\pm i, =)$ for $i\in \{0, 1, 2, 17\}$.  17 is chosen to be a medium-size number coprime to 2 and 17.
+#
+# `=` is encoded as token $-1$
+#
+#### Model configuration
 # %%
-# config, kwargs = config_of_argv("gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 1500 --validate-every-epochs 1 --force-adjacent-gap 0,1,2 --use-log1p --training-ratio 0.095 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --checkpoint-every-epochs 1 --batch-size 389 --force train".split(" "))
-# config, kwargs = config_of_argv("gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 3000 --validate-every-epochs 10 --force-adjacent-gap 0,1,2,17 --use-log1p --training-ratio 0.099609375 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --batch-size 408 --force train --checkpoint-every-epochs 10".split(" "))
-# %%
-# print(config)
-# %%
-seq_len = 2
-vocab = 64
+seq_len = 2  # training data setup code only works for sequence length 2
+vocab = 64  # @param {type:"number"}
+d_head = 32  # @param {type:"number"}
+d_model = 32  # @param {type:"number"}
+model_seed = 613947648  # @param {type:"number"}
+seed = 123  # @param {type:"number"}
+force_adjacent = (0, 1, 2, 17)  # @param
+lr = 0.001  # @param {type:"number"}
+betas = (0.9, 0.98)  # @param
+weight_decay = 1.0  # @param {type:"number"}
+optimizer = "AdamW"  # @param ["AdamW", "Adam"]
+deterministic = True  # @param {type:"boolean"}
+# list out the number here explicitly so that it matches with what is saved in wandb
+training_ratio = 0.099609375  # @param {type:"number"}
+expected_training_ratio = (
+    (vocab if 0 in force_adjacent else 0)
+    + 2 * sum(vocab - i for i in force_adjacent if i)
+) / vocab**seq_len
+if abs(training_ratio - expected_training_ratio) > 1e-5:
+    f"training_ratio should probably be float.from_hex('{expected_training_ratio.hex()}') ({expected_training_ratio})"
+batch_size = int(round(training_ratio * vocab**seq_len))
+epochs_to_train_for = 3000  # @param {type:"number"}
+include_biases = False  # @param {type:"boolean"}
 cfg = Config(
     experiment=MaxOfN(
         model_config=HookedTransformerConfig(
             act_fn=None,
             attn_only=True,
-            d_head=32,
+            d_head=d_head,
             d_mlp=None,
-            d_model=32,
+            d_model=d_model,
             d_vocab=vocab + 1,
             d_vocab_out=vocab,
             default_prepend_bos=True,
-            device="cpu",
+            device="cpu" if deterministic else None,
             dtype=torch.float32,
             n_ctx=seq_len + 1,
             n_heads=1,
             n_layers=1,
             normalization_type=None,
-            seed=613947648,
+            seed=model_seed,
         ),
-        zero_biases=True,
+        zero_biases=not include_biases,
         use_log1p=True,
         use_end_of_sequence=True,
         seq_len=2,
         train_dataset_cfg=FullDatasetCfg(
-            force_adjacent=(0, 1, 2), training_ratio=0.095
-        ),
-        test_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1, 2), training_ratio=0.095),
-        optimizer_kwargs=dict(lr=0.001, betas=(0.9, 0.98), weight_decay=1.0),
-        optimizer="AdamW",
-    ),
-    deterministic=True,
-    seed=123,
-    batch_size=389,
-    train_for=(1500, "epochs"),
-    log_every_n_steps=10,
-    validate_every=(10, "epochs"),
-    checkpoint_every=(10, "epochs"),
-)
-cfg = Config(
-    experiment=MaxOfN(
-        model_config=HookedTransformerConfig(
-            act_fn=None,
-            attn_only=True,
-            d_head=32,
-            d_mlp=None,
-            d_model=32,
-            d_vocab=vocab + 1,
-            d_vocab_out=vocab,
-            default_prepend_bos=True,
-            device="cpu",
-            dtype=torch.float32,
-            n_ctx=seq_len + 1,
-            n_heads=1,
-            n_layers=1,
-            normalization_type=None,
-            seed=613947648,
-        ),
-        zero_biases=True,
-        use_log1p=True,
-        use_end_of_sequence=True,
-        seq_len=2,
-        train_dataset_cfg=FullDatasetCfg(
-            force_adjacent=(0, 1, 2, 17),
-            training_ratio=0.099609375,
+            force_adjacent=force_adjacent,
+            training_ratio=training_ratio,
         ),
         test_dataset_cfg=FullDatasetCfg(
-            force_adjacent=(0, 1, 2, 17), training_ratio=0.099609375
+            force_adjacent=force_adjacent,
+            training_ratio=training_ratio,
         ),
-        optimizer_kwargs=dict(lr=0.001, betas=(0.9, 0.98), weight_decay=1.0),
-        optimizer="AdamW",
+        optimizer_kwargs=dict(lr=lr, betas=betas, weight_decay=weight_decay),
+        optimizer=optimizer,
     ),
-    deterministic=True,
-    seed=123,
-    batch_size=408,
-    train_for=(3000, "epochs"),
+    deterministic=deterministic,
+    seed=seed,
+    batch_size=batch_size,
+    train_for=(epochs_to_train_for, "epochs"),
     log_every_n_steps=10,
     validate_every=(10, "epochs"),
     checkpoint_every=(10, "epochs"),
 )
-
+# %% [markdown]
+#### Model Training / Loading
 # %%
-runtime, model = train_or_load_model(cfg, force="load")
+# Load (or train) the model
+force = "load"  # @param ["load", "train", "allow either"]
+if force == "allow either":
+    force = None
+runtime, model = train_or_load_model(cfg, force=force)
+
+# load all model versions
+models = runtime.model_versions(cfg, max_count=3000, step=1)
+assert models is not None
+models = list(models)
+
+
+# %% [markdown]
+### Basic Interpretation
+#
+# The model works by attending to the largest element and copying that elment.  Let's validate this with some basic plots.
 # %%
-# ExpWrapper = cfg.experiment.get_training_wrapper()
-# # wrapped_model = ExpWrapper(config, ExpWrapper.build_model(config))
-# datamodule = cfg.experiment.get_datamodule()(cfg)
-# datamodule.setup("")
-# training_batches = torch.cat([batch for batch in datamodule.train_dataloader()], dim=0)
-# test_batches = torch.cat([batch for batch in datamodule.test_dataloader()], dim=0)
-
-
-# %%
-# def evaluate_model(
-#     model: HookedTransformer,
-# ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
-#     with torch.no_grad():
-#         wrapped_model = ExpWrapper(cfg, model)
-#         training_loss, training_acc = wrapped_model.run_batch(
-#             training_batches, prefix="", log_output=False, return_accuracy=True
-#         )
-#         test_loss, test_acc = wrapped_model.run_batch(
-#             test_batches, prefix="", log_output=False, return_accuracy=True
-#         )
-#     return (training_loss.item(), training_acc), (test_loss.item(), test_acc)
-
-
-# %%
-# @title display basic interpretation
 # @title interpretation functions
 @torch.no_grad()
 def compute_QK(model: HookedTransformer = model) -> dict:
@@ -269,6 +253,7 @@ def compute_irrelevant(
 
 
 # %%
+# @title display basic interpretation
 
 
 @torch.no_grad()
@@ -336,47 +321,15 @@ def display_basic_interpretation(
     fig.show()
 
 
-display_basic_interpretation()
+display_basic_interpretation(model)
+
+
+# %% [markdown]
+### Plotting the Training
+#
+# Let's plot this analysis, along with the loss and accuracy, across training.
 # %%
-# first_nonnegative = int(torch.nonzero(QK >= 0)[0, 0].item())
-# assert (
-#     QK[:first_nonnegative] < 0
-# ).all(), f"The negatives don't form a contiguous block: {QK}"
-# assert (
-#     QK[first_nonnegative:] >= 0
-# ).all(), f"The nonnegatives don't form a contiguous block: {QK}"
-# wrong_sequences = int(
-#     1 + sum(1 + seq_len * (i - 1) for i in range(1, first_nonnegative))
-# )
-# display(
-#     Markdown(
-#         f"The model pays more attention to '=' than to numbers less than or equal to {first_nonnegative - 1}, but "
-#         f"that only occurs in {wrong_sequences} sequences ({100 * wrong_sequences / vocab ** seq_len:.1f}% of the sequences)."
-#     )
-# )
-# print(model(torch.tensor([[4, 5, vocab]]))[:, -1, :].argmax(dim=-1))
-
-# %%
-# with torch.no_grad():
-#     W_E, W_pos, W_Q, W_K, W_U, W_V, W_O = (
-#         model.W_E,
-#         model.W_pos,
-#         model.W_Q,
-#         model.W_K,
-#         model.W_U,
-#         model.W_V,
-#         model.W_O,
-#     )
-#     OV = W_E[:-1] @ W_V[0, 0] @ W_O[0, 0] @ W_U
-#     QK = W_E[-1] @ W_Q[0, 0] @ W_K[0, 0].T @ W_E.T
-#     EUPU = (W_E[-1] + W_pos[-1]) @ W_U
-
-#     toks = torch.tensor([[0, 1, vocab]])
-#     print(QK_orig[toks].softmax(dim=-1))
-#     print(OV[toks])
-
-
-# %%
+# @title precompute loss and accuracy lists
 def group_metrics_by_epoch(runtime: RunData) -> Dict[str, Dict[int, Any]]:
     result = {}
     max_epoch = 0
@@ -390,8 +343,6 @@ def group_metrics_by_epoch(runtime: RunData) -> Dict[str, Dict[int, Any]]:
                 )
     return result
 
-
-# %%
 
 metrics = group_metrics_by_epoch(runtime)
 
@@ -413,12 +364,7 @@ def get_epochs_and_metric(
 
 
 # %%
-models = runtime.model_versions(cfg, max_count=3000, step=1)
-assert models is not None
-models = list(models)
-
-
-# %%
+# @title compute frames for plotting
 @torch.no_grad()
 def compute_traces_and_frames(
     models: List[Tuple[Any, Optional[Tuple[RunData, HookedTransformer]], Any]]
@@ -669,61 +615,33 @@ def compute_traces_and_frames(
     )
 
 
-# %%
 traces_and_frames = compute_traces_and_frames(models)
-
 # %%
-
-# # Add frames to the figure
-# fig.frames = frames
-
-# # Update layout for the figure
-# fig.update_layout(
-
-
-# # Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
-# fig.update_layout(width=500)
-# fig.update_layout(height=600)  # Double the original height
-
-# # Show the figure
-# fig.show()
-
-
-# %%
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import torch
-
-# Assuming 'epochs' list is available
-# Create a subplot with 3 rows (1 for attention, 2 for losses, 3 for accuracies)
+# @title plot
 fig = make_subplots(
     rows=3,
     cols=1,
     subplot_titles=("Attention Plot", "Loss Plot", "Accuracy Plot"),
     # vertical_spacing=0.15,
 )
+
 for trace_args, trace_kwargs in traces_and_frames["traces"]:
     fig.add_trace(*trace_args, **trace_kwargs)  # type: ignore
+
 # Add frames to the figure
 fig.frames = traces_and_frames["frames"]
 # Update layout for the figure
 fig.update_layout(**traces_and_frames["layout"])  # type: ignore
 # Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
 fig.update_layout(width=600)
-fig.update_layout(height=600)  # Double the original height
+fig.update_layout(height=600)
 # Show the figure
 fig.show()
-
 # %%
-import plotly.graph_objects as go
-import imageio
-import numpy as np
-
+# @title make frames for a gif
 # Assuming 'fig', 'models', and the lists 'max_abs_value_attention', 'max_value_losses', 'max_value_accuracies' are defined
 
 # Prepare a directory to save frames
-import os
-
 frames_dir = "frames"
 os.makedirs(frames_dir, exist_ok=True)
 
@@ -752,21 +670,33 @@ for i, frame in enumerate(tqdm(fig.frames)):
     #     os.remove(filename)
     fig.write_image(filename, height=fig.layout.height, width=fig.layout.width)
     filenames.append(filename)
-
 # %%
-# Create the GIF
-grokking_gif = "max_of_2_grokking_17.gif"
+# @title make gif
+grokking_gif = "max_of_2_grokking.gif"
 with imageio.get_writer(grokking_gif, mode="I", duration=0.5, loop=0) as writer:
-    for filename in filenames:
+    for filename in tqdm(filenames):
         image = imageio.imread(filename)
         writer.append_data(image)  # type: ignore
 
-# Optionally, cleanup the frames
-# for filename in filenames:
-#     os.remove(filename)
-
-# %%
-grokking_gif = "max_of_2_grokking_17.gif"
 with open(grokking_gif, mode="rb") as f:
     display(Image(f.read()))
+# %% [markdown]
+### Explanation
+#
+# In this model, the spike in test loss is so big because it's hitting three grokking phase transitions simultaneously.
+#
+# Since I trained this one on $(n,n)$, $(n,n±1)$, $(n,n±2)$, $(n,n±17)$, it should be simple enough that it's possible to write down some theory about how it trains and match it up to what actually happens.
+#
+# Prior to the grokking point, the model is slowly smoothing out the query-key overlap vector, sliding the ends of each monotonicity violation closer together.
+#
+# Because the test set is so small, the monotonicity violations only affect points that are within one or two numbers of them.
+#
+# Because SGD only captures first-order effects, a single gradient step can only move close-together numbers in tandem; it can't realize "if I just moved this large collection of points, the transitive effects would push the loss lower".  It just sees that moving the monotonicity violations to have less distance helps just a bit more than it hurts, and the loss at adjacent points prevents the gaps from shrinking too quickly.  (TODO: how do I phrase this explanation better?)
+#
+# Looking at it from the lens of SLT (TODO: how do I do this formally?), there's a lot of symmetry around the monotonicity violations: you can shrink the gap between out-of-order points while adjusting the points around it just a bit to avoid changing the loss much.
+#
+# However, because the test set includes so many more sequences, and the loss-reduction is carefully tuned to the train set, we see a sharp increase in test loss.
+#
+# But once the monotonicity violation is resolved, there's a sharp reversal in the generalization from the train set to the test set: now every adjustment helps the test set even more than the train set, so we see a sharp drop in loss.
+
 # %%

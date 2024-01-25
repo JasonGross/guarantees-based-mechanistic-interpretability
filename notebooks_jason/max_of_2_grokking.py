@@ -681,6 +681,21 @@ with imageio.get_writer(grokking_gif, mode="I", duration=0.5, loop=0) as writer:
 
 with open(grokking_gif, mode="rb") as f:
     display(Image(f.read()))
+# %%
+# log artifact to wandb
+if False:
+    runtime_run = runtime.run()
+    assert runtime_run is not None
+    run = wandb.init(
+        entity=runtime_run.entity,
+        project=runtime_run.project,
+        name=runtime_run.name,
+        id=runtime_run.id,
+        resume="must",
+    )
+    assert run is not None
+    run.log({"grokking_gif": wandb.Video(grokking_gif, fps=2, format="gif")})
+    wandb.finish()
 # %% [markdown]
 ### Explanation
 #

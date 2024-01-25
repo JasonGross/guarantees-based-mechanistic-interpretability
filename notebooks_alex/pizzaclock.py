@@ -1,5 +1,14 @@
-from gbmi.exp_modular_fine_tuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG
-from gbmi.exp_modular_fine_tuning.train import MODULAR_ADDITION_113_PIZZA_CONFIG
+from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG
+from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_PIZZA_CONFIG
+from gbmi.exp_group_finetuning.train import DIHEDRAL_100_CLOCK_CONFIG
+from gbmi.exp_group_finetuning.train import DIHEDRAL_100_PIZZA_CONFIG
+
+from gbmi.exp_group_finetuning.groups import (
+    Group,
+    GroupDict,
+    CyclicGroup,
+    DihedralGroup,
+)
 from gbmi.model import train_or_load_model
 import torch
 from math import sqrt
@@ -8,11 +17,11 @@ import einops
 import tqdm
 
 device = "cuda"
-p = 113
-q = p
-freeze_model = False
-config = MODULAR_ADDITION_113_PIZZA_CONFIG
 
+freeze_model = False
+config = DIHEDRAL_100_PIZZA_CONFIG
+p = config.experiment.group_index
+q = p * 2
 frac_train = 0.3
 seed = 999
 num_epochs = 5000
@@ -92,6 +101,7 @@ def loss_fn(logits, labels, softmax=True):
                 logits = logits[:, :, -1].squeeze(-1)
             else:
                 logits = logits[:, -1, :]
+
         logits = logits.to(torch.float64)
         log_probs = logits.log_softmax(dim=-1)
         correct_log_probs = log_probs.gather(dim=-1, index=labels[:, None])[:, 0]
@@ -116,9 +126,8 @@ a_vector = einops.repeat(torch.arange(q), "i -> (i j)", j=q)
 b_vector = einops.repeat(torch.arange(q), "j -> (i j)", i=q)
 equals_vector = einops.repeat(torch.tensor(q), " -> (i j)", i=q, j=q)
 dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
-
-
-labels = (dataset[:, 0] - dataset[:, 1]) % q
+labels = DihedralGroup(104).op(dataset[:, 0], dataset[:, 1]).flatten()
+print(labels)
 optimizer = torch.optim.AdamW(
     full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
 )

@@ -4,9 +4,14 @@ from dataclasses import dataclass
 from dataclasses import field
 from collections.abc import Callable
 
-from groups import Group, GroupDict, CyclicGroup
+from gbmi.exp_group_finetuning.groups import (
+    Group,
+    GroupDict,
+    CyclicGroup,
+    DihedralGroup,
+)
 import sys
-from typing import Any, Dict, List, Optional, cast, Literal, Generic, TypeVar
+from typing import Any, Dict, List, Optional, cast, Literal, Generic, TypeVar, Type
 from gbmi import utils
 
 import numpy as np
@@ -42,7 +47,9 @@ from gbmi.utils import (
 class ModularFineTuning(ExperimentConfig):
     model_config: HookedTransformerConfig
     # using int instead of abstract class because i'm clueless what's going on with typing
-    group: Group
+    group_family: str
+    group_index: int
+    group_size: int
     group_name: str
     zero_biases: bool = True
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
@@ -62,7 +69,7 @@ class ModularFineTuning(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
         return (
-            f"GroupFineTuning-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
+            f"GroupFineTuning-{config.experiment.group_family+str(config.experiment.group_index)}-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
             f"{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
@@ -83,7 +90,9 @@ def modular_addition_config(attn_rate: float, group: Group, elements: int):
                 attn_only=False,
                 normalization_type=None,
             ),
-            group=group,
+            group_family=type(group).__name__,
+            group_index=group.index(),
+            group_size=group.size(),
             group_name=group.name(),
             zero_biases=True,
             attention_rate=attn_rate,
@@ -105,6 +114,12 @@ MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(
 MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(
     attn_rate=1, group=CyclicGroup(113), elements=2
 )
+DIHEDRAL_100_CLOCK_CONFIG = modular_addition_config(
+    attn_rate=0, group=DihedralGroup(104), elements=2
+)
+DIHEDRAL_100_PIZZA_CONFIG = modular_addition_config(
+    attn_rate=1, group=DihedralGroup(104), elements=2
+)
 
 
 class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
@@ -120,8 +135,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
             model_config,
             {
                 "seed": reseed(config.seed, "model"),
-                "d_vocab": config.experiment.group.size() + 1,
-                "d_vocab_out": config.experiment.group.size(),
+                "d_vocab": config.experiment.group_size + 1,
+                "d_vocab_out": config.experiment.group_size,
             },
             warn_if_not_default=False,
         )
@@ -138,9 +153,14 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         logits: Float[Tensor, "batch pos d_vocab"],  # noqa: F722
         labels: Integer[Tensor, "batch"],  # noqa: F821
     ) -> Float[Tensor, ""]:  # noqa: F722
+        logits = logits
+        labels = labels
         logits = logits[:, -1, :].to(torch.float64)
+
         log_probs = utils.log_softmax(logits, dim=-1)
+
         correct_log_probs = log_probs.gather(-1, labels.unsqueeze(-1))[:, 0]
+
         return -correct_log_probs.mean()
 
     @staticmethod
@@ -162,7 +182,10 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         self, x: Float[Tensor, "batch pos"], prefix: str  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
         self.model.to(x.device, print_details=False)
-        labels = self.config.experiment.group.reduce(list(x[:, :-1]))
+
+        labels = GroupDict[self.config.experiment.group_family](
+            self.config.experiment.group_index
+        ).reduce(list(x[:, :-1].T))
         assert (
             len(labels.shape) == 1
         ), f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"
@@ -170,6 +193,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
             x, fwd_hooks=[("blocks.0.attn.hook_pattern", self.attention_hook)]
         )
         loss = self.loss_fn(y_preds, labels)
+
         self.log(f"{prefix}loss", loss, prog_bar=True)
         acc = self.acc_fn(y_preds, labels)
         self.log(f"{prefix}acc", acc, prog_bar=True)
@@ -206,10 +230,11 @@ class ModularFineTuningDataModule(DataModule):
         # Full dataset
         rng = np.random.default_rng(self.dataset_seed)
         pairs = generate_all_sequences(
-            self.config.experiment.group.size(), self.model_config.n_ctx - 1
+            self.config.experiment.group_size,
+            self.model_config.n_ctx - 1,
         )
         # concat a special token of value self.config.experiment.p to the end of each sequence for '='
-        equals_token = self.config.experiment.group.size()
+        equals_token = self.config.experiment.group_size
         data = torch.cat(
             [pairs, equals_token * torch.ones((len(pairs), 1))], dim=1
         ).long()
@@ -296,12 +321,7 @@ def main(argv: List[str] = sys.argv):
 
     add_force_argument(parser)
     add_no_save_argument(parser)
-    HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS = set(
-        (
-            "d_vocab",
-            "d_vocab_out",
-        )
-    )
+    HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS = set(("d_vocab", "d_vocab_out", "group"))
     Config.add_arguments(parser)
     add_HookedTransformerConfig_arguments(
         parser, exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS

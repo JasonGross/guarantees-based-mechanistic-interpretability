@@ -121,6 +121,7 @@ if force == "allow either":
     force = None
 runtime, model = train_or_load_model(cfg, force=force)
 
+# %%
 # load all model versions
 models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None

@@ -3,12 +3,17 @@ from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
     IterableDatasetCfg,
     MaxOfN,
+    MaxOfNTrainingWrapper,
     train_or_load_model,
 )
 from gbmi.model import Config, RunData
+from torch.utils.data import DataLoader
+import torch
+from tqdm import tqdm
 from transformer_lens import HookedTransformerConfig, HookedTransformer
+from gbmi.utils import default_device
 
-from gbmi.utils import generate_all_sequences_for_model
+from gbmi.utils.sequences import SequenceDataset, generate_all_sequences_for_model
 
 
 # %%
@@ -43,16 +48,40 @@ cfg = Config(
 # %%
 runtime, model = train_or_load_model(cfg, force="load")
 # %%
-# model_wrapper =
+training_wrapper = MaxOfNTrainingWrapper(cfg, model)
 # %%
-# TODO: figure out batching
-all_tokens = generate_all_sequences_for_model(model)
-all_logits = model(all_tokens)
-expected_max = all_tokens.max(dim=-1).values
-predicted_max = all_logits[..., -1, :].argmax(dim=-1)
-# print(f"Model Accuracy: {acc_fn(all_logits, all_tokens, return_per_token=False) * 100}%")
-# print(f"Number Incorrect Sequences: {(predicted_max != expected_max).sum()}")
-# print(f"Model Loss: {loss_fn(all_logits, all_tokens, return_per_token=False)}")
-# print(f"{all_logits.dtype} ULP on log-softmax = ULP at 1.0 = -(exp(0) - eps).log() = {torch.finfo(all_logits.dtype).eps}")
+all_tokens_dataset = SequenceDataset(
+    seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab
+)
+# %%
+batch_size = 128
+# Resetting the DataLoader without shuffle for consistent processing
+data_loader = DataLoader(all_tokens_dataset, batch_size=batch_size, shuffle=False)
+
+# Variables to accumulate total loss and accuracy
+total_loss = 0.0
+total_accuracy = 0.0
+total_samples = 0
+
+# Training loop for computing overall loss and accuracy
+with torch.no_grad():
+    for batch in tqdm(data_loader):
+        batch.to(default_device(deterministic=False))
+        loss, accuracy = training_wrapper.run_batch(
+            batch, return_accuracy=True, log_output=False
+        )
+
+        # Accumulate loss and accuracy
+        total_loss += loss.item() * batch.size(0)
+        total_accuracy += accuracy * batch.size(0)
+        total_samples += batch.size(0)
+
+# Calculate average loss and accuracy
+average_loss = total_loss / total_samples
+average_accuracy = total_accuracy / total_samples
+# %%
+print(f"Model Accuracy: {average_accuracy * 100}%")
+print(f"Number Incorrect Sequences: {average_accuracy * all_tokens_dataset.length}")
+print(f"Model Loss: {average_loss}")
 
 # %%

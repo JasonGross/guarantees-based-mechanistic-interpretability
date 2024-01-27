@@ -38,12 +38,12 @@ from gbmi.model import (
 )
 import gbmi.utils as utils
 from gbmi.utils import (
-    generate_all_sequences,
     shuffle_data,
     SingleTensorDataset,
     reseed,
     set_params,
 )
+from gbmi.utils.sequences import generate_all_sequences
 
 
 @dataclass
@@ -189,7 +189,30 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     def run_batch(
         self,
         x: Float[Tensor, "batch pos"],  # noqa F722
+        prefix: Literal[None] = None,
+        *,
+        return_accuracy: Literal[True],
+        log_output: Literal[False],
+    ) -> Tuple[Float[Tensor, ""], float]:  # noqa F722
+        ...
+
+    @overload
+    def run_batch(
+        self,
+        x: Float[Tensor, "batch pos"],  # noqa F722
+        prefix: Literal[None] = None,
+        *,
+        return_accuracy: Literal[False] = False,
+        log_output: Literal[False],
+    ) -> Float[Tensor, ""]:  # noqa F722
+        ...
+
+    @overload
+    def run_batch(
+        self,
+        x: Float[Tensor, "batch pos"],  # noqa F722
         prefix: str,
+        *,
         return_accuracy: Literal[True],
         log_output: bool = True,
     ) -> Tuple[Float[Tensor, ""], float]:  # noqa F722
@@ -200,6 +223,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         self,
         x: Float[Tensor, "batch pos"],  # noqa F722
         prefix: str,
+        *,
         return_accuracy: Literal[False] = False,
         log_output: bool = True,
     ) -> Float[Tensor, ""]:  # noqa F722
@@ -208,10 +232,12 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     def run_batch(
         self,
         x: Float[Tensor, "batch pos"],  # noqa F722
-        prefix: str,
+        prefix: Optional[str] = None,
+        *,
         return_accuracy: bool = False,
         log_output: bool = True,
     ) -> Union[Float[Tensor, ""], Tuple[Float[Tensor, ""], float]]:  # noqa F722
+        assert prefix is not None or not log_output, "Must not log if prefix is None"
         log_softmax = (
             F.log_softmax if not self.config.experiment.use_log1p else utils.log_softmax
         )

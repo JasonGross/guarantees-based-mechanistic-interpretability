@@ -8,7 +8,8 @@ from transformer_lens import HookedTransformer
 
 from gbmi.analysis_tools.plot import summarize
 from gbmi.analysis_tools.utils import make_local_tqdm
-from gbmi.utils import generate_all_sequences, generate_all_sequences_for_model
+from gbmi.utils.sequences import generate_all_sequences_for_model
+from gbmi.utils.sequences import generate_all_sequences
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU, all_attention_scores
 
 

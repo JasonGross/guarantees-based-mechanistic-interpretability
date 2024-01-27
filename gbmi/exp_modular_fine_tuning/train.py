@@ -26,13 +26,13 @@ from gbmi.model import (
     update_HookedTransformerConfig_from_args,
 )
 from gbmi.utils import (
-    generate_all_sequences,
     shuffle_data,
     default_device,
     SingleTensorDataset,
     reseed,
     set_params,
 )
+from gbmi.utils.sequences import generate_all_sequences
 
 
 @dataclass

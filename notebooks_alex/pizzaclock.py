@@ -19,7 +19,7 @@ import tqdm
 device = "cuda"
 
 freeze_model = False
-config = DIHEDRAL_100_PIZZA_CONFIG
+config = MODULAR_ADDITION_113_CLOCK_CONFIG
 p = config.experiment.group_index
 q = p * 2
 frac_train = 0.3

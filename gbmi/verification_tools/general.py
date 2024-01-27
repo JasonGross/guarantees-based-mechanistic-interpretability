@@ -1,12 +1,13 @@
 import torch
-from torchtyping import TensorType
+from jaxtyping import Float
+from torch import Tensor
 from transformer_lens import HookedTransformer
 
 
 @torch.no_grad()
 def EU_PU(
     model: HookedTransformer, renderer=None, pos: int = -1
-) -> TensorType["d_vocab_q", "d_vocab_out"]:  # noqa: F821
+) -> Float[Tensor, "d_vocab_q d_vocab_out"]:  # noqa: F722q
     """
     Calculates logits from just the EU and PU paths in position pos.
     Complexity: O(d_vocab^2 * d_model)

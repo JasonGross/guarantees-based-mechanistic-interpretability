@@ -7,7 +7,7 @@ from transformer_lens import HookedTransformer
 @torch.no_grad()
 def EU_PU(
     model: HookedTransformer, renderer=None, pos: int = -1
-) -> Float[Tensor, "d_vocab_q d_vocab_out"]:  # noqa: F722q
+) -> Float[Tensor, "d_vocab_q d_vocab_out"]:  # noqa: F722
     """
     Calculates logits from just the EU and PU paths in position pos.
     Complexity: O(d_vocab^2 * d_model)

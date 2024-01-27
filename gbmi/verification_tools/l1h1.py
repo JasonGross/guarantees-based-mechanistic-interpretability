@@ -155,7 +155,7 @@ def find_all_d_attention_scores(
         if n_ctx > 2:
             (d_vocab_q, n_ctx_max, n_ctx_non_max, d_vocab_k_max, d_vocab_k_nonmax)
     """
-    n_ctx, d_vocab = model.cfg.d_model, model.cfg.n_ctx, model.cfg.d_vocab
+    n_ctx, d_vocab = model.cfg.n_ctx, model.cfg.d_vocab
     x_scores = all_attention_scores(model)
     assert x_scores.shape == (
         n_ctx,

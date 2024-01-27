@@ -334,6 +334,7 @@ def main(argv: List[str] = sys.argv):
         elements=args.sequence_length,
     )
     config.experiment.model_config = update_HookedTransformerConfig_from_args(
+        config,
         config.experiment.model_config,
         args,
         exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS,

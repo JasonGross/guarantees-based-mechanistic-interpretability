@@ -698,6 +698,7 @@ def add_HookedTransformerConfig_arguments(
 
 
 def update_HookedTransformerConfig_from_args(
+    parent_cfg: Config,
     cfg: HookedTransformerConfig,
     parsed: Namespace,
     arguments: Optional[Collection[str]] = None,
@@ -717,4 +718,6 @@ def update_HookedTransformerConfig_from_args(
             and k in cfg.__dataclass_fields__
         },
     )
+    if parent_cfg.deterministic:
+        cfg = replace(cfg, device="cpu")
     return cfg

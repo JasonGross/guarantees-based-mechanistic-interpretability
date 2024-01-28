@@ -49,6 +49,7 @@ from gbmi.utils.sequences import generate_all_sequences
 @dataclass
 class IterableDatasetCfg:
     n_samples: Optional[int] = None
+    # pick_max_first: bool = False
 
 
 @dataclass

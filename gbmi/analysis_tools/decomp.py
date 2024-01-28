@@ -18,8 +18,8 @@ def analyze_svd(
     U, S, Vh = torch.linalg.svd(M)
     V = Vh.T
     if scale_by_singular_value:
-        U = U * S[None, :].sqrt()
-        V = V * S[:, None].sqrt()
+        U = U * S[None, : U.shape[1]].sqrt()
+        V = V * S[None, : V.shape[1]].sqrt()
     if descr:
         descr = f" for {descr}"
 
@@ -44,7 +44,7 @@ def analyze_svd(
             zmin=-vzmax,
             zmax=vzmax,
             showscale=False,
-            hovertemplate="V: %{x}<br>Singular Index: %{y}<br>Value: %{z}<extra></extra>",
+            hovertemplate="V: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
         ),
         row=1,
         col=3,

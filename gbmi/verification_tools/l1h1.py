@@ -17,7 +17,7 @@ def all_EVOU(
 ) -> Float[Tensor, "d_vocab d_vocab_out"]:  # noqa: F722
     """
     Returns all OV results, ignoring position, of shape (d_vocab, d_vocab_out)
-    Complexity: O(d_vocab * (d_model^2 * d_head + d_head^2 * d_model + d_model^2 * d_vocab_out)) ~ O(d_vocab^2 * d_model^2)
+    Complexity: O(d_vocab * (d_model * d_head + d_model * d_vocab_out)) ~ O(d_vocab^2 * d_model)
     """
     W_E, W_O, W_V, W_U = model.W_E, model.W_O, model.W_V, model.W_U
     d_model, d_vocab, d_head, d_vocab_out = (
@@ -28,12 +28,12 @@ def all_EVOU(
     )
     assert W_E.shape == (d_vocab, d_model)
     assert W_O.shape == (1, 1, d_model, d_head)
-    assert W_V.shape == (1, 1, d_model, d_head)
+    assert W_V.shape == (1, 1, d_head, d_model)
     assert W_U.shape == (d_model, d_vocab_out)
 
     EVOU = (
-        W_E @ W_V[0, 0, :, :] @ W_O[0, 0, :, :] @ W_U
-    )  # (d_vocab, d_vocab). EVOU[i, j] is how copying i affects j.
+        (W_E @ W_V[0, 0, :, :]) @ W_O[0, 0, :, :]
+    ) @ W_U  # (d_vocab, d_vocab). EVOU[i, j] is how copying i affects j.
     assert EVOU.shape == (
         d_vocab,
         d_vocab_out,
@@ -47,7 +47,7 @@ def all_PVOU(
 ) -> Float[Tensor, "n_ctx d_vocab_out"]:  # noqa: F722
     """
     Returns all OV results, position only, of shape (n_ctx, d_vocab_out)
-    Complexity: O(n_ctx * (d_model^2 * d_head + d_head^2 * d_model + d_model^2 * d_vocab_out)) ~ O(n_ctx * d_vocab * d_model^2)
+    Complexity: O(n_ctx * (d_model * d_head + d_model * d_vocab_out)) ~ O(n_ctx * d_vocab * d_model)
     """
     W_pos, W_O, W_V, W_U = model.W_pos, model.W_O, model.W_V, model.W_U
     d_model, n_ctx, d_head, d_vocab_out = (
@@ -58,12 +58,12 @@ def all_PVOU(
     )
     assert W_pos.shape == (n_ctx, d_model)
     assert W_O.shape == (1, 1, d_model, d_head)
-    assert W_V.shape == (1, 1, d_model, d_head)
+    assert W_V.shape == (1, 1, d_head, d_model)
     assert W_U.shape == (d_model, d_vocab_out)
 
     PVOU = (
-        W_pos @ W_V[0, 0, :, :] @ W_O[0, 0, :, :] @ W_U
-    )  # (n_ctx, d_vocab_out). PVOU[i, j] is how copying at position i affects logit j.
+        (W_pos @ W_V[0, 0, :, :]) @ W_O[0, 0, :, :]
+    ) @ W_U  # (n_ctx, d_vocab_out). PVOU[i, j] is how copying at position i affects logit j.
     assert PVOU.shape == (
         n_ctx,
         d_vocab_out,
@@ -77,7 +77,7 @@ def all_attention_scores(
 ) -> Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]:  # noqa: F722
     """
     Returns pre-softmax attention of shape (n_ctx_k, d_vocab_q, d_vocab_k)
-    Complexity: O(d_vocab * d_head^2 * d_model * n_ctx)
+    Complexity: O(d_vocab^2 * d_model * n_ctx)
     """
     W_E, W_pos, W_Q, W_K = model.W_E, model.W_pos, model.W_Q, model.W_K
     d_model, n_ctx, d_vocab, d_head = (

@@ -53,7 +53,7 @@ cfg = Config(
         use_log1p=True,
         use_end_of_sequence=False,
         seq_len=4,
-        train_dataset_cfg=IterableDatasetCfg(),
+        train_dataset_cfg=IterableDatasetCfg(pick_max_first=True),
         test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
     ),
     deterministic=True,
@@ -249,7 +249,7 @@ display_basic_interpretation(model)
 # & = (\text{query} W_E + W_\text{pos}[-1])W_Q W_K^T(\text{size}W_E + \overline{W_\text{pos}}) \\
 # & \phantom{{}={}}{} + W_{E,\text{qerr}}W_Q W_K^T (W_{E,\text{kerr}} + W_{\text{pos},\text{err}})^T \\
 # & \phantom{{}={}}{} + (\text{query} W_E + W_\text{pos}[-1])W_Q W_K^T (W_{E,\text{kerr}} + W_{\text{pos},\text{err}})^T \\
-# & \phantom{{}={}}{} + W_{E,\text{qerr}})W_Q W_K^T (\text{size}W_E + \overline{W_\text{pos}})^T \\
+# & \phantom{{}={}}{} + W_{E,\text{qerr}}W_Q W_K^T (\text{size}W_E + \overline{W_\text{pos}})^T \\
 # \end{align*}$$
 # %%
 (
@@ -258,6 +258,7 @@ display_basic_interpretation(model)
     size_query_singular_value,
 ) = find_size_and_query_direction(model)
 # %%
+import importlib
 import gbmi.analysis_tools.decomp
 
 importlib.reload(gbmi.analysis_tools.decomp)
@@ -276,6 +277,7 @@ with torch.no_grad():
         [W_E_size * (row @ W_E_size) for row in W_E_pos_k], dim=0
     )
     W_E_size_reflect = (W_E_pos_k @ W_E_size[:, None]) @ W_E_size[None, :]
+    print([row @ W_E_size for row in W_E_pos_k - W_E_size_reflect_alt])
     assert torch.allclose(W_E_size_reflect, W_E_size_reflect_alt)
     if False:
         px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T).show()
@@ -284,25 +286,25 @@ with torch.no_grad():
             W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E_pos_k - W_E_size_reflect).T
         ).show()
 
-    mat = W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T
-    U, S, Vh = torch.linalg.svd(mat)
-    U = U * S[None, : U.shape[1]].sqrt()
-    Vh = Vh * S[: Vh.shape[0], None].sqrt()
-    signs = torch.sign(U.mean(dim=-1))
-    U[:, 0] *= signs[0]
-    Vh[0, :] *= signs[0]
-    U[:, 1] *= signs[1]
-    Vh[1, :] *= signs[1]
-    U2 = U.clone()
-    U2[:, 2:] = 0
-    Vh2 = Vh.clone()
-    Vh2[2:, :] = 0
-    px.imshow(U2).show()
-    px.imshow(Vh2).show()
-    px.imshow(U2 @ Vh2).show()
-    px.imshow(mat - U2 @ Vh2).show()
-    U3, S3, V3 = torch.linalg.svd(mat - U2 @ Vh2)
-    analyze_svd(mat - U2 @ Vh2, scale_by_singular_value=True)
+    # mat = W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T
+    # U, S, Vh = torch.linalg.svd(mat)
+    # U = U * S[None, : U.shape[1]].sqrt()
+    # Vh = Vh * S[: Vh.shape[0], None].sqrt()
+    # signs = torch.sign(U.mean(dim=-1))
+    # U[:, 0] *= signs[0]
+    # Vh[0, :] *= signs[0]
+    # U[:, 1] *= signs[1]
+    # Vh[1, :] *= signs[1]
+    # U2 = U.clone()
+    # U2[:, 1:] = 0
+    # Vh2 = Vh.clone()
+    # Vh2[1:, :] = 0
+    # px.imshow(U2).show()
+    # px.imshow(Vh2).show()
+    # px.imshow(U2 @ Vh2).show()
+    # px.imshow(mat - U2 @ Vh2).show()
+    # U3, S3, V3 = torch.linalg.svd(mat - U2 @ Vh2)
+    # analyze_svd(mat - U2 @ Vh2, scale_by_singular_value=True)
 
     # W_E_query = query_direction @ W_E
     # W_E_query_reflect_alt = torch.stack(

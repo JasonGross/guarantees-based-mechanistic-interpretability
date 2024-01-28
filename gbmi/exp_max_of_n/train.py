@@ -119,12 +119,15 @@ class MaxOfN(ExperimentConfig):
                 map(str, config.experiment.train_dataset_cfg.force_adjacent)
             )
             training_ratio = config.experiment.train_dataset_cfg.training_ratio
+            max_first = False
         else:
             force_adjacent = tuple()
             training_ratio = None
+            max_first = config.experiment.train_dataset_cfg.pick_max_first
         return (
             f"MaxOf{config.experiment.seq_len}-{config.train_for[0]}-{config.train_for[1]}"
             f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
+            f"{'-max-first' if max_first else ''}"
             f"{f'-training-ratio-{training_ratio:.3f}' if training_ratio is not None else ''}"
             f"{'-with-eos' if config.experiment.use_end_of_sequence else ''}"
             f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
@@ -142,7 +145,7 @@ MAX_OF_2_CONFIG = Config(
 )
 MAX_OF_10_CONFIG = Config(
     experiment=MaxOfN(
-        train_dataset_cfg=IterableDatasetCfg(n_samples=None),
+        train_dataset_cfg=IterableDatasetCfg(n_samples=None, pick_max_first=False),
         test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
         seq_len=10,
     ),
@@ -430,7 +433,7 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
                 max_val = (
                     int(torch.randint(0, self.model_config.d_vocab_out, tuple()).item())
                     if self.pick_max_first
-                    else self.model_config.d_vocab_out
+                    else self.model_config.d_vocab_out - 1
                 )
                 val = torch.randint(
                     0,

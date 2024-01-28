@@ -1,3 +1,4 @@
+from typing import Callable, Generic, TypeVar, Union, overload
 import torch
 from jaxtyping import Float
 from torch import Tensor
@@ -7,6 +8,8 @@ from torch.utils.data import Dataset
 import itertools
 
 from transformer_lens import HookedTransformer
+
+T = TypeVar("T")
 
 
 def generate_all_sequences(
@@ -33,10 +36,38 @@ class SequenceDataset(Dataset[Tensor]):
     def __len__(self):
         return self.length
 
+    @overload
     def __getitem__(self, index: int) -> Float[Tensor, "seq_len"]:  # noqa: F821
+        ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Tensor:
+        ...
+
+    def __getitem__(
+        self, index: Union[int, slice]
+    ) -> Union[Tensor, Float[Tensor, "seq_len"]]:  # noqa: F821
         # Convert the index to a sequence of numbers
-        sequence = []
-        for _ in range(self.seq_len):
-            sequence.append(index % self.vocab_size)
-            index = index // self.vocab_size
-        return torch.tensor(sequence, dtype=torch.long)
+        if isinstance(index, slice):
+            start, stop, stride = index.indices(self.length)
+            sequence = []
+            for i in range(start, stop, stride):
+                sequence.append(self[i])
+            return torch.stack(sequence, dim=0)
+        else:
+            sequence = []
+            for _ in range(self.seq_len):
+                sequence.append(index % self.vocab_size)
+                index = index // self.vocab_size
+            return torch.tensor(sequence, dtype=torch.long)
+
+
+class ThunkedDataset(Generic[T], Dataset[Callable[[], T]]):
+    def __init__(self, dataset: Dataset[T]):
+        self.dataset = dataset
+
+    def __len__(self):
+        return len(self.dataset)  # type: ignore
+
+    def __getitem__(self, *args, **kwargs) -> Callable[[], T]:
+        return lambda: self.dataset.__getitem__(*args, **kwargs)  # type: ignore

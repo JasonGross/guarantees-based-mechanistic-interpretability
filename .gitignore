@@ -169,3 +169,9 @@ checkpoints/
 *.bak
 .*.swp
 *~
+/frames/*
+notebooks_jason/frames/*
+
+# python shelve
+*.dir
+*.dat

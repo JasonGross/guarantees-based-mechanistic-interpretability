@@ -1,14 +1,31 @@
+# %%
 from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG
 from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_PIZZA_CONFIG
 from gbmi.exp_group_finetuning.train import DIHEDRAL_100_CLOCK_CONFIG
 from gbmi.exp_group_finetuning.train import DIHEDRAL_100_PIZZA_CONFIG
-
+from gbmi.exp_group_finetuning.train import GL2_P_CLOCK_CONFIG
+import transformer_lens
+import transformer_lens.utils as utils
+import plotly.express as px
 from gbmi.exp_group_finetuning.groups import (
     Group,
     GroupDict,
     CyclicGroup,
     DihedralGroup,
+    PermutedCyclicGroup,
 )
+import plotly.io as pio
+from matplotlib import rc
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+
+rc("animation", html="jshtml")
+fig, ax = plt.subplots()
+pio.renderers.default = "notebook_connected"
+pio.templates["plotly"].layout.xaxis.title.font.size = 20
+pio.templates["plotly"].layout.yaxis.title.font.size = 20
+pio.templates["plotly"].layout.title.font.size = 30
 from gbmi.model import train_or_load_model
 import torch
 from math import sqrt
@@ -16,15 +33,51 @@ from torch import tensor
 import einops
 import tqdm
 
-device = "cuda"
+
+def imshow(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
+    px.imshow(
+        utils.to_numpy(tensor),
+        color_continuous_midpoint=0.0,
+        color_continuous_scale="RdBu",
+        labels={"x": xaxis, "y": yaxis},
+        **kwargs,
+    ).show(renderer)
+
+
+def line(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
+    px.line(utils.to_numpy(tensor), labels={"x": xaxis, "y": yaxis}, **kwargs).show(
+        renderer
+    )
+
+
+def scatter(x, y, xaxis="", yaxis="", caxis="", renderer=None, **kwargs):
+    x = utils.to_numpy(x)
+    y = utils.to_numpy(y)
+    px.scatter(
+        y=y, x=x, labels={"x": xaxis, "y": yaxis, "color": caxis}, **kwargs
+    ).show(renderer)
+
 
 freeze_model = False
-config = MODULAR_ADDITION_113_CLOCK_CONFIG
+config = DIHEDRAL_100_CLOCK_CONFIG
 p = config.experiment.group_index
-q = p * 2
-frac_train = 0.3
+q = p
+frac_train = 0.4
 seed = 999
-num_epochs = 5000
+num_epochs = 1000
+fourier_basis = []
+fourier_basis_names = []
+fourier_basis.append(torch.ones(p))
+fourier_basis_names.append("Constant")
+for freq in range(1, p // 2 + 1):
+    fourier_basis.append(torch.sin(torch.arange(p) * 2 * torch.pi * freq / p))
+    fourier_basis_names.append(f"Sin {freq}")
+    fourier_basis.append(torch.cos(torch.arange(p) * 2 * torch.pi * freq / p))
+    fourier_basis_names.append(f"Cos {freq}")
+fourier_basis = torch.stack(fourier_basis, dim=0).cuda()
+fourier_basis = fourier_basis / fourier_basis.norm(dim=-1, keepdim=True)
+device = "cuda"
+
 
 rundata, model = train_or_load_model(config)
 model.to(device)
@@ -126,7 +179,8 @@ a_vector = einops.repeat(torch.arange(q), "i -> (i j)", j=q)
 b_vector = einops.repeat(torch.arange(q), "j -> (i j)", i=q)
 equals_vector = einops.repeat(torch.tensor(q), " -> (i j)", i=q, j=q)
 dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
-labels = DihedralGroup(104).op(dataset[:, 0], dataset[:, 1]).flatten()
+print("here")
+labels = CyclicGroup(q).op(dataset[:, 0].T, dataset[:, 1].T)
 print(labels)
 optimizer = torch.optim.AdamW(
     full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
@@ -140,7 +194,7 @@ train_data = dataset[train_indices]
 train_labels = labels[train_indices]
 test_data = dataset[test_indices]
 test_labels = labels[test_indices]
-
+bases = []
 for epoch in tqdm.tqdm(range(num_epochs)):
     if freeze_model:
         train_logits = full_model(train_data)
@@ -159,6 +213,19 @@ for epoch in tqdm.tqdm(range(num_epochs)):
     )
     train_loss = loss_fn(train_logits, train_labels)
     train_loss.backward()
+
+    print(
+        torch.mean(torch.abs(full_model.embed.W_E.grad))
+        / torch.mean(torch.abs(full_model.embed.W_E))
+    )
+    print(
+        torch.mean(torch.abs(model.blocks[0].mlp.W_in.grad))
+        / torch.mean(torch.abs(model.blocks[0].mlp.W_in))
+    )
+    print(
+        torch.mean(torch.abs(full_model.unembed.W_U.grad))
+        / torch.mean(torch.abs(full_model.unembed.W_U))
+    )
     optimizer.step()
     optimizer.zero_grad()
     with torch.inference_mode():
@@ -183,7 +250,10 @@ for epoch in tqdm.tqdm(range(num_epochs)):
         )
         test_loss = loss_fn(test_logits, test_labels)
 
-    if ((epoch + 1) % 10) == 0:
+    if ((epoch + 1) % 1) == 0:
         print(
             f"Epoch {epoch} Train Loss {train_loss.item()} Test Loss {test_loss.item()}"
         )
+
+
+# %%

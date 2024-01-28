@@ -49,7 +49,7 @@ from gbmi.utils.sequences import generate_all_sequences
 @dataclass
 class IterableDatasetCfg:
     n_samples: Optional[int] = None
-    # pick_max_first: bool = False
+    pick_max_first: bool = False
 
 
 @dataclass
@@ -345,6 +345,7 @@ class MaxOfNDataModule(DataModule):
                 reseed(self.dataset_seed, mode),
                 self.config,
                 cfg.n_samples,
+                pick_max_first=cfg.pick_max_first,
             )
         elif isinstance(cfg, FullDatasetCfg):
             data_train, data_test = self.get_full_dataset(
@@ -377,13 +378,18 @@ class MaxOfNDataModule(DataModule):
 
 class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
     def __init__(
-        self, seed: int, config: Config[MaxOfN], max_length: Optional[int] = None
+        self,
+        seed: int,
+        config: Config[MaxOfN],
+        max_length: Optional[int] = None,
+        pick_max_first: bool = False,
     ):
         self.config = config
         self.model_config = config.experiment.model_config
         self.seq_len = config.experiment.seq_len
         self.use_end_of_sequence = config.experiment.use_end_of_sequence
         self.seed = seed
+        self.pick_max_first = pick_max_first
         if max_length is None:
             n, unit = config.train_for
             assert unit == "steps"
@@ -421,14 +427,20 @@ class MaxOfNDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
             g.manual_seed(self.seed)
             n_samples = 0
             while True:
-                yield self.cat_eos(
-                    torch.randint(
-                        0,
-                        self.model_config.d_vocab_out,
-                        (self.seq_len,),
-                        generator=g,
-                    )
+                max_val = (
+                    int(torch.randint(0, self.model_config.d_vocab_out, tuple()).item())
+                    if self.pick_max_first
+                    else self.model_config.d_vocab_out
                 )
+                val = torch.randint(
+                    0,
+                    max_val + 1,
+                    (self.seq_len,),
+                    generator=g,
+                )
+                if self.pick_max_first and max_val not in val:
+                    val[torch.randint(0, self.seq_len, (1,), generator=g)] = max_val
+                yield self.cat_eos(val)
                 n_samples += 1
                 if self.max_length is not None and n_samples >= self.max_length:
                     return
@@ -494,6 +506,12 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
     parser.add_argument(
         "--summary-slug-extra", type=str, default="", help="Extra model description"
     )
+    parser.add_argument(
+        "--pick-max-first",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Pick the maximum value first, then fill in the rest of the sequence. Only meaningful for --max-of N > 2.",
+    )
     HOOKED_TRANSFORMER_CONFIG_ARGS = set(
         (
             "normalization_type",
@@ -518,6 +536,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             ("experiment", "use_log1p"): args.use_log1p,
             ("experiment", "optimizer"): args.optimizer,
             ("experiment", "summary_slug_extra"): args.summary_slug_extra,
+            ("experiment", "train_dataset_cfg", "pick_max_first"): args.pick_max_first,
         },
     ).update_from_args(args)
     config.experiment.model_config = update_HookedTransformerConfig_from_args(

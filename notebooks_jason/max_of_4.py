@@ -269,53 +269,88 @@ with torch.no_grad():
         model.W_K,
     )
 
-    W_E_query = query_direction @ W_E
-    W_E_query_reflect_alt = torch.stack(
-        [W_E_query * (row @ W_E_query) for row in W_E], dim=0
+    W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
+    W_E_pos_q = W_E + W_pos[-1][None, :]
+    W_E_size = size_direction @ W_E_pos_k
+    W_E_size_reflect_alt = torch.stack(
+        [W_E_size * (row @ W_E_size) for row in W_E_pos_k], dim=0
     )
-    W_E_query_reflect = (W_E @ W_E_query[:, None]) @ W_E_query[None, :]
-    assert torch.allclose(W_E_query_reflect, W_E_query_reflect_alt)
-    px.imshow(
-        (W_E + W_pos[-1][None, :])
-        @ W_Q[0, 0]
-        @ W_K[0, 0].T
-        @ (W_E + W_pos.mean(dim=0)[None, :]).T
-    ).show()
-    px.imshow(
-        (W_E_query_reflect + W_pos[-1][None, :])
-        @ W_Q[0, 0]
-        @ W_K[0, 0].T
-        @ (W_E + W_pos.mean(dim=0)[None, :]).T
-    ).show()
-    px.imshow(
-        (W_E - W_E_query_reflect)
-        @ W_Q[0, 0]
-        @ W_K[0, 0].T
-        @ (W_E + W_pos.mean(dim=0)[None, :]).T
-    ).show()
-    # print(W_E_query.shape, W_E_query_reflect.shape, W_E_query_reflect_alt.shape)
-    # px.imshow(W_E_query_reflect - W_E_query_reflect_alt).show()
+    W_E_size_reflect = (W_E_pos_k @ W_E_size[:, None]) @ W_E_size[None, :]
+    assert torch.allclose(W_E_size_reflect, W_E_size_reflect_alt)
+    if False:
+        px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T).show()
+        px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T).show()
+        px.imshow(
+            W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E_pos_k - W_E_size_reflect).T
+        ).show()
 
-    # W_E_err = torch.stack([row - W_E_query * (row @ W_E_query) for row in W_E], dim=0)
+    mat = W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T
+    U, S, Vh = torch.linalg.svd(mat)
+    U = U * S[None, : U.shape[1]].sqrt()
+    Vh = Vh * S[: Vh.shape[0], None].sqrt()
+    signs = torch.sign(U.mean(dim=-1))
+    U[:, 0] *= signs[0]
+    Vh[0, :] *= signs[0]
+    U[:, 1] *= signs[1]
+    Vh[1, :] *= signs[1]
+    U2 = U.clone()
+    U2[:, 2:] = 0
+    Vh2 = Vh.clone()
+    Vh2[2:, :] = 0
+    px.imshow(U2).show()
+    px.imshow(Vh2).show()
+    px.imshow(U2 @ Vh2).show()
+    px.imshow(mat - U2 @ Vh2).show()
+    U3, S3, V3 = torch.linalg.svd(mat - U2 @ Vh2)
+    analyze_svd(mat - U2 @ Vh2, scale_by_singular_value=True)
 
-    # W_E_from_query = query_direction[:, None] @ W_E_query[None, :]
-    # W_E_size = (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])) @ W_K[0, 0] @ W_Q[0, 0].T
-    # # compute matrix of W_E_query @ W_E_size
-    # W_E_query_W_E_size = W_E_query[:, None] @ W_E_size[None, :]
-    # px.imshow(W_E).show()
-    # px.imshow(W_E_from_query).show()
-    # px.imshow(W_E - W_E_from_query).show()
-    # gbmi.analysis_tools.decomp.analyze_svd(W_E, scale_by_singular_value=False)
-    # U, S, Vh = torch.linalg.svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T)
-    # gbmi.analysis_tools.decomp.analyze_svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T, scale_by_singular_value=False)
-    # for i, s in enumerate(S):
-    #     if i < U.shape[1]:
-    #         U[:, i] *= s
-    # for i in range(len(S), U.shape[1]):
-    #     U[:, i] = 0
-    # gbmi.analysis_tools.decomp.analyze_svd(W_E @ U, scale_by_singular_value=False)
-    # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E).T, scale_by_singular_value=True)
-    # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos[-1][None, :]).T, scale_by_singular_value=False)
+    # W_E_query = query_direction @ W_E
+    # W_E_query_reflect_alt = torch.stack(
+    #     [W_E_query * (row @ W_E_query) for row in W_E], dim=0
+    # )
+    # W_E_query_reflect = (W_E @ W_E_query[:, None]) @ W_E_query[None, :]
+    # assert torch.allclose(W_E_query_reflect, W_E_query_reflect_alt)
+    # px.imshow(
+    #     (W_E + W_pos[-1][None, :])
+    #     @ W_Q[0, 0]
+    #     @ W_K[0, 0].T
+    #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
+    # ).show()
+    # px.imshow(
+    #     (W_E_query_reflect + W_pos[-1][None, :])
+    #     @ W_Q[0, 0]
+    #     @ W_K[0, 0].T
+    #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
+    # ).show()
+    # px.imshow(
+    #     (W_E - W_E_query_reflect)
+    #     @ W_Q[0, 0]
+    #     @ W_K[0, 0].T
+    #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
+    # ).show()
+    # # print(W_E_query.shape, W_E_query_reflect.shape, W_E_query_reflect_alt.shape)
+    # # px.imshow(W_E_query_reflect - W_E_query_reflect_alt).show()
+
+    # # W_E_err = torch.stack([row - W_E_query * (row @ W_E_query) for row in W_E], dim=0)
+
+    # # W_E_from_query = query_direction[:, None] @ W_E_query[None, :]
+    # # W_E_size = (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])) @ W_K[0, 0] @ W_Q[0, 0].T
+    # # # compute matrix of W_E_query @ W_E_size
+    # # W_E_query_W_E_size = W_E_query[:, None] @ W_E_size[None, :]
+    # # px.imshow(W_E).show()
+    # # px.imshow(W_E_from_query).show()
+    # # px.imshow(W_E - W_E_from_query).show()
+    # # gbmi.analysis_tools.decomp.analyze_svd(W_E, scale_by_singular_value=False)
+    # # U, S, Vh = torch.linalg.svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T)
+    # # gbmi.analysis_tools.decomp.analyze_svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T, scale_by_singular_value=False)
+    # # for i, s in enumerate(S):
+    # #     if i < U.shape[1]:
+    # #         U[:, i] *= s
+    # # for i in range(len(S), U.shape[1]):
+    # #     U[:, i] = 0
+    # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ U, scale_by_singular_value=False)
+    # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E).T, scale_by_singular_value=True)
+    # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos[-1][None, :]).T, scale_by_singular_value=False)
 
 
 # W_E_qerr = W_E - (query_direction @ W_E @ W_Q @ W_K.T @ (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])))

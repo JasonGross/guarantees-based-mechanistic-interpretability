@@ -113,7 +113,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
 add_sub_1_head_CONFIG = f_g_config(fun=add_sub(113, 2), n_head=1, elements=2)
 add_sub_2_head_CONFIG = f_g_config(fun=add_sub(113, 2), n_head=2, elements=2)
 max_min_1_head_CONFIG = f_g_config(fun=max_min(113, 2), n_head=1, elements=2)
-max_min_1_head_CONFIG = f_g_config(fun=max_min(113, 2), n_head=2, elements=2)
+max_min_2_head_CONFIG = f_g_config(fun=max_min(113, 2), n_head=2, elements=2)
 
 
 class f_g_TrainingWrapper(TrainingWrapper[f_g]):
@@ -180,8 +180,9 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
         self.model.to(x.device, print_details=False)
 
         labels = FunDict[self.config.experiment.fun_name](
-            self.config.experiment.fun_index
-        ).reduce(list(x[:, : int((len(x[:, 0]) - 1) / 2)].T))
+            self.config.experiment.fun_index,
+            int((self.config.experiment.n_ctx - 1) / 2),
+        ).reduce_1(list(x[:, : int((len(x[:, 0]) - 1) / 2)].T))
         assert (
             len(labels.shape) == 1
         ), f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"

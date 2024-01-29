@@ -1,7 +1,18 @@
 # %%
+import importlib
+import gbmi.exp_max_of_n.analysis
+import gbmi.analysis_tools.decomp
+
+importlib.reload(gbmi.exp_max_of_n.analysis)
+importlib.reload(gbmi.analysis_tools.decomp)
+# %%
 from collections import defaultdict
-from gbmi.analysis_tools.decomp import analyze_svd
-from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
+from typing import Tuple
+from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
+from gbmi.exp_max_of_n.analysis import (
+    find_second_singular_contributions,
+    find_size_and_query_direction,
+)
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
@@ -27,10 +38,12 @@ from gbmi.utils.sequences import (
     generate_all_sequences_for_model,
 )
 import shelve
+from gbmi.verification_tools.decomp import factor_contribution
 
 from gbmi.verification_tools.general import EU_PU
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU, all_attention_scores
 from gbmi.verification_tools.utils import complexity_of
+from gbmi.utils.hashing import get_hash_ascii
 
 # %%
 cfg = Config(
@@ -53,7 +66,7 @@ cfg = Config(
         use_log1p=True,
         use_end_of_sequence=False,
         seq_len=4,
-        train_dataset_cfg=IterableDatasetCfg(pick_max_first=True),
+        train_dataset_cfg=IterableDatasetCfg(pick_max_first=False),
         test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
     ),
     deterministic=True,
@@ -61,6 +74,7 @@ cfg = Config(
     batch_size=128,
     train_for=(3000, "steps"),
 )
+cfg_hash = get_hash_ascii(cfg)
 # %%
 runtime, model = train_or_load_model(cfg, force="load")
 # %%
@@ -73,9 +87,9 @@ all_tokens_dataset = SequenceDataset(
     seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab
 )
 # %%
-run_batch_shelf_name = f"{__file__}.run_batch_shelf"
+run_batch_shelf_name = f"{__file__}.run_batch-{cfg_hash[:8]}_shelf"
 # %%
-loss_accuracy_memcache = {}
+loss_accuracy_memcache = {run_batch_shelf_name: {}}
 # %%
 batch_size = 4096  # 16_384 # 8182
 # Resetting the DataLoader without shuffle for consistent processing
@@ -91,11 +105,13 @@ with shelve.open(run_batch_shelf_name) as shelf:
     with torch.no_grad():
         for i in tqdm(range(0, len(all_tokens_dataset), batch_size)):
             try:
-                loss, accuracy, size = loss_accuracy_memcache[(i, batch_size)]
+                loss, accuracy, size = loss_accuracy_memcache[run_batch_shelf_name][
+                    (i, batch_size)
+                ]
             except KeyError:
                 key = f"{i}_{batch_size}"
                 try:
-                    loss, accuracy, size = loss_accuracy_memcache[
+                    loss, accuracy, size = loss_accuracy_memcache[run_batch_shelf_name][
                         (i, batch_size)
                     ] = shelf[key]
                 except KeyError:
@@ -106,7 +122,9 @@ with shelve.open(run_batch_shelf_name) as shelf:
                         batch, return_accuracy=True, log_output=False
                     )
                     loss = loss.item()
-                    loss_accuracy_memcache[(i, batch_size)] = shelf[key] = (
+                    loss_accuracy_memcache[run_batch_shelf_name][
+                        (i, batch_size)
+                    ] = shelf[key] = (
                         loss,
                         accuracy,
                         size,
@@ -257,11 +275,27 @@ display_basic_interpretation(model)
     query_direction,
     size_query_singular_value,
 ) = find_size_and_query_direction(model)
+(second_key_direction, second_key_singular_value), (
+    second_query_direction,
+    second_query_singular_value,
+) = find_second_singular_contributions(model, size_direction, query_direction)
+(W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
+    model.W_Q[0, 0]
+)
+(W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
+    model.W_K[0, 0]
+)
 # %%
 import importlib
 import gbmi.analysis_tools.decomp
+import gbmi.verification_tools.decomp
 
+importlib.reload(gbmi.verification_tools.decomp)
 importlib.reload(gbmi.analysis_tools.decomp)
+from gbmi.verification_tools.decomp import factor_contribution
+
+sanity_check: bool = True
+
 with torch.no_grad():
     W_E, W_pos, W_Q, W_K = (
         model.W_E,
@@ -271,90 +305,349 @@ with torch.no_grad():
     )
 
     W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
+    W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
     W_E_pos_q = W_E + W_pos[-1][None, :]
-    W_E_size = size_direction @ W_E_pos_k
-    W_E_size_reflect_alt = torch.stack(
-        [W_E_size * (row @ W_E_size) for row in W_E_pos_k], dim=0
-    )
-    W_E_size_reflect = (W_E_pos_k @ W_E_size[:, None]) @ W_E_size[None, :]
-    print([row @ W_E_size for row in W_E_pos_k - W_E_size_reflect_alt])
-    assert torch.allclose(W_E_size_reflect, W_E_size_reflect_alt)
-    if False:
-        px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T).show()
-        px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T).show()
-        px.imshow(
-            W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E_pos_k - W_E_size_reflect).T
-        ).show()
+    size_direction_alt, (W_E_size, W_E_size_err) = factor_contribution(
+        W_E_pos_k, size_direction, sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    query_direction_alt, (W_E_query, W_E_query_err) = factor_contribution(
+        W_E_pos_q, query_direction, sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    EQKE_query_size = (
+        query_direction[:, None] @ size_direction[None, :] * size_query_singular_value
+    )  # O(d_vocab * d_vocab)
+    if sanity_check:
+        EQKE_check = W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
+        assert torch.allclose(EQKE_check, EQKE_query_size), [
+            px.imshow(EQKE_check).show(),
+            px.imshow(EQKE_query_size).show(),
+            px.imshow((EQKE_query_size - EQKE_check).abs()).show(),
+        ]
+    err_accumulator = torch.zeros_like(EQKE_query_size)  # O(d_vocab^2)
+    EQKE_query_cross_err = (
+        query_direction[:, None]
+        @ (query_direction_alt @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T)[None, :]
+    )  # O(d_vocab * d_model)
+    err_accumulator += EQKE_query_cross_err
+    if sanity_check:
+        EQKE_query_cross_err_check = (
+            W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T
+        )
+        assert torch.allclose(
+            EQKE_query_cross_err_check, EQKE_query_cross_err, atol=1e-4
+        ), [
+            px.imshow(EQKE_query_cross_err_check).show(),
+            px.imshow(EQKE_query_cross_err).show(),
+            px.imshow((EQKE_query_cross_err - EQKE_query_cross_err_check).abs()).show(),
+        ]
+    EQKE_err_cross_size = (
+        W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ size_direction_alt
+    )[:, None] @ size_direction[
+        None, :
+    ]  # O(d_vocab * d_model)
+    err_accumulator += EQKE_err_cross_size
+    if sanity_check:
+        EQKE_err_cross_size_check = W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
+        assert torch.allclose(
+            EQKE_err_cross_size_check, EQKE_err_cross_size, atol=1e-6
+        ), [
+            px.imshow(EQKE_err_cross_size_check).show(),
+            px.imshow(EQKE_err_cross_size).show(),
+            px.imshow((EQKE_err_cross_size - EQKE_err_cross_size_check).abs()).show(),
+        ]
 
-    # mat = W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T
-    # U, S, Vh = torch.linalg.svd(mat)
-    # U = U * S[None, : U.shape[1]].sqrt()
-    # Vh = Vh * S[: Vh.shape[0], None].sqrt()
-    # signs = torch.sign(U.mean(dim=-1))
-    # U[:, 0] *= signs[0]
-    # Vh[0, :] *= signs[0]
-    # U[:, 1] *= signs[1]
-    # Vh[1, :] *= signs[1]
-    # U2 = U.clone()
-    # U2[:, 1:] = 0
-    # Vh2 = Vh.clone()
-    # Vh2[1:, :] = 0
-    # px.imshow(U2).show()
-    # px.imshow(Vh2).show()
-    # px.imshow(U2 @ Vh2).show()
-    # px.imshow(mat - U2 @ Vh2).show()
-    # U3, S3, V3 = torch.linalg.svd(mat - U2 @ Vh2)
-    # analyze_svd(mat - U2 @ Vh2, scale_by_singular_value=True)
+    # This is a differently-shaped error term, and will be treated separately
+    EQKE_pos_err = W_E_pos_q @ (
+        W_Q[0, 0] @ (W_K[0, 0].T @ W_pos_err.T)
+    )  # O(d_vocab * d_model * n_ctx)
 
-    # W_E_query = query_direction @ W_E
-    # W_E_query_reflect_alt = torch.stack(
-    #     [W_E_query * (row @ W_E_query) for row in W_E], dim=0
-    # )
-    # W_E_query_reflect = (W_E @ W_E_query[:, None]) @ W_E_query[None, :]
-    # assert torch.allclose(W_E_query_reflect, W_E_query_reflect_alt)
-    # px.imshow(
-    #     (W_E + W_pos[-1][None, :])
-    #     @ W_Q[0, 0]
-    #     @ W_K[0, 0].T
-    #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
-    # ).show()
-    # px.imshow(
-    #     (W_E_query_reflect + W_pos[-1][None, :])
-    #     @ W_Q[0, 0]
-    #     @ W_K[0, 0].T
-    #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
-    # ).show()
-    # px.imshow(
-    #     (W_E - W_E_query_reflect)
-    #     @ W_Q[0, 0]
-    #     @ W_K[0, 0].T
-    #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
-    # ).show()
-    # # print(W_E_query.shape, W_E_query_reflect.shape, W_E_query_reflect_alt.shape)
-    # # px.imshow(W_E_query_reflect - W_E_query_reflect_alt).show()
-
-    # # W_E_err = torch.stack([row - W_E_query * (row @ W_E_query) for row in W_E], dim=0)
-
-    # # W_E_from_query = query_direction[:, None] @ W_E_query[None, :]
-    # # W_E_size = (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])) @ W_K[0, 0] @ W_Q[0, 0].T
-    # # # compute matrix of W_E_query @ W_E_size
-    # # W_E_query_W_E_size = W_E_query[:, None] @ W_E_size[None, :]
-    # # px.imshow(W_E).show()
-    # # px.imshow(W_E_from_query).show()
-    # # px.imshow(W_E - W_E_from_query).show()
-    # # gbmi.analysis_tools.decomp.analyze_svd(W_E, scale_by_singular_value=False)
-    # # U, S, Vh = torch.linalg.svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T)
-    # # gbmi.analysis_tools.decomp.analyze_svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T, scale_by_singular_value=False)
-    # # for i, s in enumerate(S):
-    # #     if i < U.shape[1]:
-    # #         U[:, i] *= s
-    # # for i in range(len(S), U.shape[1]):
-    # #     U[:, i] = 0
-    # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ U, scale_by_singular_value=False)
-    # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E).T, scale_by_singular_value=True)
-    # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos[-1][None, :]).T, scale_by_singular_value=False)
-
-
-# W_E_qerr = W_E - (query_direction @ W_E @ W_Q @ W_K.T @ (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])))
-# px.imshow(W_E).show()
+    # We'd like a faster way to estimate the quantity (EQKE_err_err_check.max(dim=-1) - EQKE_err_err_check.min(dim=-1)).max()
+    # The naive computation is O(d_vocab^2 * d_model), and we can only get this down to O(d_vocab * d_model^2) by using SVD
+    # To improve our error bounds a bit, first we again peel off the leading singular values
+    second_key_direction_alt, (W_E_second_key, W_E_size_err2) = factor_contribution(
+        W_E_size_err, second_key_direction, sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    second_query_direction_alt, (
+        W_E_second_query,
+        W_E_query_err2,
+    ) = factor_contribution(
+        W_E_query_err, second_query_direction, sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    EQKE_err_second_query_key_singular_value = (
+        (second_query_direction @ W_E_query_err @ W_Q[0, 0])
+        @ (second_key_direction @ W_E_size_err @ W_K[0, 0])
+    ).item()  # O(d_vocab * d_model)
+    EQKE_err_second_query_key = (
+        second_query_direction[:, None]
+        @ second_key_direction[None, :]
+        * EQKE_err_second_query_key_singular_value
+    )  # O(d_vocab * d_vocab)
+    if sanity_check:
+        EQKE_err_second_query_key_check = (
+            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T
+        )
+        assert torch.allclose(
+            EQKE_err_second_query_key_check, EQKE_err_second_query_key
+        ), [
+            px.imshow(EQKE_err_second_query_key_check).show(),
+            px.imshow(EQKE_err_second_query_key).show(),
+            px.imshow(
+                (EQKE_err_second_query_key - EQKE_err_second_query_key_check).abs()
+            ).show(),
+        ]
+    err_accumulator += EQKE_err_second_query_key
+    EQKE_err_second_query_cross_err = (
+        second_query_direction[:, None]
+        @ (second_query_direction_alt @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T)[
+            None, :
+        ]
+    )  # O(d_vocab * d_model)
+    err_accumulator += EQKE_err_second_query_cross_err
+    if sanity_check:
+        EQKE_err_second_query_cross_err_check = (
+            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T
+        )
+        assert torch.allclose(
+            EQKE_err_second_query_cross_err_check,
+            EQKE_err_second_query_cross_err,
+            atol=1e-4,
+        ), [
+            px.imshow(EQKE_err_second_query_cross_err_check).show(),
+            px.imshow(EQKE_err_second_query_cross_err).show(),
+            px.imshow(
+                (
+                    EQKE_err_second_query_cross_err
+                    - EQKE_err_second_query_cross_err_check
+                ).abs()
+            ).show(),
+        ]
+    EQKE_err_err_cross_second_key = (
+        W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ second_key_direction_alt
+    )[:, None] @ second_key_direction[
+        None, :
+    ]  # O(d_vocab * d_model)
+    err_accumulator += EQKE_err_err_cross_second_key
+    if sanity_check:
+        EQKE_err_err_cross_second_key_check = (
+            W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T
+        )
+        assert torch.allclose(
+            EQKE_err_err_cross_second_key_check,
+            EQKE_err_err_cross_second_key,
+            atol=1e-6,
+        ), [
+            px.imshow(EQKE_err_err_cross_second_key_check).show(),
+            px.imshow(EQKE_err_err_cross_second_key).show(),
+            px.imshow(
+                (
+                    EQKE_err_err_cross_second_key - EQKE_err_err_cross_second_key_check
+                ).abs()
+            ).show(),
+        ]
+    px.imshow(err_accumulator).show()
 # %%
+# HERE
+#     EQKE_err_err_query_second_key_second = (second_query_direction,)
+#     second_query_singular_value,
+
+#     analyze_svd(W_E_query_err, scale_by_singular_value=False)
+#     analyze_svd(W_E_size_err, scale_by_singular_value=False)
+#     analyze_svd(W_E_pos_k, scale_by_singular_value=False)
+#     analyze_svd(W_E_pos_q, scale_by_singular_value=False)
+#     analyze_svd(W_Q[0, 0], scale_by_singular_value=False)
+#     analyze_svd(W_K[0, 0], scale_by_singular_value=False)
+#     _, SEq, _ = torch.linalg.svd(W_E_query_err)
+#     _, SEs, _ = torch.linalg.svd(W_E_size_err)
+#     _,
+#     if sanity_check:
+#         EQKE_err_err_check = (
+#             W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T
+#         )  # O(d_vocab^2 * d_model)
+#     # EQKE_query_cross_err =
+#     # EQKE_query_cross_err =
+#     # EQKE_err_cross_size
+#     # EQKQ_err_err =
+
+#     # %%
+
+#     W_E_size = size_direction @ W_E_pos_k
+#     W_E_size = W_E_size / W_E_size.norm(dim=-1, keepdim=True)
+
+#     W_E_size_reflect_alt = torch.stack(
+#         [W_E_size * (row @ W_E_size) for row in W_E_pos_k], dim=0
+#     )
+#     W_E_size_reflect = (W_E_pos_k @ W_E_size[:, None]) @ W_E_size[None, :]
+#     # torch.set_printoptions(threshold=5000, precision=10)
+#     # print(f"W_E_pos_k={W_E_pos_k};\nW_E_pos_q={W_E_pos_q};\nW_Q={W_Q};\nW_K={W_K}")
+#     # torch.set_printoptions() # reset display
+#     # print([row @ W_E_size for row in W_E_pos_k - W_E_size_reflect_alt])
+#     assert torch.allclose(W_E_size_reflect, W_E_size_reflect_alt)
+#     W_E_query = query_direction @ W_E_pos_q
+#     W_E_query = W_E_query / W_E_query.norm(dim=-1, keepdim=True)
+#     W_E_query_reflect_alt = torch.stack(
+#         [W_E_query * (row @ W_E_query) for row in W_E_pos_q], dim=0
+#     )
+#     W_E_query_reflect = (W_E_pos_q @ W_E_query[:, None]) @ W_E_query[None, :]
+#     assert torch.allclose(W_E_query_reflect, W_E_query_reflect_alt)
+#     W_E_q_err = W_E_pos_q - W_E_query_reflect
+#     W_E_k_err = W_E_pos_k - W_E_size_reflect
+#     (W_E_q_err_q, W_E_q_err_s, W_E_q_err_k), (
+#         W_E_q_err_contrib,
+#         W_E_q_err_resid,
+#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_E_q_err)
+#     (W_E_k_err_k, W_E_k_err_s, W_E_k_err_q), (
+#         W_E_k_err_contrib,
+#         W_E_k_err_resid,
+#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_E_k_err)
+#     (W_Q_q, W_Q_s, W_Q_k), (
+#         W_Q_contrib,
+#         W_Q_resid,
+#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_Q[0, 0])
+#     (W_K_k, W_K_s, W_K_q), (
+#         W_K_contrib,
+#         W_K_resid,
+#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_K[0, 0])
+#     matrices = (
+#         ("E_q_err", W_E_q_err_resid),
+#         ("E_k_err", W_E_k_err_resid),
+#         ("Q", W_Q_resid),
+#         ("K", W_K_resid),
+#     )
+#     print(
+#         "(val - contrib).abs().max():        "
+#         + ", ".join(f"{n}: {m.abs().max().item():2.4f}" for n, m in matrices)
+#     )
+#     print(
+#         "(val - contrib).matrix_norm(ord=2): "
+#         + ", ".join(
+#             f"{n}: {torch.linalg.matrix_norm(m, ord=2).item():2.4f}"
+#             for n, m in matrices
+#         )
+#     )
+#     print(
+#         "(diff.T @ diff).trace().sqrt():     "
+#         + ", ".join(f"{n}: {(m.T @ m).trace().sqrt().item():2.4f}" for n, m in matrices)
+#     )
+#     _, S, _ = torch.linalg.svd(W_E_q_err_resid)
+#     print((S.norm() ** 2, (W_E_q_err_resid.T @ W_E_q_err_resid).trace()))
+#     W_E_q_err_resid_s, _ = W_E_q_err_resid.sort(dim=0)
+#     W_E_q_err_resid_ss, _ = W_E_q_err_resid_s.sort(dim=1)
+#     analyze_svd(W_E_q_err_resid, scale_by_singular_value=False)
+#     analyze_svd(W_E_q_err_resid_s, scale_by_singular_value=False)
+#     analyze_svd(W_E_q_err_resid_ss, scale_by_singular_value=False)
+
+#     # px.imshow(W_E_q_err_contrib).show()
+#     # px.imshow(W_E_q_err_resid).show()
+#     # analyze_svd(W_E_q_err_resid, scale_by_singular_value=False)
+
+#     # analyze_svd(W_Q, descr="Q", scale_by_singular_value=False)
+#     # analyze_svd(W_K, descr="K", scale_by_singular_value=False)
+#     if False:
+#         px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T).show()
+#         px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T).show()
+#         px.imshow(
+#             W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E_pos_k - W_E_size_reflect).T
+#         ).show()
+#     if True:
+#         px.imshow(
+#             W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T, title="EQKE"
+#         ).show()
+#         px.imshow(
+#             W_E_query_reflect @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T,
+#             title="queryQKsize",
+#         ).show()
+#         px.imshow(
+#             W_E_query_reflect @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T
+#             + W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T
+#             + W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E_pos_k - W_E_size_reflect).T,
+#             title="allerror",
+#         ).show()
+#         px.imshow(
+#             W_E_query_reflect @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T,
+#             title="queryQKerror",
+#         ).show()
+#         px.imshow(
+#             W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T,
+#             title="errorQKsize",
+#         ).show()
+#         px.imshow(
+#             W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T,
+#             title="errorQKerror",
+#         ).show()
+#         analyze_svd(
+#             W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T,
+#             scale_by_singular_value=False,
+#         )
+
+#     # mat = W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T
+#     # U, S, Vh = torch.linalg.svd(mat)
+#     # U = U * S[None, : U.shape[1]].sqrt()
+#     # Vh = Vh * S[: Vh.shape[0], None].sqrt()
+#     # signs = torch.sign(U.mean(dim=-1))
+#     # U[:, 0] *= signs[0]
+#     # Vh[0, :] *= signs[0]
+#     # U[:, 1] *= signs[1]
+#     # Vh[1, :] *= signs[1]
+#     # U2 = U.clone()
+#     # U2[:, 1:] = 0
+#     # Vh2 = Vh.clone()
+#     # Vh2[1:, :] = 0
+#     # px.imshow(U2).show()
+#     # px.imshow(Vh2).show()
+#     # px.imshow(U2 @ Vh2).show()
+#     # px.imshow(mat - U2 @ Vh2).show()
+#     # U3, S3, V3 = torch.linalg.svd(mat - U2 @ Vh2)
+#     # analyze_svd(mat - U2 @ Vh2, scale_by_singular_value=True)
+
+#     # W_E_query = query_direction @ W_E
+#     # W_E_query_reflect_alt = torch.stack(
+#     #     [W_E_query * (row @ W_E_query) for row in W_E], dim=0
+#     # )
+#     # W_E_query_reflect = (W_E @ W_E_query[:, None]) @ W_E_query[None, :]
+#     # assert torch.allclose(W_E_query_reflect, W_E_query_reflect_alt)
+#     # px.imshow(
+#     #     (W_E + W_pos[-1][None, :])
+#     #     @ W_Q[0, 0]
+#     #     @ W_K[0, 0].T
+#     #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
+#     # ).show()
+#     # px.imshow(
+#     #     (W_E_query_reflect + W_pos[-1][None, :])
+#     #     @ W_Q[0, 0]
+#     #     @ W_K[0, 0].T
+#     #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
+#     # ).show()
+#     # px.imshow(
+#     #     (W_E - W_E_query_reflect)
+#     #     @ W_Q[0, 0]
+#     #     @ W_K[0, 0].T
+#     #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
+#     # ).show()
+#     # # print(W_E_query.shape, W_E_query_reflect.shape, W_E_query_reflect_alt.shape)
+#     # # px.imshow(W_E_query_reflect - W_E_query_reflect_alt).show()
+
+#     # # W_E_err = torch.stack([row - W_E_query * (row @ W_E_query) for row in W_E], dim=0)
+
+#     # # W_E_from_query = query_direction[:, None] @ W_E_query[None, :]
+#     # # W_E_size = (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])) @ W_K[0, 0] @ W_Q[0, 0].T
+#     # # # compute matrix of W_E_query @ W_E_size
+#     # # W_E_query_W_E_size = W_E_query[:, None] @ W_E_size[None, :]
+#     # # px.imshow(W_E).show()
+#     # # px.imshow(W_E_from_query).show()
+#     # # px.imshow(W_E - W_E_from_query).show()
+#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E, scale_by_singular_value=False)
+#     # # U, S, Vh = torch.linalg.svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T)
+#     # # gbmi.analysis_tools.decomp.analyze_svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T, scale_by_singular_value=False)
+#     # # for i, s in enumerate(S):
+#     # #     if i < U.shape[1]:
+#     # #         U[:, i] *= s
+#     # # for i in range(len(S), U.shape[1]):
+#     # #     U[:, i] = 0
+#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ U, scale_by_singular_value=False)
+#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E).T, scale_by_singular_value=True)
+#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos[-1][None, :]).T, scale_by_singular_value=False)
+
+
+# # W_E_qerr = W_E - (query_direction @ W_E @ W_Q @ W_K.T @ (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])))
+# # px.imshow(W_E).show()
+# # %%

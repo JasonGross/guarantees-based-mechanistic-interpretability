@@ -22,6 +22,7 @@ from collections.abc import Collection
 from typing import Any, Callable, Mapping, Optional, TypeVar, Union
 from typing import Dict
 from functools import partial
+import base64
 
 import torch
 
@@ -66,6 +67,12 @@ def get_hash(thing: object, exclude_filter: ExcludeFilter = None) -> bytes:
         _json_dumps(thing, exclude_filter=exclude_filter).encode("utf-8")
     ).digest()
     return prefix + digest[:-1]
+
+
+def get_hash_ascii(thing: object, exclude_filter: ExcludeFilter = None) -> str:
+    return base64.b64encode(get_hash(thing, exclude_filter=exclude_filter)).decode(
+        "ascii"
+    )
 
 
 def _json_dumps(thing: object, exclude_filter: ExcludeFilter = None) -> str:

@@ -1,5 +1,8 @@
+from typing import Literal, Tuple, Union, overload
 import numpy as np
 import torch
+from torch import Tensor
+from jaxtyping import Float
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 from transformer_lens import utils as utils
@@ -95,3 +98,25 @@ def analyze_svd(
     # line(S, title=f"Singular Values{descr}")
     # imshow(U, title=f"Principal Components on U{descr}")
     # imshow(Vh, title=f"Principal Components on Vh{descr}")
+
+
+@torch.no_grad()
+def split_svd_contributions(
+    M: Float[Tensor, "r c"], n: int = 1  # noqa: F722
+) -> Tuple[
+    Tuple[
+        Float[Tensor, "r n"],  # noqa: F722
+        Float[Tensor, "n"],  # noqa: F821
+        Float[Tensor, "n c"],  # noqa: F722
+    ],
+    Tuple[Float[Tensor, "r c"], Float[Tensor, "r c"]],  # noqa: F722
+]:
+    """
+    For U, S, Vh = torch.linalg.svd(M), return the first n components of (U, S, Vh) and (contrib, residual) where contrib = U @ S[:, None] @ Vh
+    """
+    U, S, Vh = torch.linalg.svd(M)
+    U = U[:, :n]
+    Vh = Vh[:n, :]
+    S = S[:n]
+    contrib = U @ S[:, None] @ Vh
+    return (U, S, Vh), (contrib, M - contrib)

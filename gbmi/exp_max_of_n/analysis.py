@@ -9,6 +9,7 @@ from scipy.optimize import curve_fit
 from transformer_lens import HookedTransformer, utils as utils
 
 import gbmi.analysis_tools
+from gbmi.analysis_tools.decomp import analyze_svd
 import gbmi.utils
 from gbmi.analysis_tools import plot
 from gbmi.analysis_tools.fit import (
@@ -21,6 +22,7 @@ from gbmi.analysis_tools.fit import (
     inv_sigmoid_func,
 )
 from gbmi.analysis_tools.plot import imshow, line
+from gbmi.verification_tools.decomp import factor_contribution
 
 
 @torch.no_grad()
@@ -118,6 +120,56 @@ def find_query_direction(model: HookedTransformer, **kwargs):
     Approximates the query direction of the model.
     """
     return find_size_and_query_direction(model, **kwargs)[1]
+
+
+@torch.no_grad()
+def find_second_singular_contributions(
+    model: HookedTransformer,
+    size_direction: torch.Tensor,
+    query_direction: torch.Tensor,
+    sanity_check: bool = True,
+    plot_heatmaps: bool = False,
+    renderer: Optional[str] = None,
+) -> Tuple[Tuple[torch.Tensor, float], Tuple[torch.Tensor, float]]:
+    """
+    Finds the most significant singualar contribution to W_E + W_pos.mean(dim=0), and to W_E + W_pos[-1], after size_direction and query_direction have been removed.
+
+    Returns ((query, singular value), (key, singular value))
+    """
+    W_E, W_pos, W_Q, W_K = (
+        model.W_E,
+        model.W_pos,
+        model.W_Q,
+        model.W_K,
+    )
+
+    W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
+    W_E_pos_q = W_E + W_pos[-1][None, :]
+    _size_direction_alt, (_W_E_size, W_E_size_err) = factor_contribution(
+        W_E_pos_k, size_direction, sanity_check=sanity_check
+    )
+    _query_direction_alt, (_W_E_query, W_E_query_err) = factor_contribution(
+        W_E_pos_q, query_direction, sanity_check=sanity_check
+    )
+    if plot_heatmaps:
+        analyze_svd(
+            W_E_size_err,
+            descr="W_E_size_err",
+            renderer=renderer,
+            scale_by_singular_value=False,
+        )
+        analyze_svd(
+            W_E_query_err,
+            descr="W_E_query_err",
+            renderer=renderer,
+            scale_by_singular_value=False,
+        )
+    W_E_size_err_U, S_size, _ = torch.linalg.svd(W_E_size_err)
+    W_E_query_err_U, S_query, _ = torch.linalg.svd(W_E_query_err)
+    return (W_E_size_err_U[:, 0], S_size[0].item()), (
+        W_E_query_err_U[:, 0],
+        S_query[0].item(),
+    )
 
 
 def display_size_direction_stats(

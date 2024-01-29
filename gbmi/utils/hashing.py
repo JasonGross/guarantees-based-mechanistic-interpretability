@@ -25,6 +25,7 @@ from functools import partial
 import base64
 
 import torch
+import numpy
 
 # Implemented for https://github.com/lemon24/reader/issues/179
 
@@ -98,6 +99,8 @@ def _json_default(thing: object, exclude_filter: ExcludeFilter = None) -> Any:
         return thing.isoformat(timespec="microseconds")
     elif isinstance(thing, torch.device) or isinstance(thing, torch.dtype):
         return str(thing)
+    elif isinstance(thing, torch.Tensor) or isinstance(thing, numpy.ndarray):
+        return _json_dumps(thing.tolist(), exclude_filter=exclude_filter)
     raise TypeError(f"Object of type {type(thing).__name__} is not JSON serializable")
 
 

@@ -109,7 +109,7 @@ def getattr_or_exclude(
         return None
     # now we exclude None and empty collections
     value = getattr(thing, field_name)
-    if value is None or (not value and isinstance(value, Collection)):
+    if value is None or (isinstance(value, Collection) and len(value) == 0):
         return None
 
     # if the exclude filter contains no exclusions, we're done

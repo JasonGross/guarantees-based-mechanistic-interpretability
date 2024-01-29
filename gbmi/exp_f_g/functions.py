@@ -55,7 +55,7 @@ class max_min(Fun):
 
         """
         self.lookup = []
-        
+
         self.lookup = torch.tensor(self.lookup).to("cuda")
         """
 

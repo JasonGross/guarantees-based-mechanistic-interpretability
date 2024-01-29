@@ -296,6 +296,28 @@ from gbmi.verification_tools.decomp import factor_contribution
 
 sanity_check: bool = True
 
+
+@torch.no_grad()
+def assert_allclose_or_show(m1: Tensor, m2: Tensor, **kwargs):
+    assert torch.allclose(m1, m2, **kwargs), [
+        px.imshow(m1).show(),
+        px.imshow(m2).show(),
+        px.imshow((m1 - m2).abs()).show(),
+    ]
+
+
+@torch.no_grad()
+def maybe_assert_allclose_or_show(
+    m1: Tensor, m2: Tensor, do_assert: bool = True, **kwargs
+):
+    if do_assert:
+        assert torch.allclose(m1, m2, **kwargs), [
+            px.imshow(m1).show(),
+            px.imshow(m2).show(),
+            px.imshow((m1 - m2).abs()).show(),
+        ]
+
+
 with torch.no_grad():
     W_E, W_pos, W_Q, W_K = (
         model.W_E,
@@ -317,12 +339,9 @@ with torch.no_grad():
         query_direction[:, None] @ size_direction[None, :] * size_query_singular_value
     )  # O(d_vocab * d_vocab)
     if sanity_check:
-        EQKE_check = W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
-        assert torch.allclose(EQKE_check, EQKE_query_size), [
-            px.imshow(EQKE_check).show(),
-            px.imshow(EQKE_query_size).show(),
-            px.imshow((EQKE_query_size - EQKE_check).abs()).show(),
-        ]
+        assert_allclose_or_show(
+            EQKE_query_size, W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
+        )
     err_accumulator = torch.zeros_like(EQKE_query_size)  # O(d_vocab^2)
     EQKE_query_cross_err = (
         query_direction[:, None]
@@ -330,16 +349,11 @@ with torch.no_grad():
     )  # O(d_vocab * d_model)
     err_accumulator += EQKE_query_cross_err
     if sanity_check:
-        EQKE_query_cross_err_check = (
-            W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T
+        assert_allclose_or_show(
+            EQKE_query_cross_err,
+            W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T,
+            atol=1e-4,
         )
-        assert torch.allclose(
-            EQKE_query_cross_err_check, EQKE_query_cross_err, atol=1e-4
-        ), [
-            px.imshow(EQKE_query_cross_err_check).show(),
-            px.imshow(EQKE_query_cross_err).show(),
-            px.imshow((EQKE_query_cross_err - EQKE_query_cross_err_check).abs()).show(),
-        ]
     EQKE_err_cross_size = (
         W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ size_direction_alt
     )[:, None] @ size_direction[
@@ -347,14 +361,11 @@ with torch.no_grad():
     ]  # O(d_vocab * d_model)
     err_accumulator += EQKE_err_cross_size
     if sanity_check:
-        EQKE_err_cross_size_check = W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
-        assert torch.allclose(
-            EQKE_err_cross_size_check, EQKE_err_cross_size, atol=1e-6
-        ), [
-            px.imshow(EQKE_err_cross_size_check).show(),
-            px.imshow(EQKE_err_cross_size).show(),
-            px.imshow((EQKE_err_cross_size - EQKE_err_cross_size_check).abs()).show(),
-        ]
+        assert_allclose_or_show(
+            EQKE_err_cross_size,
+            W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T,
+            atol=1e-6,
+        )
 
     # This is a differently-shaped error term, and will be treated separately
     EQKE_pos_err = W_E_pos_q @ (
@@ -383,18 +394,10 @@ with torch.no_grad():
         * EQKE_err_second_query_key_singular_value
     )  # O(d_vocab * d_vocab)
     if sanity_check:
-        EQKE_err_second_query_key_check = (
-            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T
+        assert_allclose_or_show(
+            EQKE_err_second_query_key,
+            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T,
         )
-        assert torch.allclose(
-            EQKE_err_second_query_key_check, EQKE_err_second_query_key
-        ), [
-            px.imshow(EQKE_err_second_query_key_check).show(),
-            px.imshow(EQKE_err_second_query_key).show(),
-            px.imshow(
-                (EQKE_err_second_query_key - EQKE_err_second_query_key_check).abs()
-            ).show(),
-        ]
     err_accumulator += EQKE_err_second_query_key
     EQKE_err_second_query_cross_err = (
         second_query_direction[:, None]
@@ -404,23 +407,11 @@ with torch.no_grad():
     )  # O(d_vocab * d_model)
     err_accumulator += EQKE_err_second_query_cross_err
     if sanity_check:
-        EQKE_err_second_query_cross_err_check = (
-            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T
-        )
-        assert torch.allclose(
-            EQKE_err_second_query_cross_err_check,
+        assert_allclose_or_show(
             EQKE_err_second_query_cross_err,
+            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T,
             atol=1e-4,
-        ), [
-            px.imshow(EQKE_err_second_query_cross_err_check).show(),
-            px.imshow(EQKE_err_second_query_cross_err).show(),
-            px.imshow(
-                (
-                    EQKE_err_second_query_cross_err
-                    - EQKE_err_second_query_cross_err_check
-                ).abs()
-            ).show(),
-        ]
+        )
     EQKE_err_err_cross_second_key = (
         W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ second_key_direction_alt
     )[:, None] @ second_key_direction[
@@ -428,23 +419,132 @@ with torch.no_grad():
     ]  # O(d_vocab * d_model)
     err_accumulator += EQKE_err_err_cross_second_key
     if sanity_check:
-        EQKE_err_err_cross_second_key_check = (
-            W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T
-        )
-        assert torch.allclose(
-            EQKE_err_err_cross_second_key_check,
+        assert_allclose_or_show(
             EQKE_err_err_cross_second_key,
+            W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T,
             atol=1e-6,
-        ), [
-            px.imshow(EQKE_err_err_cross_second_key_check).show(),
-            px.imshow(EQKE_err_err_cross_second_key).show(),
-            px.imshow(
-                (
-                    EQKE_err_err_cross_second_key - EQKE_err_err_cross_second_key_check
-                ).abs()
-            ).show(),
+        )
+
+    # Now we peel off the first singular vectors of W_Q and W_K
+    # W_Q_direction_alt, (W_Q_low_rank, W_Q_err) = factor_contribution(
+    #     W_Q[0, 0], W_Q_U.squeeze(), sanity_check=sanity_check
+    # )  # O(d_vocab * d_vocab)
+    # W_K_direction_alt, (W_K_low_rank, W_K_err) = factor_contribution(
+    #     W_K[0, 0], W_K_U.squeeze(), sanity_check=sanity_check
+    # )  # O(d_vocab * d_vocab)
+    EQKE_err_err_err__first_singular = (
+        (W_E_query_err2 @ W_Q_U)
+        @ (W_Q_Vh @ W_K_Vh.T * W_Q_S * W_K_S)
+        @ (W_E_size_err2 @ W_K_U).T
+    )  # O(d_vocab * d_vocab)
+    err_accumulator += EQKE_err_err_err__first_singular
+    if sanity_check:
+        assert_allclose_or_show(
+            EQKE_err_err_err__first_singular,
+            W_E_query_err2
+            @ (W_Q_U @ W_Q_Vh * W_Q_S)
+            @ (W_K_U @ W_K_Vh * W_K_S).T
+            @ W_E_size_err2.T,
+            atol=1e-6,
+        )
+
+    W_Q_err = W_Q[0, 0] - W_Q_U @ W_Q_Vh * W_Q_S
+    W_K_err = W_K[0, 0] - W_K_U @ W_K_Vh * W_K_S
+
+    EQKE_err_err_err__Q_cross_err = (W_E_query_err2 @ W_Q_U) @ (
+        (W_Q_S * W_Q_Vh @ W_K_err.T) @ W_E_size_err2.T
+    )  # O(d_vocab * d_vocab)
+    err_accumulator += EQKE_err_err_err__Q_cross_err
+    if sanity_check:
+        assert_allclose_or_show(
+            EQKE_err_err_err__Q_cross_err,
+            W_E_query_err2 @ (W_Q_U @ W_Q_Vh * W_Q_S) @ W_K_err.T @ W_E_size_err2.T,
+            atol=1e-6,
+        )
+    EQKQ_err_err_err__err_cross_K = W_E_query_err2 @ (
+        W_Q_err @ (W_K_S * W_K_Vh.T @ (W_K_U.T @ W_E_size_err2.T))
+    )  # O(d_vocab * d_vocab)
+    err_accumulator += EQKQ_err_err_err__err_cross_K
+    if sanity_check:
+        assert_allclose_or_show(
+            EQKQ_err_err_err__err_cross_K,
+            W_E_query_err2 @ W_Q_err @ (W_K_U @ W_K_Vh * W_K_S).T @ W_E_size_err2.T,
+            atol=1e-6,
+        )
+
+    # We would like a faster way to compute EQKQ_err_err_err__err_cross_err
+    if sanity_check:
+        EQKQ_err_err_err__err_cross_err_check = (
+            W_E_query_err2 @ W_Q_err @ W_K_err.T @ W_E_size_err2.T
+        )
+    error = W_E_query_err2 @ W_Q_err @ W_K_err.T @ W_E_size_err2.T
+    # px.imshow(error, title="error ≈ EQKE", labels={"x":"key token", "y":"query token"}).show(renderer="png")
+    px.imshow(error).show(renderer="png")
+    analyze_svd(error, renderer="png")
+    for m in (W_E_query_err2, W_Q_err, W_K_err.T, W_E_size_err2.T):
+        analyze_svd(m, renderer="png", scale_by_singular_value=False)
+    print((error.max(dim=-1).values - error.min(dim=-1).values).max())
+    print(error.abs().max())
+    print(torch.linalg.matrix_norm(error, ord=2))
+    print(
+        [
+            torch.linalg.matrix_norm(m, ord=2).item()
+            for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
         ]
-    px.imshow(err_accumulator).show()
+    )
+    print(
+        torch.prod(
+            torch.tensor(
+                [
+                    torch.linalg.matrix_norm(m, ord=2).item()
+                    for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
+                ]
+            )
+        )
+    )
+    print(
+        [
+            (m @ m.T).trace().sqrt().item()
+            for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
+        ]
+    )
+    print(
+        torch.prod(
+            torch.tensor(
+                [
+                    (m @ m.T).trace().sqrt().item()
+                    for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
+                ]
+            )
+        )
+    )
+
+    # px.imshow(W_Q_err).show()
+
+    # EQKE_query_size = (
+    #     query_direction[:, None] @ size_direction[None, :] * size_query_singular_value
+    # )  # O(d_vocab * d_vocab)
+    # if sanity_check:
+    #     EQKE_check = W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
+    #     assert torch.allclose(EQKE_check, EQKE_query_size), [
+    #         px.imshow(EQKE_check).show(),
+    #         px.imshow(EQKE_query_size).show(),
+    #         px.imshow((EQKE_query_size - EQKE_check).abs()).show(),
+    #     ]
+
+    # EQKE_err_err_err_first_singular
+
+    # EQKE_err_err_err_first_singular =
+
+    # px.imshow(err_accumulator).show()
+    # px.imshow(W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).show()
+    # print(((W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).max(dim=-1).values - (W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).min(dim=-1).values).max())
+    # print((W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).abs().max())
+    # error = W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T
+    # # analyze_svd(error)
+    # print(torch.linalg.matrix_norm(error, ord=2))
+    # print([torch.linalg.matrix_norm(m, ord=2) for m in (W_E_query_err2, W_Q[0, 0], W_K[0, 0], W_E_size_err2)])
+
 # %%
 # HERE
 #     EQKE_err_err_query_second_key_second = (second_query_direction,)
@@ -651,3 +751,5 @@ with torch.no_grad():
 # # W_E_qerr = W_E - (query_direction @ W_E @ W_Q @ W_K.T @ (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])))
 # # px.imshow(W_E).show()
 # # %%
+
+# %%

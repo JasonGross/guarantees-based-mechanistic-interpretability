@@ -172,6 +172,9 @@ checkpoints/
 /frames/*
 notebooks_jason/frames/*
 
+# Some files from Jason
+max_of_*.gif
+
 # python shelve
 *.dir
 *.dat

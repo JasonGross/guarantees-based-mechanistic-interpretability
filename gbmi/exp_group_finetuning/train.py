@@ -9,6 +9,7 @@ from gbmi.exp_group_finetuning.groups import (
     GroupDict,
     CyclicGroup,
     DihedralGroup,
+    GLN_p,
 )
 import sys
 from typing import Any, Dict, List, Optional, cast, Literal, Generic, TypeVar, Type
@@ -42,6 +43,8 @@ from gbmi.utils import (
 )
 from gbmi.utils.sequences import generate_all_sequences
 
+torch.set_default_device("cuda")
+
 
 @dataclass
 class ModularFineTuning(ExperimentConfig):
@@ -51,13 +54,13 @@ class ModularFineTuning(ExperimentConfig):
     group_index: int
     group_size: int
     group_name: str
-    zero_biases: bool = True
+    zero_biases: bool = False
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
-    training_ratio: float = 0.4  # fraction of dataset to use for training
+    training_ratio: float = 0.5  # fraction of dataset to use for training
     optimizer_kwargs: Dict[str, Any] = field(
-        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
     version_number: int = 1
 
@@ -79,6 +82,8 @@ def modular_addition_config(attn_rate: float, group: Group, elements: int):
     return Config(
         experiment=ModularFineTuning(
             model_config=HookedTransformerConfig(
+                d_vocab=group.size() + 1,
+                d_vocab_out=group.size(),
                 n_ctx=elements + 1,
                 d_model=128,
                 d_mlp=512,
@@ -94,31 +99,34 @@ def modular_addition_config(attn_rate: float, group: Group, elements: int):
             group_index=group.index(),
             group_size=group.size(),
             group_name=group.name(),
-            zero_biases=True,
+            zero_biases=False,
             attention_rate=attn_rate,
             optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
         ),
         seed=999,
         deterministic=False,
-        batch_size=int((group.size()) ** (elements + 1) * 0.4),
+        batch_size=int(((group.size()) ** (elements)) * 0.4),
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
     )
 
 
-MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(
-    attn_rate=0, group=CyclicGroup(113), elements=2
+GL2_P_CLOCK_CONFIG = modular_addition_config(
+    attn_rate=0.0000001, group=GLN_p(2), elements=2
 )
 
 MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(
-    attn_rate=1, group=CyclicGroup(113), elements=2
+    attn_rate=1, group=CyclicGroup(101), elements=2
+)
+MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(
+    attn_rate=0, group=CyclicGroup(101), elements=2
 )
 DIHEDRAL_100_CLOCK_CONFIG = modular_addition_config(
-    attn_rate=0, group=DihedralGroup(104), elements=2
+    attn_rate=0, group=DihedralGroup(40), elements=2
 )
 DIHEDRAL_100_PIZZA_CONFIG = modular_addition_config(
-    attn_rate=1, group=DihedralGroup(104), elements=2
+    attn_rate=1, group=DihedralGroup(40), elements=2
 )
 
 
@@ -127,6 +135,9 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         super().__init__(config, model)
         self.model = model
         self.config = config
+        self.group = GroupDict[self.config.experiment.group_family](
+            self.config.experiment.group_index
+        )
 
     @staticmethod
     def build_model(config: Config[ModularFineTuning]) -> HookedTransformer:
@@ -183,9 +194,7 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
     ) -> Float[Tensor, ""]:  # noqa: F722
         self.model.to(x.device, print_details=False)
 
-        labels = GroupDict[self.config.experiment.group_family](
-            self.config.experiment.group_index
-        ).reduce(list(x[:, :-1].T))
+        labels = self.group.op(x[:, 0].T, x[:, 1].T)
         assert (
             len(labels.shape) == 1
         ), f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"

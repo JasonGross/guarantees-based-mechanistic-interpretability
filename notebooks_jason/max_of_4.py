@@ -306,18 +306,6 @@ def assert_allclose_or_show(m1: Tensor, m2: Tensor, **kwargs):
     ]
 
 
-@torch.no_grad()
-def maybe_assert_allclose_or_show(
-    m1: Tensor, m2: Tensor, do_assert: bool = True, **kwargs
-):
-    if do_assert:
-        assert torch.allclose(m1, m2, **kwargs), [
-            px.imshow(m1).show(),
-            px.imshow(m2).show(),
-            px.imshow((m1 - m2).abs()).show(),
-        ]
-
-
 with torch.no_grad():
     W_E, W_pos, W_Q, W_K = (
         model.W_E,

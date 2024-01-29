@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from collections.abc import Callable
 
+print("test7")
 from gbmi.exp_f_g.functions import (
     Fun,
     FunDict,
@@ -43,6 +44,8 @@ from gbmi.utils import (
 )
 from gbmi.utils.sequences import generate_all_sequences
 
+print("test8")
+
 
 @dataclass
 class f_g(ExperimentConfig):
@@ -76,6 +79,9 @@ class f_g(ExperimentConfig):
             f"{config.train_for[1]}"  # -attention-rate-{config.experiment.attention_rate}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
+
+
+print("test9")
 
 
 def f_g_config(fun: Fun, n_head: int, elements: int):
@@ -112,10 +118,13 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
     )
 
 
+print("test10")
+
 add_sub_1_head_CONFIG = f_g_config(fun=add_sub(113, 2), n_head=1, elements=2)
 add_sub_2_head_CONFIG = f_g_config(fun=add_sub(113, 2), n_head=2, elements=2)
 max_min_1_head_CONFIG = f_g_config(fun=max_min(113, 2), n_head=1, elements=2)
 max_min_2_head_CONFIG = f_g_config(fun=max_min(113, 2), n_head=2, elements=2)
+print("test11")
 
 
 class f_g_TrainingWrapper(TrainingWrapper[f_g]):
@@ -211,6 +220,9 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
         return torch.optim.AdamW(
             self.parameters(), **self.config.experiment.optimizer_kwargs
         )
+
+
+print("test12")
 
 
 class f_g_DataModule(DataModule):

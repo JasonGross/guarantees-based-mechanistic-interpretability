@@ -1,5 +1,10 @@
+print("test-4")
 from gbmi.exp_f_g.train import f_g_TrainingWrapper
+
+print("test-3")
 from gbmi.exp_f_g.train import f_g_config
+
+print("test-2")
 from gbmi.exp_f_g.train import (
     add_sub_1_head_CONFIG,
     add_sub_2_head_CONFIG,
@@ -14,6 +19,7 @@ from torch import tensor
 from math import *
 import tqdm
 
+print("test-1")
 device = "cuda"
 
 # functions=[("max","min"),("is_sorted","exactly_2_of_3_even"),("add","minus")]

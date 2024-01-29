@@ -92,15 +92,34 @@ class max_min(Fun):
         return accumulator
 
     def agree_indices(self):
-        data = generate_all_sequences(self.n, 2 * self.elements)
+        print("test14")
+        data = generate_all_sequences(self.n, self.elements)
+        print("test15")
+        op_1_results = self.reduce_1(data.T)
+        op_2_results = self.reduce_2(data.T)
+        print("test16")
+        l = torch.tensor([])
+        for i in range(len(op_1_results)):
+            s = torch.nonzero(op_2_results == op_1_results[i])
+            if len(s) == 1:
+                b = s[0]
+            else:
+                b = s.squeeze()
+            l = torch.cat(
+                (
+                    l,
+                    ((i * ((self.n) ** (self.elements))) + b + 1),
+                )
+            )
 
-        op_1_results = self.reduce_1(data[:, : self.elements].T)
-        op_2_results = self.reduce_2(data[:, self.elements :].T)
-        l = []
+        return l
+
+        """
         for i in range(len(op_1_results)):
             if torch.equal(op_1_results[i], op_2_results[i]):
                 l.append(i)
         return torch.tensor(l)
+        """
 
 
 class add_sub(Fun):
@@ -141,15 +160,34 @@ class add_sub(Fun):
         return accumulator
 
     def agree_indices(self):
-        data = generate_all_sequences(self.n, 2 * self.elements)
+        print("test14")
+        data = generate_all_sequences(self.n, self.elements)
+        print("test15")
+        op_1_results = self.reduce_1(data.T)
+        op_2_results = self.reduce_2(data.T)
+        print("test16")
+        l = torch.tensor([])
+        for i in range(len(op_1_results)):
+            s = torch.nonzero(op_2_results == op_1_results[i])
+            if len(s) == 1:
+                b = s[0]
+            else:
+                b = s.squeeze()
+            l = torch.cat(
+                (
+                    l,
+                    ((i * ((self.n) ** (self.elements))) + b + 1),
+                )
+            )
 
-        op_1_results = self.reduce_1(data[:, : self.elements].T)
-        op_2_results = self.reduce_2(data[:, self.elements :].T)
-        l = []
+        return l
+
+        """
         for i in range(len(op_1_results)):
             if torch.equal(op_1_results[i], op_2_results[i]):
                 l.append(i)
         return torch.tensor(l)
+        """
 
 
 FunDict = {"max_min": max_min, "add_sub": add_sub}

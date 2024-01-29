@@ -92,7 +92,7 @@ class max_min(Fun):
         return accumulator
 
     def agree_indices(self):
-        data = generate_all_sequences(self.n, 2 * self.elements + 1)
+        data = generate_all_sequences(self.n, 2 * self.elements)
 
         op_1_results = self.reduce_1(data[:, : self.elements].T)
         op_2_results = self.reduce_2(data[:, self.elements :].T)
@@ -141,7 +141,7 @@ class add_sub(Fun):
         return accumulator
 
     def agree_indices(self):
-        data = generate_all_sequences(self.n, 2 * self.elements + 1)
+        data = generate_all_sequences(self.n, 2 * self.elements)
 
         op_1_results = self.reduce_1(data[:, : self.elements].T)
         op_2_results = self.reduce_2(data[:, self.elements :].T)

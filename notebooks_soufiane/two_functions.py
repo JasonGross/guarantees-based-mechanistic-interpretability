@@ -19,6 +19,7 @@ device = "cuda"
 # functions=[("max","min"),("is_sorted","exactly_2_of_3_even"),("add","minus")]
 
 runtime_add_sub_1, model_add_sub_1 = train_or_load_model(add_sub_1_head_CONFIG)
+print("happy")
 runtime_add_sub_2, model_add_sub_2 = train_or_load_model(add_sub_2_head_CONFIG)
 runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
 runtime_max_min_2, model_max_min_2 = train_or_load_model(max_min_2_head_CONFIG)

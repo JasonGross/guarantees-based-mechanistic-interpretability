@@ -53,6 +53,7 @@ class f_g(ExperimentConfig):
     # _size: int
     fun_name: str
     fun_agree_indices: List[int]
+    fun_elements: int
     zero_biases: bool = True
     # attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
@@ -97,6 +98,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
             # group_size=group.size(),
             fun_name=fun.name(),
             fun_agree_indices=fun.agree_indices(),
+            fun_elements=elements,
             zero_biases=True,
             # attention_rate=attn_rate,
             optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
@@ -181,8 +183,8 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
 
         labels = FunDict[self.config.experiment.fun_name](
             self.config.experiment.fun_index,
-            int((self.config.experiment.n_ctx - 1) / 2),
-        ).reduce_1(list(x[:, : int((len(x[:, 0]) - 1) / 2)].T))
+            self.config.experiment.fun_elements,
+        ).reduce_1(list(x[:, : self.config.experiment.fun_elements].T))
         assert (
             len(labels.shape) == 1
         ), f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"

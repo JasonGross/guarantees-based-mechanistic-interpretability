@@ -154,7 +154,10 @@ average_accuracy = total_accuracy / total_samples
 print(f"Brute force proof:")
 print(f"Model Accuracy: {average_accuracy * 100}%")
 print(
-    f"Number Incorrect Sequences: {int(round(average_accuracy * all_tokens_dataset.length))}"
+    f"Number Correct Sequences: {int(round(average_accuracy * all_tokens_dataset.length))}"
+)
+print(
+    f"Number Incorrect Sequences: {all_tokens_dataset.length - int(round(average_accuracy * all_tokens_dataset.length))}"
 )
 print(f"Model Loss: {average_loss}")
 # %% [markdown]

@@ -271,7 +271,7 @@ display_basic_interpretation(model)
 # \widetilde{E_q} & := W_E + W_\text{pos}[-1] \\
 # \widetilde{E_k} & := W_E + \overline{W_\text{pos}} \\
 # \text{EQKE}_p
-# & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \widetilde{E_q}W_QW_K^T(W_{\text{pos}}[p] - \overline{W_\text{pos}})^T \\
+# & := \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \widetilde{E_q}W_QW_K^T(W_{\text{pos}}[p] - \overline{W_\text{pos}})^T \\
 # & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \text{EQKE\_pos\_err}
 # \end{align*}
 # $$
@@ -369,11 +369,11 @@ def decompose_EQKE_error(
     We compute as follows:
     $$
     \begin{align*}
-    \overline{W_\text{pos}} & := W_\text{pos}\text{.mean}(\text{dim}=0)
+    \overline{W_\text{pos}} & := W_\text{pos}\text{.mean}(\text{dim}=0) \\
     \widetilde{E_q} & := W_E + W_\text{pos}[-1] \\
     \widetilde{E_k} & := W_E + \overline{W_\text{pos}} \\
     \text{EQKE}_p
-    & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \widetilde{E_q}W_QW_K^T(W_{\text{pos}}[p] - \overline{W_\text{pos}})^T \\
+    & := \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \widetilde{E_q}W_QW_K^T(W_{\text{pos}}[p] - \overline{W_\text{pos}})^T \\
     & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \text{EQKE\_pos\_err}
     \end{align*}
     $$

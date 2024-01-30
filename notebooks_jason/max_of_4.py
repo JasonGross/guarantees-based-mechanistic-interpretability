@@ -305,7 +305,7 @@ display_basic_interpretation(model)
 # $$
 # Except for the last line, all of these components are rank 1 matrices, and we can compute them efficiently.
 # We compute an upper bound on what the final component can contribute to differences in elements in the same row:
-# Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt(2) \sigma_1(M)$.
+# Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt{2} \sigma_1(M)$.
 # This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
 # %%
 # This stuff is old, probably delete
@@ -407,7 +407,7 @@ def decompose_EQKE_error(
     $$
     Except for the last line, all of these components are rank 1 matrices, and we can compute them efficiently.
     We compute an upper bound on what the final component can contribute to differences in elements in the same row:
-    Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt(2) \sigma_1(M)$.
+    Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt{2} \sigma_1(M)$.
     This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
 
     Note that the first component is returned as EQKE_query_key, the middle components are accumulated in err_accumulator.

@@ -11,11 +11,13 @@ We use [poetry](https://python-poetry.org) for dependency management, which can 
 To build a virtual environment with the required packages, simply run
 
 ```bash
+poetry config virtualenvs.in-project true
 poetry install
 ```
 
 Notes
 - On some systems you may need to set the environment variable `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` to avoid keyring-based errors.
+- The first line tells poetry to create the virtual environment in the project directory, which allows VS Code to find the virtual environment.
 
 ## Running notebooks
 

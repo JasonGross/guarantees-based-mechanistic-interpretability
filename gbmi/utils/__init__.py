@@ -197,3 +197,7 @@ def set_params(
 def reseed(x: Hashable, label: str) -> int:
     # 4 bytes make an int32!
     return int.from_bytes(get_hash((x, label))[:4], byteorder="little")
+
+
+def dropnan(x: Tensor) -> Tensor:
+    return x[~torch.isnan(x)]

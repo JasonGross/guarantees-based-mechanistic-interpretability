@@ -945,8 +945,11 @@ min_gaps = find_min_gaps(
 
 # %%
 min_gap = min_gaps.max(dim=-1).values
+use_exact_error = False
+err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
 min_right_attention = compute_min_right_attention_quadratic(
-    EQKE_query_key + err_accumulator, min_gap=min_gap
+    EQKE_query_key + err_accumulator + (err_exact if use_exact_error else 0),
+    min_gap=min_gap,
 )
 print(
     f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
@@ -955,7 +958,9 @@ print(
     (min_right_attention[~min_right_attention.isnan()] > err_upper_bound).sum().item()
 )
 min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
-    min_right_attention - err_upper_bound, EQKE_pos_err, min_gap=min_gap
+    min_right_attention - (err_upper_bound if not use_exact_error else 0),
+    EQKE_pos_err,
+    min_gap=min_gap,
 )
 print(
     f"Complexity of compute_min_softmaxed_right_attention: {complexity_of(compute_min_softmaxed_right_attention)}"
@@ -980,3 +985,5 @@ accuracy_bound, (correct_count, total_sequences) = compute_accuracy_lower_bound_
 print(
     f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
 )
+
+# %%

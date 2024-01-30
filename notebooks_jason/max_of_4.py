@@ -267,7 +267,7 @@ display_basic_interpretation(model)
 # We compute as follows:
 # $$
 # \begin{align*}
-# \overline{W_\text{pos}} & := W_\text{pos}\text{.mean}(\text{dim}=0)
+# \overline{W_\text{pos}} & := W_\text{pos}\text{.mean}(\text{dim}=0) \\
 # \widetilde{E_q} & := W_E + W_\text{pos}[-1] \\
 # \widetilde{E_k} & := W_E + \overline{W_\text{pos}} \\
 # \text{EQKE}_p

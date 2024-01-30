@@ -51,6 +51,7 @@ from gbmi.utils.hashing import get_hash, _json_dumps, _EXCLUDE
 
 ConfigT = TypeVar("ConfigT")
 ExpT = TypeVar("ExpT", bound="ExperimentConfig")
+ExpU = TypeVar("ExpU", bound="ExperimentConfig")
 
 
 class TrainingWrapper(ABC, LightningModule, Generic[ExpT]):
@@ -131,7 +132,7 @@ class Config(Generic[ExpT]):
         # TODO: hack
         return json.loads(_json_dumps(self))
 
-    def build_model(self) -> HookedTransformer:
+    def build_model(self: Config[ExpT]) -> HookedTransformer:
         return self.experiment.get_training_wrapper().build_model(self)
 
     @classmethod

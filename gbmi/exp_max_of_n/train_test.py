@@ -24,30 +24,28 @@ class TestOneLayerTransformer(TestCase):
         ]
         d_head = model.cfg.d_head
 
-        seq = [31, 30, 32, 33, 34, 35, 39, 37, 38, 36]
+        seq = torch.tensor([31, 30, 32, 33, 34, 35, 39, 37, 38, 36])
         n = len(seq)
 
         # Embeddings (x[i]: embedding of input token i)
-        x = ein.array(n, lambda i: W_E[seq[i]])
+        x = ein.array(lambda i: W_E[seq[i]], sizes=[n])
         self.assertExpectedPretty(x.shape, """Size((10, 32))""")
 
         # QK path (a[i]: attention from last element to input token i)
-        a = ein.array(
-            n, lambda i: (x[9] + W_pos[9]) @ W_Q @ W_K.T @ (x[i] + W_pos[i]).T
-        )
+        a = ein.array(lambda i: (x[9] + W_pos[9]) @ W_Q @ W_K.T @ (x[i] + W_pos[i]).T)
         a_softmax = torch.softmax(a / (d_head**0.5), dim=0)
         self.assertExpectedPretty(a_softmax.shape, """Size((10,))""")
 
         # OV path (v[i]: OV logit contribution of input token i)
-        v = ein.array(n, lambda i: (x[i] + W_pos[i]) @ W_V @ W_O @ W_U)
+        v = ein.array(lambda i: (x[i] + W_pos[i]) @ W_V @ W_O @ W_U)
         self.assertExpectedPretty(v.shape, """Size((10, 64))""")
 
         # embed/unembed path (r[i]: residual logit contribution of input token i)
-        r = ein.array(n, lambda i: (x[i] + W_pos[i]) @ W_U)
+        r = ein.array(lambda i: (x[i] + W_pos[i]) @ W_U)
         self.assertExpectedPretty(r.shape, """Size((10, 64))""")
 
         # last element logits (y[i]: last element logit for input token i)
-        y = ein.sum(n, lambda i: a_softmax[i] * v[i]) + r[9]
+        y = ein.sum(lambda i: a_softmax[i] * v[i]) + r[9]
         self.assertExpectedPretty(y.shape, """Size((64,))""")
         self.assertExpectedPretty(y.argmax(-1), """tensor(59)""")
 

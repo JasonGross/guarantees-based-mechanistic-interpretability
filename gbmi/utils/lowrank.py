@@ -2,8 +2,11 @@ from __future__ import annotations
 from torch import Tensor
 import torch
 from jaxtyping import Float
-from typing import Union, Optional
+from typing import TypeVar, Union, Optional
 import plotly.express as px
+
+
+T = TypeVar("T")
 
 
 def _via_tensor(attr: str):
@@ -16,6 +19,28 @@ def _via_tensor(attr: str):
             if hasattr(reference, docattr):
                 setattr(delegate, docattr, getattr(reference, docattr))
     return delegate
+
+
+def _merge_check_params(
+    *args: dict[str, T], merge_tol=max, merge_equal_nan=bool.__or__
+) -> dict[str, T]:
+    result = {}
+    for arg in args:
+        for key in arg:
+            v = arg[key]
+            if key not in result:
+                result[key] = v
+            elif key in ("rtol", "atol"):
+                result[key] = merge_tol(result[key], v)
+            elif key in ("equal_nan",):
+                result[key] = merge_equal_nan(result[key], v)
+            elif isinstance(result[key], dict) and isinstance(v, dict):
+                result[key] = _merge_check_params(result[key], v)
+            elif result[key] != v:
+                raise ValueError(
+                    f"Cannot merge check parameters {result[key]} and {v} for key {key}"
+                )
+    return result
 
 
 class LowRankTensor:
@@ -61,10 +86,6 @@ class LowRankTensor:
     def setcheckparams(self, **kwargs):
         self._checkparams = kwargs
 
-    @property
-    def T(self):
-        return LowRankTensor(self.v.T, self.u.T, check=self._check, show=self._show)
-
     @torch.no_grad()
     def check(
         self,
@@ -87,7 +108,8 @@ class LowRankTensor:
             px.imshow(self.numpy(), title=f"self{descr}").show(renderer=renderer)
             px.imshow(other.numpy(), title=f"other{descr}").show(renderer=renderer)
             px.imshow(
-                (self - other).abs().detach().numpy(), title=f"difference{descr}"
+                (self - other).abs().detach().numpy(),
+                title=f"difference{descr} ({self._checkparams})",
             ).show(renderer=renderer)
         return False
 
@@ -106,6 +128,23 @@ class LowRankTensor:
             else True
         )
 
+    def _params(self):
+        return dict(
+            check=self._check,
+            show=self._show,
+            checkparams=self._checkparams,
+        )
+
+    def _mergeparams(self, other):
+        if isinstance(other, LowRankTensor):
+            return _merge_check_params(self._params(), other._params())
+        else:
+            return self._params()
+
+    @property
+    def T(self):
+        return LowRankTensor(self.v.T, self.u.T, **self._params())  # type: ignore
+
     def __matmul__(self, other: Union[Tensor, LowRankTensor]):
         if isinstance(other, LowRankTensor):
             # prefer to keep the dimensions of stored matrices as low as possible
@@ -121,9 +160,7 @@ class LowRankTensor:
                 u = u @ mid
         else:
             u, v = self.u, self.v @ other
-        result = LowRankTensor(
-            u, v, check=self._check, show=self._show, checkparams=self._checkparams
-        )
+        result = LowRankTensor(u, v, **self._mergeparams(other))  # type: ignore
         if self._check:
             assert result.check(self.totensor() @ other, descr="matmul")
         return result
@@ -143,9 +180,7 @@ class LowRankTensor:
                 u = u @ mid
         else:
             u, v = other @ self.u, self.v
-        result = LowRankTensor(
-            u, v, check=self._check, show=self._show, checkparams=self._checkparams
-        )
+        result = LowRankTensor(u, v, **self._mergeparams(other))  # type: ignore
         if self._check:
             assert result.check(other @ self.totensor(), descr="matmul")
         return result

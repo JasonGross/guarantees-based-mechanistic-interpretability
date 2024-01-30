@@ -4,11 +4,13 @@ import gbmi.exp_max_of_n.analysis
 import gbmi.analysis_tools.decomp
 import gbmi.verification_tools.decomp
 import gbmi.utils.lowrank
+import gbmi.exp_max_of_n.analysis
 
 importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.analysis_tools.decomp)
 importlib.reload(gbmi.verification_tools.decomp)
 importlib.reload(gbmi.utils.lowrank)
+importlib.reload(gbmi.exp_max_of_n.analysis)
 # %%
 from collections import defaultdict
 from typing import Tuple
@@ -256,11 +258,55 @@ importlib.reload(gbmi.exp_max_of_n.plot)
 gbmi.exp_max_of_n.plot.display_basic_interpretation(model)
 # %%
 display_basic_interpretation(model)
+
+
 # %% [markdown]
 # # Size-Query analysis
 #
 # We find the size direction and the query direction, and approximate the QK computation using only these vectors.  Then we'll look at the error terms.
 #
+# We compute as follows:
+# $$
+# \begin{align*}
+# \overline{W_\text{pos}} & := W_\text{pos}\text{.mean}(\text{dim}=0)
+# \widetilde{E_q} & := W_E + W_\text{pos}[-1] \\
+# \widetilde{E_k} & := W_E + \overline{W_\text{pos}} \\
+# \text{EQKE}_p
+# & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \widetilde{E_q}W_QW_K^T(W_{\text{pos}}[p] - \overline{W_\text{pos}})^T \\
+# & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \text{EQKE\_pos\_err}
+# \end{align*}
+# $$
+# We can decompose $\widetilde{E_k}$ as a sum of a rank 1 matrix in the given key direction and a matrix orthogonal to the key direction, say $E_k = E_{k,\text{key}} + E_{k,\text{key}}^\perp$.
+# We can decompose $\widetilde{E_q}$ as a sum of a rank 1 matrix in the given query direction and a matrix orthogonal to the query direction, say $E_q = E_{q,\text{query}} + E_{q,\text{query}}^\perp$.
+# We can decompose $E_{k,\text{key}}^\perp$, $E_{q,\text{query}}^\perp$, $W_Q$, and $W_K$ as sums of rank 1 matrices in the second key direction, second query direction, W\_Q\_U, and W\_K\_U, respectively.
+# $$
+# \begin{align*}
+# E_{k,\text{key}}^\perp & = E_{k,\text{key},\text{second}} + E_{k,\text{key},\text{second}}^\perp \\
+# E_{q,\text{query}}^\perp & = E_{q,\text{query},\text{second}} + E_{q,\text{query},\text{second}}^\perp \\
+# W_Q & = W_{Q,\text{U}} + W_{Q,\text{U}}^\perp \\
+# W_K & = W_{K,\text{U}} + W_{K,\text{U}}^\perp
+# \end{align*}
+# $$
+# Then we can write
+# $$
+# \begin{align*}
+# \text{EQKE}_p - \text{EQKE\_pos\_err}
+# & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T \\
+# & = E_{k,\text{key}}W_QW_K^T E_{q,\text{query}}^T \\
+# & \phantom{{}={}}{} + E_{k,\text{key}}W_QW_K^T {E_{q,\text{query}}^\perp}^T + E_{k,\text{key}}^\perp W_QW_K^T E_{q,\text{query}}^T \\
+# & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}W_QW_K^T E_{q,\text{query},\text{second}}^T \\
+# & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}W_QW_K^T {E_{q,\text{query},\text{second}}^\perp}^T + E_{k,\text{key},\text{second}}^\perp W_QW_K^T E_{q,\text{query},\text{second}}^T \\
+# & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}}W_{K,\text{U}}^T {E_{q,\text{query},\text{second}}^\perp}^T \\
+# & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}}^\perp W_{K,\text{U}}^T {E_{q,\text{query},\text{second}}^\perp}^T + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}} {W_{K,\text{U}}^\perp}^T {E_{q,\text{query},\text{second}}^\perp}^T \\
+# & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}}^\perp {W_{K,\text{U}}^\perp}^T {E_{q,\text{query},\text{second}}^\perp}^T
+# \end{align*}
+# $$
+# Except for the last line, all of these components are rank 1 matrices, and we can compute them efficiently.
+# We compute an upper bound on what the final component can contribute to differences in elements in the same row:
+# Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt(2) \sigma_1(M)$.
+# This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
+# %%
+# This stuff is old, probably delete
 # Define
 # - $W_{E,\text{qerr}}=(W_E - \text{query} W_E)$
 # - $W_{E,\text{kerr}}=(W_E - \text{size} W_E)$
@@ -274,6 +320,204 @@ display_basic_interpretation(model)
 # & \phantom{{}={}}{} + (\text{query} W_E + W_\text{pos}[-1])W_Q W_K^T (W_{E,\text{kerr}} + W_{\text{pos},\text{err}})^T \\
 # & \phantom{{}={}}{} + W_{E,\text{qerr}}W_Q W_K^T (\text{size}W_E + \overline{W_\text{pos}})^T \\
 # \end{align*}$$
+# %%
+# %%
+@torch.no_grad()
+def decompose_EQKE_error(
+    model: HookedTransformer,
+    *,
+    key_direction: Tensor,
+    query_direction: Tensor,
+    second_key_direction: Tensor,
+    second_query_direction: Tensor,
+    W_Q_U: Tensor,
+    W_K_U: Tensor,
+    sanity_check: bool = True,
+    atol: float = 1e-4,
+) -> Tuple[
+    Tuple[
+        Float[LowRankTensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+        Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+    ],
+    Float[Tensor, "d_vocab_q n_ctx_k"],  # noqa: F722
+    Tuple[
+        Float[Tensor, ""],  # noqa: F722
+        Tuple[
+            Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+            Float[Tensor, "d_model d_model"],  # noqa: F722
+            Float[Tensor, "d_model d_model"],  # noqa: F722
+            Float[Tensor, "d_model d_vocab_k"],  # noqa: F722
+        ],
+    ],
+]:
+    r"""
+    Returns:
+        ((EQKE_query_key, err_accumulator), EQKE_pos_err, (remaining_error_upper_bound, four matrices whose product is the exact remaining error))
+    where
+        EQKE_query_key is the rank 1 approximation of the query-key contribution to the EQKE matrix
+        err_accumulator is the sum of the efficiently-computable (O(d_vocab^2)) error terms
+        EQKE_pos_err is the contribution of the position embeddings to the error
+        remaining_error_upper_bound is a bound on the maximum difference between two elements in the same row of EQKE
+
+    Note that EQKE is actually computed as (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0, keepdim=True)).T
+
+    Complexity: O(d_vocab * (d_vocab + d_model * n_ctx) + d_vocab * d_model^2)
+
+    The d_model^2 term comes from having to do SVD to compute remaining_error_upper_bound
+
+    EQKE_query_key uses key_direction and query_direction for the rank 1 approximation
+
+    We compute as follows:
+    $$
+    \begin{align*}
+    \overline{W_\text{pos}} & := W_\text{pos}\text{.mean}(\text{dim}=0)
+    \widetilde{E_q} & := W_E + W_\text{pos}[-1] \\
+    \widetilde{E_k} & := W_E + \overline{W_\text{pos}} \\
+    \text{EQKE}_p
+    & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \widetilde{E_q}W_QW_K^T(W_{\text{pos}}[p] - \overline{W_\text{pos}})^T \\
+    & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \text{EQKE\_pos\_err}
+    \end{align*}
+    $$
+    We can decompose $\widetilde{E_k}$ as a sum of a rank 1 matrix in the given key direction and a matrix orthogonal to the key direction, say $E_k = E_{k,\text{key}} + E_{k,\text{key}}^\perp$.
+    We can decompose $\widetilde{E_q}$ as a sum of a rank 1 matrix in the given query direction and a matrix orthogonal to the query direction, say $E_q = E_{q,\text{query}} + E_{q,\text{query}}^\perp$.
+    We can decompose $E_{k,\text{key}}^\perp$, $E_{q,\text{query}}^\perp$, $W_Q$, and $W_K$ as sums of rank 1 matrices in the second key direction, second query direction, W\_Q\_U, and W\_K\_U, respectively.
+    $$
+    \begin{align*}
+    E_{k,\text{key}}^\perp & = E_{k,\text{key},\text{second}} + E_{k,\text{key},\text{second}}^\perp \\
+    E_{q,\text{query}}^\perp & = E_{q,\text{query},\text{second}} + E_{q,\text{query},\text{second}}^\perp \\
+    W_Q & = W_{Q,\text{U}} + W_{Q,\text{U}}^\perp \\
+    W_K & = W_{K,\text{U}} + W_{K,\text{U}}^\perp
+    \end{align*}
+    $$
+    Then we can write
+    $$
+    \begin{align*}
+    \text{EQKE}_p - \text{EQKE\_pos\_err}
+    & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T \\
+    & = E_{k,\text{key}}W_QW_K^T E_{q,\text{query}}^T \\
+    & \phantom{{}={}}{} + E_{k,\text{key}}W_QW_K^T {E_{q,\text{query}}^\perp}^T + E_{k,\text{key}}^\perp W_QW_K^T E_{q,\text{query}}^T \\
+    & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}W_QW_K^T E_{q,\text{query},\text{second}}^T \\
+    & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}W_QW_K^T {E_{q,\text{query},\text{second}}^\perp}^T + E_{k,\text{key},\text{second}}^\perp W_QW_K^T E_{q,\text{query},\text{second}}^T \\
+    & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}}W_{K,\text{U}}^T {E_{q,\text{query},\text{second}}^\perp}^T \\
+    & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}}^\perp W_{K,\text{U}}^T {E_{q,\text{query},\text{second}}^\perp}^T + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}} {W_{K,\text{U}}^\perp}^T {E_{q,\text{query},\text{second}}^\perp}^T \\
+    & \phantom{{}={}}{} + E_{k,\text{key},\text{second}}^\perp W_{Q,\text{U}}^\perp {W_{K,\text{U}}^\perp}^T {E_{q,\text{query},\text{second}}^\perp}^T
+    \end{align*}
+    $$
+    Except for the last line, all of these components are rank 1 matrices, and we can compute them efficiently.
+    We compute an upper bound on what the final component can contribute to differences in elements in the same row:
+    Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt(2) \sigma_1(M)$.
+    This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
+
+    Note that the first component is returned as EQKE_query_key, the middle components are accumulated in err_accumulator.
+    """
+    W_E, W_pos, W_Q, W_K = (
+        model.W_E,
+        model.W_pos,
+        model.W_Q,
+        model.W_K,
+    )
+
+    W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
+    W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
+    W_E_pos_q = W_E + W_pos[-1][None, :]
+    W_E_key, W_E_key_err = factor_contribution(
+        W_E_pos_k, key_direction.squeeze(), sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    W_E_key.setcheckparams(atol=atol)
+    W_E_query, W_E_query_err = factor_contribution(
+        W_E_pos_q, query_direction.squeeze(), sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    W_E_query.setcheckparams(atol=atol)
+    EQKE_query_key = (W_E_query @ W_Q[0, 0]) @ (
+        W_K[0, 0].T @ W_E_key.T
+    )  # O(d_vocab * d_vocab)
+    err_accumulator = torch.zeros_like(EQKE_query_key.totensor())  # O(d_vocab^2)
+    EQKE_query_cross_err = (
+        (W_E_query @ W_Q[0, 0]) @ W_K[0, 0].T
+    ) @ W_E_key_err.T  # O(d_vocab * d_model)
+    err_accumulator += EQKE_query_cross_err
+    EQKE_err_cross_key = W_E_query_err @ (
+        W_Q[0, 0] @ (W_K[0, 0].T @ W_E_key.T)
+    )  # O(d_vocab * d_model)
+    err_accumulator += EQKE_err_cross_key
+
+    # This is a differently-shaped error term, and will be treated separately
+    EQKE_pos_err = W_E_pos_q @ (
+        W_Q[0, 0] @ (W_K[0, 0].T @ W_pos_err.T)
+    )  # O(d_vocab * d_model * n_ctx)
+
+    # We'd like a faster way to estimate the quantity (EQKE_err_err_check.max(dim=-1) - EQKE_err_err_check.min(dim=-1)).max()
+    # The naive computation is O(d_vocab^2 * d_model), and we can only get this down to O(d_vocab * d_model^2) by using SVD
+    # To improve our error bounds a bit, first we again peel off the leading singular values
+    W_E_second_key, W_E_key_err2 = factor_contribution(
+        W_E_key_err, second_key_direction, sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    W_E_second_key.setcheckparams(atol=1e-4)
+    (
+        W_E_second_query,
+        W_E_query_err2,
+    ) = factor_contribution(
+        W_E_query_err, second_query_direction, sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    W_E_second_query.setcheckparams(atol=1e-4)
+    EQKE_err_second_query_key = (W_E_second_query @ W_Q[0, 0]) @ (
+        W_K[0, 0].T @ W_E_second_key.T
+    )  # O(d_vocab * d_vocab)
+    err_accumulator += EQKE_err_second_query_key
+    EQKE_err_second_query_cross_err = (
+        (W_E_second_query @ W_Q[0, 0]) @ W_K[0, 0].T
+    ) @ W_E_key_err2.T  # O(d_vocab * d_model)
+    err_accumulator += EQKE_err_second_query_cross_err
+    EQKE_err_err_cross_second_key = W_E_query_err2 @ (
+        W_Q[0, 0] @ (W_K[0, 0].T @ W_E_second_key.T)
+    )  # O(d_vocab * d_model)
+    err_accumulator += EQKE_err_err_cross_second_key
+
+    # Now we peel off the first singular vectors of W_Q and W_K
+    W_Q_rank1, W_Q_err = factor_contribution(
+        W_Q[0, 0], W_Q_U.squeeze(), sanity_check=sanity_check
+    )  # O(d_model * d_model)
+    W_Q_rank1.setcheckparams(atol=1e-4)
+    W_K_rank1, W_K_err = factor_contribution(
+        W_K[0, 0], W_K_U.squeeze(), sanity_check=sanity_check
+    )  # O(d_model * d_model)
+    W_K_rank1.setcheckparams(atol=1e-4)
+
+    EQKE_err_err_err__first_singular = (W_E_query_err2 @ W_Q_rank1) @ (
+        W_K_rank1.T @ W_E_key_err2.T
+    )  # O(d_vocab * d_vocab)
+    err_accumulator += EQKE_err_err_err__first_singular
+
+    EQKE_err_err_err__Q_cross_err = (
+        (W_E_query_err2 @ W_Q_rank1) @ W_K_err.T
+    ) @ W_E_key_err2.T  # O(d_vocab * d_voacb)
+    err_accumulator += EQKE_err_err_err__Q_cross_err
+    EQKQ_err_err_err__err_cross_K = W_E_query_err2 @ (
+        W_Q_err @ (W_K_rank1.T @ W_E_key_err2.T)
+    )  # O(d_vocab * d_vocab)
+    err_accumulator += EQKQ_err_err_err__err_cross_K
+
+    # We would like a faster way to compute EQKQ_err_err_err__err_cross_err
+    # unfortunately, we can only get this down to O(d_vocab * d_model^2) by using SVD
+
+    # take the product of the first signular values in each matrix to get a bound on the singular value of the product
+    prod_max_singular = torch.tensor(
+        [
+            torch.linalg.matrix_norm(m, ord=2)
+            for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_key_err2)
+        ]
+    ).prod()
+    # since \sigma_1(M) = \sup_x \| M x \| / \|x\|, considering vectorswith one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is sqrt(2) * \sigma_1(M)
+    return (
+        (EQKE_query_key, err_accumulator),
+        EQKE_pos_err,
+        (
+            prod_max_singular * np.sqrt(2),
+            (W_E_query_err2, W_Q_err, W_K_err, W_E_key_err2),
+        ),
+    )
+
+
 # %%
 (
     size_direction,
@@ -290,454 +534,19 @@ display_basic_interpretation(model)
 (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
     model.W_K[0, 0]
 )
-# %%
-import importlib
-import gbmi.analysis_tools.decomp
-import gbmi.verification_tools.decomp
-
-importlib.reload(gbmi.verification_tools.decomp)
-importlib.reload(gbmi.analysis_tools.decomp)
-from gbmi.verification_tools.decomp import factor_contribution
-
-sanity_check: bool = True
-
-
-@torch.no_grad()
-def assert_allclose_or_show(m1: Tensor, m2: Tensor, **kwargs):
-    assert torch.allclose(m1, m2, **kwargs), [
-        px.imshow(m1).show(),
-        px.imshow(m2).show(),
-        px.imshow((m1 - m2).abs()).show(),
-    ]
-
-
-with torch.no_grad():
-    W_E, W_pos, W_Q, W_K = (
-        model.W_E,
-        model.W_pos,
-        model.W_Q,
-        model.W_K,
-    )
-
-    W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
-    W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
-    W_E_pos_q = W_E + W_pos[-1][None, :]
-    W_E_size, W_E_size_err = factor_contribution(
-        W_E_pos_k, size_direction, sanity_check=sanity_check
-    )  # O(d_vocab * d_model)
-    W_E_size.setcheckparams(atol=1e-6)
-    W_E_query, W_E_query_err = factor_contribution(
-        W_E_pos_q, query_direction, sanity_check=sanity_check
-    )  # O(d_vocab * d_model)
-    W_E_query.setcheckparams(atol=1e-6)
-    EQKE_query_size = LowRankTensor(
-        query_direction * np.sqrt(size_query_singular_value),
-        size_direction * np.sqrt(size_query_singular_value),
-        check=sanity_check,
-        show=True,
-    )  # O(d_vocab * d_vocab)
-    if sanity_check:
-        assert EQKE_query_size.check(W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T)
-    err_accumulator = torch.zeros_like(EQKE_query_size.totensor())  # O(d_vocab^2)
-    EQKE_query_cross_err = (
-        (W_E_query @ W_Q[0, 0]) @ W_K[0, 0].T
-    ) @ W_E_size_err.T  # O(d_vocab * d_model)
-    err_accumulator += EQKE_query_cross_err
-    EQKE_err_cross_size = W_E_query_err @ (
-        W_Q[0, 0] @ (W_K[0, 0].T @ W_E_size.T)
-    )  # O(d_vocab * d_model)
-    # %%
-    err_accumulator += EQKE_err_cross_size
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKE_err_cross_size,
-            W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T,
-            atol=1e-6,
-        )
-
-    # This is a differently-shaped error term, and will be treated separately
-    EQKE_pos_err = W_E_pos_q @ (
-        W_Q[0, 0] @ (W_K[0, 0].T @ W_pos_err.T)
-    )  # O(d_vocab * d_model * n_ctx)
-
-    # We'd like a faster way to estimate the quantity (EQKE_err_err_check.max(dim=-1) - EQKE_err_err_check.min(dim=-1)).max()
-    # The naive computation is O(d_vocab^2 * d_model), and we can only get this down to O(d_vocab * d_model^2) by using SVD
-    # To improve our error bounds a bit, first we again peel off the leading singular values
-    second_key_direction_alt, (W_E_second_key, W_E_size_err2) = factor_contribution(
-        W_E_size_err, second_key_direction, sanity_check=sanity_check
-    )  # O(d_vocab * d_model)
-    second_query_direction_alt, (
-        W_E_second_query,
-        W_E_query_err2,
-    ) = factor_contribution(
-        W_E_query_err, second_query_direction, sanity_check=sanity_check
-    )  # O(d_vocab * d_model)
-    EQKE_err_second_query_key_singular_value = (
-        (second_query_direction @ W_E_query_err @ W_Q[0, 0])
-        @ (second_key_direction @ W_E_size_err @ W_K[0, 0])
-    ).item()  # O(d_vocab * d_model)
-    EQKE_err_second_query_key = (
-        second_query_direction[:, None]
-        @ second_key_direction[None, :]
-        * EQKE_err_second_query_key_singular_value
-    )  # O(d_vocab * d_vocab)
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKE_err_second_query_key,
-            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T,
-        )
-    err_accumulator += EQKE_err_second_query_key
-    EQKE_err_second_query_cross_err = (
-        second_query_direction[:, None]
-        @ (second_query_direction_alt @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T)[
-            None, :
-        ]
-    )  # O(d_vocab * d_model)
-    err_accumulator += EQKE_err_second_query_cross_err
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKE_err_second_query_cross_err,
-            W_E_second_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T,
-            atol=1e-4,
-        )
-    EQKE_err_err_cross_second_key = (
-        W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ second_key_direction_alt
-    )[:, None] @ second_key_direction[
-        None, :
-    ]  # O(d_vocab * d_model)
-    err_accumulator += EQKE_err_err_cross_second_key
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKE_err_err_cross_second_key,
-            W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_second_key.T,
-            atol=1e-6,
-        )
-
-    # Now we peel off the first singular vectors of W_Q and W_K
-    # W_Q_direction_alt, (W_Q_low_rank, W_Q_err) = factor_contribution(
-    #     W_Q[0, 0], W_Q_U.squeeze(), sanity_check=sanity_check
-    # )  # O(d_vocab * d_vocab)
-    # W_K_direction_alt, (W_K_low_rank, W_K_err) = factor_contribution(
-    #     W_K[0, 0], W_K_U.squeeze(), sanity_check=sanity_check
-    # )  # O(d_vocab * d_vocab)
-    EQKE_err_err_err__first_singular = (
-        (W_E_query_err2 @ W_Q_U)
-        @ (W_Q_Vh @ W_K_Vh.T * W_Q_S * W_K_S)
-        @ (W_E_size_err2 @ W_K_U).T
-    )  # O(d_vocab * d_vocab)
-    err_accumulator += EQKE_err_err_err__first_singular
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKE_err_err_err__first_singular,
-            W_E_query_err2
-            @ (W_Q_U @ W_Q_Vh * W_Q_S)
-            @ (W_K_U @ W_K_Vh * W_K_S).T
-            @ W_E_size_err2.T,
-            atol=1e-6,
-        )
-
-    W_Q_err = W_Q[0, 0] - W_Q_U @ W_Q_Vh * W_Q_S
-    W_K_err = W_K[0, 0] - W_K_U @ W_K_Vh * W_K_S
-
-    EQKE_err_err_err__Q_cross_err = (W_E_query_err2 @ W_Q_U) @ (
-        (W_Q_S * W_Q_Vh @ W_K_err.T) @ W_E_size_err2.T
-    )  # O(d_vocab * d_vocab)
-    err_accumulator += EQKE_err_err_err__Q_cross_err
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKE_err_err_err__Q_cross_err,
-            W_E_query_err2 @ (W_Q_U @ W_Q_Vh * W_Q_S) @ W_K_err.T @ W_E_size_err2.T,
-            atol=1e-6,
-        )
-    EQKQ_err_err_err__err_cross_K = W_E_query_err2 @ (
-        W_Q_err @ (W_K_S * W_K_Vh.T @ (W_K_U.T @ W_E_size_err2.T))
-    )  # O(d_vocab * d_vocab)
-    err_accumulator += EQKQ_err_err_err__err_cross_K
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKQ_err_err_err__err_cross_K,
-            W_E_query_err2 @ W_Q_err @ (W_K_U @ W_K_Vh * W_K_S).T @ W_E_size_err2.T,
-            atol=1e-6,
-        )
-
-    # We would like a faster way to compute EQKQ_err_err_err__err_cross_err
-    if sanity_check:
-        EQKQ_err_err_err__err_cross_err_check = (
-            W_E_query_err2 @ W_Q_err @ W_K_err.T @ W_E_size_err2.T
-        )
-    error = W_E_query_err2 @ W_Q_err @ W_K_err.T @ W_E_size_err2.T
-    # px.imshow(error, title="error ≈ EQKE", labels={"x":"key token", "y":"query token"}).show(renderer="png")
-    px.imshow(error).show(renderer="png")
-    analyze_svd(error, renderer="png")
-    for m in (W_E_query_err2, W_Q_err, W_K_err.T, W_E_size_err2.T):
-        analyze_svd(m, renderer="png", scale_by_singular_value=False)
-    print((error.max(dim=-1).values - error.min(dim=-1).values).max())
-    print(error.abs().max())
-    print(torch.linalg.matrix_norm(error, ord=2))
-    print(
-        [
-            torch.linalg.matrix_norm(m, ord=2).item()
-            for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
-        ]
-    )
-    print(
-        torch.prod(
-            torch.tensor(
-                [
-                    torch.linalg.matrix_norm(m, ord=2).item()
-                    for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
-                ]
-            )
-        )
-    )
-    print(
-        [
-            (m @ m.T).trace().sqrt().item()
-            for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
-        ]
-    )
-    print(
-        torch.prod(
-            torch.tensor(
-                [
-                    (m @ m.T).trace().sqrt().item()
-                    for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_size_err2)
-                ]
-            )
-        )
-    )
-
-    # px.imshow(W_Q_err).show()
-
-    # EQKE_query_size = (
-    #     query_direction[:, None] @ size_direction[None, :] * size_query_singular_value
-    # )  # O(d_vocab * d_vocab)
-    # if sanity_check:
-    #     EQKE_check = W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
-    #     assert torch.allclose(EQKE_check, EQKE_query_size), [
-    #         px.imshow(EQKE_check).show(),
-    #         px.imshow(EQKE_query_size).show(),
-    #         px.imshow((EQKE_query_size - EQKE_check).abs()).show(),
-    #     ]
-
-    # EQKE_err_err_err_first_singular
-
-    # EQKE_err_err_err_first_singular =
-
-    # px.imshow(err_accumulator).show()
-    # px.imshow(W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).show()
-    # print(((W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).max(dim=-1).values - (W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).min(dim=-1).values).max())
-    # print((W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T).abs().max())
-    # error = W_E_query_err2 @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err2.T
-    # # analyze_svd(error)
-    # print(torch.linalg.matrix_norm(error, ord=2))
-    # print([torch.linalg.matrix_norm(m, ord=2) for m in (W_E_query_err2, W_Q[0, 0], W_K[0, 0], W_E_size_err2)])
-
-# %%
-# HERE
-#     EQKE_err_err_query_second_key_second = (second_query_direction,)
-#     second_query_singular_value,
-
-#     analyze_svd(W_E_query_err, scale_by_singular_value=False)
-#     analyze_svd(W_E_size_err, scale_by_singular_value=False)
-#     analyze_svd(W_E_pos_k, scale_by_singular_value=False)
-#     analyze_svd(W_E_pos_q, scale_by_singular_value=False)
-#     analyze_svd(W_Q[0, 0], scale_by_singular_value=False)
-#     analyze_svd(W_K[0, 0], scale_by_singular_value=False)
-#     _, SEq, _ = torch.linalg.svd(W_E_query_err)
-#     _, SEs, _ = torch.linalg.svd(W_E_size_err)
-#     _,
-#     if sanity_check:
-#         EQKE_err_err_check = (
-#             W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T
-#         )  # O(d_vocab^2 * d_model)
-#     # EQKE_query_cross_err =
-#     # EQKE_query_cross_err =
-#     # EQKE_err_cross_size
-#     # EQKQ_err_err =
-
-#     # %%
-
-#     W_E_size = size_direction @ W_E_pos_k
-#     W_E_size = W_E_size / W_E_size.norm(dim=-1, keepdim=True)
-
-#     W_E_size_reflect_alt = torch.stack(
-#         [W_E_size * (row @ W_E_size) for row in W_E_pos_k], dim=0
-#     )
-#     W_E_size_reflect = (W_E_pos_k @ W_E_size[:, None]) @ W_E_size[None, :]
-#     # torch.set_printoptions(threshold=5000, precision=10)
-#     # print(f"W_E_pos_k={W_E_pos_k};\nW_E_pos_q={W_E_pos_q};\nW_Q={W_Q};\nW_K={W_K}")
-#     # torch.set_printoptions() # reset display
-#     # print([row @ W_E_size for row in W_E_pos_k - W_E_size_reflect_alt])
-#     assert torch.allclose(W_E_size_reflect, W_E_size_reflect_alt)
-#     W_E_query = query_direction @ W_E_pos_q
-#     W_E_query = W_E_query / W_E_query.norm(dim=-1, keepdim=True)
-#     W_E_query_reflect_alt = torch.stack(
-#         [W_E_query * (row @ W_E_query) for row in W_E_pos_q], dim=0
-#     )
-#     W_E_query_reflect = (W_E_pos_q @ W_E_query[:, None]) @ W_E_query[None, :]
-#     assert torch.allclose(W_E_query_reflect, W_E_query_reflect_alt)
-#     W_E_q_err = W_E_pos_q - W_E_query_reflect
-#     W_E_k_err = W_E_pos_k - W_E_size_reflect
-#     (W_E_q_err_q, W_E_q_err_s, W_E_q_err_k), (
-#         W_E_q_err_contrib,
-#         W_E_q_err_resid,
-#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_E_q_err)
-#     (W_E_k_err_k, W_E_k_err_s, W_E_k_err_q), (
-#         W_E_k_err_contrib,
-#         W_E_k_err_resid,
-#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_E_k_err)
-#     (W_Q_q, W_Q_s, W_Q_k), (
-#         W_Q_contrib,
-#         W_Q_resid,
-#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_Q[0, 0])
-#     (W_K_k, W_K_s, W_K_q), (
-#         W_K_contrib,
-#         W_K_resid,
-#     ) = gbmi.analysis_tools.decomp.split_svd_contributions(W_K[0, 0])
-#     matrices = (
-#         ("E_q_err", W_E_q_err_resid),
-#         ("E_k_err", W_E_k_err_resid),
-#         ("Q", W_Q_resid),
-#         ("K", W_K_resid),
-#     )
-#     print(
-#         "(val - contrib).abs().max():        "
-#         + ", ".join(f"{n}: {m.abs().max().item():2.4f}" for n, m in matrices)
-#     )
-#     print(
-#         "(val - contrib).matrix_norm(ord=2): "
-#         + ", ".join(
-#             f"{n}: {torch.linalg.matrix_norm(m, ord=2).item():2.4f}"
-#             for n, m in matrices
-#         )
-#     )
-#     print(
-#         "(diff.T @ diff).trace().sqrt():     "
-#         + ", ".join(f"{n}: {(m.T @ m).trace().sqrt().item():2.4f}" for n, m in matrices)
-#     )
-#     _, S, _ = torch.linalg.svd(W_E_q_err_resid)
-#     print((S.norm() ** 2, (W_E_q_err_resid.T @ W_E_q_err_resid).trace()))
-#     W_E_q_err_resid_s, _ = W_E_q_err_resid.sort(dim=0)
-#     W_E_q_err_resid_ss, _ = W_E_q_err_resid_s.sort(dim=1)
-#     analyze_svd(W_E_q_err_resid, scale_by_singular_value=False)
-#     analyze_svd(W_E_q_err_resid_s, scale_by_singular_value=False)
-#     analyze_svd(W_E_q_err_resid_ss, scale_by_singular_value=False)
-
-#     # px.imshow(W_E_q_err_contrib).show()
-#     # px.imshow(W_E_q_err_resid).show()
-#     # analyze_svd(W_E_q_err_resid, scale_by_singular_value=False)
-
-#     # analyze_svd(W_Q, descr="Q", scale_by_singular_value=False)
-#     # analyze_svd(W_K, descr="K", scale_by_singular_value=False)
-#     if False:
-#         px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T).show()
-#         px.imshow(W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T).show()
-#         px.imshow(
-#             W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E_pos_k - W_E_size_reflect).T
-#         ).show()
-#     if True:
-#         px.imshow(
-#             W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T, title="EQKE"
-#         ).show()
-#         px.imshow(
-#             W_E_query_reflect @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T,
-#             title="queryQKsize",
-#         ).show()
-#         px.imshow(
-#             W_E_query_reflect @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T
-#             + W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T
-#             + W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E_pos_k - W_E_size_reflect).T,
-#             title="allerror",
-#         ).show()
-#         px.imshow(
-#             W_E_query_reflect @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T,
-#             title="queryQKerror",
-#         ).show()
-#         px.imshow(
-#             W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_reflect.T,
-#             title="errorQKsize",
-#         ).show()
-#         px.imshow(
-#             W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T,
-#             title="errorQKerror",
-#         ).show()
-#         analyze_svd(
-#             W_E_q_err @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_k_err.T,
-#             scale_by_singular_value=False,
-#         )
-
-#     # mat = W_E_pos_q @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_pos_k.T
-#     # U, S, Vh = torch.linalg.svd(mat)
-#     # U = U * S[None, : U.shape[1]].sqrt()
-#     # Vh = Vh * S[: Vh.shape[0], None].sqrt()
-#     # signs = torch.sign(U.mean(dim=-1))
-#     # U[:, 0] *= signs[0]
-#     # Vh[0, :] *= signs[0]
-#     # U[:, 1] *= signs[1]
-#     # Vh[1, :] *= signs[1]
-#     # U2 = U.clone()
-#     # U2[:, 1:] = 0
-#     # Vh2 = Vh.clone()
-#     # Vh2[1:, :] = 0
-#     # px.imshow(U2).show()
-#     # px.imshow(Vh2).show()
-#     # px.imshow(U2 @ Vh2).show()
-#     # px.imshow(mat - U2 @ Vh2).show()
-#     # U3, S3, V3 = torch.linalg.svd(mat - U2 @ Vh2)
-#     # analyze_svd(mat - U2 @ Vh2, scale_by_singular_value=True)
-
-#     # W_E_query = query_direction @ W_E
-#     # W_E_query_reflect_alt = torch.stack(
-#     #     [W_E_query * (row @ W_E_query) for row in W_E], dim=0
-#     # )
-#     # W_E_query_reflect = (W_E @ W_E_query[:, None]) @ W_E_query[None, :]
-#     # assert torch.allclose(W_E_query_reflect, W_E_query_reflect_alt)
-#     # px.imshow(
-#     #     (W_E + W_pos[-1][None, :])
-#     #     @ W_Q[0, 0]
-#     #     @ W_K[0, 0].T
-#     #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
-#     # ).show()
-#     # px.imshow(
-#     #     (W_E_query_reflect + W_pos[-1][None, :])
-#     #     @ W_Q[0, 0]
-#     #     @ W_K[0, 0].T
-#     #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
-#     # ).show()
-#     # px.imshow(
-#     #     (W_E - W_E_query_reflect)
-#     #     @ W_Q[0, 0]
-#     #     @ W_K[0, 0].T
-#     #     @ (W_E + W_pos.mean(dim=0)[None, :]).T
-#     # ).show()
-#     # # print(W_E_query.shape, W_E_query_reflect.shape, W_E_query_reflect_alt.shape)
-#     # # px.imshow(W_E_query_reflect - W_E_query_reflect_alt).show()
-
-#     # # W_E_err = torch.stack([row - W_E_query * (row @ W_E_query) for row in W_E], dim=0)
-
-#     # # W_E_from_query = query_direction[:, None] @ W_E_query[None, :]
-#     # # W_E_size = (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])) @ W_K[0, 0] @ W_Q[0, 0].T
-#     # # # compute matrix of W_E_query @ W_E_size
-#     # # W_E_query_W_E_size = W_E_query[:, None] @ W_E_size[None, :]
-#     # # px.imshow(W_E).show()
-#     # # px.imshow(W_E_from_query).show()
-#     # # px.imshow(W_E - W_E_from_query).show()
-#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E, scale_by_singular_value=False)
-#     # # U, S, Vh = torch.linalg.svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T)
-#     # # gbmi.analysis_tools.decomp.analyze_svd(W_Q[0,0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)[None, :]).T, scale_by_singular_value=False)
-#     # # for i, s in enumerate(S):
-#     # #     if i < U.shape[1]:
-#     # #         U[:, i] *= s
-#     # # for i in range(len(S), U.shape[1]):
-#     # #     U[:, i] = 0
-#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ U, scale_by_singular_value=False)
-#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E).T, scale_by_singular_value=True)
-#     # # gbmi.analysis_tools.decomp.analyze_svd(W_E @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos[-1][None, :]).T, scale_by_singular_value=False)
-
-
-# # W_E_qerr = W_E - (query_direction @ W_E @ W_Q @ W_K.T @ (size_direction @ (W_E + W_pos.mean(dim=0)[None, :])))
-# # px.imshow(W_E).show()
-# # %%
+(
+    (EQKE_query_key, err_accumulator),
+    EQKE_pos_err,
+    (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_err, W_E_key_err2)),
+) = decompose_EQKE_error(
+    model,
+    key_direction=size_direction,
+    query_direction=query_direction,
+    second_key_direction=second_key_direction,
+    second_query_direction=second_query_direction,
+    W_Q_U=W_Q_U,
+    W_K_U=W_K_U,
+    sanity_check=True,
+)
 
 # %%

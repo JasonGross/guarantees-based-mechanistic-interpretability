@@ -145,10 +145,10 @@ def find_second_singular_contributions(
 
     W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
     W_E_pos_q = W_E + W_pos[-1][None, :]
-    _size_direction_alt, (_W_E_size, W_E_size_err) = factor_contribution(
+    _W_E_size, W_E_size_err = factor_contribution(
         W_E_pos_k, size_direction, sanity_check=sanity_check
     )
-    _query_direction_alt, (_W_E_query, W_E_query_err) = factor_contribution(
+    _W_E_query, W_E_query_err = factor_contribution(
         W_E_pos_q, query_direction, sanity_check=sanity_check
     )
     if plot_heatmaps:

@@ -76,7 +76,7 @@ class LowRankTensor:
     ) -> bool:
         if show is None:
             show = self._show
-        full_kwargs = dict(self._check) if isinstance(self._check, dict) else {}
+        full_kwargs = dict(self._checkparams)
         full_kwargs.update(kwargs)
         if isinstance(other, LowRankTensor):
             other = other.totensor()
@@ -94,7 +94,7 @@ class LowRankTensor:
     @torch.no_grad()
     def maybe_check(
         self,
-        other: Tensor,
+        other: Union[Tensor, LowRankTensor],
         show: Optional[bool] = None,
         descr: Optional[str] = None,
         renderer: Optional[str] = None,
@@ -121,12 +121,14 @@ class LowRankTensor:
                 u = u @ mid
         else:
             u, v = self.u, self.v @ other
-        result = LowRankTensor(u, v, check=self._check, show=self._show)
+        result = LowRankTensor(
+            u, v, check=self._check, show=self._show, checkparams=self._checkparams
+        )
         if self._check:
             assert result.check(self.totensor() @ other, descr="matmul")
         return result
 
-    def __rmatmul__(self, other: Tensor):
+    def __rmatmul__(self, other: Union[Tensor, LowRankTensor]):
         if isinstance(other, LowRankTensor):
             # prefer to keep the dimensions of stored matrices as low as possible
             u, mid, v = other.u, other.v @ self.u, self.v
@@ -141,7 +143,9 @@ class LowRankTensor:
                 u = u @ mid
         else:
             u, v = other @ self.u, self.v
-        result = LowRankTensor(u, v, check=self._check, show=self._show)
+        result = LowRankTensor(
+            u, v, check=self._check, show=self._show, checkparams=self._checkparams
+        )
         if self._check:
             assert result.check(other @ self.totensor(), descr="matmul")
         return result

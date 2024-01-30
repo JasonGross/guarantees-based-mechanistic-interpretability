@@ -5,7 +5,9 @@ import gbmi.analysis_tools.decomp
 import gbmi.verification_tools.decomp
 import gbmi.utils.lowrank
 import gbmi.exp_max_of_n.analysis
+import gbmi.exp_max_of_n.plot
 
+importlib.reload(gbmi.exp_max_of_n.plot)
 importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.analysis_tools.decomp)
 importlib.reload(gbmi.verification_tools.decomp)
@@ -250,12 +252,6 @@ print(
 
 # %% [markdown]
 # # Plots
-# %%
-import importlib
-import gbmi.exp_max_of_n.plot
-
-importlib.reload(gbmi.exp_max_of_n.plot)
-gbmi.exp_max_of_n.plot.display_basic_interpretation(model)
 # %%
 display_basic_interpretation(model)
 
@@ -513,7 +509,7 @@ def decompose_EQKE_error(
         EQKE_pos_err,
         (
             prod_max_singular * np.sqrt(2),
-            (W_E_query_err2, W_Q_err, W_K_err, W_E_key_err2),
+            (W_E_query_err2, W_Q_err, W_K_err.T, W_E_key_err2.T),
         ),
     )
 
@@ -537,7 +533,7 @@ def decompose_EQKE_error(
 (
     (EQKE_query_key, err_accumulator),
     EQKE_pos_err,
-    (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_err, W_E_key_err2)),
+    (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
 ) = decompose_EQKE_error(
     model,
     key_direction=size_direction,
@@ -549,4 +545,67 @@ def decompose_EQKE_error(
     sanity_check=True,
 )
 
+# %% [markdown]
+# # more plots
 # %%
+px.imshow(EQKE_query_key.numpy(), title="EQKE_query_key").show()
+px.imshow(err_accumulator.numpy(), title="err_accumulator").show()
+px.imshow(EQKE_pos_err.numpy(), title="EQKE_pos_err").show()
+px.imshow((W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).numpy()).show()
+print(f"err_upper_bound: {err_upper_bound}")
+
+
+# %%
+def compute_min_right_attention_quadratic(
+    EQKE: Float[Tensor, "d_vocab_q d_vocab_k"], min_gap: int = 1  # noqa: F722
+) -> Float[Tensor, "d_vocab_q d_vocab_max"]:  # noqa: F722
+    """
+    Computes a tensor of minimum right attention (more attention paid to the max than to a single instance of a non-max token at least min_gap less than the max token) for each query token and each max token
+    When the query token is larger than the max token, the matrix holds nan.
+
+    Complexity: O(d_vocab^2)
+    """
+    result = torch.zeros_like(EQKE)
+    for q_tok in range(EQKE.shape[0]):
+        running_max = 0
+        pending = []
+        for max_tok in range(EQKE.shape[1]):
+            pending.append(EQKE[q_tok, max_tok].item())
+            if max_tok < q_tok:
+                result[q_tok, max_tok] = float("nan")
+            else:
+                result[q_tok, max_tok] = EQKE[q_tok, max_tok] - running_max
+            if len(pending) >= min_gap:
+                running_max = max(running_max, pending.pop(0))
+    return result
+
+
+# %%
+def compute_min_softmaxed_right_attention(
+    min_right_attention: Float[Tensor, "d_vocab_q d_vocab_max"],  # noqa: F722
+    EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
+    n_ctx: int,
+) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx"]:  # noqa: F722
+    """
+    Computes the minimum post-softmax attention paid to the maximum token by each query token, for each number of copies of the maximum token
+    Complexity: O(d_vocab^2 * n_ctx)
+    """
+
+
+# def compute_max_wrong_attention_quadratic(EQKE: Float[Tensor, "d_vocab_q d_vocab_k"]) -> Float[Tensor, "d_vocab_q d_vocab_max"]:
+#     """
+#     Computes a tensor of minimum right attention (more attention paid to the max than to a single instance of a non-max token) for each query token and each max token
+#     When the query token is larger than the max token, the matrix holds nan.
+
+#     Complexity: O(d_vocab^2)
+#     """
+#     result = torch.zeros_like(EQKE)
+#     for q_tok in range(EQKE.shape[0]):
+#         running_max = 0
+#         for max_tok in range(EQKE.shape[1]):
+#             if max_tok < q_tok:
+#                 result[q_tok, max_tok] = float("nan")
+#             else:
+#                 result[q_tok, max_tok] = EQKE[q_tok, max_tok] - running_max
+#             running_max = max(running_max, EQKE[q_tok, max_tok].item())
+#     return result

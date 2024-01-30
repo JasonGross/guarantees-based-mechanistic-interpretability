@@ -587,9 +587,43 @@ def compute_min_softmaxed_right_attention(
     n_ctx: int,
 ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx"]:  # noqa: F722
     """
-    Computes the minimum post-softmax attention paid to the maximum token by each query token, for each number of copies of the maximum token
+    Computes the minimum post-softmax attention paid to the maximum token by each query token, for each number of copies of a non-max token.
     Complexity: O(d_vocab^2 * n_ctx)
     """
+    result = torch.zeros(tuple(min_right_attention.shape) + (n_ctx,))
+    tmp = torch.zeros((n_ctx,))
+    EQKE_pos_err -= EQKE_pos_err[
+        :, -1
+    ]  # softmax is invariant to adding a constant to all inputs, so we offset by the attention paid to the query position
+    EQKE_pos_err = EQKE_pos_err[:, :-1].sort(dim=-1).values
+    for q_tok in range(min_right_attention.shape[0]):
+        for max_tok in range(min_right_attention.shape[1]):
+            if max_tok < q_tok:
+                result[q_tok, max_tok] = float("nan")
+                continue
+            for n_copies_nonmax in range(n_ctx):
+                if n_copies_nonmax == 0 and max_tok != q_tok:
+                    result[q_tok, max_tok, n_copies_nonmax] = float("nan")
+                    continue
+                tmp[:-1] = EQKE_pos_err[q_tok]
+                tmp[-1] = 0
+                if n_copies_nonmax == n_ctx - 1 and max_tok == q_tok:
+                    # max tok in the query position, so we handle this case specially
+                    tmp[-1] += min_right_attention[q_tok, max_tok]
+                    tmp = tmp.softmax(dim=-1)
+                    result[q_tok, max_tok, n_copies_nonmax] = tmp[-1]
+                else:
+                    # put the max tokens in the least favored slots
+                    n_copies_max = n_ctx - n_copies_nonmax
+                    tmp[:n_copies_max] += min_right_attention[q_tok, max_tok]
+                    tmp = tmp.softmax(dim=-1)
+                    result[q_tok, max_tok, n_copies_nonmax] = (
+                        tmp[:n_copies_max].sum().item()
+                    )
+    return result
+
+
+# %%
 
 
 # def compute_max_wrong_attention_quadratic(EQKE: Float[Tensor, "d_vocab_q d_vocab_k"]) -> Float[Tensor, "d_vocab_q d_vocab_max"]:

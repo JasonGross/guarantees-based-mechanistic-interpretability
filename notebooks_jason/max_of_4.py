@@ -2,13 +2,18 @@
 import importlib
 import gbmi.exp_max_of_n.analysis
 import gbmi.analysis_tools.decomp
+import gbmi.verification_tools.decomp
+import gbmi.utils.lowrank
 
 importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.analysis_tools.decomp)
+importlib.reload(gbmi.verification_tools.decomp)
+importlib.reload(gbmi.utils.lowrank)
 # %%
 from collections import defaultdict
 from typing import Tuple
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
+from gbmi.utils.lowrank import LowRankTensor
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
@@ -317,36 +322,31 @@ with torch.no_grad():
     W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
     W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
     W_E_pos_q = W_E + W_pos[-1][None, :]
-    size_direction_alt, (W_E_size, W_E_size_err) = factor_contribution(
+    W_E_size, W_E_size_err = factor_contribution(
         W_E_pos_k, size_direction, sanity_check=sanity_check
     )  # O(d_vocab * d_model)
-    query_direction_alt, (W_E_query, W_E_query_err) = factor_contribution(
+    W_E_size.setcheckparams(atol=1e-6)
+    W_E_query, W_E_query_err = factor_contribution(
         W_E_pos_q, query_direction, sanity_check=sanity_check
     )  # O(d_vocab * d_model)
-    EQKE_query_size = (
-        query_direction[:, None] @ size_direction[None, :] * size_query_singular_value
+    W_E_query.setcheckparams(atol=1e-6)
+    EQKE_query_size = LowRankTensor(
+        query_direction * np.sqrt(size_query_singular_value),
+        size_direction * np.sqrt(size_query_singular_value),
+        check=sanity_check,
+        show=True,
     )  # O(d_vocab * d_vocab)
     if sanity_check:
-        assert_allclose_or_show(
-            EQKE_query_size, W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T
-        )
-    err_accumulator = torch.zeros_like(EQKE_query_size)  # O(d_vocab^2)
+        assert EQKE_query_size.check(W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size.T)
+    err_accumulator = torch.zeros_like(EQKE_query_size.totensor())  # O(d_vocab^2)
     EQKE_query_cross_err = (
-        query_direction[:, None]
-        @ (query_direction_alt @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T)[None, :]
-    )  # O(d_vocab * d_model)
+        (W_E_query @ W_Q[0, 0]) @ W_K[0, 0].T
+    ) @ W_E_size_err.T  # O(d_vocab * d_model)
     err_accumulator += EQKE_query_cross_err
-    if sanity_check:
-        assert_allclose_or_show(
-            EQKE_query_cross_err,
-            W_E_query @ W_Q[0, 0] @ W_K[0, 0].T @ W_E_size_err.T,
-            atol=1e-4,
-        )
-    EQKE_err_cross_size = (
-        W_E_query_err @ W_Q[0, 0] @ W_K[0, 0].T @ size_direction_alt
-    )[:, None] @ size_direction[
-        None, :
-    ]  # O(d_vocab * d_model)
+    EQKE_err_cross_size = W_E_query_err @ (
+        W_Q[0, 0] @ (W_K[0, 0].T @ W_E_size.T)
+    )  # O(d_vocab * d_model)
+    # %%
     err_accumulator += EQKE_err_cross_size
     if sanity_check:
         assert_allclose_or_show(

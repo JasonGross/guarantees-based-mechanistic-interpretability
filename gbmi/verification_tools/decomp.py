@@ -2,6 +2,7 @@ from typing import Literal, Tuple, Union, overload
 from torch import Tensor
 from jaxtyping import Float
 import torch
+from gbmi.utils.lowrank import LowRankTensor
 
 
 @torch.no_grad()
@@ -9,10 +10,8 @@ def factor_right_contribution(
     m: Float[Tensor, "r c"],  # noqa: F722
     v: Float[Tensor, "c"],  # noqa: F821
     sanity_check: bool = True,
-) -> Tuple[
-    Float[Tensor, "r"],  # noqa: F821
-    Tuple[Float[Tensor, "r c"], Float[Tensor, "r c"]],  # noqa: F722
-]:
+    show: bool = True,
+) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
     Complexity: O(r c)
     """
@@ -21,11 +20,12 @@ def factor_right_contribution(
         m.shape[-1] == v.shape[-1]
     ), f"m.shape[-1] must match the shape of v ({m.shape[-1]} != {v.shape[-1]}, m.shape: {m.shape}, v.shape: {v.shape})"
     v_alt = m @ v
-    contrib = v_alt[..., None] @ v[..., None, :]
+    contrib = LowRankTensor(
+        v_alt[..., None], v[..., None, :], check=sanity_check, show=show
+    )
     if sanity_check:
-        contrib_alt = torch.stack([v * (row @ v) for row in m], dim=0)
-        assert torch.allclose(contrib, contrib_alt)
-    return v_alt, (contrib, m - contrib)
+        assert contrib.check(torch.stack([v * (row @ v) for row in m], dim=0))
+    return contrib, m - contrib
 
 
 @torch.no_grad()
@@ -33,17 +33,15 @@ def factor_left_contribution(
     m: Float[Tensor, "r c"],  # noqa: F722
     v: Float[Tensor, "r"],  # noqa: F821
     sanity_check: bool = True,
-) -> Tuple[
-    Float[Tensor, "c"],  # noqa: F821
-    Tuple[Float[Tensor, "r c"], Float[Tensor, "r c"]],  # noqa: F722
-]:
+    show: bool = True,
+) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
     Complexity: O(r c)
     """
-    v_alt, (contrib, resid) = factor_right_contribution(
-        m.T, v, sanity_check=sanity_check
+    contrib, resid = factor_right_contribution(
+        m.T, v, sanity_check=sanity_check, show=show
     )
-    return v_alt, (contrib.T, resid.T)
+    return contrib.T, resid.T
 
 
 @overload
@@ -52,11 +50,9 @@ def factor_contribution(
     v: Float[Tensor, "r"],  # noqa: F821
     *,
     sanity_check: bool = True,
+    show: bool = True,
     side: Literal["left"] = "left",
-) -> Tuple[
-    Float[Tensor, "c"],  # noqa: F821
-    Tuple[Float[Tensor, "r c"], Float[Tensor, "r c"]],  # noqa: F722
-]:
+) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
     Complexity: O(r c)
     """
@@ -69,11 +65,9 @@ def factor_contribution(
     v: Float[Tensor, "c"],  # noqa: F821
     *,
     sanity_check: bool = True,
+    show: bool = True,
     side: Literal["right"],
-) -> Tuple[
-    Float[Tensor, "r"],  # noqa: F821
-    Tuple[Float[Tensor, "r c"], Float[Tensor, "r c"]],  # noqa: F722
-]:
+) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
     Complexity: O(r c)
     """
@@ -86,11 +80,9 @@ def factor_contribution(
     v: Union[Float[Tensor, "r"], Float[Tensor, "c"]],  # noqa: F821
     *,
     sanity_check: bool = True,
+    show: bool = True,
     side: Literal["left", "right"] = "left",
-) -> Tuple[
-    Union[Float[Tensor, "c"], Float[Tensor, "r"]],  # noqa: F821
-    Tuple[Float[Tensor, "r c"], Float[Tensor, "r c"]],  # noqa: F722
-]:
+) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
     Complexity: O(r c)
     """

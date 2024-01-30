@@ -67,6 +67,16 @@ See the `exp_template` directory for more details.
 
 To add new dependencies, run `poetry add my-package`.
 
+## Code Style
+
+We use black to format our code.
+To set up the pre-commit hooks that enforce code formatting, run
+
+```bash
+make pre-commit-install
+```
+
+
 ## Tests
 
 This codebase advocates for [expect tests](https://blog.janestreet.com/the-joy-of-expect-tests) in machine learning, and as such uses @ezyang's [expecttest](https://github.com/ezyang/expecttest) library for unit and regression tests.

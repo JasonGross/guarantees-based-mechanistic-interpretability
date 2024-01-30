@@ -18,6 +18,7 @@ importlib.reload(gbmi.utils)
 # %%
 from collections import defaultdict
 from typing import Tuple, Union
+import math
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.utils.lowrank import LowRankTensor
 from gbmi.exp_max_of_n.analysis import (
@@ -37,7 +38,7 @@ from torch.utils.data import DataLoader
 import torch
 from tqdm import tqdm
 import numpy as np
-from jaxtyping import Float
+from jaxtyping import Float, Integer
 from torch import Tensor
 import plotly.express as px
 from transformer_lens import HookedTransformerConfig, HookedTransformer
@@ -561,7 +562,7 @@ print(f"err_upper_bound: {err_upper_bound}")
 @torch.no_grad()
 def compute_min_right_attention_quadratic(
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
-    min_gap: Union[int, Float[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
+    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
 ) -> Float[Tensor, "d_vocab_q d_vocab_max"]:  # noqa: F722
     """
     Computes a tensor of minimum right attention (more attention paid to the max than to a single instance of a non-max token at least min_gap less than the max token) for each query token and each max token
@@ -574,7 +575,9 @@ def compute_min_right_attention_quadratic(
         running_maxes = torch.zeros_like(EQKE[q_tok])
         for max_tok in range(EQKE.shape[1]):
             cur_min_gap = (
-                min_gap if isinstance(min_gap, int) else min_gap[q_tok, max_tok]
+                min_gap
+                if isinstance(min_gap, int)
+                else int(min_gap[q_tok, max_tok].item())
             )
             if max_tok > 0:
                 running_maxes[max_tok] = max(
@@ -596,7 +599,7 @@ def compute_min_right_attention_quadratic(
 def compute_min_softmaxed_right_attention(
     min_right_attention: Float[Tensor, "d_vocab_q d_vocab_max"],  # noqa: F722
     EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
-    min_gap: Union[int, Float[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
+    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
 ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx"]:  # noqa: F722
     """
     Computes the minimum post-softmax attention paid to the maximum token by each query token, for each number of copies of a non-max token.
@@ -615,7 +618,9 @@ def compute_min_softmaxed_right_attention(
     for q_tok in range(min_right_attention.shape[0]):
         for max_tok in range(min_right_attention.shape[1]):
             cur_min_gap = (
-                min_gap if isinstance(min_gap, int) else min_gap[q_tok, max_tok]
+                min_gap
+                if isinstance(min_gap, int)
+                else int(min_gap[q_tok, max_tok].item())
             )
             if max_tok < q_tok:
                 result[q_tok, max_tok] = float("nan")
@@ -670,7 +675,7 @@ def compute_largest_wrong_logit_quadratic(
     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
     EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
-    min_gap: Union[int, Float[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
+    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
 ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     """
     Computes the largest gap between the wrong logit and the right logit for each query token, max token, and number of copies of a non-max token.
@@ -715,7 +720,7 @@ def compute_largest_wrong_logit_quadratic(
         cur_min_gap = (
             min_gap
             if isinstance(min_gap, int)
-            else min_gap[: max_tok + 1, max_tok].min().item()
+            else int(min_gap[: max_tok + 1, max_tok].min().item())
         )
         if max_tok < cur_min_gap:
             # we must have only the max token
@@ -758,7 +763,9 @@ def compute_largest_wrong_logit_quadratic(
             )
             for q_tok in range(max_tok + 1):
                 cur_min_gap = (
-                    min_gap if isinstance(min_gap, int) else min_gap[q_tok, max_tok]
+                    min_gap
+                    if isinstance(min_gap, int)
+                    else int(min_gap[q_tok, max_tok])
                 )
                 if max_tok != q_tok and (max_tok - q_tok < cur_min_gap):
                     continue
@@ -815,51 +822,161 @@ print(
 
 # %%
 @torch.no_grad()
-def find_min_gap(
+def find_min_gaps(
     *,
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
-    err_upper_bound: Union[float, Float[Tensor, ""]],  # noqa: F722
+    EQKE_err_upper_bound: Union[float, Float[Tensor, ""]],  # noqa: F722
     EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
     EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
-) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+    """
+    Run the argument across all possible min_gaps, and return the min_gap that works for each query token and max token.
+
+    Since here we are finding the argument/proof rather than verifying it, the complexity does not matter.
+    """
     d_vocab_q, d_vocab_k = EQKE.shape
     n_ctx, d_vocab_out = PVOU.shape
-    min_gaps = torch.ones((d_vocab_q, d_vocab_k, n_ctx))
-    for min_gap in tqdm(list(reversed(range(1, n_ctx)))):
+    min_gaps = torch.ones((d_vocab_q, d_vocab_k, n_ctx), dtype=torch.long)
+    for min_gap in tqdm(list(reversed(range(1, d_vocab_k)))):
         min_right_attention = compute_min_right_attention_quadratic(
             EQKE, min_gap=min_gap
         )
         min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
-            min_right_attention, EQKE_pos_err, min_gap=min_gap
+            min_right_attention - EQKE_err_upper_bound, EQKE_pos_err, min_gap=min_gap
         )
         largest_wrong_logit = compute_largest_wrong_logit_quadratic(
-            min_right_attention_softmaxed, EUPU, EVOU, PVOU, min_gap=min_gap
+            min_right_attention_softmaxed,
+            EUPU=EUPU,
+            EVOU=EVOU,
+            PVOU=PVOU,
+            min_gap=min_gap,
         )
-        # if the largest wrong logit is negative, then we can't have a smaller min_gap
+        # if the largest wrong logit is negative, then this gap works
         min_gaps[largest_wrong_logit < 0] = min_gap
 
-    pass
+    return min_gaps
 
 
 # %%
+def count_sequences(
+    sequence_length: int, nonmax_count: int, max_nonmax_tok: int
+) -> int:
+    """
+    Count the number of sequences of length sequence_length with nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    """
+    total_count = 0
+
+    for i in range(nonmax_count + 1):
+        combinations = math.comb(sequence_length, i)
+        token_variations = max_nonmax_tok**i
+        total_count += combinations * token_variations
+
+    return total_count
 
 
-# def compute_max_wrong_attention_quadratic(EQKE: Float[Tensor, "d_vocab_q d_vocab_k"]) -> Float[Tensor, "d_vocab_q d_vocab_max"]:
-#     """
-#     Computes a tensor of minimum right attention (more attention paid to the max than to a single instance of a non-max token) for each query token and each max token
-#     When the query token is larger than the max token, the matrix holds nan.
+@torch.no_grad()
+def count_correct_sequences(
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+    ],
+    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
+) -> int:
+    d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
+    correct_count = 0
+    for q_tok in range(d_vocab_q):
+        for max_tok in range(d_vocab_max):
+            for n_copies_nonmax in range(n_ctx):
+                cur_min_gap = (
+                    min_gap
+                    if isinstance(min_gap, int)
+                    else int(min_gap[q_tok, max_tok].item())
+                )
+                # use not to also catch nans
+                if (
+                    (not largest_wrong_logit[q_tok, max_tok, n_copies_nonmax] < 0)
+                    or q_tok > max_tok
+                    or (q_tok != max_tok and n_copies_nonmax == 0)
+                    or (q_tok != max_tok and max_tok - q_tok < cur_min_gap)
+                ):
+                    continue
+                if n_copies_nonmax == 0:
+                    correct_count += 1
+                elif q_tok == max_tok and n_copies_nonmax == n_ctx - 1:
+                    correct_count += 1
+                elif q_tok != max_tok and n_copies_nonmax == 1:
+                    correct_count += 1
+                else:
+                    nonmax_pre_query_count = (
+                        n_copies_nonmax - 1 if q_tok != max_tok else n_copies_nonmax
+                    )
+                    # count the number of sequences of length n_ctx - 1 with nonmax_pre_query_count tokens less than or equal to max_tok - cur_min_gap and the remaining tokens equal to max_tok, where order matters
+                    correct_count += count_sequences(
+                        n_ctx - 1, nonmax_pre_query_count, max_tok - cur_min_gap
+                    )
+    return correct_count
 
-#     Complexity: O(d_vocab^2)
-#     """
-#     result = torch.zeros_like(EQKE)
-#     for q_tok in range(EQKE.shape[0]):
-#         running_max = 0
-#         for max_tok in range(EQKE.shape[1]):
-#             if max_tok < q_tok:
-#                 result[q_tok, max_tok] = float("nan")
-#             else:
-#                 result[q_tok, max_tok] = EQKE[q_tok, max_tok] - running_max
-#             running_max = max(running_max, EQKE[q_tok, max_tok].item())
-#     return result
+
+def compute_accuracy_lower_bound_from(
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+    ],
+    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
+) -> Tuple[float, Tuple[int, int]]:
+    """
+    returns correct_count / total_sequences, (correct_count, total_sequences)
+    """
+    d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
+    correct_count = count_correct_sequences(largest_wrong_logit, min_gap=min_gap)
+    total_sequences = d_vocab_max**n_ctx
+    return correct_count / total_sequences, (correct_count, total_sequences)
+
+
+# %%
+min_gaps = find_min_gaps(
+    EQKE=EQKE_query_key + err_accumulator,
+    EQKE_err_upper_bound=err_upper_bound,
+    EQKE_pos_err=EQKE_pos_err,
+    EUPU=EUPU,
+    EVOU=EVOU,
+    PVOU=PVOU,
+)
+
+# %%
+min_gap = min_gaps.max(dim=-1).values
+min_right_attention = compute_min_right_attention_quadratic(
+    EQKE_query_key + err_accumulator, min_gap=min_gap
+)
+print(
+    f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
+)  # O(d_vocab^2)
+print(
+    (min_right_attention[~min_right_attention.isnan()] > err_upper_bound).sum().item()
+)
+min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
+    min_right_attention - err_upper_bound, EQKE_pos_err, min_gap=min_gap
+)
+print(
+    f"Complexity of compute_min_softmaxed_right_attention: {complexity_of(compute_min_softmaxed_right_attention)}"
+)  # O(d_vocab^2 * n_ctx^2)
+EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
+print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
+EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
+print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
+PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
+print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d_model)
+largest_wrong_logit: Float[
+    Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+] = compute_largest_wrong_logit_quadratic(
+    min_right_attention_softmaxed, EUPU, EVOU, PVOU, min_gap=min_gap
+)
+print(
+    f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(compute_largest_wrong_logit_quadratic)}"
+)  # O(d_vocab^2 * n_ctx^2)
+accuracy_bound, (correct_count, total_sequences) = compute_accuracy_lower_bound_from(
+    largest_wrong_logit, min_gap=min_gap
+)
+print(
+    f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
+)

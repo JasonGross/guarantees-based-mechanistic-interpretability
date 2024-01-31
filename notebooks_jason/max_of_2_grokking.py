@@ -606,7 +606,11 @@ if True:
     )
     assert run is not None
     run.log(
-        {"grokking_regularized_gif": wandb.Video(grokking_gif, fps=2, format="gif")}
+        {
+            f"grokking{'_regularized' if include_l2_regularization else ''}_gif": wandb.Video(
+                grokking_gif, fps=2, format="gif"
+            )
+        }
     )
     wandb.finish()
 # %% [markdown]

@@ -367,6 +367,14 @@ def decompose_EQKE_error(
 
     The d_model^2 term comes from having to do SVD to compute remaining_error_upper_bound
 
+    Preconditions:
+        (none)
+    Postconditions:
+        Define err := EQKE - (EQKE_query_key + err_accumulator)
+        Then we guarantee:
+        . max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
+        . EQKE_pos_err[p] := (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_pos[p] - W_pos.mean(dim=0, keepdim=True)).T
+
     EQKE_query_key uses key_direction and query_direction for the rank 1 approximation
 
     We compute as follows:
@@ -567,11 +575,20 @@ def compute_min_right_attention_quadratic(
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
     min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
 ) -> Float[Tensor, "d_vocab_q d_vocab_max"]:  # noqa: F722
-    """
+    r"""
     Computes a tensor of minimum right attention (more attention paid to the max than to a single instance of a non-max token at least min_gap less than the max token) for each query token and each max token
     When the query token is larger than the max token, the matrix holds nan.
 
     Complexity: O(d_vocab^2)
+
+    Preconditions:
+        (none)
+    Postconditions:
+        \forall q, m:
+          if q > m: return[q, m] = nan
+          elif m - min_gap[q, m] < q < m: return[q, m] = nan
+          elif m < min_gap[q, m]: return[q, m] = 0
+          else: return[q, m] = EQKE[q, m] - \max_{k <= m - min_gap[q, m]} EQKE[q, k]
     """
     result = torch.zeros_like(EQKE)
     for q_tok in range(EQKE.shape[0]):
@@ -604,12 +621,21 @@ def compute_min_softmaxed_right_attention(
     EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
     min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
 ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx"]:  # noqa: F722
-    """
+    r"""FIXME
     Computes the minimum post-softmax attention paid to the maximum token by each query token, for each number of copies of a non-max token.
 
     min_gap is used only to determine when the result should be nan
 
     Complexity: O(d_vocab^2 * n_ctx^2)
+
+    Preconditions:
+        (none)
+    Postconditions:
+        \forall q, m:
+          if q > m: return[q, m] = nan
+          elif m - min_gap[q, m] < q < m: return[q, m] = nan
+          elif m < min_gap[q, m]: return[q, m] = 0
+          else: return[q, m] = EQKE[q, m] - \max_{k <= m - min_gap[q, m]} EQKE[q, k]
     """
     n_ctx = EQKE_pos_err.shape[-1]
     result = torch.zeros(tuple(min_right_attention.shape) + (n_ctx,))

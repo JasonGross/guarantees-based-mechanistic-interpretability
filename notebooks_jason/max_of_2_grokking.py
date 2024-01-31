@@ -224,7 +224,7 @@ def compute_traces_and_frames(
             else 0
         )
         # kludge with None
-        regularization_epochs = [k for k in regularizations.keys() if k is None] + list(
+        regularization_epochs = list(
             sorted(k for k in regularizations.keys() if k is not None)
         )
 

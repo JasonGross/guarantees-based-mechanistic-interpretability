@@ -74,7 +74,7 @@ expected_training_ratio = (
 if abs(training_ratio - expected_training_ratio) > 1e-5:
     f"training_ratio should probably be float.from_hex('{expected_training_ratio.hex()}') ({expected_training_ratio})"
 batch_size = int(round(training_ratio * vocab**seq_len))
-epochs_to_train_for = 4000  # @param {type:"number"}
+epochs_to_train_for = 3000  # @param {type:"number"}
 include_biases = False  # @param {type:"boolean"}
 cfg = Config(
     experiment=MaxOfN(

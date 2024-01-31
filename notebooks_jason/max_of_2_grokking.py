@@ -64,7 +64,7 @@ lr = 0.001  # @param {type:"number"}
 betas = (0.9, 0.98)  # @param
 weight_decay = 1.0  # @param {type:"number"}
 optimizer = "AdamW"  # @param ["AdamW", "Adam"]
-deterministic = False  # True  # @param {type:"boolean"}
+deterministic = True  # @param {type:"boolean"}
 # list out the number here explicitly so that it matches with what is saved in wandb
 training_ratio = 0.099609375  # @param {type:"number"}
 expected_training_ratio = (
@@ -122,10 +122,11 @@ cfg = Config(
 #### Model Training / Loading
 # %%
 # Load (or train) the model
-force = "allow either"  # "load"  # @param ["load", "train", "allow either"]
+force = "load"  # @param ["load", "train", "allow either"]
 if force == "allow either":
     force = None
 runtime, model = train_or_load_model(cfg, force=force)
+
 # %%
 # load all model versions
 models = runtime.model_versions(cfg, max_count=3000, step=1)

@@ -225,11 +225,8 @@ def compute_traces_and_frames(
         epoch = old_runtime.epoch
         epochs_so_far.add(epoch)
         overlap = compute_QK(old_model)["data"]
-        regularizations[epoch] = (
-            weight_decay * compute_l2_norm(old_model)  # ** 2
-            if include_l2_regularization
-            else 0
-        )
+        regularizations[epoch] = weight_decay * compute_l2_norm(old_model)  # ** 2
+
         # kludge with None
         regularization_epochs = list(
             sorted(k for k in regularizations.keys() if k is not None)
@@ -314,35 +311,40 @@ def compute_traces_and_frames(
                     col=1,
                 ),
             ),
-            # Loss plot traces
-            (
+        ]
+        if include_l2_regularization:
+            cur_traces += [
+                # Loss plot traces
                 (
-                    go.Scatter(
-                        x=training_losses_with_regularization_epochs,
-                        y=training_losses_with_regularization,
-                        mode="lines",
-                        name="Training Loss + L2",
+                    (
+                        go.Scatter(
+                            x=training_losses_with_regularization_epochs,
+                            y=training_losses_with_regularization,
+                            mode="lines",
+                            name="Training Loss + L2",
+                        ),
+                    ),
+                    dict(
+                        row=2,
+                        col=1,
                     ),
                 ),
-                dict(
-                    row=2,
-                    col=1,
-                ),
-            ),
-            (
                 (
-                    go.Scatter(
-                        x=test_losses_with_regularization_epochs,
-                        y=test_losses_with_regularization,
-                        mode="lines",
-                        name="Test Loss + L2",
+                    (
+                        go.Scatter(
+                            x=test_losses_with_regularization_epochs,
+                            y=test_losses_with_regularization,
+                            mode="lines",
+                            name="Test Loss + L2",
+                        ),
+                    ),
+                    dict(
+                        row=2,
+                        col=1,
                     ),
                 ),
-                dict(
-                    row=2,
-                    col=1,
-                ),
-            ),
+            ]
+        cur_traces += [
             (
                 (
                     go.Scatter(
@@ -371,20 +373,25 @@ def compute_traces_and_frames(
                     col=1,
                 ),
             ),
-            (
+        ]
+        if include_l2_regularization:
+            cur_traces += [
                 (
-                    go.Scatter(
-                        x=regularization_epochs,
-                        y=[regularizations[e] for e in regularization_epochs],
-                        mode="lines",
-                        name="Regularization",
+                    (
+                        go.Scatter(
+                            x=regularization_epochs,
+                            y=[regularizations[e] for e in regularization_epochs],
+                            mode="lines",
+                            name="Regularization",
+                        ),
+                    ),
+                    dict(
+                        row=2,
+                        col=1,
                     ),
                 ),
-                dict(
-                    row=2,
-                    col=1,
-                ),
-            ),
+            ]
+        cur_traces += [
             # Accuracy plot traces
             (
                 (

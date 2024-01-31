@@ -512,13 +512,20 @@ def compute_traces_and_frames(
     )
 
 
-traces_and_frames = compute_traces_and_frames(models)
+include_l2_regularization = True  # @param {type:"boolean"}
+traces_and_frames = compute_traces_and_frames(
+    models, include_l2_regularization=include_l2_regularization
+)
 # %%
 # @title plot
 fig = make_subplots(
     rows=3,
     cols=1,
-    subplot_titles=("Attention Plot", "Loss+L2 Regularization Plot", "Accuracy Plot"),
+    subplot_titles=(
+        "Attention Plot",
+        f"Loss{'+L2 Regularization' if include_l2_regularization else ''} Plot",
+        "Accuracy Plot",
+    ),
     # vertical_spacing=0.15,
 )
 

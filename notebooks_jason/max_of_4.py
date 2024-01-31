@@ -621,7 +621,7 @@ def compute_min_softmaxed_right_attention(
     EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
     min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
 ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx"]:  # noqa: F722
-    r"""FIXME
+    r"""
     Computes the minimum post-softmax attention paid to the maximum token by each query token, for each number of copies of a non-max token.
 
     min_gap is used only to determine when the result should be nan
@@ -642,7 +642,8 @@ def compute_min_softmaxed_right_attention(
           if q > m: return[q, m, n_copies_nonmax] = nan
           elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
           elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
-          else: return[q, m] = EQKE[q, m] - \max_{k <= m - min_gap[q, m]} EQKE[q, k]
+          elif m < min_gap[q, m]: return[q, m, 0] = nan
+          else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m]
     """
     n_ctx = EQKE_pos_err.shape[-1]
     result = torch.zeros(tuple(min_right_attention.shape) + (n_ctx,))
@@ -703,7 +704,6 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
 
 
 # %%
-# TODO: document assumptions on inputs and gurantees on outputs
 # TODO: write up average+diff trick
 # TODO: find the worse bounds without all the tricks
 @torch.no_grad()
@@ -716,10 +716,29 @@ def compute_largest_wrong_logit_quadratic(
     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
     min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
 ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
-    """
+    r"""
     Computes the largest gap between the wrong logit and the right logit for each query token, max token, and number of copies of a non-max token.
 
     Complexity: O(d_vocab^2 * n_ctx^2)
+
+    Preconditions:
+        EUPU = (W_E + W_pos[-1]) @ W_U
+        EVOU = W_E @ W_V @ W_O @ W_U
+        PVOU = W_pos @ W_V @ W_O @ W_U
+        \forall q, m, n_copies_nonmax:
+          if q > m: return[q, m, n_copies_nonmax] = nan
+          elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m]: return[q, m, 0] = nan
+          else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m]
+    Postconditions:
+        \forall q, m, n_copies_nonmax, x:
+          if q > m: return[q, m, n_copies_nonmax] = nan
+          elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m]: return[q, m, 0] = nan
+          else: for all sequences with query q, max token m, n_copies_nonmax tokens not equal to m (including the query when the query is not equal to m), and all tokens either equal to m or less than or equal to m - min_gap[q, m], we have:
+            return[q, m, n_copies_nonmax] <= model(sequence)[-1, x] - model(sequence)[-1, m]
     """
     results = torch.zeros_like(min_softmaxed_right_attention) + float("nan")
     d_vocab_q, d_vocab_max, n_ctx = min_softmaxed_right_attention.shape

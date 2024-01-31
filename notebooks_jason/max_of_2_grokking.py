@@ -57,12 +57,12 @@ seq_len = 2  # training data setup code only works for sequence length 2
 vocab = 64  # @param {type:"number"}
 d_head = 32  # @param {type:"number"}
 d_model = 32  # @param {type:"number"}
-model_seed = 8799708  # 613947648  # @param {type:"number"}
-seed = 401  # 123  # @param {type:"number"}
+model_seed = 613947648  # @param {type:"number"}
+seed = 123  # @param {type:"number"}
 force_adjacent = (0, 1, 2, 17)  # @param
 lr = 0.001  # @param {type:"number"}
 betas = (0.9, 0.98)  # @param
-weight_decay = 1.0  # 1.0  # @param {type:"number"}
+weight_decay = 1.0  # @param {type:"number"}
 optimizer = "AdamW"  # @param ["AdamW", "Adam"]
 deterministic = False  # True  # @param {type:"boolean"}
 # list out the number here explicitly so that it matches with what is saved in wandb
@@ -126,7 +126,6 @@ force = "allow either"  # "load"  # @param ["load", "train", "allow either"]
 if force == "allow either":
     force = None
 runtime, model = train_or_load_model(cfg, force=force)
-
 # %%
 # load all model versions
 models = runtime.model_versions(cfg, max_count=3000, step=1)
@@ -219,7 +218,7 @@ def compute_traces_and_frames(
         epochs_so_far.add(epoch)
         overlap = compute_QK(old_model)["data"]
         regularizations[epoch] = (
-            weight_decay * compute_l2_norm(old_model)
+            weight_decay * compute_l2_norm(old_model) ** 2
             if include_l2_regularization
             else 0
         )

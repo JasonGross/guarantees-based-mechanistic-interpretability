@@ -629,7 +629,14 @@ def compute_min_softmaxed_right_attention(
     Complexity: O(d_vocab^2 * n_ctx^2)
 
     Preconditions:
-        (none)
+        . EQKE_pos_err[q, p] := (W_E[q] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_pos[p] - W_pos.mean(dim=0, keepdim=True)).T
+        Define:
+        . EQKE := (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0, keepdim=True)).T
+        . err := EQKE - (EQKE_query_key + err_accumulator)
+        Then we demand:
+        . max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
+        .
+
     Postconditions:
         \forall q, m:
           if q > m: return[q, m] = nan

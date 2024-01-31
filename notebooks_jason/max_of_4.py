@@ -702,9 +702,35 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
     min_right_attention - err_upper_bound, EQKE_pos_err, min_gap=1
 )
 
+# %% [markdown]
+# ## The average+diff trick
+#
+# (Stealing notation from Aryan)
+#
+# Suppose we have quantities $f_{x,y}$ and $g_{y,z}$ and we want to pessimize (WLOG, suppose minimize) the quantity $f_{x,y} + g_{y,z}$ over $x$, $y$, and $z$ in time less than $\mathcal{O}(n_x n_y n_z)$, say we allow $\mathcal{O}(n_x n_y + n_y n_z + n_x n_z)$.
+#
+# We can of course say
+# $$\min_{x,y} f_{x,y} + \min_{y, z} g_{y,z} \le f_{x,y} + g_{y,z}$$
+# But we can do better!
+#
+# Note that
+# $$f_{x,y} = \mathbb{E}_x f_{x,y} + (f_{x,y} - \mathbb{E}_x f_{x,y})$$
+#
+# Suppose that $f_{x,y}$ varies much less over $x$ than it does over $y$, and much less than $h_{y,z}$ varies over either of $y$ and $z$.
+# This will make the following bonud a good approximation, though the bound is sound even without this assumption.
+# We can write
+# $$
+# \begin{align*}
+# f_{x,y} + g_{y,z}
+# & \ge \min_{x,y,z} [f_{x,y} + g_{y,z}] \\
+# & = \min_{x,y,z} [\mathbb{E}_x f_{x,y} + g_{y,z} + f_{x,y} - \mathbb{E}_x f_{x,y}] \\
+# & \ge \min_{x,y,z} [\mathbb{E}_x f_{x,y} + g_{y,z}] + \min_{x,y,z}[f_{x,y} - \mathbb{E}_x f_{x,y}] \\
+# & = \min_{y,z} [\mathbb{E}_x f_{x,y} + g_{y,z}] + \min_{x,y}[f_{x,y} - \mathbb{E}_x f_{x,y}]
+# \end{align*}
+# $$
+
 
 # %%
-# TODO: write up average+diff trick
 # TODO: find the worse bounds without all the tricks
 @torch.no_grad()
 def compute_largest_wrong_logit_quadratic(

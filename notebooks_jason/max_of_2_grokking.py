@@ -284,8 +284,16 @@ def compute_traces_and_frames(
 
         # Update the max_value for the loss and accuracy plots
         max_value_losses = max(
-            max(training_losses_with_regularization),
-            max(test_losses_with_regularization),
+            max(
+                training_losses_with_regularization
+                if include_l2_regularization
+                else training_losses_without_regularization
+            ),
+            max(
+                test_losses_with_regularization
+                if include_l2_regularization
+                else test_losses_without_regularization
+            ),
         )
         max_value_accuracies = max(max(training_accuracies), max(test_accuracies))
 
@@ -586,7 +594,7 @@ with open(grokking_gif, mode="rb") as f:
     display(Image(f.read()))
 # %%
 # log artifact to wandb
-if False:
+if True:
     runtime_run = runtime.run()
     assert runtime_run is not None
     run = wandb.init(

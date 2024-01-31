@@ -630,18 +630,18 @@ def compute_min_softmaxed_right_attention(
 
     Preconditions:
         Define:
-        EQKE[p] := (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos[p]).T
+        EQKE[q, p, k] := (W_E[q] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E[k] + W_pos[p]).T
         . err := EQKE - (EQKE_query_key + err_accumulator)
         Then we demand:
         . \forall q, m, p1, p2, k:
-        . min_right_attention[q, m] + EQKE_pos_error[q, p1] - EKQE_pos_error[q, p2] <= max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
-        .
-
+          if ((q == m) or (q <= m - min_gap[q, m])) and (k <= m - min_gap[q, m]):
+            min_right_attention[q, m] + EQKE_pos_error[q, p1] - EKQE_pos_error[q, p2]
+            <= EQKE[q, p1, m] - EQKE[q, p2, k]
     Postconditions:
-        \forall q, m:
-          if q > m: return[q, m] = nan
-          elif m - min_gap[q, m] < q < m: return[q, m] = nan
-          elif m < min_gap[q, m]: return[q, m] = 0
+        \forall q, m, n_copies_nonmax:
+          if q > m: return[q, m, n_copies_nonmax] = nan
+          elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
           else: return[q, m] = EQKE[q, m] - \max_{k <= m - min_gap[q, m]} EQKE[q, k]
     """
     n_ctx = EQKE_pos_err.shape[-1]

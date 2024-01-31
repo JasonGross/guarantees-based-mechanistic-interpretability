@@ -584,7 +584,9 @@ for i, frame in enumerate(tqdm(fig.frames)):
     filenames.append(filename)
 # %%
 # @title make gif
-grokking_gif = "max_of_2_grokking.gif"
+grokking_gif = (
+    f"max_of_2_grokking{'_regularized' if include_l2_regularization else ''}.gif"
+)
 with imageio.get_writer(grokking_gif, mode="I", duration=0.5, loop=0) as writer:
     for filename in tqdm(filenames):
         image = imageio.imread(filename)

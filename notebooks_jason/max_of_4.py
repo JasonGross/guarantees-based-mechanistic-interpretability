@@ -670,6 +670,9 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
 
 
 # %%
+# TODO: document assumptions on inputs and gurantees on outputs
+# TODO: write up average+diff trick
+# TODO: find the worse bounds without all the tricks
 @torch.no_grad()
 def compute_largest_wrong_logit_quadratic(
     min_softmaxed_right_attention: Float[
@@ -704,6 +707,7 @@ def compute_largest_wrong_logit_quadratic(
     for max_tok in range(d_vocab_max):
         # center PVOU according to max token, O(d_vocab * n_ctx)
         PVOU -= PVOU[:, max_tok].unsqueeze(-1)
+        # Pessimization over position:
         # relax to PVOU attention being indepenent of EVOU attention, and also relax to it being possible to pay 100% attention to one PVOU position (this is reasonable, the gap in pre-softmax attention between adjacent tokens is like 20, 1e-20 is essentially 0 in float32)
         cur_PVOU: Float[Tensor, "d_vocab_out"] = PVOU.max(dim=0).values  # noqa: F821
         # center EUPU according to max token, O(d_vocab)
@@ -731,7 +735,9 @@ def compute_largest_wrong_logit_quadratic(
         # query-independent logits from the skip connection / PVOU independence
         logits: Float[Tensor, "d_vocab_out"] = EUPU_mean_query + cur_PVOU  # noqa: F821
         assert logits[max_tok] == 0  # sanity check from centering above
+        # pessimize over the thing we're not supposed to be paying attention to (w.r.t. the token that is non-max that we're paying attention)
         # maximum added to the wrong logit from paying attention to the wrong thing
+        # TODO rename: max_gap is gap between output logits, min_gap is gap between input tokens
         wrong_attention_logits: Float[Tensor, ""] = EVOU_max_gap[  # noqa: F722
             : max_tok - cur_min_gap + 1
         ].max()

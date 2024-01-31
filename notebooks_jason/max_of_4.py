@@ -633,8 +633,8 @@ def compute_min_softmaxed_right_attention(
         EQKE[p] := (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos[p]).T
         . err := EQKE - (EQKE_query_key + err_accumulator)
         Then we demand:
-        . \forall q, m HERE
-        . max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
+        . \forall q, m, p1, p2, k:
+        . min_right_attention[q, m] + EQKE_pos_error[q, p1] - EKQE_pos_error[q, p2] <= max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
         .
 
     Postconditions:

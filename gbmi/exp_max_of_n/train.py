@@ -95,7 +95,7 @@ class MaxOfN(ExperimentConfig):
     optimizer_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
     )
-    optimizer: Literal["Adam", "AdamW"] = "Adam"
+    optimizer: Literal["Adam", "AdamW", "SGD"] = "Adam"
 
     def __post_init__(self):
         self.model_config.n_ctx = self.seq_len
@@ -273,9 +273,11 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         self.run_batch(batch, prefix="test_")
 
     def configure_optimizers(self):
-        optimizer = {"Adam": torch.optim.Adam, "AdamW": torch.optim.AdamW}[
-            self.config.experiment.optimizer
-        ]
+        optimizer = {
+            "Adam": torch.optim.Adam,
+            "AdamW": torch.optim.AdamW,
+            "SGD": torch.optim.SGD,
+        }[self.config.experiment.optimizer]
         return optimizer(self.parameters(), **self.config.experiment.optimizer_kwargs)
 
 
@@ -494,7 +496,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
     parser.add_argument("--weight-decay", type=float, default=None, help="Weight decay")
     parser.add_argument(
         "--optimizer",
-        choices=["Adam", "AdamW"],
+        choices=["Adam", "AdamW", "SGD"],
         default="Adam",
         help="The optimizer to use.",
     )

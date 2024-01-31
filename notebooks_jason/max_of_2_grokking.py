@@ -62,8 +62,9 @@ seed = 123  # @param {type:"number"}
 force_adjacent = (0, 1, 2, 17)  # @param
 lr = 0.001  # @param {type:"number"}
 betas = (0.9, 0.98)  # @param
+momentum = None  # @param {type:"number"}
 weight_decay = 1.0  # @param {type:"number"}
-optimizer = "AdamW"  # @param ["AdamW", "Adam"]
+optimizer = "AdamW"  # @param ["AdamW", "Adam", "SGD"]
 deterministic = True  # @param {type:"boolean"}
 # list out the number here explicitly so that it matches with what is saved in wandb
 training_ratio = 0.099609375  # @param {type:"number"}
@@ -107,7 +108,13 @@ cfg = Config(
             force_adjacent=force_adjacent,
             training_ratio=training_ratio,
         ),
-        optimizer_kwargs=dict(lr=lr, betas=betas, weight_decay=weight_decay),
+        optimizer_kwargs={
+            k: v
+            for k, v in dict(
+                lr=lr, betas=betas, weight_decay=weight_decay, momentum=momentum
+            ).items()
+            if v is not None
+        },
         optimizer=optimizer,
     ),
     deterministic=deterministic,
@@ -219,7 +226,7 @@ def compute_traces_and_frames(
         epochs_so_far.add(epoch)
         overlap = compute_QK(old_model)["data"]
         regularizations[epoch] = (
-            weight_decay * compute_l2_norm(old_model) ** 2
+            weight_decay * compute_l2_norm(old_model)  # ** 2
             if include_l2_regularization
             else 0
         )
@@ -576,7 +583,9 @@ if False:
         resume="must",
     )
     assert run is not None
-    run.log({"grokking_gif": wandb.Video(grokking_gif, fps=2, format="gif")})
+    run.log(
+        {"grokking_regularized_gif": wandb.Video(grokking_gif, fps=2, format="gif")}
+    )
     wandb.finish()
 # %% [markdown]
 ### Explanation

@@ -1275,10 +1275,30 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 # & = \min_{y,z} [\mathbb{E}_x f_{x,y} + g_{y,z}] + \min_{x,y}[f_{x,y} - \mathbb{E}_x f_{x,y}]
 # \end{align*}
 # $$
-
-
-# %%
-# TODO: find the worse bounds without all the tricks
+#
+# Example for how this helps with small variation:
+#
+# Take any function $k(y)$ and then take
+# $$
+# \begin{align*}
+# f_{x,y} & := k(y) + \varepsilon_1(x, y) \\
+# g_{y,z} & := -k(y) + \varepsilon_2(y, z)
+# \end{align*}
+# $$
+# Then we have
+# $$
+# \begin{align*}
+# \min_{x,y,z}[f_{x,y} + g_{y,z}] & = \min_{x,y,z}[\varepsilon_1(x, y) + \varepsilon_2(y, z)] \\
+# \min{x,y}f_{x,y} + \min_{y,z}g_{y,z}
+# & = \min_{y}k(y) + \min_{y} -k(y) + \min_{x,y}\varepsilon_1(x, y) + \min_{y,z}\varepsilon_2(y, z) \\
+# & = \min_{y}k(y) - \max_{y} k(y) + \min_{x,y}\varepsilon_1(x, y) + \min_{y,z}\varepsilon_2(y, z) \\
+# \min{x,y}[f_{x,y} - \mathbb{E}_x f_{x,y}] + \min_{y,z}[g_{y,z} + \mathbb{E}_x f_{x,y}]
+# & = \min_{x,y}\varepsilon_1(x, y) + \min_{y,z}[\varepsilon_2(y, z) + \mathbb{E}_x\varepsilon_1(x, y)]
+# \end{align*}
+# $$
+# If $\varepsilon_1$ and $\varepsilon_2$ are small compared to $\min_y k(y) - \max_y k(y)$, then using $\mathbb{E}_x f_{x,y}$ gives a much better bound.
+#
+# Note, though, that this could be a worse bound if the assumption of small variation does not hold.
 
 
 # %%

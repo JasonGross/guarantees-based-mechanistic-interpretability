@@ -46,7 +46,7 @@ from torch.utils.data import DataLoader
 import torch
 from tqdm import tqdm
 import numpy as np
-from jaxtyping import Float, Integer
+from jaxtyping import Float, Integer, Bool
 from torch import Tensor
 import plotly.express as px
 from transformer_lens import HookedTransformerConfig, HookedTransformer
@@ -61,7 +61,13 @@ import shelve
 from gbmi.verification_tools.decomp import factor_contribution
 
 from gbmi.verification_tools.general import EU_PU
-from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU, all_attention_scores
+from gbmi.verification_tools.l1h1 import (
+    all_EQKE,
+    all_EQKP,
+    all_EVOU,
+    all_PVOU,
+    all_attention_scores,
+)
 from gbmi.verification_tools.utils import complexity_of
 from gbmi.utils.hashing import get_hash_ascii
 
@@ -252,25 +258,107 @@ EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
 print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
 PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
 print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d_model)
-EPQKEP: Float[
-    Tensor, "n_ctx_k d_vocab_q d_vocab_k"  # noqa: F722
-] = all_attention_scores(model)
-print(
-    f"Complexity of (E+P[-1])QKEP: {complexity_of(all_attention_scores)}"
-)  # O(d_vocab^2 * d_model * n_ctx)
+# EPQKEP: Float[
+#     Tensor, "n_ctx_k d_vocab_q d_vocab_k"  # noqa: F722
+# ] = all_attention_scores(model)
+# print(
+#     f"Complexity of (E+P[-1])QKEP: {complexity_of(all_attention_scores)}"
+# )  # O(d_vocab^2 * d_model * n_ctx)
+EQKE: Float[Tensor, "d_vocab_q d_vocab_k"] = all_EQKE(model)  # noqa: F722
+print(f"Complexity of EQKE: {complexity_of(all_EQKE)}")  # O(d_vocab^2 * d_model)
+EQKP: Float[Tensor, "d_vocab_q n_ctx_k"] = all_EQKP(model)  # noqa: F722
+print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model * n_ctx)
+
+
 # %%
 # for q_tok in tqdm(range(model.cfg.d_vocab)):
 #     for max_non_qtok in range(model.cfg.d_vocab):
 #         for min_non_qtok in range(model.cfg.d_vocab):
 # TODO COMPUTATION
 # START HERE
-# # %%
+# %%
+@torch.no_grad()
+def compute_min_softmaxed_right_attention_cubic_simple(
+    EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+    EQKP: Float[Tensor, "d_vocab_q n_ctx_k"],  # noqa: F722
+    attn_scale: Union[Float[Tensor, ""], float] = model.blocks[  # noqa F722
+        0
+    ].attn.attn_scale,
+    position: Optional[int] = None,
+) -> Float[
+    Tensor,
+    "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+]:
+    r"""
+    Computes the min post-softmax attention paid to the maximum token (attn=0) and the query token (attn=1) by each query token, for each number of copies of the non max token.
+    Note that we could do a bit of a better job than this by taking in min_gap and a pre-computed extreme_attention matrix, if we wanted to.
+
+    Complexity: O(d_vocab^3 * n_ctx^2)
+
+    Preconditions:
+        . attn_scale is correct for the model
+        . EQKE[q, k] is the attention paid from query q to key token k
+        . EQKP[q, p] is the attention paid from query q to key position p
+    Postconditions:
+        \forall w, q, m, k, n_copies_nonmax: (w for which)
+          if q > m or k > m: return[w, q, m, k, n_copies_nonmax] = nan
+          elif m = k and n_copies_nonmax != 0: return[w, q, m, k, n_copies_nonmax] = nan
+          elif q != m and n_copies_nonmax >= n_ctx - 1: return[w, q, m, k, n_copies_nonmax] = nan
+          else: return[w, q, m, k, n_copies_nonmax] <= post-softmax attention paid to {max token m if w == 0 else query token q} amongst all permutations of [the non-query-tokens in] the sequence with query q, n_copies_nonmax copies of k, and all other tokens equal to m
+    """
+    d_vocab, n_ctx = EQKE.shape[-1], EQKP.shape[-1]
+    result = torch.zeros((2, d_vocab, d_vocab, d_vocab, n_ctx)).to(EQKE) + float("nan")
+    tmp = torch.zeros((n_ctx,)).to(EQKE)
+    # constants for indices so we don't have 0 and 1 floating around
+    w_max = 0
+    w_qry = 1
+    # we sort EQKP so that higher-attention positions are at the back, so we can put the max token at the front.
+    EQKP, EQKPm1 = EQKP[:, :-1].sort(dim=-1).values, EQKP[:, -1]
+    for max_tok in tqdm(range(d_vocab), desc="max_tok", position=position):
+        for q_tok in range(max_tok + 1):
+            tmp[-1] = EQKE[q_tok, q_tok] + EQKPm1[q_tok]
+            for k_tok in range(max_tok + 1):
+                if k_tok == max_tok:
+                    if q_tok == max_tok:
+                        # only max tok, so we pay 100% attention to it
+                        result[w_max, q_tok, max_tok, k_tok, 0] = 1
+                        result[w_qry, q_tok, max_tok, k_tok, 0] = 0
+                        continue
+                    tmp[:-1] = EQKP[q_tok] + EQKE[q_tok, k_tok]
+                    tmp_sm = (tmp / attn_scale).softmax(dim=-1)
+                    result[w_max, q_tok, max_tok, k_tok, 0] = tmp_sm[:-1].sum()
+                    result[w_qry, q_tok, max_tok, k_tok, 0] = tmp_sm[-1]
+                    continue
+                for n_copies_nonmax in range(n_ctx):
+                    n_copies_max_nonquery = n_ctx - n_copies_nonmax - 1
+                    if q_tok != max_tok and n_copies_nonmax >= n_ctx - 1:
+                        continue
+                    tmp[:-1] = EQKP[q_tok]
+                    tmp[:n_copies_max_nonquery] += EQKE[q_tok, max_tok]
+                    tmp[n_copies_max_nonquery:-1] += EQKE[q_tok, k_tok]
+                    tmp_sm = (tmp / attn_scale).softmax(dim=-1)
+                    result[w_max, q_tok, max_tok, k_tok, n_copies_nonmax] = tmp_sm[
+                        :n_copies_max_nonquery
+                    ].sum() + (tmp_sm[-1] if q_tok == max_tok else 0)
+                    result[w_qry, q_tok, max_tok, k_tok, n_copies_nonmax] = (
+                        tmp_sm[-1] if q_tok != max_tok else 0
+                    )
+    return result
+
+
 # @torch.no_grad()
 # def compute_extrema_softmaxed_attention_cubic(
 #     EQKE: Float[Tensor, "n_ctx_k d_vocab_q d_vocab_max"],  # noqa: F722
-# ) -> Float[Tensor, "order=5 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax"]:  # noqa: F722
+#     attn_scale: Union[Float[Tensor, ""], float] = model.blocks[  # noqa F722
+#         0
+#     ].attn.attn_scale,
+# ) -> Float[
+#     Tensor,
+#     "order=5 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+# ]:
 #     r"""
 #     Computes the extreme post-softmax attention paid to the maximum (attn=0), non-maximum (attn=1), and query (attn=2) tokens by each query token, for each number of copies of the non max token.
+#     Note that we could do a bit of a better job than this by taking in min_gap and a pre-computed extreme_attention matrix, if we wanted to.
 
 #     The order determines which extreme we're at acconding to positional encoding:
 #     0: max > nonmax
@@ -283,7 +371,6 @@ print(
 #     Preconditions:
 #         Define:
 #         EQKE[q, p, k] := (W_E[q] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E[k] + W_pos[p]).T
-#         . err := EQKE - (EQKE_query_key + err_accumulator)
 #         Then we demand:
 #         . \forall q, m, p1, p2, k:
 #           if ((q == m) or (q <= m - min_gap[q, m])) and (k <= m - min_gap[q, m]):
@@ -297,56 +384,18 @@ print(
 #           elif m < min_gap[q, m]: return[q, m, 0] = nan
 #           else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m]
 #     """
-#     n_ctx = EQKE_pos_err.shape[-1]
-#     result = torch.zeros(tuple(min_right_attention.shape) + (n_ctx,))
-#     tmp = torch.zeros((n_ctx,))
-#     EQKE_pos_err -= EQKE_pos_err[:, -1].unsqueeze(
-#         -1
-#     )  # softmax is invariant to adding a constant to all inputs, so we offset by the attention paid to the query position
-#     EQKE_pos_err = EQKE_pos_err[:, :-1].sort(dim=-1).values
-#     for q_tok in range(min_right_attention.shape[0]):
-#         for max_tok in range(min_right_attention.shape[1]):
-#             cur_min_gap = (
-#                 min_gap
-#                 if isinstance(min_gap, int)
-#                 else int(min_gap[q_tok, max_tok].item())
-#             )
-#             if max_tok < q_tok:
-#                 result[q_tok, max_tok] = float("nan")
-#                 continue
-#             for n_copies_nonmax in range(n_ctx):
-#                 if n_copies_nonmax == 0 and max_tok != q_tok:
-#                     result[q_tok, max_tok, n_copies_nonmax] = float("nan")
-#                     continue
-#                 if max_tok < cur_min_gap and n_copies_nonmax != 0:
-#                     result[q_tok, max_tok, n_copies_nonmax] = float("nan")
-#                     continue
-#                 if max_tok != q_tok and (max_tok - q_tok < cur_min_gap):
-#                     result[q_tok, max_tok, n_copies_nonmax] = float("nan")
-#                     continue
-#                 tmp[:-1] = EQKE_pos_err[q_tok]
-#                 tmp[-1] = 0
-#                 if n_copies_nonmax == n_ctx - 1 and max_tok == q_tok:
-#                     # max tok in the query position, so we handle this case specially
-#                     tmp[-1] += min_right_attention[q_tok, max_tok]
-#                     tmp = tmp.softmax(dim=-1)
-#                     result[q_tok, max_tok, n_copies_nonmax] = tmp[-1]
-#                 else:
-#                     # put the max tokens in the least favored slots, where attention is lowest
-#                     n_copies_max = n_ctx - n_copies_nonmax
-#                     tmp[:n_copies_max] += min_right_attention[q_tok, max_tok]
-#                     tmp = tmp.softmax(dim=-1)
-#                     result[q_tok, max_tok, n_copies_nonmax] = (
-#                         tmp[:n_copies_max].sum().item()
-#                     )
-#     return result
 
 
-# # %%
+# %%
 # min_gap = 1
-# min_right_attention = compute_min_right_attention_quadratic(
-#     EQKE_query_key + err_accumulator, min_gap=20
-# )
+min_right_attention_softmaxed_cubic: Float[
+    Tensor,
+    "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+] = compute_min_softmaxed_right_attention_cubic_simple(
+    EQKE=EQKE,
+    EQKP=EQKP,
+    attn_scale=model.blocks[0].attn.attn_scale,
+)
 # print(
 #     (min_right_attention[~min_right_attention.isnan()] > err_upper_bound).sum().item()
 # )
@@ -354,192 +403,163 @@ print(
 #     min_right_attention - err_upper_bound, EQKE_pos_err, min_gap=1
 # )
 
-# # %% [markdown]
-# # ## The average+diff trick
-# #
-# # (Stealing notation from Aryan)
-# #
-# # Suppose we have quantities $f_{x,y}$ and $g_{y,z}$ and we want to pessimize (WLOG, suppose minimize) the quantity $f_{x,y} + g_{y,z}$ over $x$, $y$, and $z$ in time less than $\mathcal{O}(n_x n_y n_z)$, say we allow $\mathcal{O}(n_x n_y + n_y n_z + n_x n_z)$.
-# #
-# # We can of course say
-# # $$\min_{x,y} f_{x,y} + \min_{y, z} g_{y,z} \le f_{x,y} + g_{y,z}$$
-# # But we can do better!
-# #
-# # Note that
-# # $$f_{x,y} = \mathbb{E}_x f_{x,y} + (f_{x,y} - \mathbb{E}_x f_{x,y})$$
-# #
-# # Suppose that $f_{x,y}$ varies much less over $x$ than it does over $y$, and much less than $h_{y,z}$ varies over either of $y$ and $z$.
-# # This will make the following bonud a good approximation, though the bound is sound even without this assumption.
-# # We can write
-# # $$
-# # \begin{align*}
-# # f_{x,y} + g_{y,z}
-# # & \ge \min_{x,y,z} [f_{x,y} + g_{y,z}] \\
-# # & = \min_{x,y,z} [\mathbb{E}_x f_{x,y} + g_{y,z} + f_{x,y} - \mathbb{E}_x f_{x,y}] \\
-# # & \ge \min_{x,y,z} [\mathbb{E}_x f_{x,y} + g_{y,z}] + \min_{x,y,z}[f_{x,y} - \mathbb{E}_x f_{x,y}] \\
-# # & = \min_{y,z} [\mathbb{E}_x f_{x,y} + g_{y,z}] + \min_{x,y}[f_{x,y} - \mathbb{E}_x f_{x,y}]
-# # \end{align*}
-# # $$
+
+# %%
+@torch.no_grad()
+def compute_largest_wrong_logit_cubic(
+    min_softmaxed_right_attention: Float[
+        Tensor,
+        "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+    ],
+    *,
+    EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
+    EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
+    PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
+    permitted_nonmax_tokens: Bool[
+        Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
+    ],
+) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+    r"""
+    Computes the largest difference between the wrong logit and the right logit for each query token, max token, nonmax token, and number of copies of the non-max token.
+
+    Complexity: O(d_vocab^3 * n_ctx^2)
+
+    Preconditions:
+        EUPU = (W_E + W_pos[-1]) @ W_U
+        EVOU = W_E @ W_V @ W_O @ W_U
+        PVOU = W_pos @ W_V @ W_O @ W_U
+        \forall q, m, n_copies_nonmax:
+          if q > m: return[q, m, n_copies_nonmax] = nan
+          elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m]: return[q, m, 0] = nan
+          else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m]
+    Postconditions:
+        \forall q, m, n_copies_nonmax, x:
+          if q > m: return[q, m, n_copies_nonmax] = nan
+          elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
+          elif m < min_gap[q, m]: return[q, m, 0] = nan
+          else: for all sequences with query q, max token m, n_copies_nonmax tokens not equal to m (including the query when the query is not equal to m), and all tokens either equal to m or less than or equal to m - min_gap[q, m], we have:
+            return[q, m, n_copies_nonmax] <= model(sequence)[-1, x] - model(sequence)[-1, m]
+    """
+    results = torch.zeros_like(min_softmaxed_right_attention) + float("nan")
+    d_vocab_q, d_vocab_max, n_ctx = min_softmaxed_right_attention.shape
+    EVOU_max_logit_diff: Float[Tensor, "d_vocab_k"] = (  # noqa: F821
+        EVOU.max(dim=-1).values - EVOU.min(dim=-1).values
+    )  # for when we're paying attention to the wrong token
+
+    # EUPU is too expensive to center with respect to the max token
+    # so we split it
+    # this one we can center with respect to the max token
+    EUPU_mean_query: Float[Tensor, "d_vocab_out"]  # noqa: F821
+    # this one we pessimize over the wrong token
+    EUPU_per_query_max_gap: Float[Tensor, "d_vocab_q"]  # noqa: F821
+    EUPU_mean_query, EUPU_per_query_max_gap = tricks.split_EUPU(EUPU)
+    # center EVOU with respect to the diagonal, so it's convenient for the max token
+
+    EVOU -= EVOU.diag()[:, None]
+    for max_tok in range(d_vocab_max):
+        # center PVOU according to max token, O(d_vocab * n_ctx)
+        PVOU -= PVOU[:, max_tok].unsqueeze(-1)
+
+        # Pessimization over position:
+        # relax to PVOU attention being indepenent of EVOU attention, and also relax to it being possible to pay 100% attention to one PVOU position (this is reasonable, the gap in pre-softmax attention between adjacent tokens is like 20, 1e-20 is essentially 0 in float32)
+        cur_PVOU: Float[Tensor, "d_vocab_out"] = PVOU.max(dim=0).values  # noqa: F821
+
+        # center EUPU according to max token, O(d_vocab)
+        EUPU_mean_query -= EUPU_mean_query[max_tok].item()
+
+        # handle the case with only the max token
+        # here we can use EUPU exactly
+        logits_only_max: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
+            EUPU[max_tok, :] + EVOU[max_tok, :] + cur_PVOU
+        )
+        logits_only_max -= logits_only_max[max_tok].item()
+        logits_only_max[max_tok] = float(
+            "-inf"
+        )  # so we can max the logits across the non-max tokens
+        results[max_tok, max_tok, 0] = logits_only_max.max().item()
+
+        # now handle the cases with at least one non-max token
+        cur_min_gap = (
+            min_gap
+            if isinstance(min_gap, int)
+            else int(min_gap[: max_tok + 1, max_tok].min().item())
+        )
+        if max_tok < cur_min_gap:
+            # we must have only the max token
+            continue
+        # query-independent logits from the skip connection / PVOU independence
+        logits: Float[Tensor, "d_vocab_out"] = EUPU_mean_query + cur_PVOU  # noqa: F821
+        assert logits[max_tok] == 0  # sanity check from centering above
+        # pessimize over the thing we're not supposed to be paying attention to (w.r.t. the token that is non-max that we're paying attention)
+        # maximum added to the wrong logit from paying attention to the wrong thing
+        wrong_attention_logits: Float[Tensor, ""] = EVOU_max_logit_diff[  # noqa: F722
+            : max_tok - cur_min_gap + 1
+        ].max()
+        # exact logits from paying attention to the right thing
+        right_attention_logits: Float[Tensor, "d_vocab_out"] = EVOU[  # noqa: F821
+            max_tok
+        ]
+        assert right_attention_logits[max_tok] == 0  # sanity check from centering above
+        right_attention_logits_tmp = right_attention_logits.detach().clone()
+        right_attention_logits_tmp[max_tok] = float("-inf")
+        # maximum added to the wrong logit from paying attention to the right thing
+        right_attention_logits_max: Float[
+            Tensor, ""  # noqa: F722
+        ] = right_attention_logits_tmp.max()
+        for n_copies_nonmax in range(1, n_ctx):
+            # First we combine query-independent logit information, then we reduce over output tokens and loop over queries
+            # drop the nan values where the query token is invalid given the number of copies and the max token
+            average_right_attention: Float[Tensor, ""]  # noqa: F722
+            right_attention_adjustment: Float[Tensor, "d_vocab_q"]
+            (
+                average_right_attention,
+                right_attention_adjustment,
+            ) = tricks.split_min_softmaxed_right_attention(
+                min_softmaxed_right_attention[:, max_tok, n_copies_nonmax],
+                max_tok=max_tok,
+            )
+            cur_copies_logits = (
+                logits + average_right_attention * right_attention_logits
+            )
+            assert (
+                cur_copies_logits[max_tok] == 0
+            ), f"cur_copies_logits[{max_tok}] == {cur_copies_logits[max_tok]} != 0"  # sanity check from centering above
+            cur_copies_logits[max_tok] = float("-inf")
+            # find maximum wrong logit
+            average_wrong_logit = (
+                cur_copies_logits.max()
+                + (1 - average_right_attention) * wrong_attention_logits
+            )
+            for q_tok in range(max_tok + 1):
+                cur_min_gap = (
+                    min_gap
+                    if isinstance(min_gap, int)
+                    else int(min_gap[q_tok, max_tok])
+                )
+                if max_tok != q_tok and (max_tok - q_tok < cur_min_gap):
+                    continue
+                cur_extra_right_attention = (
+                    min_softmaxed_right_attention[q_tok, max_tok, n_copies_nonmax]
+                    - average_right_attention
+                )
+                results[q_tok, max_tok, n_copies_nonmax] = (
+                    average_wrong_logit + EUPU_per_query_max_gap[q_tok]
+                )
+                # add attention correction factor on right attention
+                results[q_tok, max_tok, n_copies_nonmax] += (
+                    cur_extra_right_attention * right_attention_logits_max
+                )
+                # add attention correction factor on right attention, using += - instead of -= to make the negation more obvious
+                results[q_tok, max_tok, n_copies_nonmax] += (
+                    -cur_extra_right_attention * wrong_attention_logits
+                )
+    return results
 
 
-# # %%
-# # TODO: find the worse bounds without all the tricks
-
-
-# # %%
-# @torch.no_grad()
-# def compute_largest_wrong_logit_quadratic(
-#     min_softmaxed_right_attention: Float[
-#         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-#     ],
-#     *,
-#     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
-#     EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
-#     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
-#     min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
-#     tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
-# ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
-#     r"""
-#     Computes the largest gap between the wrong logit and the right logit for each query token, max token, and number of copies of a non-max token.
-
-#     Complexity: O(d_vocab^2 * n_ctx^2)
-
-#     Preconditions:
-#         EUPU = (W_E + W_pos[-1]) @ W_U
-#         EVOU = W_E @ W_V @ W_O @ W_U
-#         PVOU = W_pos @ W_V @ W_O @ W_U
-#         \forall q, m, n_copies_nonmax:
-#           if q > m: return[q, m, n_copies_nonmax] = nan
-#           elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m]: return[q, m, 0] = nan
-#           else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m]
-#     Postconditions:
-#         \forall q, m, n_copies_nonmax, x:
-#           if q > m: return[q, m, n_copies_nonmax] = nan
-#           elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m]: return[q, m, 0] = nan
-#           else: for all sequences with query q, max token m, n_copies_nonmax tokens not equal to m (including the query when the query is not equal to m), and all tokens either equal to m or less than or equal to m - min_gap[q, m], we have:
-#             return[q, m, n_copies_nonmax] <= model(sequence)[-1, x] - model(sequence)[-1, m]
-#     """
-#     results = torch.zeros_like(min_softmaxed_right_attention) + float("nan")
-#     d_vocab_q, d_vocab_max, n_ctx = min_softmaxed_right_attention.shape
-#     EVOU_max_logit_diff: Float[Tensor, "d_vocab_k"] = (  # noqa: F821
-#         EVOU.max(dim=-1).values - EVOU.min(dim=-1).values
-#     )  # for when we're paying attention to the wrong token
-
-#     # EUPU is too expensive to center with respect to the max token
-#     # so we split it
-#     # this one we can center with respect to the max token
-#     EUPU_mean_query: Float[Tensor, "d_vocab_out"]  # noqa: F821
-#     # this one we pessimize over the wrong token
-#     EUPU_per_query_max_gap: Float[Tensor, "d_vocab_q"]  # noqa: F821
-#     EUPU_mean_query, EUPU_per_query_max_gap = tricks.split_EUPU(EUPU)
-#     # center EVOU with respect to the diagonal, so it's convenient for the max token
-
-#     EVOU -= EVOU.diag()[:, None]
-#     for max_tok in range(d_vocab_max):
-#         # center PVOU according to max token, O(d_vocab * n_ctx)
-#         PVOU -= PVOU[:, max_tok].unsqueeze(-1)
-
-#         # Pessimization over position:
-#         # relax to PVOU attention being indepenent of EVOU attention, and also relax to it being possible to pay 100% attention to one PVOU position (this is reasonable, the gap in pre-softmax attention between adjacent tokens is like 20, 1e-20 is essentially 0 in float32)
-#         cur_PVOU: Float[Tensor, "d_vocab_out"] = PVOU.max(dim=0).values  # noqa: F821
-
-#         # center EUPU according to max token, O(d_vocab)
-#         EUPU_mean_query -= EUPU_mean_query[max_tok].item()
-
-#         # handle the case with only the max token
-#         # here we can use EUPU exactly
-#         logits_only_max: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
-#             EUPU[max_tok, :] + EVOU[max_tok, :] + cur_PVOU
-#         )
-#         logits_only_max -= logits_only_max[max_tok].item()
-#         logits_only_max[max_tok] = float(
-#             "-inf"
-#         )  # so we can max the logits across the non-max tokens
-#         results[max_tok, max_tok, 0] = logits_only_max.max().item()
-
-#         # now handle the cases with at least one non-max token
-#         cur_min_gap = (
-#             min_gap
-#             if isinstance(min_gap, int)
-#             else int(min_gap[: max_tok + 1, max_tok].min().item())
-#         )
-#         if max_tok < cur_min_gap:
-#             # we must have only the max token
-#             continue
-#         # query-independent logits from the skip connection / PVOU independence
-#         logits: Float[Tensor, "d_vocab_out"] = EUPU_mean_query + cur_PVOU  # noqa: F821
-#         assert logits[max_tok] == 0  # sanity check from centering above
-#         # pessimize over the thing we're not supposed to be paying attention to (w.r.t. the token that is non-max that we're paying attention)
-#         # maximum added to the wrong logit from paying attention to the wrong thing
-#         wrong_attention_logits: Float[Tensor, ""] = EVOU_max_logit_diff[  # noqa: F722
-#             : max_tok - cur_min_gap + 1
-#         ].max()
-#         # exact logits from paying attention to the right thing
-#         right_attention_logits: Float[Tensor, "d_vocab_out"] = EVOU[  # noqa: F821
-#             max_tok
-#         ]
-#         assert right_attention_logits[max_tok] == 0  # sanity check from centering above
-#         right_attention_logits_tmp = right_attention_logits.detach().clone()
-#         right_attention_logits_tmp[max_tok] = float("-inf")
-#         # maximum added to the wrong logit from paying attention to the right thing
-#         right_attention_logits_max: Float[
-#             Tensor, ""  # noqa: F722
-#         ] = right_attention_logits_tmp.max()
-#         for n_copies_nonmax in range(1, n_ctx):
-#             # First we combine query-independent logit information, then we reduce over output tokens and loop over queries
-#             # drop the nan values where the query token is invalid given the number of copies and the max token
-#             average_right_attention: Float[Tensor, ""]  # noqa: F722
-#             right_attention_adjustment: Float[Tensor, "d_vocab_q"]
-#             (
-#                 average_right_attention,
-#                 right_attention_adjustment,
-#             ) = tricks.split_min_softmaxed_right_attention(
-#                 min_softmaxed_right_attention[:, max_tok, n_copies_nonmax],
-#                 max_tok=max_tok,
-#             )
-#             cur_copies_logits = (
-#                 logits + average_right_attention * right_attention_logits
-#             )
-#             assert (
-#                 cur_copies_logits[max_tok] == 0
-#             ), f"cur_copies_logits[{max_tok}] == {cur_copies_logits[max_tok]} != 0"  # sanity check from centering above
-#             cur_copies_logits[max_tok] = float("-inf")
-#             # find maximum wrong logit
-#             average_wrong_logit = (
-#                 cur_copies_logits.max()
-#                 + (1 - average_right_attention) * wrong_attention_logits
-#             )
-#             for q_tok in range(max_tok + 1):
-#                 cur_min_gap = (
-#                     min_gap
-#                     if isinstance(min_gap, int)
-#                     else int(min_gap[q_tok, max_tok])
-#                 )
-#                 if max_tok != q_tok and (max_tok - q_tok < cur_min_gap):
-#                     continue
-#                 cur_extra_right_attention = (
-#                     min_softmaxed_right_attention[q_tok, max_tok, n_copies_nonmax]
-#                     - average_right_attention
-#                 )
-#                 results[q_tok, max_tok, n_copies_nonmax] = (
-#                     average_wrong_logit + EUPU_per_query_max_gap[q_tok]
-#                 )
-#                 # add attention correction factor on right attention
-#                 results[q_tok, max_tok, n_copies_nonmax] += (
-#                     cur_extra_right_attention * right_attention_logits_max
-#                 )
-#                 # add attention correction factor on right attention, using += - instead of -= to make the negation more obvious
-#                 results[q_tok, max_tok, n_copies_nonmax] += (
-#                     -cur_extra_right_attention * wrong_attention_logits
-#                 )
-#     return results
-
-
-# # %%
+# %%
 # min_gap = 20
 # min_right_attention = compute_min_right_attention_quadratic(
 #     EQKE_query_key + err_accumulator, min_gap=min_gap
@@ -1157,7 +1177,6 @@ def compute_min_softmaxed_right_attention_quadratic(
         . attn_scale is correct for the model
         Define:
         EQKE[q, p, k] := (W_E[q] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E[k] + W_pos[p]).T
-        . err := EQKE - (EQKE_query_key + err_accumulator)
         Then we demand:
         . \forall q, m, p1, p2, k:
           if ((q == m) or (q <= m - min_gap[q, m])) and (k <= m - min_gap[q, m]):

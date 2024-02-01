@@ -135,6 +135,52 @@ def all_attention_scores(
 
 
 @torch.no_grad()
+def all_EQKE(
+    model: HookedTransformer,
+) -> Float[Tensor, "d_vocab_q d_vocab_k"]:  # noqa: F722
+    """
+    Returns pre-softmax attention of shape (d_vocab_q, d_vocab_k)
+    Complexity: O(d_vocab^2 * d_model)
+    """
+    W_E, W_pos, W_Q, W_K = model.W_E, model.W_pos, model.W_Q, model.W_K
+    d_model, n_ctx, d_vocab, d_head = (
+        model.cfg.d_model,
+        model.cfg.n_ctx,
+        model.cfg.d_vocab,
+        model.cfg.d_head,
+    )
+    assert W_E.shape == (d_vocab, d_model)
+    assert W_pos.shape == (n_ctx, d_model)
+    assert W_Q.shape == (1, 1, d_model, d_head)
+    assert W_K.shape == (1, 1, d_model, d_head)
+
+    return (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ W_E.T
+
+
+@torch.no_grad()
+def all_EQKP(
+    model: HookedTransformer,
+) -> Float[Tensor, "d_vocab_q n_ctx_k"]:  # noqa: F722
+    """
+    Returns pre-softmax attention of shape (d_vocab_q, n_ctx_k)
+    Complexity: O(d_vocab * d_model * n_ctx)
+    """
+    W_E, W_pos, W_Q, W_K = model.W_E, model.W_pos, model.W_Q, model.W_K
+    d_model, n_ctx, d_vocab, d_head = (
+        model.cfg.d_model,
+        model.cfg.n_ctx,
+        model.cfg.d_vocab,
+        model.cfg.d_head,
+    )
+    assert W_E.shape == (d_vocab, d_model)
+    assert W_pos.shape == (n_ctx, d_model)
+    assert W_Q.shape == (1, 1, d_model, d_head)
+    assert W_K.shape == (1, 1, d_model, d_head)
+
+    return (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ W_pos.T
+
+
+@torch.no_grad()
 def find_all_d_attention_scores(
     model: HookedTransformer, min_gap: int = 1
 ) -> Union[

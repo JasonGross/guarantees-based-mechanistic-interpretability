@@ -669,6 +669,10 @@ def compute_accuracy_lower_bound_from_cubic(
 
 
 # %%
+# EQKE: Float[Tensor, "d_vocab_q d_vocab_k"] = all_EQKE(model)  # noqa: F722
+print(f"Complexity of EQKE: {complexity_of(all_EQKE)}")  # O(d_vocab^2 * d_model)
+# EQKP: Float[Tensor, "d_vocab_q n_ctx_k"] = all_EQKP(model)  # noqa: F722
+print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model * n_ctx)
 # min_right_attention_softmaxed_cubic: Float[
 #     Tensor,
 #     "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
@@ -697,12 +701,12 @@ print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d
 print(
     f"Complexity of compute_largest_wrong_logit_cubic: {complexity_of(compute_largest_wrong_logit_cubic)}"
 )  # O(d_vocab^3 * n_ctx^2)
-accuracy_bound, (
-    correct_count,
+accuracy_bound_cubic, (
+    correct_count_cubic,
     total_sequences,
 ) = compute_accuracy_lower_bound_from_cubic(largest_wrong_logit_cubic)
 print(
-    f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
+    f"Accuracy lower bound: {accuracy_bound_cubic} ({correct_count_cubic} correct sequences of {total_sequences})"
 )
 
 # # %%
@@ -955,12 +959,12 @@ def decompose_EQKE_error(
         (W_E_query_err2 @ W_Q_rank1) @ W_K_err.T
     ) @ W_E_key_err2.T  # O(d_vocab * d_voacb)
     err_accumulator += EQKE_err_err_err__Q_cross_err
-    EQKQ_err_err_err__err_cross_K = W_E_query_err2 @ (
+    EQKE_err_err_err__err_cross_K = W_E_query_err2 @ (
         W_Q_err @ (W_K_rank1.T @ W_E_key_err2.T)
     )  # O(d_vocab * d_vocab)
-    err_accumulator += EQKQ_err_err_err__err_cross_K
+    err_accumulator += EQKE_err_err_err__err_cross_K
 
-    # We would like a faster way to compute EQKQ_err_err_err__err_cross_err
+    # We would like a faster way to compute EQKE_err_err_err__err_cross_err
     # unfortunately, we can only get this down to O(d_vocab * d_model^2) by using SVD
 
     # take the product of the first signular values in each matrix to get a bound on the singular value of the product

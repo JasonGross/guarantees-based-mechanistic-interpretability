@@ -180,3 +180,4 @@ max_of_*.gif
 # python shelve
 *.dir
 *.dat
+*.db

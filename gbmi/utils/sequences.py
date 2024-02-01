@@ -1,3 +1,4 @@
+import math
 from typing import Callable, Generic, TypeVar, Union, overload
 import torch
 from jaxtyping import Float
@@ -71,3 +72,19 @@ class ThunkedDataset(Generic[T], Dataset[Callable[[], T]]):
 
     def __getitem__(self, *args, **kwargs) -> Callable[[], T]:
         return lambda: self.dataset.__getitem__(*args, **kwargs)  # type: ignore
+
+
+def count_sequences(
+    sequence_length: int, nonmax_count: int, max_nonmax_tok: int
+) -> int:
+    """
+    Count the number of sequences of length sequence_length with nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    """
+    total_count = 0
+
+    for i in range(nonmax_count + 1):
+        combinations = math.comb(sequence_length, i)
+        token_variations = max_nonmax_tok**i
+        total_count += combinations * token_variations
+
+    return total_count

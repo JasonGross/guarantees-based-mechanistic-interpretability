@@ -10,12 +10,17 @@ from tqdm import tqdm
 import math
 import os
 import imageio
-from gbmi.exp_max_of_n.plot import compute_QK, display_basic_interpretation
+from gbmi.exp_max_of_n.plot import (
+    compute_l2_norm,
+    compute_QK,
+    display_basic_interpretation,
+)
 from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
     MaxOfN,
     train_or_load_model,
 )
+import gbmi.utils as utils
 from gbmi.model import Config, RunData
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 import plotly.express as px
@@ -57,8 +62,9 @@ seed = 123  # @param {type:"number"}
 force_adjacent = (0, 1, 2, 17)  # @param
 lr = 0.001  # @param {type:"number"}
 betas = (0.9, 0.98)  # @param
+momentum = None  # @param {type:"number"}
 weight_decay = 1.0  # @param {type:"number"}
-optimizer = "AdamW"  # @param ["AdamW", "Adam"]
+optimizer = "AdamW"  # @param ["AdamW", "Adam", "SGD"]
 deterministic = True  # @param {type:"boolean"}
 # list out the number here explicitly so that it matches with what is saved in wandb
 training_ratio = 0.099609375  # @param {type:"number"}
@@ -102,7 +108,13 @@ cfg = Config(
             force_adjacent=force_adjacent,
             training_ratio=training_ratio,
         ),
-        optimizer_kwargs=dict(lr=lr, betas=betas, weight_decay=weight_decay),
+        optimizer_kwargs={
+            k: v
+            for k, v in dict(
+                lr=lr, betas=betas, weight_decay=weight_decay, momentum=momentum
+            ).items()
+            if v is not None
+        },
         optimizer=optimizer,
     ),
     deterministic=deterministic,
@@ -127,7 +139,6 @@ runtime, model = train_or_load_model(cfg, force=force)
 models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None
 models = list(models)
-
 
 # %% [markdown]
 ### Basic Interpretation
@@ -167,7 +178,9 @@ def get_epochs_and_metric(
     epoch: Optional[int],
     include_only_epochs: Optional[Collection[int]] = None,
     metrics: Dict[str, Dict[int, float]] = metrics,
+    add_to_values: Optional[Dict[int, float]] = None,
 ) -> Tuple[List[int], List[Any]]:
+    add_to_values = add_to_values or {}
     values = metrics[metric_name]
     epochs = [
         i
@@ -175,14 +188,20 @@ def get_epochs_and_metric(
         if (epoch is None or i <= epoch)
         and (include_only_epochs is None or i in include_only_epochs)
     ]
-    return epochs, [values[i] for i in epochs]
+    values = [
+        values[i] if add_to_values.get(i) is None else values[i] + add_to_values[i]
+        for i in epochs
+    ]
+    return epochs, values
 
 
 # %%
 # @title compute frames for plotting
 @torch.no_grad()
 def compute_traces_and_frames(
-    models: List[Tuple[Any, Optional[Tuple[RunData, HookedTransformer]], Any]]
+    models: List[Tuple[Any, Optional[Tuple[RunData, HookedTransformer]], Any]],
+    weight_decay: float = cfg.experiment.optimizer_kwargs["weight_decay"],
+    include_l2_regularization: bool = True,
 ):
     # Lists to hold frames and slider steps
     frames = []
@@ -197,6 +216,7 @@ def compute_traces_and_frames(
     all_max_value_attention = []
     all_max_value_losses = []
     all_max_value_accuracies = []
+    regularizations = {}
     epochs_so_far = set()
 
     for i, (_version, old_data, _artifact) in enumerate(tqdm(models)):
@@ -205,27 +225,76 @@ def compute_traces_and_frames(
         epoch = old_runtime.epoch
         epochs_so_far.add(epoch)
         overlap = compute_QK(old_model)["data"]
+        regularizations[epoch] = weight_decay * compute_l2_norm(old_model)  # ** 2
+
+        # kludge with None
+        regularization_epochs = list(
+            sorted(k for k in regularizations.keys() if k is not None)
+        )
 
         # Update the max_abs_value for the attention plot
         cur_min_attention = min(0, np.min(overlap))
         current_max_attention = np.max(overlap)
         max_value_attention = max(max_value_attention, current_max_attention)
 
-        training_losses_epochs, training_losses = get_epochs_and_metric(
-            "loss", epoch, include_only_epochs=epochs_so_far
+        (
+            training_losses_with_regularization_epochs,
+            training_losses_with_regularization,
+        ) = get_epochs_and_metric(
+            "loss",
+            epoch,
+            include_only_epochs=epochs_so_far,
+            add_to_values=regularizations,
+        )
+        (
+            training_losses_without_regularization_epochs,
+            training_losses_without_regularization,
+        ) = get_epochs_and_metric(
+            "loss",
+            epoch,
+            include_only_epochs=epochs_so_far,
         )
         training_accuracies_epochs, training_accuracies = get_epochs_and_metric(
-            "acc", epoch, include_only_epochs=epochs_so_far
+            "acc",
+            epoch,
+            include_only_epochs=epochs_so_far,
         )
-        test_losses_epochs, test_losses = get_epochs_and_metric(
-            "periodic_test_loss", epoch, include_only_epochs=epochs_so_far
+        (
+            test_losses_with_regularization_epochs,
+            test_losses_with_regularization,
+        ) = get_epochs_and_metric(
+            "periodic_test_loss",
+            epoch,
+            include_only_epochs=epochs_so_far,
+            add_to_values=regularizations,
+        )
+        (
+            test_losses_without_regularization_epochs,
+            test_losses_without_regularization,
+        ) = get_epochs_and_metric(
+            "periodic_test_loss",
+            epoch,
+            include_only_epochs=epochs_so_far,
         )
         test_accuracies_epochs, test_accuracies = get_epochs_and_metric(
-            "periodic_test_acc", epoch, include_only_epochs=epochs_so_far
+            "periodic_test_acc",
+            epoch,
+            include_only_epochs=epochs_so_far,
         )
 
         # Update the max_value for the loss and accuracy plots
-        max_value_losses = max(max(training_losses), max(test_losses))
+        max_value_losses = max(
+            max(
+                training_losses_with_regularization
+                if include_l2_regularization
+                else training_losses_without_regularization
+            ),
+            max(
+                test_losses_with_regularization
+                if include_l2_regularization
+                else test_losses_without_regularization
+            ),
+        )
         max_value_accuracies = max(max(training_accuracies), max(test_accuracies))
 
         # Update the max values for all plots
@@ -234,32 +303,33 @@ def compute_traces_and_frames(
         all_max_value_losses.append(max_value_losses)
         all_max_value_accuracies.append(max_value_accuracies)
 
-        # Add a trace for the initial plot (first data point) in all subplots
-        if i == 0:
-            traces = [
-                # Attention plot trace
+        cur_traces = [
+            # Attention plot trace
+            (
                 (
-                    (
-                        go.Scatter(
-                            x=list(range(len(overlap))),
-                            y=overlap,
-                            mode="lines",
-                            name="(E+P)<sub>-1</sub>QK<sup>T</sup>(E+P)<sup>T</sup>",
-                        ),
-                    ),
-                    dict(
-                        row=1,
-                        col=1,
+                    go.Scatter(
+                        x=list(range(len(overlap))),
+                        y=overlap,
+                        mode="lines",
+                        name="(E+P)<sub>-1</sub>QK<sup>T</sup>(E+P)<sup>T</sup>",
                     ),
                 ),
+                dict(
+                    row=1,
+                    col=1,
+                ),
+            ),
+        ]
+        if include_l2_regularization:
+            cur_traces += [
                 # Loss plot traces
                 (
                     (
                         go.Scatter(
-                            x=training_losses_epochs,
-                            y=training_losses,
+                            x=training_losses_with_regularization_epochs,
+                            y=training_losses_with_regularization,
                             mode="lines",
-                            name="Training Loss",
+                            name="Training Loss + L2",
                         ),
                     ),
                     dict(
@@ -270,88 +340,108 @@ def compute_traces_and_frames(
                 (
                     (
                         go.Scatter(
-                            x=test_losses_epochs,
-                            y=test_losses,
+                            x=test_losses_with_regularization_epochs,
+                            y=test_losses_with_regularization,
                             mode="lines",
-                            name="Test Loss",
+                            name="Test Loss + L2",
                         ),
                     ),
                     dict(
                         row=2,
-                        col=1,
-                    ),
-                ),
-                # Accuracy plot traces
-                (
-                    (
-                        go.Scatter(
-                            x=training_accuracies_epochs,
-                            y=training_accuracies,
-                            mode="lines",
-                            name="Training Accuracy",
-                        ),
-                    ),
-                    dict(
-                        row=3,
-                        col=1,
-                    ),
-                ),
-                (
-                    (
-                        go.Scatter(
-                            x=test_accuracies_epochs,
-                            y=test_accuracies,
-                            mode="lines",
-                            name="Test Accuracy",
-                        ),
-                    ),
-                    dict(
-                        row=3,
                         col=1,
                     ),
                 ),
             ]
-
-        # Frame data for the attention plot
-        frame_data_attention = go.Scatter(
-            x=list(range(len(overlap))), y=overlap, mode="lines"
-        )
-
-        # Frame data for the loss and accuracy plots
-        frame_data_losses = [
-            go.Scatter(
-                x=training_losses_epochs,
-                y=training_losses,
-                mode="lines",
-                name="Training Loss",
+        cur_traces += [
+            (
+                (
+                    go.Scatter(
+                        x=training_losses_without_regularization_epochs,
+                        y=training_losses_without_regularization,
+                        mode="lines",
+                        name="Training Loss",
+                    ),
+                ),
+                dict(
+                    row=2,
+                    col=1,
+                ),
             ),
-            go.Scatter(
-                x=test_losses_epochs,
-                y=test_losses,
-                mode="lines",
-                name="Test Loss",
-            ),
-        ]
-        frame_data_accuracies = [
-            go.Scatter(
-                x=training_accuracies_epochs,
-                y=training_accuracies,
-                mode="lines",
-                name="Training Accuracy",
-            ),
-            go.Scatter(
-                x=test_accuracies_epochs,
-                y=test_accuracies,
-                mode="lines",
-                name="Test Accuracy",
+            (
+                (
+                    go.Scatter(
+                        x=test_losses_without_regularization_epochs,
+                        y=test_losses_without_regularization,
+                        mode="lines",
+                        name="Test Loss",
+                    ),
+                ),
+                dict(
+                    row=2,
+                    col=1,
+                ),
             ),
         ]
+        if include_l2_regularization:
+            cur_traces += [
+                (
+                    (
+                        go.Scatter(
+                            x=regularization_epochs,
+                            y=[regularizations[e] for e in regularization_epochs],
+                            mode="lines",
+                            name="Regularization",
+                        ),
+                    ),
+                    dict(
+                        row=2,
+                        col=1,
+                    ),
+                ),
+            ]
+        cur_traces += [
+            # Accuracy plot traces
+            (
+                (
+                    go.Scatter(
+                        x=training_accuracies_epochs,
+                        y=training_accuracies,
+                        mode="lines",
+                        name="Training Accuracy",
+                    ),
+                ),
+                dict(
+                    row=3,
+                    col=1,
+                ),
+            ),
+            (
+                (
+                    go.Scatter(
+                        x=test_accuracies_epochs,
+                        y=test_accuracies,
+                        mode="lines",
+                        name="Test Accuracy",
+                    ),
+                ),
+                dict(
+                    row=3,
+                    col=1,
+                ),
+            ),
+        ]
+
+        # Add a trace for the initial plot (first data point) in all subplots
+        if i == 0:
+            traces = cur_traces
 
         # Create a frame combining all plots
         frame = go.Frame(
-            data=[frame_data_attention] + frame_data_losses + frame_data_accuracies,
+            data=[g for gs, _ in cur_traces for g in gs],
             name=str(epoch),
-            traces=[0, 1, 2, 3, 4, 5, 6],  # Indices of the traces in this frame
+            traces=list(
+                range(len(cur_traces) + 3)
+            ),  # Indices of the traces in this frame
             layout=go.Layout(
                 yaxis={
                     "range": [cur_min_attention, max_value_attention]
@@ -430,13 +520,20 @@ def compute_traces_and_frames(
     )
 
 
-traces_and_frames = compute_traces_and_frames(models)
+include_l2_regularization = True  # @param {type:"boolean"}
+traces_and_frames = compute_traces_and_frames(
+    models, include_l2_regularization=include_l2_regularization
+)
 # %%
 # @title plot
 fig = make_subplots(
     rows=3,
     cols=1,
-    subplot_titles=("Attention Plot", "Loss Plot", "Accuracy Plot"),
+    subplot_titles=(
+        "Attention Plot",
+        f"Loss{'+L2 Regularization' if include_l2_regularization else ''} Plot",
+        "Accuracy Plot",
+    ),
     # vertical_spacing=0.15,
 )
 
@@ -487,7 +584,9 @@ for i, frame in enumerate(tqdm(fig.frames)):
     filenames.append(filename)
 # %%
 # @title make gif
-grokking_gif = "max_of_2_grokking.gif"
+grokking_gif = (
+    f"max_of_2_grokking{'_regularized' if include_l2_regularization else ''}.gif"
+)
 with imageio.get_writer(grokking_gif, mode="I", duration=0.5, loop=0) as writer:
     for filename in tqdm(filenames):
         image = imageio.imread(filename)
@@ -497,7 +596,7 @@ with open(grokking_gif, mode="rb") as f:
     display(Image(f.read()))
 # %%
 # log artifact to wandb
-if False:
+if True:
     runtime_run = runtime.run()
     assert runtime_run is not None
     run = wandb.init(
@@ -508,7 +607,13 @@ if False:
         resume="must",
     )
     assert run is not None
-    run.log({"grokking_gif": wandb.Video(grokking_gif, fps=2, format="gif")})
+    run.log(
+        {
+            f"grokking{'_regularized' if include_l2_regularization else ''}_gif": wandb.Video(
+                grokking_gif, fps=2, format="gif"
+            )
+        }
+    )
     wandb.finish()
 # %% [markdown]
 ### Explanation

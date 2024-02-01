@@ -108,7 +108,7 @@ class max_min(Fun):
             l = torch.cat(
                 (
                     l,
-                    ((i * ((self.n) ** (self.elements))) + b + 1),
+                    ((i * ((self.n) ** (self.elements))) + b),
                 )
             )
 
@@ -176,7 +176,7 @@ class add_sub(Fun):
             l = torch.cat(
                 (
                     l,
-                    ((i * ((self.n) ** (self.elements))) + b + 1),
+                    ((i * ((self.n) ** (self.elements))) + b),
                 )
             )
 

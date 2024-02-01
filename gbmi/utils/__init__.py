@@ -6,7 +6,17 @@ import subprocess
 import sys
 
 from pathlib import Path
-from typing import Optional, TypeVar, List, Dict, Hashable, Any, Union, Sequence
+from typing import (
+    Callable,
+    Optional,
+    TypeVar,
+    List,
+    Dict,
+    Hashable,
+    Any,
+    Union,
+    Sequence,
+)
 
 from torch.utils.data import Dataset
 
@@ -22,6 +32,8 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_WANDB_ENTITY = "gbmi"
 
 T = TypeVar("T")
+K = TypeVar("K")
+V = TypeVar("V")
 
 
 def get_trained_model_dir(create: bool = True) -> Path:
@@ -201,3 +213,7 @@ def reseed(x: Hashable, label: str) -> int:
 
 def dropnan(x: Tensor) -> Tensor:
     return x[~torch.isnan(x)]
+
+
+def map_values(f: Callable[[V], T], d: dict[K, V]) -> dict[K, T]:
+    return {k: f(v) for k, v in d.items()}

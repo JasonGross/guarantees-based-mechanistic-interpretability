@@ -181,3 +181,6 @@ max_of_*.gif
 *.dir
 *.dat
 *.db
+
+*_cache.pkl
+*_cache.pkl.lock

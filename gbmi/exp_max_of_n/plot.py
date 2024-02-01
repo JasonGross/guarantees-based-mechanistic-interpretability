@@ -1,5 +1,8 @@
 from typing import Optional
 import torch
+from torch import Tensor
+import math
+from jaxtyping import Float
 from transformer_lens import HookedTransformer
 import plotly.express as px
 
@@ -9,10 +12,10 @@ from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
 @torch.no_grad()
 def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) -> dict:
     W_E, W_pos, W_Q, W_K = (
-        model.W_E,
-        model.W_pos,
-        model.W_Q,
-        model.W_K,
+        model.W_E.to("cpu"),
+        model.W_pos.to("cpu"),
+        model.W_Q.to("cpu"),
+        model.W_K.to("cpu"),
     )
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
@@ -44,15 +47,23 @@ def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) ->
 
 
 @torch.no_grad()
+def compute_l2_norm(model: HookedTransformer) -> float:
+    l2_norm = 0.0
+    for param in model.parameters():
+        l2_norm += torch.norm(param, 2).item() ** 2
+    return math.sqrt(l2_norm)
+
+
+@torch.no_grad()
 def compute_OV(
     model: HookedTransformer, centered: bool = True, includes_eos: Optional[bool] = None
 ) -> dict:
     W_E, W_pos, W_V, W_O, W_U = (
-        model.W_E,
-        model.W_pos,
-        model.W_V,
-        model.W_O,
-        model.W_U,
+        model.W_E.to("cpu"),
+        model.W_pos.to("cpu"),
+        model.W_V.to("cpu"),
+        model.W_O.to("cpu"),
+        model.W_U.to("cpu"),
     )
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
@@ -83,10 +94,10 @@ def compute_QK_by_position(
     model: HookedTransformer, includes_eos: Optional[bool] = None
 ) -> dict:
     W_E, W_pos, W_Q, W_K = (
-        model.W_E,
-        model.W_pos,
-        model.W_Q,
-        model.W_K,
+        model.W_E.to("cpu"),
+        model.W_pos.to("cpu"),
+        model.W_Q.to("cpu"),
+        model.W_K.to("cpu"),
     )
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
@@ -120,11 +131,11 @@ def compute_irrelevant(
     includes_eos: Optional[bool] = None,
 ) -> dict:
     W_E, W_pos, W_V, W_O, W_U = (
-        model.W_E,
-        model.W_pos,
-        model.W_V,
-        model.W_O,
-        model.W_U,
+        model.W_E.to("cpu"),
+        model.W_pos.to("cpu"),
+        model.W_V.to("cpu"),
+        model.W_O.to("cpu"),
+        model.W_U.to("cpu"),
     )
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out

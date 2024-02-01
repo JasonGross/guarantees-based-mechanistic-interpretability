@@ -1,4 +1,6 @@
-from typing import Union, Dict, Any, Optional
+# N.B. DO NOT import annotations from __future__ or else enumerate_dataclass_values will break on LargestWrongLogitQuadraticConfig
+import dataclasses
+from typing import ClassVar, Literal, Tuple, Union, Dict, Any, Optional
 
 import numpy as np
 import torch
@@ -6,6 +8,7 @@ from jaxtyping import Float, Integer
 from torch import Tensor
 from transformer_lens import HookedTransformer
 
+from gbmi.utils import dropnan
 from gbmi.analysis_tools.plot import summarize
 from gbmi.analysis_tools.utils import make_local_tqdm
 from gbmi.utils.sequences import generate_all_sequences_for_model
@@ -672,3 +675,72 @@ def all_worst_EVOU(
             )
 
     return result
+
+
+@dataclasses.dataclass
+class LargestWrongLogitQuadraticConfig:
+    EUPU_handling: Literal[
+        "mean_query+max_diff", "max_diff", "global_max_diff"
+    ] = "mean_query+max_diff"
+    attention_handling: Literal[
+        "mean_query+diff", "drop_average_query_per_output_logit_reasoning"
+    ] = "mean_query+diff"
+
+    EUPU_OFF: ClassVar[Literal["global_max_diff"]] = "global_max_diff"
+    attention_handling_OFF: ClassVar[
+        Literal["drop_average_query_per_output_logit_reasoning"]
+    ] = "drop_average_query_per_output_logit_reasoning"
+
+    @classmethod
+    @property
+    def OFF(cls):
+        return cls(
+            EUPU_handling=cls.EUPU_OFF, attention_handling=cls.attention_handling_OFF
+        )
+
+    def split_EUPU(
+        self,
+        EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa F722
+    ) -> Tuple[Float[Tensor, "d_vocab_out"], Float[Tensor, "d_vocab_q"]]:  # noqa F821
+        """
+        Returns (EUPU_mean_query, EUPU_per_query_max_logit_diff)
+        """
+        EUPU_mean_query: Float[Tensor, "d_vocab_out"] = (  # noqa F821
+            EUPU.mean(dim=0)
+            if self.EUPU_handling == "mean_query+max_diff"
+            else torch.zeros_like(EUPU).mean(dim=0)
+        )
+        EUPU_per_query: Float[Tensor, "d_vocab_q d_vocab_out"] = (  # noqa F722
+            EUPU - EUPU_mean_query[None, :]
+        )
+        EUPU_per_query_max_logit_diff: Float[Tensor, "d_vocab_out"] = (  # noqa F821
+            EUPU_per_query.max(dim=-1).values - EUPU_per_query.min(dim=-1).values
+        )
+        if self.EUPU_handling == "global_max_diff":
+            EUPU_per_query_max_logit_diff[:] = (
+                EUPU_per_query.max(dim=0).values - EUPU_per_query.min(dim=0).values
+            )
+        return EUPU_mean_query, EUPU_per_query_max_logit_diff
+
+    def split_min_softmaxed_right_attention(
+        self,
+        min_softmaxed_right_attention: Float[Tensor, "d_vocab_q"],  # noqa F821
+        *,
+        max_tok: int,
+    ) -> Tuple[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]]:  # noqa F821
+        """
+        Returns (average_right_attention, right_attention_adjustment)
+
+        Postconditions:
+            average_right_attention is not nan, inf, -inf
+            average_right_attention + right_attention_adjustment = min_softmaxed_right_attention
+        """
+        average_right_attention = (
+            dropnan(min_softmaxed_right_attention).mean()
+            if self.attention_handling == "mean_query+diff"
+            else torch.tensor(0.0).to(min_softmaxed_right_attention)
+        )
+        right_attention_adjustment = (
+            min_softmaxed_right_attention - average_right_attention
+        )
+        return average_right_attention, right_attention_adjustment

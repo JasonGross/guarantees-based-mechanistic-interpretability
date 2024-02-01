@@ -12,6 +12,7 @@ import gbmi.exp_max_of_n.plot
 import gbmi.exp_max_of_n.verification
 import gbmi.utils
 import gbmi.utils.memoshelve
+import gbmi.utils.sequences
 
 importlib.reload(gbmi.exp_max_of_n.plot)
 importlib.reload(gbmi.exp_max_of_n.analysis)
@@ -22,6 +23,7 @@ importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.utils)
 importlib.reload(gbmi.exp_max_of_n.verification)
 importlib.reload(gbmi.utils.memoshelve)
+importlib.reload(gbmi.utils.sequences)
 # %%
 import dataclasses
 from collections import defaultdict
@@ -189,6 +191,28 @@ print(f"Model Loss: {average_loss}")
 # # %% [markdown]
 # # # Important Sequences Only By Convexity
 # # If we can iterate over the query tokens and the max tokens and the non-max tokens and do a forward pass for each, we can bound loss by convexity.
+# %% [markdown]
+# ## Convexity Property
+#
+# **Lemma**: For a single attention head, it suffices to consider sequences with at most two distinct tokens.
+#
+# Note that we are comparing sequences by pre-final-layernorm-scaling gap between the logit of the minimum token and the logit of any other fixed token.
+# Layernorm scaling is non-linear, but if we only care about accuracy and not log-loss, then we can ignore it (neither scaling nor softmax changes which logit is the largest).
+#
+# **Proof sketch**:
+# We show that any sequence with three token values, $x < y < z$, is strictly dominated either by a sequence with just $x$ and $y$ or a sequence with just $x$ and $z$.
+#
+# Suppose we have $k$ copies of $x$, $n$ copies of $y$, and $\ell - k - n$ copies of $z$, the attention scores are $s_x$, $s_y$, and $s_z$, and the differences between the logit of $x$ and our chosen comparison logit (as computed by the OV circuit for each token) are $v_x$, $v_y$, and $v_z$.
+# Then the difference in logit between $x$ and the comparison token is
+# $$\left(k e^{s_x} v_x + n e^{s_y} v_y + (\ell - k - n)e^{s_z}v_z \right)\left(k e^{s_x} + n e^{s_y} + (\ell - k - n)e^{s_z}\right)^{-1}$$
+# Rearrangement gives
+# $$\left(\left(k e^{s_x} v_x + (\ell - k) e^{s_z} v_z\right) + n \left(e^{s_y} v_y - e^{s_z}v_z\right) \right)\left(\left(k e^{s_x} + (\ell - k) e^{s_z}\right) + n \left(e^{s_y} - e^{s_z}\right)\right)^{-1}$$
+# This is a fraction of the form $\frac{a + bn}{c + dn}$.  Taking the derivative with respect to $n$ gives $\frac{bc - ad}{(c + dn)^2}$.  Noting that $c + dn$ cannot equal zero for any valid $n$, we get the the derivative never changes sign.  Hence our logit difference is maximized either at $n = 0$ or at $n = \ell - k$, and the sequence with just two values dominates the one with three.
+#
+# This proof generalizes straightforwardly to sequences with more than three values.
+#
+# Similarly, this proof shows that, when considering only a single attention head, it suffices to consider sequences of $\ell$ copies of the minimum token and sequences with one copy of the minimum token and $\ell - 1$ copies of the non-minimum token, as intermediate values are dominated by the extremes.
+# %%
 # # %%
 # # build a map of max_tok -> query_tok -> non_max_tok -> sequence_count, max_loss, accuracy
 # batch_size = 4096  # 16_384 # 8182
@@ -287,33 +311,56 @@ def compute_min_softmaxed_right_attention_cubic_simple(
     position: Optional[int] = None,
 ) -> Float[
     Tensor,
-    "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+    "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
 ]:
+    # TODO: return both min and max attention to query so the proof goes through
     r"""
-    Computes the min post-softmax attention paid to the maximum token (attn=0) and the query token (attn=1) by each query token, for each number of copies of the non max token.
-    Note that we could do a bit of a better job than this by taking in min_gap and a pre-computed extreme_attention matrix, if we wanted to.
+    Computes the min post-softmax attention (pessimized over sequence orderings) paid to the maximum token (attn=0) and
+    the min paid to the query token (attn=1) and the max paid to the query token (attn=2):
+        - by each possible value of the query token,
+        - for each possible value of the max token,
+        - for each possible value of the nonmax token,
+        - for each number of copies of the non max token
 
-    Complexity: O(d_vocab^3 * n_ctx^2)
+    Basically, this attempts to lower bound the attention that is paid to the max token and the query token, by
+    pessimising over the order of the non-query tokens.
+
+    Note that we could do a bit of a better job than this by taking in min_gap and a pre-computed extreme_attention
+    matrix, if we wanted to.
+
+    Time Complexity: O(d_vocab^3 * n_ctx^2)
 
     Preconditions:
-        . attn_scale is correct for the model
+        . attn_scale is correct for the model (\sqrt(d_head) by default)
         . EQKE[q, k] is the attention paid from query q to key token k
         . EQKP[q, p] is the attention paid from query q to key position p
     Postconditions:
-        \forall w, q, m, k, n_copies_nonmax: (w for which)
+        \forall w \in {0,1,2}, q, m, k, n_copies_nonmax: ("w" for which)
           if q > m or k > m: return[w, q, m, k, n_copies_nonmax] = nan
+                (That is, the answer is undefined if the query token is greater than the max token, or if the non-max
+                token is greater than the max token)
           elif m = k and n_copies_nonmax != 0: return[w, q, m, k, n_copies_nonmax] = nan
+                (That is, the answer is undefined if the non-max token is equal to the max token and there are non-zero
+                copies of non-max tokens)
           elif q != m and n_copies_nonmax >= n_ctx - 1: return[w, q, m, k, n_copies_nonmax] = nan
-          else: return[w, q, m, k, n_copies_nonmax] <= post-softmax attention paid to {max token m if w == 0 else query token q} amongst all permutations of [the non-query-tokens in] the sequence with query q, n_copies_nonmax copies of k, and all other tokens equal to m
+                (That is, the answer is undefined if the query token is not equal to the max token and there are n_ctx
+                - 1 or more copies of the non-max token, because then the max token would be missing)
+          else: amongst all permutations of [the non-query-tokens in] the sequence with query q, n_copies_nonmax copies
+                of k, and all other tokens equal to m:
+                return[0, q, m, k, n_copies_nonmax] <= post-softmax attention paid to max token m
+                return[1, q, m, k, n_copies_nonmax] <= post-softmax attention paid to query token q <= return[2, q, m, k, n_copies_nonmax]
+
     """
     d_vocab, n_ctx = EQKE.shape[-1], EQKP.shape[-1]
     result = torch.zeros((2, d_vocab, d_vocab, d_vocab, n_ctx)).to(EQKE) + float("nan")
     tmp = torch.zeros((n_ctx,)).to(EQKE)
     # constants for indices so we don't have 0 and 1 floating around
     w_max = 0
-    w_qry = 1
+    w_qry_min = 1
+    w_qry_max = 2
     # we sort EQKP so that higher-attention positions are at the back, so we can put the max token at the front.
     EQKP, EQKPm1 = EQKP[:, :-1].sort(dim=-1).values, EQKP[:, -1]
+
     for max_tok in tqdm(range(d_vocab), desc="max_tok", position=position):
         for q_tok in range(max_tok + 1):
             tmp[-1] = EQKE[q_tok, q_tok] + EQKPm1[q_tok]
@@ -322,27 +369,32 @@ def compute_min_softmaxed_right_attention_cubic_simple(
                     if q_tok == max_tok:
                         # only max tok, so we pay 100% attention to it
                         result[w_max, q_tok, max_tok, k_tok, 0] = 1
-                        result[w_qry, q_tok, max_tok, k_tok, 0] = 0
+                        result[w_qry_min, q_tok, max_tok, k_tok, 0] = 0
+                        result[w_qry_max, q_tok, max_tok, k_tok, 0] = 0
                         continue
                     tmp[:-1] = EQKP[q_tok] + EQKE[q_tok, k_tok]
                     tmp_sm = (tmp / attn_scale).softmax(dim=-1)
                     result[w_max, q_tok, max_tok, k_tok, 0] = tmp_sm[:-1].sum()
-                    result[w_qry, q_tok, max_tok, k_tok, 0] = tmp_sm[-1]
+                    result[w_qry_min, q_tok, max_tok, k_tok, 0] = tmp_sm[-1]
+                    result[w_qry_max, q_tok, max_tok, k_tok, 0] = tmp_sm[-1]
                     continue
                 for n_copies_nonmax in range(n_ctx):
                     n_copies_max_nonquery = n_ctx - n_copies_nonmax - 1
                     if q_tok != max_tok and n_copies_nonmax >= n_ctx - 1:
                         continue
                     tmp[:-1] = EQKP[q_tok]
+
                     tmp[:n_copies_max_nonquery] += EQKE[q_tok, max_tok]
-                    tmp[n_copies_max_nonquery:-1] += EQKE[q_tok, k_tok]
+                    tmp[n_copies_max_nonquery:-1] += EQKE[
+                        q_tok, k_tok
+                    ]  # attention paid to non-max tokens other than in the query position
                     tmp_sm = (tmp / attn_scale).softmax(dim=-1)
                     result[w_max, q_tok, max_tok, k_tok, n_copies_nonmax] = tmp_sm[
                         :n_copies_max_nonquery
                     ].sum() + (tmp_sm[-1] if q_tok == max_tok else 0)
-                    result[w_qry, q_tok, max_tok, k_tok, n_copies_nonmax] = (
-                        tmp_sm[-1] if q_tok != max_tok else 0
-                    )
+                    result[w_qry_min, q_tok, max_tok, k_tok, n_copies_nonmax] = result[
+                        w_qry_max, q_tok, max_tok, k_tok, n_copies_nonmax
+                    ] = (tmp_sm[-1] if q_tok != max_tok else 0)
     return result
 
 
@@ -390,7 +442,7 @@ def compute_min_softmaxed_right_attention_cubic_simple(
 # min_gap = 1
 min_right_attention_softmaxed_cubic: Float[
     Tensor,
-    "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+    "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
 ] = compute_min_softmaxed_right_attention_cubic_simple(
     EQKE=EQKE,
     EQKP=EQKP,
@@ -412,7 +464,7 @@ print(
 def compute_largest_wrong_logit_cubic(
     min_softmaxed_right_attention: Float[
         Tensor,
-        "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+        "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
     ],
     *,
     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
@@ -425,26 +477,36 @@ def compute_largest_wrong_logit_cubic(
     Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
 ]:
     r"""
-    Computes the largest difference between the wrong logit and the right logit for each query token, max token, nonmax token, and number of copies of the non-max token.
+        Computes the largest difference between the wrong logit and the right logit for each query token, max token, nonmax
+        token, and number of copies of the non-max token.
 
-    Complexity: O(d_vocab^3 * n_ctx^2)
+        Complexity: O(d_vocab^3 * n_ctx^2)
 
-    Preconditions:
-        EUPU = (W_E + W_pos[-1]) @ W_U
-        EVOU = W_E @ W_V @ W_O @ W_U
-        PVOU = W_pos @ W_V @ W_O @ W_U
-        \forall w, q, m, k, n_copies_nonmax: (w for which)
-          if q > m or k > m: return[w, q, m, k, n_copies_nonmax] = nan
-          elif m = k and n_copies_nonmax != 0: return[w, q, m, k, n_copies_nonmax] = nan
-          elif q != m and n_copies_nonmax >= n_ctx - 1: return[w, q, m, k, n_copies_nonmax] = nan
-          else: return[w, q, m, k, n_copies_nonmax] <= post-softmax attention paid to {max token m if w == 0 else query token q} amongst all permutations of [the non-query-tokens in] the sequence with query q, n_copies_nonmax copies of k, and all other tokens equal to m
-    Postconditions:
-        \forall q, m, k, n_copies_nonmax, x:
-          if q > m or k > m: return[q, m, k, n_copies_nonmax] = nan
-          elif m = k and n_copies_nonmax != 0: return[q, m, k, n_copies_nonmax] = nan
-          elif q != m and n_copies_nonmax >= n_ctx - 1: return[q, m, k, n_copies_nonmax] = nan
-          else: for all sequences with query q, max token m, n_copies_nonmax [non-query] copies of k (and the rest of the non-query tokens equal to m), we have:
-            return[q, m, k, n_copies_nonmax] <= model(sequence)[-1, x] - model(sequence)[-1, m]
+        Preconditions:
+            min_softmaxed_right_attention satisfies the postcondition of compute_min_softmaxed_right_attention_cubic_simple
+                (a lower bound on the post-softmax attention paid to the max token and the query token,
+                by each possible value of the query token,
+                for each possible value of the max token,
+                for each possible value of the non-max token,
+                for each number of copies of the non max token)
+            EUPU = (W_E + W_pos[-1]) @ W_U
+            EVOU = W_E @ W_V @ W_O @ W_U
+            PVOU = W_pos @ W_V @ W_O @ W_U
+        Postconditions:
+            \forall q, m, k, n_copies_nonmax, x:
+              if q > m or k > m: return[q, m, k, n_copies_nonmax] = nan
+              elif m = k and n_copies_nonmax != 0: return[q, m, k, n_copies_nonmax] = nan
+              elif q != m and n_copies_nonmax >= n_ctx - 1: return[q, m, k, n_copies_nonmax] = nan
+                (That is, in these cases, the answer is undefined because the query token is greater than the max token, or
+                there isn't enough room for the non-max token or the max token in the sequence.)
+              else: for all sequences with query q, max token m, n_copies_nonmax [non-query] copies of k (and the rest of
+                the non-query tokens equal to m), we have:
+                return[q, m, k, n_copies_nonmax] <= model(sequence)[-1, x] - model(sequence)[-1, m]
+                That is, we return a lower bound on the difference between the wrong logit and the right logit for this
+                combination of query token, max token, non-max token, and number of copies of the non-max token.
+
+    The main idea here is that by pessimizing over the positional attention independently of the embedding attention, we can
+        later use a convexity argument for the embedding attention.
     """
     # if permitted_nonmax_tokens is None:
     #     permitted_nonmax_tokens = torch.ones_like(min_softmaxed_right_attention[0], dtype=torch.bool)
@@ -453,7 +515,8 @@ def compute_largest_wrong_logit_cubic(
     )
     _, d_vocab, _, _, n_ctx = min_softmaxed_right_attention.shape
     w_max = 0
-    w_qry = 1
+    w_qry_min = 1
+    w_qry_max = 2
     for max_tok in range(d_vocab):
         # center PVOU according to max token, O(d_vocab * n_ctx)
         PVOU -= PVOU[:, max_tok].unsqueeze(-1)
@@ -461,8 +524,9 @@ def compute_largest_wrong_logit_cubic(
         EUPU -= EUPU[:, max_tok].unsqueeze(-1)
         # center EVOU according to max token, O(d_vocab^2)
         EVOU -= EVOU[:, max_tok].unsqueeze(-1)
-        # to make convexity go through, we need to assume positional attention is independent of token attention
-        # here we pessimize over positional attention, assuming that we pay 100% of attention to the worst position
+        # to make convexity go through, we need to consider a larger region of phase space bounded by points where
+        # positional attention is independent of token attention.
+        # Here we pessimize over positional attention, assuming that we pay 100% of attention to the worst position
         PVOU_pessimized: Float[Tensor, "d_vocab_out"] = PVOU.max(  # noqa: F821
             dim=0
         ).values
@@ -482,11 +546,12 @@ def compute_largest_wrong_logit_cubic(
             cur_min_right_attention = min_softmaxed_right_attention[
                 :, q_tok, max_tok, max_tok, 0
             ]
+            # N.B. because EVOU[q_tok, max_tok] == 0 by centering above, we just take the maximum attention paid to the query
             logits_only_q_and_max: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
                 EUPU[q_tok, :]
                 + PVOU_pessimized
                 + EVOU[max_tok, :] * cur_min_right_attention[w_max]
-                + EVOU[q_tok, :] * cur_min_right_attention[w_qry]
+                + EVOU[q_tok, :] * cur_min_right_attention[w_qry_max]
             )
             logits_only_q_and_max -= logits_only_q_and_max[max_tok].item()
             logits_only_q_and_max[max_tok] = float("-inf")
@@ -537,15 +602,25 @@ def compute_largest_wrong_logit_cubic(
                     right_attn = min_softmaxed_right_attention[
                         w_max, q_tok, max_tok, nonmax_tok, n_copies_nonmax
                     ]
-                    q_attn = min_softmaxed_right_attention[
-                        w_qry, q_tok, max_tok, nonmax_tok, n_copies_nonmax
-                    ]
-                    wrong_attn = 1 - right_attn - q_attn
+                    q_attn_min, q_attn_max = (
+                        min_softmaxed_right_attention[
+                            w_qry_min, q_tok, max_tok, nonmax_tok, n_copies_nonmax
+                        ],
+                        min_softmaxed_right_attention[
+                            w_qry_max, q_tok, max_tok, nonmax_tok, n_copies_nonmax
+                        ],
+                    )
+                    wrong_attn_minquery = 1 - right_attn - q_attn_min
+                    wrong_attn_maxquery = 1 - right_attn - q_attn_max
                     results[q_tok, max_tok, nonmax_tok, n_copies_nonmax] = (
                         EUPU_per_query_pessimized[q_tok]
                         + right_attn * right_attention_wrong_logits
-                        + q_attn * query_wrong_logits
-                        + wrong_attn * wrong_attention_logits
+                        + torch.max(
+                            q_attn_min * query_wrong_logits
+                            + wrong_attn_minquery * wrong_attention_logits,
+                            q_attn_max * query_wrong_logits
+                            + wrong_attn_maxquery * wrong_attention_logits,
+                        )
                     ).item()
     return results
 
@@ -553,7 +628,7 @@ def compute_largest_wrong_logit_cubic(
 # %%
 # min_right_attention_softmaxed_cubic: Float[
 #     Tensor,
-#     "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+#     "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
 # ] = compute_min_softmaxed_right_attention_cubic_simple(
 #     EQKE=EQKE,
 #     EQKP=EQKP,
@@ -643,14 +718,22 @@ def count_correct_sequences_cubic(
                 else:
                     cur_largest_wrong_logit = largest_wrong_logit[
                         q_tok, max_tok, :max_tok, n_copies_nonmax
-                    ]
+                    ]  # consider wrong logits only when non-max token is less than max token
                     num_nonmax_tok_choices = cur_largest_wrong_logit[
                         ~cur_largest_wrong_logit.isnan() & (cur_largest_wrong_logit < 0)
                     ].size(0)
+                    # cur_largest_wrong_logit < 0 -> the model gets it right (and the non-nan just ensures its valid)
                     # N.B. Here, n_copies_nonmax does NOT include the query token
                     correct_count += count_sequences(
                         n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
                     )
+                    # consider the space where there's one dimension for each input token that controls "do we use this or not"
+                    # we consider a subspace where "did the model get it right" is convex in this space
+                    # i.e. if you get it for non-max token = x and non-max token = y, you get it for all sequences
+                    # that contain any combination of x and y (note that there can only be 1, 2, or 3 non-max tokens in
+                    # the sequence (where 3 occurs only when the query token is the max token))
+                    # You can extend this to 3 non-max token choices by induction
+
     return correct_count
 
 
@@ -675,7 +758,7 @@ print(f"Complexity of EQKE: {complexity_of(all_EQKE)}")  # O(d_vocab^2 * d_model
 print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model * n_ctx)
 # min_right_attention_softmaxed_cubic: Float[
 #     Tensor,
-#     "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+#     "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
 # ] = compute_min_softmaxed_right_attention_cubic_simple(
 #     EQKE=EQKE,
 #     EQKP=EQKP,

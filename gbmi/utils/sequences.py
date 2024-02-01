@@ -75,7 +75,7 @@ class ThunkedDataset(Generic[T], Dataset[Callable[[], T]]):
 
 
 def count_sequences(
-    sequence_length: int, nonmax_count: int, max_nonmax_tok: int
+    sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
 ) -> int:
     """
     Count the number of sequences of length sequence_length with nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
@@ -84,7 +84,7 @@ def count_sequences(
 
     for i in range(nonmax_count + 1):
         combinations = math.comb(sequence_length, i)
-        token_variations = max_nonmax_tok**i
+        token_variations = num_nonmax_tok_choices**i
         total_count += combinations * token_variations
 
     return total_count

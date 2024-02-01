@@ -11,6 +11,7 @@ import gbmi.exp_max_of_n.analysis
 import gbmi.exp_max_of_n.plot
 import gbmi.exp_max_of_n.verification
 import gbmi.utils
+import gbmi.utils.memoshelve
 
 importlib.reload(gbmi.exp_max_of_n.plot)
 importlib.reload(gbmi.exp_max_of_n.analysis)
@@ -20,6 +21,7 @@ importlib.reload(gbmi.utils.lowrank)
 importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.utils)
 importlib.reload(gbmi.exp_max_of_n.verification)
+importlib.reload(gbmi.utils.memoshelve)
 # %%
 import dataclasses
 from collections import defaultdict
@@ -29,6 +31,7 @@ from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.sequences import count_sequences
 from gbmi.utils.lowrank import LowRankTensor
+from gbmi.utils.memoshelve import memoshelve
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
@@ -71,8 +74,16 @@ from gbmi.verification_tools.l1h1 import (
 from gbmi.verification_tools.utils import complexity_of
 from gbmi.utils.hashing import get_hash_ascii
 
+try:
+    import google.colab
+
+    IN_COLAB = True
+except:
+    IN_COLAB = False
 # %%
-tricks = Config(
+DISPLAY_PLOTS: bool = not IN_COLAB  # @param {type:"boolean"}
+# %%
+cfg = Config(
     experiment=MaxOfN(
         model_config=HookedTransformerConfig(
             act_fn=None,
@@ -100,11 +111,11 @@ tricks = Config(
     batch_size=128,
     train_for=(3000, "steps"),
 )
-cfg_hash = get_hash_ascii(tricks)
+cfg_hash = get_hash_ascii(cfg)
 # %%
-runtime, model = train_or_load_model(tricks, force="load")
+runtime, model = train_or_load_model(cfg, force="load")
 # %%
-training_wrapper = MaxOfNTrainingWrapper(tricks, model)
+training_wrapper = MaxOfNTrainingWrapper(cfg, model)
 # training_wrapper.run_batch = Memoize(training_wrapper.run_batch, name=f"{__file__}.training_wrapper.run_batch", use_pandas=False, use_shelf=True)  # type: ignore
 # %% [markdown]
 # # Brute Force Proof
@@ -112,10 +123,6 @@ training_wrapper = MaxOfNTrainingWrapper(tricks, model)
 all_tokens_dataset = SequenceDataset(
     seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab
 )
-# %%
-run_batch_shelf_name = f"{__file__}.run_batch-{cfg_hash[:8]}_shelf"
-# %%
-loss_accuracy_memcache = {run_batch_shelf_name: {}}
 # %%
 batch_size = 4096  # 16_384 # 8182
 # Resetting the DataLoader without shuffle for consistent processing
@@ -126,40 +133,33 @@ total_loss = 0.0
 total_accuracy = 0.0
 total_samples = 0
 
-# loop for computing overall loss and accuracy
-with shelve.open(run_batch_shelf_name) as shelf:
-    with torch.no_grad():
-        for i in tqdm(range(0, len(all_tokens_dataset), batch_size)):
-            try:
-                loss, accuracy, size = loss_accuracy_memcache[run_batch_shelf_name][
-                    (i, batch_size)
-                ]
-            except KeyError:
-                key = f"{i}_{batch_size}"
-                try:
-                    loss, accuracy, size = loss_accuracy_memcache[run_batch_shelf_name][
-                        (i, batch_size)
-                    ] = shelf[key]
-                except KeyError:
-                    batch = all_tokens_dataset[i : i + batch_size]
-                    size = batch.shape[0]
-                    batch.to(default_device(deterministic=True))
-                    loss, accuracy = training_wrapper.run_batch(
-                        batch, return_accuracy=True, log_output=False
-                    )
-                    loss = loss.item()
-                    loss_accuracy_memcache[run_batch_shelf_name][
-                        (i, batch_size)
-                    ] = shelf[key] = (
-                        loss,
-                        accuracy,
-                        size,
-                    )
+brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
 
-            # Accumulate loss and accuracy
-            total_loss += loss * size
-            total_accuracy += accuracy * size
-            total_samples += size
+
+# loop for computing overall loss and accuracy
+@torch.no_grad()
+def _run_batch_loss_accuracy(i: int, batch_size: int) -> Tuple[float, float, int]:
+    batch = all_tokens_dataset[i : i + batch_size]
+    size = batch.shape[0]
+    batch.to(default_device(deterministic=brute_force_proof_deterministic))
+    loss, accuracy = training_wrapper.run_batch(
+        batch, return_accuracy=True, log_output=False
+    )
+    loss = loss.item()
+    return loss, accuracy, size
+
+
+# , get_hash_mem=(lambda x:x[0]), get_hash=str
+with memoshelve(
+    _run_batch_loss_accuracy,
+    filename=f"{__file__}.run_batch_loss_accuracy-{cfg_hash}-{brute_force_proof_deterministic}",
+)() as run_batch_loss_accuracy:
+    for i in tqdm(range(0, len(all_tokens_dataset), batch_size)):
+        loss, accuracy, size = run_batch_loss_accuracy(i, batch_size)  # type: ignore
+        # Accumulate loss and accuracy
+        total_loss += loss * size
+        total_accuracy += accuracy * size
+        total_samples += size
 
 # Calculate average loss and accuracy
 average_loss = total_loss / total_samples
@@ -568,7 +568,7 @@ EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
 print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
 PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
 print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d_model)
-largest_wrong_logit: Float[
+largest_wrong_logit_cubic: Float[
     Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
 ] = compute_largest_wrong_logit_cubic(
     min_right_attention_softmaxed_cubic,
@@ -623,157 +623,96 @@ print(
 #     return min_gaps
 
 
-# @torch.no_grad()
-# def count_correct_sequences(
-#     largest_wrong_logit: Float[
-#         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-#     ],
-#     min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
-# ) -> int:
-#     d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
-#     correct_count = 0
-#     for q_tok in range(d_vocab_q):
-#         for max_tok in range(d_vocab_max):
-#             for n_copies_nonmax in range(n_ctx):
-#                 cur_min_gap = (
-#                     min_gap
-#                     if isinstance(min_gap, int)
-#                     else int(min_gap[q_tok, max_tok].item())
-#                 )
-#                 # use not to also catch nans
-#                 if (
-#                     (not largest_wrong_logit[q_tok, max_tok, n_copies_nonmax] < 0)
-#                     or q_tok > max_tok
-#                     or (q_tok != max_tok and n_copies_nonmax == 0)
-#                     or (q_tok != max_tok and max_tok - q_tok < cur_min_gap)
-#                 ):
-#                     continue
-#                 if n_copies_nonmax == 0:
-#                     correct_count += 1
-#                 elif q_tok == max_tok and n_copies_nonmax == n_ctx - 1:
-#                     correct_count += 1
-#                 elif q_tok != max_tok and n_copies_nonmax == 1:
-#                     correct_count += 1
-#                 else:
-#                     nonmax_pre_query_count = (
-#                         n_copies_nonmax - 1 if q_tok != max_tok else n_copies_nonmax
-#                     )
-#                     # count the number of sequences of length n_ctx - 1 with nonmax_pre_query_count tokens less than or equal to max_tok - cur_min_gap and the remaining tokens equal to max_tok, where order matters
-#                     correct_count += count_sequences(
-#                         n_ctx - 1, nonmax_pre_query_count, max_tok - cur_min_gap
-#                     )
-#     return correct_count
+@torch.no_grad()
+def count_correct_sequences_cubic(
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
+    ],
+) -> int:
+    d_vocab_q, d_vocab_max, d_vocab_nonmax, n_ctx = largest_wrong_logit.shape
+    correct_count = 0
+    for q_tok in range(d_vocab_q):
+        for max_tok in range(d_vocab_max):
+            for n_copies_nonmax in range(n_ctx):
+                if q_tok > max_tok or (
+                    q_tok != max_tok and n_copies_nonmax >= n_ctx - 1
+                ):
+                    continue
+                if n_copies_nonmax == 0:
+                    correct_count += 1
+                else:
+                    cur_largest_wrong_logit = largest_wrong_logit[
+                        q_tok, max_tok, :max_tok, n_copies_nonmax
+                    ]
+                    num_nonmax_tok_choices = cur_largest_wrong_logit[
+                        ~cur_largest_wrong_logit.isnan() & (cur_largest_wrong_logit < 0)
+                    ].size(0)
+                    # N.B. Here, n_copies_nonmax does NOT include the query token
+                    correct_count += count_sequences(
+                        n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
+                    )
+    return correct_count
 
 
-# def compute_accuracy_lower_bound_from(
-#     largest_wrong_logit: Float[
-#         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-#     ],
-#     min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
-# ) -> Tuple[float, Tuple[int, int]]:
-#     """
-#     returns correct_count / total_sequences, (correct_count, total_sequences)
-#     """
-#     d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
-#     correct_count = count_correct_sequences(largest_wrong_logit, min_gap=min_gap)
-#     total_sequences = d_vocab_max**n_ctx
-#     return correct_count / total_sequences, (correct_count, total_sequences)
+def compute_accuracy_lower_bound_from_cubic(
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
+    ],
+) -> Tuple[float, Tuple[int, int]]:
+    """
+    returns correct_count / total_sequences, (correct_count, total_sequences)
+    """
+    d_vocab_q, d_vocab_max, _, n_ctx = largest_wrong_logit.shape
+    correct_count = count_correct_sequences_cubic(largest_wrong_logit)
+    total_sequences = d_vocab_max**n_ctx
+    return correct_count / total_sequences, (correct_count, total_sequences)
 
 
-# # %%
-# try_all_configurations: bool = True  # @param {type:"boolean"}
-# use_tricks: bool = True  # @param {type:"boolean"}
-# if try_all_configurations:
-#     all_configs = list(enumerate_dataclass_values(LargestWrongLogitQuadraticConfig))
-# elif use_tricks:
-#     all_configs = [LargestWrongLogitQuadraticConfig()]
-# else:
-#     all_configs = [LargestWrongLogitQuadraticConfig.OFF]
-# min_gaps_list = [
-#     (
-#         cfg,
-#         find_min_gaps(
-#             EQKE=EQKE_query_key + err_accumulator,
-#             EQKE_err_upper_bound=err_upper_bound,
-#             EQKE_pos_err=EQKE_pos_err,
-#             EUPU=EUPU,
-#             EVOU=EVOU,
-#             PVOU=PVOU,
-#             tricks=cfg,
-#             position=1,
-#         ),
-#     )
-#     for cfg in tqdm(
-#         all_configs,
-#         position=0,
-#         desc="trick cfg",
-#     )
-# ]
-
-# # %%
-# for tricks, min_gaps in min_gaps_list:
-#     print(f"========================================\nTricks: {tricks}")
-#     min_gap = min_gaps.max(dim=-1).values
-#     use_exact_error = False
-#     err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-#     min_right_attention = compute_min_right_attention_quadratic(
-#         EQKE_query_key + err_accumulator + (err_exact if use_exact_error else 0),
-#         min_gap=min_gap,
-#     )
-#     print(
-#         f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
-#     )  # O(d_vocab^2)
-#     print(
-#         (min_right_attention[~min_right_attention.isnan()] > err_upper_bound)
-#         .sum()
-#         .item()
-#     )
-#     min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
-#         min_right_attention - (err_upper_bound if not use_exact_error else 0),
-#         EQKE_pos_err,
-#         min_gap=min_gap,
-#     )
-#     print(
-#         f"Complexity of compute_min_softmaxed_right_attention: {complexity_of(compute_min_softmaxed_right_attention)}"
-#     )  # O(d_vocab^2 * n_ctx^2)
-#     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
-#     print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
-#     EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
-#     print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
-#     PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
-#     print(
-#         f"Complexity of PVOU: {complexity_of(all_PVOU)}"
-#     )  # O(n_ctx * d_vocab * d_model)
-#     largest_wrong_logit: Float[
-#         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-#     ] = compute_largest_wrong_logit_quadratic(
-#         min_right_attention_softmaxed,
-#         EUPU=EUPU,
-#         EVOU=EVOU,
-#         PVOU=PVOU,
-#         min_gap=min_gap,
-#         tricks=tricks,
-#     )
-#     print(
-#         f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(compute_largest_wrong_logit_quadratic)}"
-#     )  # O(d_vocab^2 * n_ctx^2)
-#     accuracy_bound, (
-#         correct_count,
-#         total_sequences,
-#     ) = compute_accuracy_lower_bound_from(largest_wrong_logit, min_gap=min_gap)
-#     print(
-#         f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
-#     )
+# %%
+# min_right_attention_softmaxed_cubic: Float[
+#     Tensor,
+#     "attn=2 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+# ] = compute_min_softmaxed_right_attention_cubic_simple(
+#     EQKE=EQKE,
+#     EQKP=EQKP,
+#     attn_scale=model.blocks[0].attn.attn_scale,
+# )
+print(
+    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_min_softmaxed_right_attention_cubic_simple)}"
+)  # O(d_vocab^3 * n_ctx^2)
+EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
+print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
+EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
+print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
+PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
+print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d_model)
+# largest_wrong_logit_cubic: Float[
+#     Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
+# ] = compute_largest_wrong_logit_cubic(
+#     min_right_attention_softmaxed_cubic,
+#     EUPU=EUPU,
+#     EVOU=EVOU,
+#     PVOU=PVOU,
+# )
+print(
+    f"Complexity of compute_largest_wrong_logit_cubic: {complexity_of(compute_largest_wrong_logit_cubic)}"
+)  # O(d_vocab^3 * n_ctx^2)
+accuracy_bound, (
+    correct_count,
+    total_sequences,
+) = compute_accuracy_lower_bound_from_cubic(largest_wrong_logit_cubic)
+print(
+    f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
+)
 
 # # %%
 
-
-# END HERE
 
 # %% [markdown]
 # # Plots
 # %%
-display_basic_interpretation(model)
+if DISPLAY_PLOTS:
+    display_basic_interpretation(model)
 
 
 # %% [markdown]
@@ -1160,7 +1099,7 @@ def compute_min_softmaxed_right_attention_quadratic(
           elif m - min_gap[q, m] < q < m: return[q, m, n_copies_nonmax] = nan
           elif m < min_gap[q, m] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
           elif m < min_gap[q, m]: return[q, m, 0] = nan
-          else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m]
+          else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m (including possibly the query token), and all other tokens <= m - min_gap[q, m]
     """
     n_ctx = EQKE_pos_err.shape[-1]
     result = torch.zeros(tuple(min_right_attention.shape) + (n_ctx,))
@@ -1524,6 +1463,7 @@ def count_correct_sequences(
                 elif q_tok != max_tok and n_copies_nonmax == 1:
                     correct_count += 1
                 else:
+                    # N.B. Here, n_copies_nonmax DOES include the query token when it's not equal to max_tok
                     nonmax_pre_query_count = (
                         n_copies_nonmax - 1 if q_tok != max_tok else n_copies_nonmax
                     )
@@ -1558,27 +1498,33 @@ elif use_tricks:
     all_configs = [LargestWrongLogitQuadraticConfig()]
 else:
     all_configs = [LargestWrongLogitQuadraticConfig.OFF]
-min_gaps_list = [
+with memoshelve(
     (
-        cfg,
-        find_min_gaps(
-            EQKE=EQKE_query_key + err_accumulator,
-            EQKE_err_upper_bound=err_upper_bound,
-            EQKE_pos_err=EQKE_pos_err,
-            EUPU=EUPU,
-            EVOU=EVOU,
-            PVOU=PVOU,
-            tricks=cfg,
-            attn_scale=model.blocks[0].attn.attn_scale,
-            position=1,
-        ),
-    )
-    for cfg in tqdm(
-        all_configs,
-        position=0,
-        desc="trick cfg",
-    )
-]
+        lambda cfg: (
+            cfg,
+            find_min_gaps(
+                EQKE=EQKE_query_key + err_accumulator,
+                EQKE_err_upper_bound=err_upper_bound,
+                EQKE_pos_err=EQKE_pos_err,
+                EUPU=EUPU,
+                EVOU=EVOU,
+                PVOU=PVOU,
+                tricks=cfg,
+                attn_scale=model.blocks[0].attn.attn_scale,
+                position=1,
+            ),
+        )
+    ),
+    filename=f"{__file__}.find_min_gaps-{cfg_hash}",
+)() as find_min_gaps_for:
+    min_gaps_list = [
+        find_min_gaps_for(cfg)
+        for cfg in tqdm(
+            all_configs,
+            position=0,
+            desc="trick cfg",
+        )
+    ]
 
 # %%
 for tricks, min_gaps in min_gaps_list:

@@ -113,9 +113,11 @@ def modular_addition_config(attn_rate: float, group: Group, elements: int):
 
 
 GL2_P_CLOCK_CONFIG = modular_addition_config(
-    attn_rate=0.0000001, group=GLN_p(2), elements=2
+    attn_rate=0.0000001, group=GLN_p(3), elements=2
 )
-
+MODULAR_ADDITION_SMALL_CLOCK_CONFIG = modular_addition_config(
+    attn_rate=0, group=CyclicGroup(13), elements=2
+)
 MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(
     attn_rate=1, group=CyclicGroup(101), elements=2
 )

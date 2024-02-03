@@ -134,10 +134,13 @@ class GLN_p(Group):
 class PermutedCyclicGroup(Group):
     def __init__(self, n: int):
         self.n = n
+        print(n)
         self.permutation = [(i - 1) % n for i in range(n)]
         random.shuffle(self.permutation)
 
-        self.permutation = [(i - 1) % n for i in range(n)]
+        self.permutation = [(i) % n for i in range(n)]
+
+        self.permutation = [(i + 1) % n for i in range(n)]
         self.lookup = []
         for x in range(self.n):
             self.lookup.append([])
@@ -208,5 +211,4 @@ GroupDict = {
 }
 cycle = CyclicGroup(5)
 dihedral = DihedralGroup(4)
-gln = GLN_p(2)
-print(PermutedCyclicGroup(3).op(torch.tensor([1, 2]), torch.tensor([2, 0])))
+gln = GLN_p(3)

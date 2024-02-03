@@ -59,9 +59,10 @@ def scatter(x, y, xaxis="", yaxis="", caxis="", renderer=None, **kwargs):
 
 
 freeze_model = False
-config = DIHEDRAL_100_CLOCK_CONFIG
+config = GL2_P_CLOCK_CONFIG
 p = config.experiment.group_index
 q = p
+print(q, "q")
 frac_train = 0.4
 seed = 999
 num_epochs = 1000
@@ -81,6 +82,8 @@ device = "cuda"
 
 rundata, model = train_or_load_model(config)
 model.to(device)
+
+
 if freeze_model:
     for param in model.parameters():
         param.requires_grad = False
@@ -180,7 +183,7 @@ b_vector = einops.repeat(torch.arange(q), "j -> (i j)", i=q)
 equals_vector = einops.repeat(torch.tensor(q), " -> (i j)", i=q, j=q)
 dataset = torch.stack([a_vector, b_vector, equals_vector], dim=1).to(device)
 print("here")
-labels = CyclicGroup(q).op(dataset[:, 0].T, dataset[:, 1].T)
+labels = PermutedCyclicGroup(q).op(dataset[:, 0].T, dataset[:, 1].T)
 print(labels)
 optimizer = torch.optim.AdamW(
     full_model.parameters(), lr=1e-3, weight_decay=1, betas=(0.9, 0.98)
@@ -195,6 +198,11 @@ train_labels = labels[train_indices]
 test_data = dataset[test_indices]
 test_labels = labels[test_indices]
 bases = []
+
+full_model.blocks[0].attn.W_O.requires_grad = False
+
+full_model.blocks[0].attn.W_V.requires_grad = False
+
 for epoch in tqdm.tqdm(range(num_epochs)):
     if freeze_model:
         train_logits = full_model(train_data)
@@ -214,18 +222,14 @@ for epoch in tqdm.tqdm(range(num_epochs)):
     train_loss = loss_fn(train_logits, train_labels)
     train_loss.backward()
 
-    print(
-        torch.mean(torch.abs(full_model.embed.W_E.grad))
-        / torch.mean(torch.abs(full_model.embed.W_E))
-    )
-    print(
-        torch.mean(torch.abs(model.blocks[0].mlp.W_in.grad))
-        / torch.mean(torch.abs(model.blocks[0].mlp.W_in))
-    )
-    print(
-        torch.mean(torch.abs(full_model.unembed.W_U.grad))
-        / torch.mean(torch.abs(full_model.unembed.W_U))
-    )
+    #  print(
+    #      torch.mean(torch.abs(model.blocks[0].mlp.W_in.grad))
+    #    / torch.mean(torch.abs(model.blocks[0].mlp.W_in))
+    # )
+    #   print(
+    #       torch.mean(torch.abs(full_model.unembed.W_U.grad))
+    #       / torch.mean(torch.abs(full_model.unembed.W_U))
+    #    )
     optimizer.step()
     optimizer.zero_grad()
     with torch.inference_mode():

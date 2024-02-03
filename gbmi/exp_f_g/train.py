@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from dataclasses import field
 from collections.abc import Callable
 
-print("test7")
 from gbmi.exp_f_g.functions import (
     Fun,
     FunDict,
@@ -44,8 +43,6 @@ from gbmi.utils import (
 )
 from gbmi.utils.sequences import generate_all_sequences
 
-print("test8")
-
 
 @dataclass
 class f_g(ExperimentConfig):
@@ -55,7 +52,7 @@ class f_g(ExperimentConfig):
     fun_index: int
     # _size: int
     fun_name: str
-    fun_agree_indices: List[int]
+    # fun_agree_indices: List[int]
     fun_elements: int
     zero_biases: bool = True
     # attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
@@ -75,13 +72,10 @@ class f_g(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[f_g]) -> str:
         return (
-            f"f_g-{config.experiment.fun_name+str(config.experiment.fun_index)}-{config.train_for[0]}-"
+            f"f_g-{config.experiment.fun_name+str(config.experiment.fun_index)}-n_head={config.experiment.model_config.n_heads}-{config.train_for[0]}-"
             f"{config.train_for[1]}"  # -attention-rate-{config.experiment.attention_rate}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
-
-
-print("test9")
 
 
 def f_g_config(fun: Fun, n_head: int, elements: int):
@@ -92,6 +86,8 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
                 d_model=128,
                 d_mlp=512,
                 d_head=32,
+                d_vocab=fun.index() + 1,
+                d_vocab_out=fun.index(),
                 n_layers=1,
                 n_heads=n_head,
                 act_fn="relu",
@@ -103,7 +99,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
             fun_index=fun.index(),
             # group_size=group.size(),
             fun_name=fun.name(),
-            fun_agree_indices=fun.agree_indices(),
+            # fun_agree_indices=fun.agree_indices(),
             fun_elements=elements,
             zero_biases=True,
             # attention_rate=attn_rate,
@@ -111,20 +107,11 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
         ),
         seed=999,
         deterministic=False,
-        batch_size=len(fun.agree_indices()),
+        batch_size=10000,
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
     )
-
-
-print("test10")
-
-add_sub_1_head_CONFIG = f_g_config(fun=add_sub(113, 2), n_head=1, elements=2)
-add_sub_2_head_CONFIG = f_g_config(fun=add_sub(113, 2), n_head=2, elements=2)
-max_min_1_head_CONFIG = f_g_config(fun=max_min(113, 2), n_head=1, elements=2)
-max_min_2_head_CONFIG = f_g_config(fun=max_min(113, 2), n_head=2, elements=2)
-print("test11")
 
 
 class f_g_TrainingWrapper(TrainingWrapper[f_g]):
@@ -222,9 +209,6 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
         )
 
 
-print("test12")
-
-
 class f_g_DataModule(DataModule):
     data_train: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
     data_test: Dataset[Integer[Tensor, "seq_len"]]  # noqa: F821
@@ -252,6 +236,7 @@ class f_g_DataModule(DataModule):
         # concat a special token of value self.config.experiment.p to the end of each sequence for '='
 
         equals_token = self.config.experiment.fun_index
+
         data = torch.cat(
             [pairs, equals_token * torch.ones((len(pairs), 1))], dim=1
         ).long()
@@ -263,11 +248,36 @@ class f_g_DataModule(DataModule):
         # data_train = data[:split_idx]
         # data_test = data[split_idx:]
 
-        data_train = data[self.config.experiment.fun_agree_indices, :]
+        agree_indices = (
+            FunDict[self.config.experiment.fun_name](
+                self.config.experiment.fun_index,
+                self.config.experiment.fun_elements,
+            )
+            .agree_indices()
+            .to(torch.int)
+        )
+
+        random_subset = torch.randperm(len(agree_indices))
+
+        data_train = data[
+            agree_indices[
+                : int(self.config.experiment.training_ratio * len(agree_indices))
+            ],
+            :,
+        ]
+
+        print(data_train[20000])
+        """
         mask = torch.ones(len(data), dtype=torch.bool)
-        mask[self.config.experiment.fun_agree_indices] = 0
+        mask[agree_indices] = 0
         indices_complement = torch.nonzero(mask).squeeze()
-        data_test = data[indices_complement, :]
+        """
+        data_test = data[
+            agree_indices[
+                int(self.config.experiment.training_ratio * len(agree_indices)) :
+            ],
+            :,
+        ]
 
         print(
             f"data_train.shape: {data_train.shape}, data_test.shape: {data_test.shape}"

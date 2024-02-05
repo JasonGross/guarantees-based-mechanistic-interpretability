@@ -349,7 +349,7 @@ class MaxOfNDataModule(DataModule):
             return MaxOfNDataset(
                 reseed(self.dataset_seed, mode),
                 self.config,
-                cfg.n_samples,
+                max_length=cfg.n_samples,
                 pick_max_first=cfg.pick_max_first,
             )
         elif isinstance(cfg, FullDatasetCfg):

@@ -84,6 +84,7 @@ except:
     IN_COLAB = False
 # %%
 DISPLAY_PLOTS: bool = not IN_COLAB  # @param {type:"boolean"}
+RENDERER: Optional[str] = "png"  # @param ["png", None]
 # %%
 cfg = Config(
     experiment=MaxOfN(

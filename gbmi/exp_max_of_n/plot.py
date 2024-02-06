@@ -177,7 +177,7 @@ def compute_irrelevant(
         "data": data,
         "title": "Irrelevant Contributions to logits",
         "xaxis": "output logit token",
-        "yaxis": "logit value",
+        "yaxis": "input token",
     }
 
 

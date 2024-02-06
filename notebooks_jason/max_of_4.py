@@ -9,6 +9,7 @@ import gbmi.verification_tools.decomp
 import gbmi.utils.lowrank
 import gbmi.exp_max_of_n.analysis
 import gbmi.exp_max_of_n.plot
+import gbmi.exp_max_of_n.train
 import gbmi.exp_max_of_n.verification
 import gbmi.utils
 import gbmi.utils.memoshelve
@@ -20,6 +21,7 @@ importlib.reload(gbmi.analysis_tools.decomp)
 importlib.reload(gbmi.verification_tools.decomp)
 importlib.reload(gbmi.utils.lowrank)
 importlib.reload(gbmi.exp_max_of_n.analysis)
+importlib.reload(gbmi.exp_max_of_n.train)
 importlib.reload(gbmi.utils)
 importlib.reload(gbmi.exp_max_of_n.verification)
 importlib.reload(gbmi.utils.memoshelve)
@@ -236,6 +238,7 @@ batch_size = 4096  # 16_384 # 8182
 total_loss = 0.0
 total_accuracy = 0.0
 total_samples = 0
+all_incorrect_sequences = []
 
 brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
 
@@ -252,7 +255,7 @@ def _run_batch_loss_accuracy(
     loss = training_wrapper.loss_fn(
         y_preds, x, log_softmax=training_wrapper.log_softmax
     ).item()
-    full_accuracy = training_wrapper.loss_fn(y_preds, x, return_per_sequence=True)
+    full_accuracy = training_wrapper.acc_fn(y_preds, x, return_per_sequence=True)
     accuracy = full_accuracy.float().mean().item()
     if return_incorrect_sequences:
         return (loss, accuracy, size), x[~full_accuracy]
@@ -267,15 +270,17 @@ with memoshelve(
     get_hash=str,
 )() as run_batch_loss_accuracy:
     for i in tqdm(range(0, len(all_tokens_dataset), batch_size)):
-        loss, accuracy, size = run_batch_loss_accuracy(i, batch_size)  # type: ignore
+        (loss, accuracy, size), incorrect_sequences = run_batch_loss_accuracy(i, batch_size)  # type: ignore
         # Accumulate loss and accuracy
         total_loss += loss * size
         total_accuracy += accuracy * size
         total_samples += size
+        all_incorrect_sequences.append(incorrect_sequences)
 
 # Calculate average loss and accuracy
 average_loss = total_loss / total_samples
 average_accuracy = total_accuracy / total_samples
+incorrect_sequences = torch.cat(all_incorrect_sequences, dim=0)
 # %%
 print(f"Brute force proof:")
 print(f"Model Accuracy: {average_accuracy * 100}%")
@@ -286,6 +291,21 @@ print(
     f"Number Incorrect Sequences: {all_tokens_dataset.length - int(round(average_accuracy * all_tokens_dataset.length))}"
 )
 print(f"Model Loss: {average_loss}")
+# %%
+fraction_of_incorrect_sequences_by_max = []
+count_of_incorrect_sequences_by_query = []
+for tok in range(model.cfg.d_vocab_out):
+    cur_sequence_count = (
+        1 if tok == 0 else (tok + 1) ** model.cfg.n_ctx - tok**model.cfg.n_ctx
+    )
+    fraction_of_incorrect_sequences_by_max.append(
+        incorrect_sequences[incorrect_sequences.max(dim=-1).values == tok].shape[0]
+        / cur_sequence_count
+    )
+    count_of_incorrect_sequences_by_query.append(
+        incorrect_sequences[incorrect_sequences[:, -1] == tok].shape[0]
+    )
+
 # %% [markdown]
 # Complexity: $$\mathcal{O}(\text{d\_vocab}^\text{n\_ctx} \cdot \text{n\_ctx} \cdot \text{d\_vocab} \cdot \text{d\_model})$$
 # (batch size * number tensors in each sequence * cost of most expensive vector-matrix-multiplication)

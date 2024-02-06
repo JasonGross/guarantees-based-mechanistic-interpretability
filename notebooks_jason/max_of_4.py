@@ -31,7 +31,7 @@ importlib.reload(gbmi.utils.sequences)
 # %%
 import dataclasses
 from collections import defaultdict
-from typing import Callable, ClassVar, Collection, Literal, Optional, Tuple, Union
+from typing import Callable, ClassVar, Collection, Literal, Optional, Tuple, Union, List
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.utils import pm_round
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
@@ -335,6 +335,25 @@ for tok in range(model.cfg.d_vocab_out):
 # %% [markdown]
 # Complexity: $$\mathcal{O}(\text{d\_vocab}^\text{n\_ctx} \cdot \text{n\_ctx} \cdot \text{d\_vocab} \cdot \text{d\_model})$$
 # (batch size * number tensors in each sequence * cost of most expensive vector-matrix-multiplication)
+# # %% [markdown]
+# # # Brute Force Proof Standalone
+# # %%
+# brute_force_use_gpu: bool = True #@param {type:"boolean"}
+# brute_force_device = "cuda" if brute_force_use_gpu and torch.cuda.is_available() else "cpu"
+# def generate_all_sequences_in_batches(d_vocab: int, n_ctx: int, per_batch: int = 2, postfix: Optional[List[int]] = None):
+#     if postfix is None: postfix = []
+#     if n_ctx <= per_batch:
+#         sequences = torch.cartesian_prod(*[torch.arange(d_vocab) for _ in range(n_ctx)])
+#         # append broadcasted postfix if not none
+#         if len(postfix):
+#             sequences = torch.cat([sequences, torch.tensor(postfix).expand(sequences.shape[0], -1)], dim=-1)
+#         yield sequences
+#     else:
+#         for last_tok in range(d_vocab):
+#             for sequences in generate_all_sequences_in_batches(d_vocab, n_ctx - 1, per_batch=per_batch, postfix=[last_tok] + postfix):
+#                 yield sequences
+# with shelve.open(cache_dir / f"{Path(__file__).name}.brute-force-standalone-{cfg_hash_for_filename}-{brute_force_device}") as shelf:
+
 # %%
 # # %% [markdown]
 # # Brute Force Proof (with Memoization)

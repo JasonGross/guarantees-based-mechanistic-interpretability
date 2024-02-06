@@ -1884,7 +1884,6 @@ with memoshelve(
             ),
         )
     ),
-    cache={},  # TODO: remove
     filename=cache_dir
     / f"{Path(__file__).name}.find_min_gaps-nosvd-{cfg_hash.replace('/', '__SLASH__')}",
 )() as find_min_gaps_for:

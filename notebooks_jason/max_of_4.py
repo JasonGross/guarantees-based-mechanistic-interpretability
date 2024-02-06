@@ -43,6 +43,7 @@ from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
     IterableDatasetCfg,
     MaxOfN,
+    MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
 )
@@ -55,6 +56,7 @@ from jaxtyping import Float, Integer, Bool
 from torch import Tensor
 import plotly.express as px
 from transformer_lens import HookedTransformerConfig, HookedTransformer
+from pathlib import Path
 from gbmi.utils import default_device, dropnan
 from gbmi.utils.memocache import Memoize
 from gbmi.utils.sequences import (
@@ -85,41 +87,140 @@ except:
 # %%
 DISPLAY_PLOTS: bool = not IN_COLAB  # @param {type:"boolean"}
 RENDERER: Optional[str] = "png"  # @param ["png", None]
+cache_dir = Path(__file__).parent / ".cache"
+cache_dir.mkdir(exist_ok=True)
 # %%
-cfg = Config(
-    experiment=MaxOfN(
-        model_config=HookedTransformerConfig(
-            act_fn=None,
-            attn_only=True,
-            d_head=32,
-            d_mlp=None,
-            d_model=32,
-            d_vocab=64,
-            device="cpu",
-            n_ctx=2,
-            n_heads=1,
-            n_layers=1,
-            normalization_type=None,
-            seed=613947648,
-        ),
-        zero_biases=True,
-        use_log1p=True,
-        use_end_of_sequence=False,
-        seq_len=4,
-        train_dataset_cfg=IterableDatasetCfg(pick_max_first=False),
-        test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
-    ),
-    deterministic=True,
-    seed=123,
-    batch_size=128,
-    train_for=(3000, "steps"),
+# hack around newlines of black formatting
+seeds = sorted(
+    set(
+        map(
+            int,
+            "50,104,123,519,742,913,1185,1283,1412,1490,1681,1696,1895,1951,2236,2306,2345,2549,2743,2773,3175,3254,3284,4157,4305,4430,4647,4729,4800,4810,5358,5615,5781,5928,6082,6155,6159,6204,6532,6549,6589,6910,7098,7238,7310,7467,7790,7884,8048,8299,8721,8745,8840,8893,9132,9134,9504,9816,10248,11124,11130,11498,11598,11611,12141,12287,12457,12493,12552,12561,13036,13293,13468,13654,13716,14095,14929,15043,15399,15622,15662,16069,16149,16197,16284,17080,17096,17194,17197,18146,18289,18668,19004,19093,19451,19488,19538,19917,20013,20294,20338,20415,20539,20751,20754,20976,21317,21598,22261,22286,22401,22545,23241,23367,23447,23633,23696,24144,24173,24202,24262,24438,24566,25516,26278,26374,26829,26932,27300,27484,27584,27671,27714,28090,28716,28778,29022,29052,29110,29195,29565,29725,29726,30371,30463,30684,30899,31308,32103,32374,32382".split(
+                ","
+            ),
+        )
+    )
 )
-cfg_hash = get_hash_ascii(cfg)
+cfgs = {
+    seed: Config(
+        experiment=MaxOfN(
+            model_config=HookedTransformerConfig(
+                act_fn=None,
+                attn_only=True,
+                d_head=32,
+                d_mlp=None,
+                d_model=32,
+                d_vocab=64,
+                device="cpu",
+                n_ctx=2,
+                n_heads=1,
+                n_layers=1,
+                normalization_type=None,
+            ),
+            zero_biases=True,
+            use_log1p=True,
+            use_end_of_sequence=False,
+            seq_len=4,
+            optimizer="AdamW",
+            optimizer_kwargs={"lr": 0.001, "betas": (0.9, 0.999)},
+            train_dataset_cfg=IterableDatasetCfg(pick_max_first=False),
+            test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
+        ),
+        deterministic=True,
+        seed=seed,
+        batch_size=128,
+        train_for=(3000, "steps"),
+    )
+    for seed in [123] + list(seeds)
+}
+cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
+datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
 # %%
-runtime, model = train_or_load_model(cfg, force="load")
+with memoshelve(
+    train_or_load_model,
+    filename=cache_dir / f"{Path(__file__).name}.train_or_load_model",
+    get_hash=get_hash_ascii,
+)() as memo_train_or_load_model:
+    runtime_models = {}
+    for seed, cfg in tqdm(cfgs.items()):
+        try:
+            runtime_models[seed] = memo_train_or_load_model(cfg, force="load")
+        except Exception as e:
+            print(f"Error loading model for seed {seed}: {e}")
 # %%
-training_wrapper = MaxOfNTrainingWrapper(cfg, model)
+training_wrappers = {
+    seed: MaxOfNTrainingWrapper(cfgs[seed], model)
+    for seed, (_runtime, model) in runtime_models.items()
+}
 # training_wrapper.run_batch = Memoize(training_wrapper.run_batch, name=f"{__file__}.training_wrapper.run_batch", use_pandas=False, use_shelf=True)  # type: ignore
+# %% [markdown]
+# # Training stats
+# %%
+train_total_loss = {}
+train_total_accuracy = {}
+train_total_samples = {}
+train_measurement_deterministic: bool = False  # @param {type:"boolean"}
+train_average_loss = {}
+train_average_accuracy = {}
+
+
+# loop for computing overall loss and accuracy
+@torch.no_grad()
+def _run_train_batch_loss_accuracy(
+    seed: int, i: int, batch_size: int
+) -> Tuple[float, float, int]:
+    batch = next(dataloader_iter)
+    size = batch.shape[0]
+    assert size == cfgs[seed].batch_size
+    batch.to(default_device(deterministic=train_measurement_deterministic))
+    loss, accuracy = training_wrappers[seed].run_batch(
+        batch, return_accuracy=True, log_output=False
+    )
+    loss = loss.item()
+    return loss, accuracy, size
+
+
+for seed in tqdm(runtime_models.keys(), desc="seed", position=0):
+    train_total_loss[seed] = 0.0
+    train_total_accuracy[seed] = 0.0
+    train_total_samples[seed] = 0
+
+    datamodule = datamodules[seed]
+    datamodule.setup("train")
+    dataloader = datamodule.train_dataloader()
+    dataloader_iter = iter(dataloader)
+    with memoshelve(
+        _run_train_batch_loss_accuracy,
+        filename=cache_dir
+        / f"{Path(__file__).name}.run_batch_loss_accuracy-{seed}-{train_measurement_deterministic}",
+        get_hash_mem=(lambda x: x[0]),
+        get_hash=str,
+    )() as run_batch_loss_accuracy:
+        for i in tqdm(range(0, len(dataloader)), desc=f"batches", position=1):
+            loss, accuracy, size = run_batch_loss_accuracy(seed, i, cfg.batch_size)  # type: ignore
+            # Accumulate loss and accuracy
+            train_total_loss[seed] += loss * size
+            train_total_accuracy[seed] += accuracy * size
+            train_total_samples[seed] += size
+
+    # Calculate average loss and accuracy
+    train_average_loss[seed] = train_total_loss[seed] / train_total_samples[seed]
+    train_average_accuracy[seed] = (
+        train_total_accuracy[seed] / train_total_samples[seed]
+    )
+# %%
+# import sys
+# sys.exit(0)
+# %%
+seed = 123
+cfg = cfgs[seed]
+cfg_hash = cfg_hashes[seed]
+runtime, model = runtime_models[seed]
+training_wrapper = training_wrappers[seed]
+# %%
+print(f"Training stats:")
+print(f"Model Accuracy: {train_average_accuracy[seed] * 100}%")
+print(f"Model Loss: {train_average_loss[seed]}")
 # %% [markdown]
 # # Brute Force Proof
 # %%
@@ -155,7 +256,8 @@ def _run_batch_loss_accuracy(i: int, batch_size: int) -> Tuple[float, float, int
 # , get_hash_mem=(lambda x:x[0]), get_hash=str
 with memoshelve(
     _run_batch_loss_accuracy,
-    filename=f"{__file__}.run_batch_loss_accuracy-{cfg_hash}-{brute_force_proof_deterministic}",
+    filename=cache_dir
+    / f"{Path(__file__).name}.run_batch_loss_accuracy-{seed}-{brute_force_proof_deterministic}",
 )() as run_batch_loss_accuracy:
     for i in tqdm(range(0, len(all_tokens_dataset), batch_size)):
         loss, accuracy, size = run_batch_loss_accuracy(i, batch_size)  # type: ignore
@@ -1624,7 +1726,7 @@ with memoshelve(
             ),
         )
     ),
-    filename=f"{__file__}.find_min_gaps-{cfg_hash}",
+    filename=cache_dir / f"{Path(__file__).name}.find_min_gaps-{cfg_hash}",
 )() as find_min_gaps_for:
     min_gaps_list = [
         find_min_gaps_for(cfg)

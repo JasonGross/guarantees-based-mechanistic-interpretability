@@ -469,7 +469,6 @@ def compute_min_softmaxed_right_attention_cubic_simple(
     Tensor,
     "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
 ]:
-    # TODO: return both min and max attention to query so the proof goes through
     r"""
     Computes the min post-softmax attention (pessimized over sequence orderings) paid to the maximum token (attn=0) and
     the min paid to the query token (attn=1) and the max paid to the query token (attn=2):

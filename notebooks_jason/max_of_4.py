@@ -902,7 +902,7 @@ print(
 # # Plots
 # %%
 if DISPLAY_PLOTS:
-    display_basic_interpretation(model)
+    display_basic_interpretation(model, renderer=RENDERER)
 
 
 # %% [markdown]
@@ -1206,10 +1206,12 @@ def decompose_EQKE_error(
 # # more plots
 # %%
 if DISPLAY_PLOTS:
-    px.imshow(EQKE_query_key.numpy(), title="EQKE_query_key").show()
-    px.imshow(err_accumulator.numpy(), title="err_accumulator").show()
-    px.imshow(EQKE_pos_err.numpy(), title="EQKE_pos_err").show()
-    px.imshow((W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).numpy()).show()
+    px.imshow(EQKE_query_key.numpy(), title="EQKE_query_key").show(RENDERER)
+    px.imshow(err_accumulator.numpy(), title="err_accumulator").show(RENDERER)
+    px.imshow(EQKE_pos_err.numpy(), title="EQKE_pos_err").show(RENDERER)
+    px.imshow((W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).numpy()).show(
+        RENDERER
+    )
 print(f"err_upper_bound: {err_upper_bound}")
 
 

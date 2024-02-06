@@ -1863,4 +1863,94 @@ for tricks, min_gaps in min_gaps_list:
         f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
     )
 
+# %% [markdown]
+# # Sub-cubic without SVD
+# %%
+err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+with memoshelve(
+    (
+        lambda cfg: (
+            cfg,
+            find_min_gaps(
+                EQKE=EQKE_query_key + err_accumulator + err_exact,
+                EQKE_err_upper_bound=0,
+                EQKE_pos_err=EQKE_pos_err,
+                EUPU=EUPU,
+                EVOU=EVOU,
+                PVOU=PVOU,
+                tricks=cfg,
+                attn_scale=model.blocks[0].attn.attn_scale,
+                position=1,
+            ),
+        )
+    ),
+    cache={},  # TODO: remove
+    filename=cache_dir
+    / f"{Path(__file__).name}.find_min_gaps-nosvd-{cfg_hash.replace('/', '__SLASH__')}",
+)() as find_min_gaps_for:
+    min_gaps_list_nosvd = [
+        find_min_gaps_for(cfg)
+        for cfg in tqdm(
+            all_configs,
+            position=0,
+            desc="trick cfg",
+        )
+    ]
+
+# %%
+for tricks, min_gaps in min_gaps_list_nosvd:
+    print(f"===========NO SVD=============================\nTricks: {tricks}")
+    min_gap = min_gaps.max(dim=-1).values
+    use_exact_error = True
+    err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    min_right_attention = compute_min_right_attention_quadratic(
+        EQKE_query_key + err_accumulator + (err_exact if use_exact_error else 0),
+        min_gap=min_gap,
+    )
+    print(
+        f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
+    )  # O(d_vocab^2)
+    print(
+        (min_right_attention[~min_right_attention.isnan()] > err_upper_bound)
+        .sum()
+        .item()
+    )
+    min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
+        min_right_attention - (err_upper_bound if not use_exact_error else 0),
+        EQKE_pos_err,
+        min_gap=min_gap,
+        attn_scale=model.blocks[0].attn.attn_scale,
+    )
+    print(
+        f"Complexity of compute_min_softmaxed_right_attention: {complexity_of(compute_min_softmaxed_right_attention_quadratic)}"
+    )  # O(d_vocab^2 * n_ctx^2)
+    EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
+    print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
+    EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
+    print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
+    PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
+    print(
+        f"Complexity of PVOU: {complexity_of(all_PVOU)}"
+    )  # O(n_ctx * d_vocab * d_model)
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+    ] = compute_largest_wrong_logit_quadratic(
+        min_right_attention_softmaxed,
+        EUPU=EUPU,
+        EVOU=EVOU,
+        PVOU=PVOU,
+        min_gap=min_gap,
+        tricks=tricks,
+    )
+    print(
+        f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(compute_largest_wrong_logit_quadratic)}"
+    )  # O(d_vocab^2 * n_ctx^2)
+    accuracy_bound, (
+        correct_count,
+        total_sequences,
+    ) = compute_accuracy_lower_bound_from(largest_wrong_logit, min_gap=min_gap)
+    print(
+        f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
+    )
+
 # %%

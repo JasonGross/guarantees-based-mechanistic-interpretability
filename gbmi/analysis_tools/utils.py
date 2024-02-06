@@ -1,14 +1,30 @@
-from typing import Optional
-
+from typing import Optional, Literal
+import numpy as np
 import torch
 
 
-def pm_range(values):
-    return f"{(values.max().item() + values.min().item()) / 2.0} ± {(values.max().item() - values.min().item()) / 2.0}"
+def pm_round(
+    mean: float,
+    std: float,
+    extra_digits: int = 1,
+    total_digits: Optional[int] = None,
+    format_specifier: Literal["f", "e"] = "f",
+) -> str:
+    if total_digits is None:
+        total_digits = int(1 + extra_digits - np.log10(std))
+    return f"{mean:.{total_digits}{format_specifier}} ± {std:.{total_digits}{format_specifier}}"
 
 
-def pm_mean_std(values):
-    return f"{values.mean().item()} ± {values.std().item()}"
+def pm_range(values, round: bool = True):
+    mid, half_range = (values.max().item() + values.min().item()) / 2.0, (
+        values.max().item() - values.min().item()
+    ) / 2.0
+    return pm_round(mid, half_range) if round else f"{mid} ± {half_range}"
+
+
+def pm_mean_std(values, round: bool = True):
+    mean, std = values.mean().item(), values.std().item()
+    return pm_round(mean, std) if round else f"{mean} ± {std}"
 
 
 def center_by_mid_range(

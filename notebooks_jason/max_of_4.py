@@ -14,12 +14,14 @@ import gbmi.exp_max_of_n.verification
 import gbmi.utils
 import gbmi.utils.memoshelve
 import gbmi.utils.sequences
+import gbmi.analysis_tools.utils
 
 importlib.reload(gbmi.exp_max_of_n.plot)
 importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.analysis_tools.decomp)
 importlib.reload(gbmi.verification_tools.decomp)
 importlib.reload(gbmi.utils.lowrank)
+importlib.reload(gbmi.analysis_tools.utils)
 importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.exp_max_of_n.train)
 importlib.reload(gbmi.utils)
@@ -31,6 +33,7 @@ import dataclasses
 from collections import defaultdict
 from typing import Callable, ClassVar, Collection, Literal, Optional, Tuple, Union
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
+from gbmi.analysis_tools.utils import pm_round
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.sequences import count_sequences
@@ -142,6 +145,9 @@ cfgs = {
     for seed in [123] + list(seeds)
 }
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
+cfg_hashes_for_filename = {
+    seed: cfg_hash.replace("/", "__SLASH__") for seed, cfg_hash in cfg_hashes.items()
+}
 datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
 # %%
 with memoshelve(
@@ -200,7 +206,7 @@ for seed in tqdm(runtime_models.keys(), desc="seed", position=0):
     with memoshelve(
         _run_train_batch_loss_accuracy,
         filename=cache_dir
-        / f"{Path(__file__).name}.run_batch_loss_accuracy-{seed}-{train_measurement_deterministic}",
+        / f"{Path(__file__).name}.run_batch_loss_accuracy-{cfg_hashes_for_filename[seed]}-{train_measurement_deterministic}",
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     )() as run_batch_loss_accuracy:
@@ -217,12 +223,25 @@ for seed in tqdm(runtime_models.keys(), desc="seed", position=0):
         train_total_accuracy[seed] / train_total_samples[seed]
     )
 # %%
+num_seeds = len(train_average_loss)
+avg_train_average_loss = sum(train_average_loss.values()) / num_seeds
+avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
+std_dev_train_average_loss = np.std(list(train_average_loss.values()))
+std_dev_train_average_accuracy = np.std(list(train_average_accuracy.values()))
+print(f"Overall Training stats ({num_seeds} training runs):")
+print(
+    f"Model Accuracy: ({pm_round(avg_train_average_accuracy * 100, std_dev_train_average_accuracy * 100)})%"
+)
+print(f"Model Loss: {pm_round(avg_train_average_loss, std_dev_train_average_loss)}")
+
+# %%
 # import sys
 # sys.exit(0)
 # %%
 seed = 123
 cfg = cfgs[seed]
 cfg_hash = cfg_hashes[seed]
+cfg_hash_for_filename = cfg_hashes_for_filename[seed]
 runtime, model = runtime_models[seed]
 training_wrapper = training_wrappers[seed]
 # %%
@@ -272,7 +291,7 @@ def _run_batch_loss_accuracy(
 with memoshelve(
     _run_batch_loss_accuracy,
     filename=cache_dir
-    / f"{Path(__file__).name}.run_batch_loss_accuracy-{cfg_hash.replace('/', '__SLASH__')}-{brute_force_proof_deterministic}",
+    / f"{Path(__file__).name}.run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
     get_hash_mem=(lambda x: x[0]),
     get_hash=str,
 )() as run_batch_loss_accuracy:
@@ -975,6 +994,11 @@ print(
 # %%
 if DISPLAY_PLOTS:
     display_basic_interpretation(model, include_uncentered=True, renderer=RENDERER)
+
+# %%
+print((model.W_E + model.W_pos.mean(dim=0)).norm(dim=-1))
+print(model.W_V[0, 0].norm(dim=-1))
+print((model.W_V[0, 0] @ model.W_O[0, 0] @ model.W_U).norm(dim=0))
 
 
 # %% [markdown]
@@ -1800,8 +1824,7 @@ with memoshelve(
             ),
         )
     ),
-    filename=cache_dir
-    / f"{Path(__file__).name}.find_min_gaps-{cfg_hash.replace('/', '__SLASH__')}",
+    filename=cache_dir / f"{Path(__file__).name}.find_min_gaps-{cfg_hash_for_filename}",
 )() as find_min_gaps_for:
     min_gaps_list = [
         find_min_gaps_for(cfg)
@@ -1890,7 +1913,7 @@ with memoshelve(
         )
     ),
     filename=cache_dir
-    / f"{Path(__file__).name}.find_min_gaps-nosvd-{cfg_hash.replace('/', '__SLASH__')}",
+    / f"{Path(__file__).name}.find_min_gaps-nosvd-{cfg_hash_for_filename}",
 )() as find_min_gaps_for:
     min_gaps_list_nosvd = [
         find_min_gaps_for(cfg)

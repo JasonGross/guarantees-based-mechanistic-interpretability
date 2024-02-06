@@ -486,9 +486,21 @@ print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model *
 # \text{PVOU}[p] &:= W_\text{pos}[p] W_V W_O W_U \
 # && \mathcal{O}(\text{d\_vocab} \cdot \text{d\_model} \cdot \text{n\_ctx}) \\
 # \end{align*}$$
-# Define
+# For a sequence $$\mathbf{x}$$, define
 # $$\begin{align*}\
-# \mathbf{y}()
+# \alpha(x_{-1},x_{i_k},i_k) &:= \frac{1}{\sqrt{\text{d\_head}}}(\text{EQKE}[x_{-1},x_{i_k}] + \text{EQKP}[x_{-1},i_k]) \\
+# \mathbf{y}(\mathbf{x}) & :=\frac{1}{\sum_i e^{\alpha(x_{-1},x_i,i)}}\left[\sum_{i=0}^{n-1} e^{\alpha(x_{-1},x_i,i)}(\text{EVOU}[x_i] + \text{PVOU}[i]) \right] + \text{EUPU}[x_{-1}] \\
+# \end{align*}$$
+# We are interested in counting up the sequences with maximum token $m$ for which we have for all $t \neq m$ that
+# $$y_t(\mathbf{x}) - y_m(\mathbf{x}) < 0$$
+# Define
+# $$w := \argmax_{t\text{ s.t. }t\neq m} y_t(\mathbf{x}) - y_m(\mathbf{x})$$
+# Then
+# $$\begin{align*}\
+# &y_w(\mathbf{x}) - y_m(\mathbf{x})\\
+# &= \max_{t \ne m}y_t(\mathbf{x}) - y_m(\mathbf{x}) \\
+# &= \max_{t \ne m}\left(\frac{1}{\sum_i e^{\alpha(x_{-1},x_i,i)}}\left[\sum_{i=0}^{n-1} e^{\alpha(x_{-1},x_i,i)}(\text{EVOU}[x_i, t] - \text{EVOU}[x_i, m] + \text{PVOU}[i, t] - \text{PVOU}[i, m]) \right] + \text{EUPU}[x_{-1}, t] + \text{EUPU}[x_{-1}, m]\right) \\
+# &= \max_{t \ne m}\left(\frac{1}{\sum_i e^{\alpha(x_{-1},x_i,i)}}\left[\sum_{i=0}^{n-1} e^{\alpha(x_{-1},x_i,i)}(\text{EVOU}[x_i, t] - \text{EVOU}[x_i, m] + \text{PVOU}[i, t] - \text{PVOU}[i, m]) \right] + \text{EUPU}[x_{-1}, t] + \text{EUPU}[x_{-1}, m]\right) \\
 # \end{align*}$$
 
 

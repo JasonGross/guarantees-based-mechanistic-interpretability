@@ -35,6 +35,7 @@ from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.sequences import count_sequences
 from gbmi.utils.lowrank import LowRankTensor
+import gbmi.utils.ein as ein
 from gbmi.utils.memoshelve import memoshelve
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
@@ -266,7 +267,7 @@ def _run_batch_loss_accuracy(
 with memoshelve(
     _run_batch_loss_accuracy,
     filename=cache_dir
-    / f"{Path(__file__).name}.run_batch_loss_accuracy-{seed}-{brute_force_proof_deterministic}",
+    / f"{Path(__file__).name}.run_batch_loss_accuracy-{cfg_hash.replace('/', '__SLASH__')}-{brute_force_proof_deterministic}",
     get_hash_mem=(lambda x: x[0]),
     get_hash=str,
 )() as run_batch_loss_accuracy:
@@ -483,7 +484,7 @@ def compute_min_softmaxed_right_attention_cubic_simple(
 
     """
     d_vocab, n_ctx = EQKE.shape[-1], EQKP.shape[-1]
-    result = torch.zeros((2, d_vocab, d_vocab, d_vocab, n_ctx)).to(EQKE) + float("nan")
+    result = torch.zeros((3, d_vocab, d_vocab, d_vocab, n_ctx)).to(EQKE) + float("nan")
     tmp = torch.zeros((n_ctx,)).to(EQKE)
     # constants for indices so we don't have 0 and 1 floating around
     w_max = 0
@@ -626,7 +627,8 @@ def compute_largest_wrong_logit_cubic(
         Postconditions:
             \forall q, m, k, n_copies_nonmax, x:
               if q > m or k > m: return[q, m, k, n_copies_nonmax] = nan
-              elif m = k and n_copies_nonmax != 0: return[q, m, k, n_copies_nonmax] = nan
+              elif m = k and n_copies_nonmax != 0: return[q, m, m, n_copies_nonmax] = nan
+              elif m != k and n_copies_nonmax == 0: return[q, m, k, 0] = nan
               elif q != m and n_copies_nonmax >= n_ctx - 1: return[q, m, k, n_copies_nonmax] = nan
                 (That is, in these cases, the answer is undefined because the query token is greater than the max token, or
                 there isn't enough room for the non-max token or the max token in the sequence.)
@@ -670,7 +672,7 @@ def compute_largest_wrong_logit_cubic(
         logits_only_max[max_tok] = float(
             "-inf"
         )  # so we can max the logits across the non-max tokens
-        results[max_tok, max_tok, 0] = logits_only_max.max().item()
+        results[max_tok, max_tok, max_tok, 0] = logits_only_max.max().item()
 
         # now handle the cases with only the query token and n_ctx - 1 copies of the max token
         for q_tok in range(max_tok):
@@ -839,6 +841,19 @@ def count_correct_sequences_cubic(
     correct_count = 0
     for q_tok in range(d_vocab_q):
         for max_tok in range(d_vocab_max):
+            # if the largest wrong logit is positive when the sequence is all max tokens, then pessimizing over position is not adequate for the convexity argument, so we skip these sequences.
+            # in practice, we lose 6**4 == 1296 sequences this way, which is 0.0077% of the total
+            largest_wrong_logit_in_only_max_sequences = largest_wrong_logit[
+                max_tok, max_tok, max_tok, :
+            ]
+            largest_wrong_logit_in_only_max_sequences = (
+                largest_wrong_logit_in_only_max_sequences[
+                    ~largest_wrong_logit_in_only_max_sequences.isnan()
+                ]
+            )
+            if largest_wrong_logit_in_only_max_sequences.item() > 0:
+                # we did not account for these sequences in convexity
+                continue
             for n_copies_nonmax in range(n_ctx):
                 if q_tok > max_tok or (
                     q_tok != max_tok and n_copies_nonmax >= n_ctx - 1
@@ -883,6 +898,27 @@ def compute_accuracy_lower_bound_from_cubic(
 
 
 # %%
+@torch.no_grad()
+def count_unaccounted_for_by_cubic_convexity_sequences(
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
+    ],
+) -> int:
+    """Computes the number of sequences that we are leaving on the table by pessimizing over position"""
+    d_vocab_q, d_vocab_max, _, n_ctx = largest_wrong_logit.shape
+    unaccounted_for = ein.array(
+        lambda max_tok: largest_wrong_logit[max_tok, max_tok, max_tok, 0],
+        sizes=[d_vocab_q],
+    )
+    assert not unaccounted_for.isnan().any(), f"unaccounted_for: {unaccounted_for}"
+    unaccounted_for_count = 0
+    for tok in range(d_vocab_q):
+        if unaccounted_for[tok] > 0:
+            unaccounted_for_count += (tok + 1) ** n_ctx - tok**n_ctx
+    return unaccounted_for_count
+
+
+# %%
 # EQKE: Float[Tensor, "d_vocab_q d_vocab_k"] = all_EQKE(model)  # noqa: F722
 print(f"Complexity of EQKE: {complexity_of(all_EQKE)}")  # O(d_vocab^2 * d_model)
 # EQKP: Float[Tensor, "d_vocab_q n_ctx_k"] = all_EQKP(model)  # noqa: F722
@@ -921,6 +957,9 @@ accuracy_bound_cubic, (
 ) = compute_accuracy_lower_bound_from_cubic(largest_wrong_logit_cubic)
 print(
     f"Accuracy lower bound: {accuracy_bound_cubic} ({correct_count_cubic} correct sequences of {total_sequences})"
+)
+print(
+    f"Note that we are leaving {count_unaccounted_for_by_cubic_convexity_sequences(largest_wrong_logit_cubic)} sequences on the floor, which is {count_unaccounted_for_by_cubic_convexity_sequences(largest_wrong_logit_cubic) / total_sequences * 100}% of the total"
 )
 
 # # %%
@@ -1756,7 +1795,8 @@ with memoshelve(
             ),
         )
     ),
-    filename=cache_dir / f"{Path(__file__).name}.find_min_gaps-{cfg_hash}",
+    filename=cache_dir
+    / f"{Path(__file__).name}.find_min_gaps-{cfg_hash.replace('/', '__SLASH__')}",
 )() as find_min_gaps_for:
     min_gaps_list = [
         find_min_gaps_for(cfg)

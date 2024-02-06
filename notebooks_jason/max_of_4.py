@@ -1436,7 +1436,7 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 # $$f_{x,y} = \mathbb{E}_x f_{x,y} + (f_{x,y} - \mathbb{E}_x f_{x,y})$$
 #
 # Suppose that $f_{x,y}$ varies much less over $x$ than it does over $y$, and much less than $h_{y,z}$ varies over either of $y$ and $z$.
-# This will make the following bonud a good approximation, though the bound is sound even without this assumption.
+# This will make the following bound a good approximation, though the bound is sound even without this assumption.
 # We can write
 # $$
 # \begin{align*}

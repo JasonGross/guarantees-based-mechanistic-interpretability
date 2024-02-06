@@ -19,7 +19,7 @@ from typing import (
 
 import numpy as np
 import torch
-from jaxtyping import Float, Integer
+from jaxtyping import Float, Integer, Bool
 from torch import Tensor
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, IterableDataset
@@ -160,6 +160,12 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         self.model = model
         self.config = config
 
+    @property
+    def log_softmax(self):
+        return (
+            F.log_softmax if not self.config.experiment.use_log1p else utils.log_softmax
+        )
+
     @staticmethod
     def build_model(config: Config[MaxOfN]) -> HookedTransformer:
         model = HookedTransformer(config.experiment.model_config)
@@ -180,14 +186,51 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         correct_log_probs = log_probs.gather(-1, true_maximum.unsqueeze(-1))
         return -correct_log_probs.mean()
 
+    @overload
     @staticmethod
     def acc_fn(
-        logits: Float[Tensor, "batch d_vocab"],  # noqa: F821, F722
-        tokens: Integer[Tensor, "batch seq_len"],  # noqa: F821, F722
+        logits: Float[Tensor, "batch d_vocab"],  # noqa: F722
+        tokens: Integer[Tensor, "batch seq_len"],  # noqa: F722
+        *,
+        return_per_sequence: Literal[False] = False,
     ) -> float:
+        ...
+
+    @overload
+    @staticmethod
+    def acc_fn(
+        logits: Float[Tensor, "batch d_vocab"],  # noqa: F722
+        tokens: Integer[Tensor, "batch seq_len"],  # noqa: F722
+        *,
+        return_per_sequence: Literal[True],
+    ) -> Bool[Tensor, "batch"]:  # noqa F821
+        ...
+
+    @staticmethod
+    def acc_fn(
+        logits: Float[Tensor, "batch d_vocab"],  # noqa: F722
+        tokens: Integer[Tensor, "batch seq_len"],  # noqa: F722
+        *,
+        return_per_sequence: bool = False,
+    ) -> Union[float, Bool[Tensor, "batch"]]:  # noqa F821
         pred_tokens = torch.argmax(logits, dim=1)
         true_maximum = torch.max(tokens, dim=1)[0]
-        return (pred_tokens == true_maximum).float().mean().item()
+        acc = pred_tokens == true_maximum
+        if return_per_sequence:
+            return acc
+        return acc.float().mean().item()
+
+    def compute_batch(
+        self,
+        x: Float[Tensor, "batch pos"],  # noqa F722
+    ) -> Tuple[
+        Float[Tensor, "batch seq_len"], Integer[Tensor, "batch seq_len"]  # noqa F722
+    ]:
+        self.model.to(x.device, print_details=False)
+        y_preds = self.model(x)[:, -1, :]
+        if self.config.experiment.use_end_of_sequence:
+            x = x[:, :-1]
+        return y_preds, x
 
     @overload
     def run_batch(
@@ -242,17 +285,11 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         log_output: bool = True,
     ) -> Union[Float[Tensor, ""], Tuple[Float[Tensor, ""], float]]:  # noqa F722
         assert prefix is not None or not log_output, "Must not log if prefix is None"
-        log_softmax = (
-            F.log_softmax if not self.config.experiment.use_log1p else utils.log_softmax
-        )
-        self.model.to(x.device, print_details=False)
-        y_preds = self.model(x)[:, -1, :]
-        if self.config.experiment.use_end_of_sequence:
-            x = x[:, :-1]
+        y_preds, x = self.compute_batch(x)
         loss = self.loss_fn(
             y_preds,
             x,
-            log_softmax=log_softmax,
+            log_softmax=self.log_softmax,
         )
         if log_output:
             self.log(f"{prefix}loss", loss, prog_bar=True)

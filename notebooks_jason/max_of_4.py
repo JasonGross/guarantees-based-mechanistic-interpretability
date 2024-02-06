@@ -242,22 +242,29 @@ brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
 
 # loop for computing overall loss and accuracy
 @torch.no_grad()
-def _run_batch_loss_accuracy(i: int, batch_size: int) -> Tuple[float, float, int]:
+def _run_batch_loss_accuracy(
+    i: int, batch_size: int, return_incorrect_sequences: bool = True
+) -> Union[Tuple[float, float, int], Tuple[Tuple[float, float, int], Tensor]]:
     batch = all_tokens_dataset[i : i + batch_size]
     size = batch.shape[0]
     batch.to(default_device(deterministic=brute_force_proof_deterministic))
-    loss, accuracy = training_wrapper.run_batch(
-        batch, return_accuracy=True, log_output=False
-    )
-    loss = loss.item()
+    y_preds, x = training_wrapper.compute_batch(batch)
+    loss = training_wrapper.loss_fn(
+        y_preds, x, log_softmax=training_wrapper.log_softmax
+    ).item()
+    full_accuracy = training_wrapper.loss_fn(y_preds, x, return_per_sequence=True)
+    accuracy = full_accuracy.float().mean().item()
+    if return_incorrect_sequences:
+        return (loss, accuracy, size), x[~full_accuracy]
     return loss, accuracy, size
 
 
-# , get_hash_mem=(lambda x:x[0]), get_hash=str
 with memoshelve(
     _run_batch_loss_accuracy,
     filename=cache_dir
     / f"{Path(__file__).name}.run_batch_loss_accuracy-{seed}-{brute_force_proof_deterministic}",
+    get_hash_mem=(lambda x: x[0]),
+    get_hash=str,
 )() as run_batch_loss_accuracy:
     for i in tqdm(range(0, len(all_tokens_dataset), batch_size)):
         loss, accuracy, size = run_batch_loss_accuracy(i, batch_size)  # type: ignore
@@ -902,7 +909,7 @@ print(
 # # Plots
 # %%
 if DISPLAY_PLOTS:
-    display_basic_interpretation(model, renderer=RENDERER)
+    display_basic_interpretation(model, include_uncentered=True, renderer=RENDERER)
 
 
 # %% [markdown]

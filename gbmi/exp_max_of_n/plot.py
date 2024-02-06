@@ -69,21 +69,23 @@ def compute_OV(
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
     if includes_eos:
         OV = (W_E[:-1] + W_pos[:-1].mean(dim=0)) @ W_V[0, 0] @ W_O[0, 0] @ W_U
+        W_E_pos_suffix = "[:-1]"
     else:
         OV = (W_E + W_pos.mean(dim=0)) @ W_V[0, 0] @ W_O[0, 0] @ W_U
+        W_E_pos_suffix = ""
     result: dict = {"xaxis": "output logit token", "yaxis": "input token"}
     if not centered:
         result.update(
             {
                 "data": OV.numpy(),
-                "title": "Attention Computation: (W<sub>E</sub>[:-1] + W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
+                "title": f"Attention Computation: (W<sub>E</sub>{W_E_pos_suffix} + W<sub>pos</sub>{W_E_pos_suffix}.mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
             }
         )
         return result
     result.update(
         {
             "data": (OV - OV.diag()[:, None]).numpy(),
-            "title": "Attention Computation (centered)<br>OV := (W<sub>E</sub>[:-1] + W<sub>pos</sub>[:-1].mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub><br>OV - OV.diag()[:, None]",
+            "title": f"Attention Computation (centered)<br>OV := (W<sub>E</sub>{W_E_pos_suffix} + W<sub>pos</sub>{W_E_pos_suffix}.mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub><br>OV - OV.diag()[:, None]",
         }
     )
     return result

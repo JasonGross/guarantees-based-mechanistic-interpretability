@@ -468,6 +468,29 @@ print(f"Complexity of EQKE: {complexity_of(all_EQKE)}")  # O(d_vocab^2 * d_model
 EQKP: Float[Tensor, "d_vocab_q n_ctx_k"] = all_EQKP(model)  # noqa: F722
 print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model * n_ctx)
 
+# %% [markdown]
+# # Mathematical Proof for Cubic
+#
+# Precompute:
+# $$\begin{align*}\
+# E_q &:= W_E[q] + W_\text{pos}[-1] \
+# && \mathcal{O}(\text{d\_vocab} \cdot \text{d\_model}) \\
+# \text{EQKE}[q,k] &:= E_q W_Q W_K^T (W_E[k])^T \
+# && \mathcal{O}(\text{d\_vocab}^2 \cdot \text{d\_model}) \\
+# \text{EQKP}[q,p] &:= E_q W_Q W_K^T (W_\text{pos}[p])^T \
+# && \mathcal{O}(\text{d\_vocab} \cdot \text{d\_model} \cdot \text{n\_ctx}) \\
+# \text{EUPU}[q] &:= E_q W_U \
+# && \mathcal{O}(\text{d\_vocab}^2 \cdot \text{d\_model}) \\
+# \text{EVOU}[k] &:= W_E[k] W_V W_O W_U \
+# && \mathcal{O}(\text{d\_vocab}^2 \cdot \text{d\_model}) \\
+# \text{PVOU}[p] &:= W_\text{pos}[p] W_V W_O W_U \
+# && \mathcal{O}(\text{d\_vocab} \cdot \text{d\_model} \cdot \text{n\_ctx}) \\
+# \end{align*}$$
+# Define
+# $$\begin{align*}\
+# \mathbf{y}()
+# \end{align*}$$
+
 
 # %%
 # for q_tok in tqdm(range(model.cfg.d_vocab)):

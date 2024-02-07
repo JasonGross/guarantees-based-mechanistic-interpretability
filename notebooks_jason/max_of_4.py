@@ -1438,6 +1438,53 @@ def compute_min_right_attention_quadratic(
 
 # %%
 @torch.no_grad()
+def count_unaccounted_for_by_gap(
+    min_gap: Integer[Tensor, "d_vocab_q d_vocab_max n_ctx"],  # noqa: F722
+    collapse_n_ctx: bool = False,
+) -> int:
+    """Computes the number of sequences that we are leaving on the table by using gaps"""
+    d_vocab_q, d_vocab_max, n_ctx = min_gap.shape
+    unaccounted_for: int = 0
+    for q_tok in range(d_vocab_q):
+        for max_tok in range(d_vocab_max):
+            if q_tok > max_tok:
+                continue
+            if collapse_n_ctx:
+                gaps = min_gap[q_tok, max_tok]
+                gap = gaps[~gaps.isnan()].max().long().item()
+                if q_tok == max_tok:
+                    if max_tok < gap:
+                        unaccounted_for += (max_tok + 1) ** (n_ctx - 1)
+                    else:
+                        unaccounted_for += (1 + max_tok) ** (n_ctx - 1) - (
+                            1 + (max_tok - gap + 1)
+                        ) ** (n_ctx - 1)
+                else:
+                    if max_tok < gap:
+                        unaccounted_for += (max_tok + 1) ** (n_ctx - 1) - max_tok ** (
+                            n_ctx - 1
+                        )
+                    else:
+                        unaccounted_for += (
+                            (max_tok + 1) ** (n_ctx - 1) - max_tok ** (n_ctx - 1)
+                        ) - (
+                            (1 + (max_tok - gap + 1)) ** (n_ctx - 1)
+                            - (max_tok - gap + 1) ** (n_ctx - 1)
+                        )
+            else:
+                for n_copies_nonmax in range(n_ctx):
+                    if n_copies_nonmax == n_ctx - 1 and max_tok != q_tok:
+                        continue
+                    gap = min_gap[q_tok, max_tok, n_copies_nonmax].long().item()
+                    unaccounted_for += (
+                        max_tok**n_copies_nonmax
+                        - (1 + max_tok - gap) ** n_copies_nonmax
+                    ) * math.comb(n_ctx - 1, n_copies_nonmax)
+    return unaccounted_for
+
+
+# %%
+@torch.no_grad()
 def compute_min_softmaxed_right_attention_quadratic(
     min_right_attention: Float[Tensor, "d_vocab_q d_vocab_max"],  # noqa: F722
     EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
@@ -1970,6 +2017,12 @@ for tricks, min_gaps in min_gaps_list:
     print(
         f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
     )
+    left_behind, must_leave_behind = count_unaccounted_for_by_gap(
+        min_gaps, collapse_n_ctx=True
+    ), count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
+    print(
+        f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%}), of which we needed to leave behind {must_leave_behind} ({must_leave_behind / total_sequences:.2%})"
+    )
 # %%
 if DISPLAY_PLOTS:
     d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_list[0][1].shape
@@ -2081,6 +2134,12 @@ for tricks, min_gaps in min_gaps_list_nosvd:
     ) = compute_accuracy_lower_bound_from(largest_wrong_logit, min_gap=min_gap)
     print(
         f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
+    )
+    left_behind, must_leave_behind = count_unaccounted_for_by_gap(
+        min_gaps, collapse_n_ctx=True
+    ), count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
+    print(
+        f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%}), of which we needed to leave behind {must_leave_behind} ({must_leave_behind / total_sequences:.2%})"
     )
 
 # %%

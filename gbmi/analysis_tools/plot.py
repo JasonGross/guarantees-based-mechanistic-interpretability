@@ -1,12 +1,15 @@
+from typing import Optional
 import numpy as np
 from matplotlib import pyplot as plt
 from plotly import express as px
+import plotly.express as px
 from scipy.optimize import curve_fit
-from transformer_lens import utils as utils
+from transformer_lens import HookedTransformer, utils as utils
 
 import gbmi.analysis_tools
 from gbmi.analysis_tools.fit import linear_func
-from gbmi.analysis_tools.utils import pm_range, pm_mean_std
+from gbmi.analysis_tools.utils import pm_range, pm_mean_std, pm_round
+from gbmi.verification_tools.l1h1 import all_EVOU
 
 
 def imshow(tensor, renderer=None, xaxis="", yaxis="", colorscale="RdBu", **kwargs):
@@ -190,3 +193,44 @@ def summarize(
         res["fit_params"] = popt
 
     return res
+
+
+def hist_EVOU_max_logit_diff(model: HookedTransformer, renderer: Optional[str] = None):
+    EVOU = all_EVOU(model)
+    max_logit_diff = EVOU.max(dim=-1).values - EVOU.min(dim=-1).values
+    mean, std = max_logit_diff.mean().item(), max_logit_diff.std().item()
+    min, max = max_logit_diff.min().item(), max_logit_diff.max().item()
+    mid, spread = (min + max) / 2, (max - min) / 2
+    px.histogram(
+        {"": max_logit_diff},
+        title=f"EVOU := W_E @ W_V @ W_O @ W_U<br>EVOU.max(dim=-1) - EVOU.min(dim=-1)<br>x̄±σ: {pm_round(mean, std)}; range: {pm_round(mid, spread)}",
+        labels={"value": "logit diff", "variable": ""},
+    ).show(renderer)
+
+
+def weighted_histogram(data, weights, num_bins: Optional[int] = None, **kwargs):
+    if num_bins is None:
+        _, bin_edges = np.histogram(data, bins="auto")
+        num_bins = len(bin_edges) - 1
+    bins = np.linspace(data.min(), data.max(), num=num_bins)
+
+    # Calculate counts for each bin
+    hist_counts = np.zeros(len(bins) - 1, dtype=int)
+    for i, value in enumerate(data):
+        factor = weights[i]
+        index = np.digitize(value, bins) - 1
+        if 0 <= index < len(hist_counts):
+            hist_counts[index] += factor
+
+    # Plot using px.bar, manually setting the x (bins) and y (counts)
+    bin_centers = (bins[:-1] + bins[1:]) / 2
+    fig = px.bar(x=bin_centers, y=hist_counts, **kwargs)
+    fig.update_layout(bargap=0)
+    # Iterate over each trace (bar chart) in the figure and adjust the marker properties
+    for trace in fig.data:
+        if trace.type == "bar":  # Check if the trace is a bar chart
+            # Update marker properties to remove the border line or adjust its appearance
+            trace.marker.line.width = 0  # Set line width to 0 to remove the border
+            # Optionally, you can also set the line color to match the bar color exactly
+            trace.marker.line.color = trace.marker.color = "rgba(0, 0, 255, 1.0)"
+    return fig

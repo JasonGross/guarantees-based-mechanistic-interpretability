@@ -1,12 +1,16 @@
-from typing import Optional
+from typing import Optional, Tuple
+import numpy as np
 import torch
 from torch import Tensor
 import math
-from jaxtyping import Float
+from jaxtyping import Float, Integer
 from transformer_lens import HookedTransformer
 import plotly.express as px
+from gbmi.analysis_tools.plot import weighted_histogram
+from gbmi.analysis_tools.utils import pm_round
 
 from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
+from gbmi.verification_tools.l1h1 import all_EQKE, all_EVOU
 
 
 @torch.no_grad()
@@ -277,3 +281,144 @@ def display_basic_interpretation(
             )
         )
     fig.show(renderer=renderer)
+
+
+@torch.no_grad()
+def hist_EVOU_max_minus_diag_logit_diff(
+    model: HookedTransformer,
+    *,
+    duplicate_by_sequence_count: bool = True,
+    renderer: Optional[str] = None,
+    num_bins: Optional[int] = None,
+):
+    """
+    If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
+    """
+    EVOU = all_EVOU(model)
+    EVOU = EVOU - EVOU.diag()[:, None]
+    # set diagonal to -inf
+    EVOU[torch.eye(EVOU.shape[0], dtype=torch.bool)] = float("-inf")
+    max_logit_minus_diag = EVOU.max(dim=-1).values
+    if duplicate_by_sequence_count:
+        n_ctx = model.cfg.n_ctx
+        indices = torch.arange(max_logit_minus_diag.size(0))
+        duplication_factors = (indices + 1) ** n_ctx - indices**n_ctx
+    else:
+        duplication_factors = torch.ones_like(max_logit_minus_diag)
+    mean = np.average(max_logit_minus_diag.numpy(), weights=duplication_factors.numpy())
+    std = np.average(
+        (max_logit_minus_diag - mean).numpy() ** 2, weights=duplication_factors.numpy()
+    )
+    min, max = max_logit_minus_diag.min().item(), max_logit_minus_diag.max().item()
+    mid, spread = (min + max) / 2, (max - min) / 2
+    title = (
+        f"EVOU := W_E @ W_V @ W_O @ W_U"
+        f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
+        f"<br>(EVOU - EVOU.diag()[:,None]).max(dim=-1) (excluding diagonal)"
+        f"<br>x̄±σ: {pm_round(mean, std)}; range: {pm_round(mid, spread)}"
+    )
+    if not duplicate_by_sequence_count:
+        fig = px.histogram(
+            {"": max_logit_minus_diag},
+            title=title,
+            labels={"value": "logit - diag", "variable": ""},
+        )
+    else:
+        fig = weighted_histogram(
+            max_logit_minus_diag.numpy(), duplication_factors.numpy()
+        )
+    fig.show(renderer=renderer)
+
+
+@torch.no_grad()
+def compute_attention_difference_vs_gap(
+    model: HookedTransformer,
+) -> Tuple[
+    Integer[Tensor, "batch"],  # noqa F821
+    Integer[Tensor, "batch"],  # noqa F821
+    Float[Tensor, "batch"],  # noqa F821
+]:
+    """
+    Returns (i-j, (E+P)QKE[i] - (E+P)QKE[j]), flattened across query
+    """
+    EQKE = all_EQKE(model)
+    n_ctx = model.cfg.n_ctx
+    idxs = torch.cartesian_prod(
+        torch.arange(EQKE.shape[-1]), torch.arange(EQKE.shape[-1])
+    )
+    diffs = EQKE[:, idxs[:, 0]] - EQKE[:, idxs[:, 1]]
+    sequence_counts = (idxs[:, 0] + 1) ** n_ctx - idxs[:, 0] ** n_ctx
+    sequence_counts[idxs[:, 0] <= idxs[:, 1]] = 0
+    repeated_sequence_counts = sequence_counts.repeat(EQKE.shape[0], 1)
+    # zero repeated_sequence_counts[q, m] where q > m
+    # Create a mask where q > m
+    mask = torch.tril(repeated_sequence_counts, diagonal=-1).bool()
+    repeated_sequence_counts[mask] = 0
+    flat_idxs = (idxs[:, 0] - idxs[:, 1]).repeat(EQKE.shape[0], 1).flatten()
+    flat_sequence_counts = repeated_sequence_counts.flatten()
+    flat_diffs = diffs.flatten()
+    flat_diffs /= model.blocks[0].attn.attn_scale
+    return flat_sequence_counts, flat_idxs, flat_diffs
+
+
+def scatter_attention_difference_vs_gap(
+    model: HookedTransformer, renderer: Optional[str] = None
+):
+    _, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
+    px.scatter(
+        x=flat_idxs,
+        y=flat_diffs,
+        labels={"x": "i - j", "y": "d_head<sup>-½</sup>((E+P)QKE[i] - (E+P)QKE[j])"},
+    ).show(renderer)
+
+
+@torch.no_grad()
+def hist_attention_difference_over_gap(
+    model: HookedTransformer,
+    *,
+    duplicate_by_sequence_count: bool = True,
+    renderer: Optional[str] = None,
+    num_bins: Optional[int] = None,
+):
+    """
+    If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
+    """
+    sequence_counts, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
+    flat_diffs /= flat_idxs
+    sequence_counts, flat_idxs, flat_diffs = (
+        sequence_counts[flat_diffs.isfinite()],
+        flat_idxs[flat_diffs.isfinite()],
+        flat_diffs[flat_diffs.isfinite()],
+    )
+    duplication_factors = (
+        sequence_counts if duplicate_by_sequence_count else torch.ones_like(flat_diffs)
+    )
+    mean = np.average(flat_diffs.numpy(), weights=duplication_factors.numpy())
+    std = np.average(
+        (flat_diffs - mean).numpy() ** 2, weights=duplication_factors.numpy()
+    )
+    title = (
+        f"EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ W<sub>E</sub><sup>T</sup>"
+        f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
+        f"<br>d_head<sup>-½</sup>(EQKE[i] - EQKE[j]) / (i - j)"
+        f"<br>x̄±σ: {pm_round(mean, std)}"
+    )
+    xlabel = "d_head<sup>-½</sup>(EQKE[i]-EQKE[j])/(i-j)"
+    if not duplicate_by_sequence_count:
+        fig = px.histogram(
+            {"": flat_diffs},
+            labels={"value": "", "y": "count", "x": xlabel},
+            title=title,
+        )
+    else:
+        fig = weighted_histogram(
+            flat_diffs.numpy(),
+            duplication_factors.numpy(),
+            title=title,
+            num_bins=num_bins,
+            labels={
+                "x": xlabel,
+                "y": "count * # sequences with given max",
+            },
+        )
+    fig.show(renderer)

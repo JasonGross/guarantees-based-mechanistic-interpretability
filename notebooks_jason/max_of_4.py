@@ -3,6 +3,7 @@ from __future__ import annotations
 
 # %%
 import importlib
+import gbmi.analysis_tools.plot
 import gbmi.exp_max_of_n.analysis
 import gbmi.analysis_tools.decomp
 import gbmi.verification_tools.decomp
@@ -16,6 +17,7 @@ import gbmi.utils.memoshelve
 import gbmi.utils.sequences
 import gbmi.analysis_tools.utils
 
+importlib.reload(gbmi.analysis_tools.plot)
 importlib.reload(gbmi.exp_max_of_n.plot)
 importlib.reload(gbmi.exp_max_of_n.analysis)
 importlib.reload(gbmi.analysis_tools.decomp)
@@ -30,8 +32,15 @@ importlib.reload(gbmi.utils.memoshelve)
 importlib.reload(gbmi.utils.sequences)
 # %%
 import dataclasses
+import math
 from collections import defaultdict
 from typing import Callable, ClassVar, Collection, Literal, Optional, Tuple, Union, List
+from gbmi.exp_max_of_n.plot import (
+    scatter_attention_difference_vs_gap,
+    hist_attention_difference_over_gap,
+    hist_EVOU_max_minus_diag_logit_diff,
+)
+from gbmi.analysis_tools.plot import hist_EVOU_max_logit_diff, weighted_histogram
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.utils import pm_round
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
@@ -1048,10 +1057,28 @@ print(
 if DISPLAY_PLOTS:
     display_basic_interpretation(model, include_uncentered=True, renderer=RENDERER)
 
+# %% [markdown]
+# # Back of the envelope math for sub-cubic
 # %%
-print((model.W_E + model.W_pos.mean(dim=0)).norm(dim=-1))
-print(model.W_V[0, 0].norm(dim=-1))
-print((model.W_V[0, 0] @ model.W_O[0, 0] @ model.W_U).norm(dim=0))
+if DISPLAY_PLOTS:
+    hist_EVOU_max_logit_diff(model, renderer=RENDERER)
+    for duplicate_by_sequence_count in [False, True]:
+        hist_EVOU_max_minus_diag_logit_diff(
+            model,
+            duplicate_by_sequence_count=duplicate_by_sequence_count,
+            renderer=RENDERER,
+        )
+
+
+# %%
+if DISPLAY_PLOTS:
+    scatter_attention_difference_vs_gap(model, renderer="png")
+    for duplicate_by_sequence_count in [False, True]:
+        hist_attention_difference_over_gap(
+            model,
+            duplicate_by_sequence_count=duplicate_by_sequence_count,
+            renderer=RENDERER,
+        )
 
 
 # %% [markdown]
@@ -1943,6 +1970,29 @@ for tricks, min_gaps in min_gaps_list:
     print(
         f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
     )
+# %%
+if DISPLAY_PLOTS:
+    d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_list[0][1].shape
+    weights = torch.zeros(
+        (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
+    )
+    for q_tok in range(d_vocab_q):
+        for max_tok in range(d_vocab_max):
+            for n_copies_nonmax in range(n_ctx_nonmax_copies):
+                if (q_tok > max_tok) or (
+                    n_copies_nonmax == n_ctx_nonmax_copies - 1 and max_tok != q_tok
+                ):
+                    continue
+                weights[q_tok, max_tok, n_copies_nonmax] = (
+                    max_tok - 1
+                ) ** n_copies_nonmax * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
+    for _, v in min_gaps_list:
+        weighted_histogram(
+            v.flatten().detach().numpy(),
+            weights.flatten().detach().numpy(),
+            labels={"x": "gap", "y": "count * # sequences"},
+            num_bins=v.max().item(),
+        ).show(RENDERER)
 
 # %% [markdown]
 # # Sub-cubic without SVD
@@ -2033,4 +2083,27 @@ for tricks, min_gaps in min_gaps_list_nosvd:
         f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
     )
 
+# %%
+if DISPLAY_PLOTS:
+    d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_list_nosvd[0][1].shape
+    weights = torch.zeros(
+        (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
+    )
+    for q_tok in range(d_vocab_q):
+        for max_tok in range(d_vocab_max):
+            for n_copies_nonmax in range(n_ctx_nonmax_copies):
+                if (q_tok > max_tok) or (
+                    n_copies_nonmax == n_ctx_nonmax_copies - 1 and max_tok != q_tok
+                ):
+                    continue
+                weights[q_tok, max_tok, n_copies_nonmax] = (
+                    max_tok - 1
+                ) ** n_copies_nonmax * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
+    for _, v in min_gaps_list_nosvd:
+        weighted_histogram(
+            v.flatten().detach().numpy(),
+            weights.flatten().detach().numpy(),
+            labels={"x": "gap", "y": "count * # sequences"},
+            num_bins=v.max().item(),
+        ).show(RENDERER)
 # %%

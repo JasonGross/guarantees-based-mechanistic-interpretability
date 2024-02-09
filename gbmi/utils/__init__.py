@@ -20,7 +20,7 @@ from typing import (
     Sequence,
 )
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
 
 import numpy as np
 import torch
@@ -86,7 +86,7 @@ class MetricsCallback(Callback):
         self.log_metrics(trainer)
 
 
-class SingleTensorDataset(Dataset[Tensor]):
+class SingleTensorDataset(IterableDataset[Tensor]):
     r"""Dataset wrapping a single tensor.
 
     Each sample will be retrieved by indexing tensor along the first dimension.
@@ -104,6 +104,9 @@ class SingleTensorDataset(Dataset[Tensor]):
 
     def __len__(self):
         return self.tensor.size(0)
+
+    def __iter__(self):
+        return iter(self.tensor)
 
 
 class TupleIterableDataset(Dataset[Tuple[Iterable, ...]]):

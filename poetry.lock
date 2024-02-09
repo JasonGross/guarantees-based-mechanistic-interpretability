@@ -376,6 +376,17 @@ html5lib = ["html5lib"]
 lxml = ["lxml"]
 
 [[package]]
+name = "better-abc"
+version = "0.0.3"
+description = "Python ABC plus abstract attributes"
+optional = false
+python-versions = "*"
+files = [
+    {file = "better-abc-0.0.3.tar.gz", hash = "sha256:a880fd6bc9675da2ec991e8712a555bffa0f12722efed78c739f78343cf989f6"},
+    {file = "better_abc-0.0.3-py3-none-any.whl", hash = "sha256:3ae73b473fbeb536a548f542984976e80b821676ae6e18f14e24d8e180647187"},
+]
+
+[[package]]
 name = "black"
 version = "23.12.1"
 description = "The uncompromising code formatter."
@@ -3435,6 +3446,7 @@ files = [
     {file = "PyYAML-6.0.1-cp311-cp311-win_amd64.whl", hash = "sha256:bf07ee2fef7014951eeb99f56f39c9bb4af143d8aa3c21b1677805985307da34"},
     {file = "PyYAML-6.0.1-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:855fb52b0dc35af121542a76b9a84f8d1cd886ea97c84703eaa6d88e37a2ad28"},
     {file = "PyYAML-6.0.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:40df9b996c2b73138957fe23a16a4f0ba614f4c0efce1e9406a184b6d07fa3a9"},
+    {file = "PyYAML-6.0.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a08c6f0fe150303c1c6b71ebcd7213c2858041a7e01975da3a99aed1e7a378ef"},
     {file = "PyYAML-6.0.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6c22bec3fbe2524cde73d7ada88f6566758a8f7227bfbf93a408a9d86bcc12a0"},
     {file = "PyYAML-6.0.1-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:8d4e9c88387b0f5c7d5f281e55304de64cf7f9c0021a3525bd3b1c542da3b0e4"},
     {file = "PyYAML-6.0.1-cp312-cp312-win32.whl", hash = "sha256:d483d2cdf104e7c9fa60c544d92981f12ad66a457afae824d146093b8c294c54"},
@@ -4606,18 +4618,19 @@ test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,
 
 [[package]]
 name = "transformer-lens"
-version = "1.12.1"
+version = "1.14.0"
 description = "An implementation of transformers tailored for mechanistic interpretability."
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "transformer_lens-1.12.1-py3-none-any.whl", hash = "sha256:ab11cc0089d29e59954c641ff1763752406b22c78b90cad5cc56ee87a6ccaef2"},
-    {file = "transformer_lens-1.12.1.tar.gz", hash = "sha256:98ba181fe6173085dd9f2c0d23a34d75db48c73c20439ac6ddc328f260c7f22e"},
+    {file = "transformer_lens-1.14.0-py3-none-any.whl", hash = "sha256:21ab7a213429235f6276378afca2f6f56068611caa5af42dc3af9cf86dfbd579"},
+    {file = "transformer_lens-1.14.0.tar.gz", hash = "sha256:c3e054edb7bb187fd869d41f063c3a241b24b58718bfaaf6fca3a36a7a4832ab"},
 ]
 
 [package.dependencies]
 accelerate = ">=0.23.0"
 beartype = ">=0.14.1,<0.15.0"
+better-abc = ">=0.0.3,<0.0.4"
 datasets = ">=2.7.1"
 einops = ">=0.6.0"
 fancy-einsum = ">=0.0.3"
@@ -4630,7 +4643,7 @@ pandas = ">=1.1.5"
 rich = ">=12.6.0"
 torch = ">=1.10,<2.0 || >2.0,<2.1.0 || >2.1.0"
 tqdm = ">=4.64.1"
-transformers = ">=4.25.1"
+transformers = ">=4.34"
 typing-extensions = "*"
 wandb = ">=0.13.5"
 
@@ -5178,4 +5191,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "3c1d35bbf8577777c0aa7c1ceefff7bda2829f1134ebd2fc8deb7ff6dc2ad294"
+content-hash = "c659d9f4936a4a1788291a1208604bd1030126abb3f8b994f1af3b0039b0173f"

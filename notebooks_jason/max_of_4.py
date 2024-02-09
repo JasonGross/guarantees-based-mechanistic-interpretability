@@ -34,7 +34,17 @@ importlib.reload(gbmi.utils.sequences)
 import dataclasses
 import math
 from collections import defaultdict
-from typing import Callable, ClassVar, Collection, Literal, Optional, Tuple, Union, List
+from typing import (
+    Callable,
+    ClassVar,
+    Collection,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    List,
+    Iterator,
+)
 from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
     hist_attention_difference_over_gap,
@@ -185,6 +195,7 @@ train_total_samples = {}
 train_measurement_deterministic: bool = False  # @param {type:"boolean"}
 train_average_loss = {}
 train_average_accuracy = {}
+dataloader_iter: Iterator
 
 
 # loop for computing overall loss and accuracy

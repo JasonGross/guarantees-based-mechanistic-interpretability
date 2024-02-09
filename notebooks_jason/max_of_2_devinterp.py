@@ -150,9 +150,9 @@ training_wrapper = MaxOfNTrainingWrapper(cfg, model)
 
 # %%
 # load all model versions
-models = runtime.model_versions(cfg, max_count=3000, step=1)
-assert models is not None
-models = list(models)
+# models = runtime.model_versions(cfg, max_count=3000, step=1)
+# assert models is not None
+# models = list(models)
 
 # %% [markdown]
 ### Basic Interpretation
@@ -161,7 +161,7 @@ models = list(models)
 # %%
 # @title display basic interpretation
 
-display_basic_interpretation(model)
+# display_basic_interpretation(model)
 # %%
 
 # %%
@@ -187,45 +187,46 @@ def estimate_rlcts(
     estimates = {"sgld": []}
     for model in tqdm(models):
         for method, kwargs in [
-            ("sgld", {"lr": 1e-15, "elasticity": 100.0}),
+            ("sgld", {"lr": 1e-5, "elasticity": 100.0}),  # 100.0
         ]:
-            # estimate = estimate_learning_coeff_with_summary(
-            #     model,
-            #     train_loader,
-            #     criterion=criterion,
-            #     optimizer_kwargs=dict(num_samples=data_length, **kwargs),
-            #     sampling_method=SGNHT if method == "sgnht" else SGLD,
-            #     num_chains=1,
-            #     num_draws=400,
-            #     num_burnin_steps=0,
-            #     num_steps_bw_draws=1,
-            #     device=device,
-            #     # verbose=False,
-            # )
-            sample(
-                model=model,
-                loader=train_loader,
+            estimate = estimate_learning_coeff(
+                model,
+                train_loader,
                 criterion=criterion,
                 optimizer_kwargs=dict(num_samples=data_length, **kwargs),
-                sampling_method=SGLD,
+                sampling_method=SGNHT if method == "sgnht" else SGLD,
                 num_chains=1,
-                num_draws=10,
-                callbacks=callbacks,
+                num_draws=400,
+                num_burnin_steps=0,
+                num_steps_bw_draws=1,
                 device=device,
+                # verbose=False,
             )
+            # sample(
+            #     model=model,
+            #     loader=train_loader,
+            #     criterion=criterion,
+            #     optimizer_kwargs=dict(num_samples=data_length, **kwargs),
+            #     sampling_method=SGLD,
+            #     num_chains=1,
+            #     num_draws=10,
+            #     callbacks=callbacks,
+            #     device=device,
+            # )
 
-            results = {}
+            # results = {}
 
-            for callback in callbacks:
-                if hasattr(callback, "sample"):
-                    results.update(callback.sample())
+            # for callback in callbacks:
+            #     if hasattr(callback, "sample"):
+            #         results.update(callback.sample())
 
-            estimates[method].append(results)
+            # estimates[method].append(results)
+            estimates[method].append(estimate)
     return estimates
 
 
 train_loader = datamodule.train_dataloader()
-data_length = len(train_loader)
+data_length = len(train_loader.dataset)
 from devinterp.slt.norms import GradientNorm, NoiseNorm, WeightNorm
 
 gradient_norm = GradientNorm(num_chains=1, num_draws=10, device=RLCT_DEVICE)
@@ -234,6 +235,9 @@ weight_norm = WeightNorm(num_chains=1, num_draws=10, device=RLCT_DEVICE)
 
 norm_callbacks = [gradient_norm, noise_norm, weight_norm]
 
+# for name, param in model.named_parameters():
+#     if "b_" in name:
+#         param.requires_grad = True
 rlct = estimate_rlcts(
     [model],
     train_loader,
@@ -243,9 +247,195 @@ rlct = estimate_rlcts(
     callbacks=norm_callbacks,
 )
 print(rlct)
+# %%
+EPSILONS = [4e-5]  # , 1e-4, 1e-3]
+GAMMAS = [100]  # [1, 10, 100]
+train_data = train_loader.dataset
+criterion = training_wrapper.loss_fn
+DEVICE = RLCT_DEVICE
+NUM_CHAINS = 10
+NUM_DRAWS = 500
+import matplotlib.pyplot as plt
+
+
+def estimate_llcs_sweeper(model, epsilons, gammas):
+    results = {}
+    for epsilon in epsilons:
+        for gamma in gammas:
+            optim_kwargs = dict(
+                lr=epsilon,
+                noise_level=1.0,
+                elasticity=gamma,
+                num_samples=len(train_data),
+                temperature="adaptive",
+            )
+            pair = (epsilon, gamma)
+            results[pair] = estimate_learning_coeff_with_summary(
+                model=model,
+                loader=train_loader,
+                criterion=criterion,
+                sampling_method=SGLD,
+                optimizer_kwargs=optim_kwargs,
+                num_chains=NUM_CHAINS,
+                num_draws=NUM_DRAWS,
+                device=DEVICE,
+                online=True,
+            )
+    return results
+
+
+def plot_single_graph(result, title=""):
+    llc_color = "teal"
+    fig, axs = plt.subplots(1, 1)
+    # plot loss traces
+    loss_traces = result["loss/trace"]
+    for trace in loss_traces:
+        init_loss = trace[0]
+        zeroed_trace = trace - init_loss
+        sgld_steps = list(range(len(trace)))
+        axs.plot(sgld_steps, zeroed_trace)
+
+    # plot llcs
+    means = result["llc/means"]
+    stds = result["llc/stds"]
+    sgld_steps = list(range(len(means)))
+    axs2 = axs.twinx()
+    axs2.plot(
+        sgld_steps,
+        means,
+        color=llc_color,
+        linestyle="--",
+        linewidth=2,
+        label=f"llc",
+        zorder=3,
+    )
+    axs2.fill_between(
+        sgld_steps, means - stds, means + stds, color=llc_color, alpha=0.3, zorder=2
+    )
+
+    # center zero, assume zero is in the range of both y axes already
+    y1_min, y1_max = axs.get_ylim()
+    y2_min, y2_max = axs2.get_ylim()
+    y1_zero_ratio = abs(y1_min) / (abs(y1_min) + abs(y1_max))
+    y2_zero_ratio = abs(y2_min) / (abs(y2_min) + abs(y2_max))
+    percent_to_add = abs(y1_zero_ratio - y2_zero_ratio)
+    y1_amt_to_add = (y1_max - y1_min) * percent_to_add
+    y2_amt_to_add = (y2_max - y2_min) * percent_to_add
+    if y1_zero_ratio < y2_zero_ratio:
+        # add to bottom of y1 and top of y2
+        y1_min -= y1_amt_to_add
+        y2_max += y2_amt_to_add
+    elif y2_zero_ratio < y1_zero_ratio:
+        # add to bottom of y2 and top of y1
+        y2_min -= y2_amt_to_add
+        y1_max += y1_amt_to_add
+    axs.set_ylim(y1_min, y1_max)
+    axs2.set_ylim(y2_min, y2_max)
+    axs.set_xlabel("SGLD time step")
+    axs.set_ylabel("loss")
+    axs2.set_ylabel("llc", color=llc_color)
+    axs2.tick_params(axis="y", labelcolor=llc_color)
+    axs.axhline(color="black", linestyle=":")
+    fig.suptitle(title, fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
+    llc_color = "teal"
+    fig, axs = plt.subplots(len(epsilons), len(gammas))
+
+    for i, epsilon in enumerate(epsilons):
+        for j, gamma in enumerate(gammas):
+            result = results[(epsilon, gamma)]
+            # plot loss traces
+            loss_traces = result["loss/trace"]
+            for trace in loss_traces:
+                init_loss = trace[0]
+                zeroed_trace = trace - init_loss
+                sgld_steps = list(range(len(trace)))
+                axs[i, j].plot(sgld_steps, zeroed_trace)
+
+            # plot llcs
+            means = result["llc/means"]
+            stds = result["llc/stds"]
+            sgld_steps = list(range(len(means)))
+            axs2 = axs[i, j].twinx()
+            axs2.plot(
+                sgld_steps,
+                means,
+                color=llc_color,
+                linestyle="--",
+                linewidth=2,
+                label=f"llc",
+                zorder=3,
+            )
+            axs2.fill_between(
+                sgld_steps,
+                means - stds,
+                means + stds,
+                color=llc_color,
+                alpha=0.3,
+                zorder=2,
+            )
+
+            # center zero, assume zero is in the range of both y axes already
+            y1_min, y1_max = axs[i, j].get_ylim()
+            y2_min, y2_max = axs2.get_ylim()
+            y1_zero_ratio = abs(y1_min) / (abs(y1_min) + abs(y1_max))
+            y2_zero_ratio = abs(y2_min) / (abs(y2_min) + abs(y2_max))
+            percent_to_add = abs(y1_zero_ratio - y2_zero_ratio)
+            y1_amt_to_add = (y1_max - y1_min) * percent_to_add
+            y2_amt_to_add = (y2_max - y2_min) * percent_to_add
+            if y1_zero_ratio < y2_zero_ratio:
+                # add to bottom of y1 and top of y2
+                y1_min -= y1_amt_to_add
+                y2_max += y2_amt_to_add
+            elif y2_zero_ratio < y1_zero_ratio:
+                # add to bottom of y2 and top of y1
+                y2_min -= y2_amt_to_add
+                y1_max += y1_amt_to_add
+            axs[i, j].set_ylim(y1_min, y1_max)
+            axs2.set_ylim(y2_min, y2_max)
+
+            axs[i, j].set_title(f"$\epsilon$ = {epsilon} : $\gamma$ = {gamma}")
+            # only show x axis label on last row
+            if i == len(epsilons) - 1:
+                axs[i, j].set_xlabel("SGLD time step")
+            axs[i, j].set_ylabel("loss")
+            axs2.set_ylabel("llc", color=llc_color)
+            axs2.tick_params(axis="y", labelcolor=llc_color)
+    if kwargs["title"]:
+        fig.suptitle(kwargs["title"], fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+
+# %%
+results = estimate_llcs_sweeper(model, EPSILONS, GAMMAS)
+# %%
+plot_sweep_single_model(
+    results,
+    EPSILONS,
+    GAMMAS,
+    title="Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+)
+# %%
+for v in results.values():
+    plot_single_graph(v)
+# %%
+import sys
+
+sys.exit(0)
 # rlct_sgd = estimate_rlcts(
 #     models_saved["sgd"], train_loader, criterion, data_length, DEVICE
 # )
+
+# %%
+# load all model versions
+models = runtime.model_versions(cfg, max_count=3000, step=1)
+assert models is not None
+models = list(models)
 
 
 # %% [markdown]

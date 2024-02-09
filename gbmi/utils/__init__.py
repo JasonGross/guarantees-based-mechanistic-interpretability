@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import (
     Callable,
     Optional,
+    Tuple,
     TypeVar,
     List,
+    Iterable,
     Dict,
     Hashable,
     Any,
@@ -102,6 +104,26 @@ class SingleTensorDataset(Dataset[Tensor]):
 
     def __len__(self):
         return self.tensor.size(0)
+
+
+class TupleIterableDataset(Dataset[Tuple[Iterable, ...]]):
+    r"""Dataset wrapping a tuple of arrays.
+
+    Each sample will be retrieved by indexing the arguments along the first dimension.
+    """
+    data: Tuple[Iterable, ...]
+
+    def __init__(self, *data: Iterable) -> None:
+        self.data = data
+        assert all(
+            len(data[0]) == len(datum) for datum in data
+        ), f"Size mismatch: {data} ({set(map(len, data))})"
+
+    def __getitem__(self, index):
+        return tuple(datum[index] for datum in self.data)
+
+    def __len__(self):
+        return len(self.data[0])
 
 
 # Function to check if current directory is a Git repository

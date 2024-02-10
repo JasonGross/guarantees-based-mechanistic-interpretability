@@ -122,9 +122,8 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
 
     @staticmethod
     def build_model(config: Config[f_g]) -> HookedTransformer:
-        model_config = config.experiment.model_config
-        set_params(
-            model_config,
+        config.experiment.model_config = set_params(
+            config.experiment.model_config,
             {
                 "seed": reseed(config.seed, "model"),
                 "d_vocab": config.experiment.fun_index + 1,

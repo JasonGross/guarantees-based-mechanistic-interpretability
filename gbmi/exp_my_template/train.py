@@ -62,7 +62,7 @@ class MyTemplateTrainingWrapper(TrainingWrapper[MyTemplate]):
     @staticmethod
     def build_model(config: Config[MyTemplate]) -> HookedTransformer:
         # Given a config, returns an untrained HookedTransformer.
-        set_params(
+        config.experiment.model_config = set_params(
             config.experiment.model_config,
             {"seed": reseed(config.seed, "model")},
             warn_if_not_default=True,

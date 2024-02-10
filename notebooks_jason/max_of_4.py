@@ -203,15 +203,15 @@ dataloader_iter: Iterator
 def _run_train_batch_loss_accuracy(
     seed: int, i: int, batch_size: int
 ) -> Tuple[float, float, int]:
-    batch = next(dataloader_iter)
-    size = batch.shape[0]
-    assert size == cfgs[seed].batch_size
-    batch.to(default_device(deterministic=train_measurement_deterministic))
+    xs, ys = next(dataloader_iter)
+    device = default_device(deterministic=train_measurement_deterministic)
+    xs.to(device)
+    ys.to(device)
     loss, accuracy = training_wrappers[seed].run_batch(
-        batch, return_accuracy=True, log_output=False
+        (xs, ys), return_accuracy=True, log_output=False
     )
     loss = loss.item()
-    return loss, accuracy, size
+    return loss, accuracy, batch_size
 
 
 for seed in tqdm(runtime_models.keys(), desc="seed", position=0):

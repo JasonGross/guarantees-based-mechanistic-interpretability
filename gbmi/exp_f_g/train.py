@@ -92,7 +92,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
                 n_heads=n_head,
                 act_fn="relu",
                 init_weights=True,
-                attn_only=False,
+                attn_only=False if fun.name() == "add_sub" else True,
                 normalization_type=None,
             ),
             # group_family=type(group).__name__,
@@ -103,11 +103,11 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
             fun_elements=elements,
             zero_biases=True,
             # attention_rate=attn_rate,
-            optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
+            optimizer_kwargs={"lr": 1e-3, "weight_decay": 0.1, "betas": (0.9, 0.98)},
         ),
         seed=999,
         deterministic=False,
-        batch_size=10000,
+        batch_size=39707,
         train_for=(25000, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
@@ -180,6 +180,10 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
             self.config.experiment.fun_index,
             self.config.experiment.fun_elements,
         ).reduce_1(list(x[:, : self.config.experiment.fun_elements].T))
+
+        # print(x[1000])
+        # print(labels[1000])
+
         assert (
             len(labels.shape) == 1
         ), f"labels.shape == {labels.shape} != 1 (from x.shape == {x.shape})"
@@ -256,27 +260,40 @@ class f_g_DataModule(DataModule):
             .to(torch.int)
         )
 
+        print(len(agree_indices))
+
         random_subset = torch.randperm(len(agree_indices))
 
+        train_size = int(self.config.experiment.training_ratio * len(agree_indices))
+
+        # train_size = 10000
+
         data_train = data[
-            agree_indices[
-                : int(self.config.experiment.training_ratio * len(agree_indices))
-            ],
+            agree_indices[:train_size],
             :,
         ]
 
-        print(data_train[20000])
+        # print(data_train[20000])
         """
         mask = torch.ones(len(data), dtype=torch.bool)
         mask[agree_indices] = 0
         indices_complement = torch.nonzero(mask).squeeze()
         """
         data_test = data[
-            agree_indices[
-                int(self.config.experiment.training_ratio * len(agree_indices)) :
-            ],
+            agree_indices[train_size:],
             :,
         ]
+
+        # print(data_test[10000])
+
+        # print(
+        #    FunDict[self.config.experiment.fun_name](
+        #        self.config.experiment.fun_index,
+        #        self.config.experiment.fun_elements,
+        #   ).reduce_1(list(data_test[:, : self.config.experiment.fun_elements].T))[
+        #        10000
+        #    ]
+        # )
 
         print(
             f"data_train.shape: {data_train.shape}, data_test.shape: {data_test.shape}"

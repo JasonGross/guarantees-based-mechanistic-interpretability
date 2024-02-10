@@ -1423,7 +1423,7 @@ print(f"err_upper_bound: {err_upper_bound}")
 
 # %%
 @torch.no_grad()
-def decompose_EU_error(
+def decompose_EUPU_error(
     model: HookedTransformer,
     *,
     W_E_U: Tensor,
@@ -1442,7 +1442,7 @@ def decompose_EU_error(
 ]:
     r"""
     Returns:
-        (EU_lowrank, (remaining_error_upper_bound, two matrices whose product is the exact remaining error))
+        (EUPU_lowrank, (remaining_error_upper_bound, two matrices whose product is the exact remaining error))
     where
         EU is the rank 1 approximation of (W_E + W_pos[-1]) @ W_U
         remaining_error_upper_bound is a bound on the maximum difference between two elements in the same row of the remaining error in EU
@@ -1455,7 +1455,7 @@ def decompose_EU_error(
     Preconditions:
         (none)
     Postconditions:
-        EU_lowrank := W_E_U @ W_U_U.T
+        EUPU_lowrank := (W_E_U + W_pos[-1]) @ W_U_U.T
         Define err := (W_E + W_pos[-1]) @ W_U - EU_lowrank
         Then we guarantee:
         . max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
@@ -1467,7 +1467,7 @@ def decompose_EU_error(
     )
 
     W_E_via_U, W_E_err = factor_contribution(
-        W_E + W_pos[-1], W_E_U.squeeze(), sanity_check=sanity_check
+        W_E + W_pos[-1], W_E_U.squeeze() + W_pos[-1], sanity_check=sanity_check
     )  # O(d_vocab * d_model)
     W_E_via_U.setcheckparams(atol=atol)
     W_U_via_U, W_U_err = factor_contribution(
@@ -1491,6 +1491,19 @@ if DISPLAY_PLOTS:
     analyze_svd(
         model.W_U, descr="W_U", scale_by_singular_value=False, renderer=RENDERER
     )
+
+# %%
+(W_E_U, W_E_S, W_E_Vh), (W_E_contrib, W_E_err) = split_svd_contributions(model.W_E)
+(W_U_U, W_U_S, W_U_Vh), (W_U_contrib, W_U_err) = split_svd_contributions(model.W_U)
+(
+    EUPU_lowrank,
+    (EUPU_err_upper_bound, (EUPU_W_EP_err, EUPU_W_U_err)),
+) = decompose_EUPU_error(
+    model,
+    W_E_U=W_E_U,
+    W_U_U=W_U_U,
+    sanity_check=True,
+)
 
 
 # %%
@@ -1745,6 +1758,7 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 
 
 # %%
+# FIXME HERE do low rank thing
 @torch.no_grad()
 def compute_largest_wrong_logit_quadratic(
     min_softmaxed_right_attention: Float[

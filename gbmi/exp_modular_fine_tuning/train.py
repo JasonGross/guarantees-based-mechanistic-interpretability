@@ -105,9 +105,8 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
     @staticmethod
     def build_model(config: Config[ModularFineTuning]) -> HookedTransformer:
-        model_config = config.experiment.model_config
-        set_params(
-            model_config,
+        config.experiment.model_config = set_params(
+            config.experiment.model_config,
             {
                 "seed": reseed(config.seed, "model"),
                 "d_vocab": config.experiment.p + 1,
@@ -275,6 +274,7 @@ def main(argv: List[str] = sys.argv):
         (
             "d_vocab",
             "d_vocab_out",
+            "seed",
         )
     )
     Config.add_arguments(parser)

@@ -34,7 +34,6 @@ prettyprinter = "^0.18.0"
 kaleido = "0.2.1"
 imageio = "^2.33.1"
 frozendict = "^2.4.0"
-torchvision = "^0.17.0"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"

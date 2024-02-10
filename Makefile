@@ -12,6 +12,8 @@ TEST_LOAD_EXPERIMENTS = \
 	exp_sorted_list \
 	#
 
+FORCE_LOAD ?= --force load
+
 define add_target
 # $(1) main target
 # $(2) intermediate target
@@ -24,8 +26,8 @@ $(1)-$(2):
 endef
 
 .PHONY: test-load-experiments
-$(foreach e,$(TEST_LOAD_EXPERIMENTS),$(eval $(call add_target,test-load-experiments,$(e),$(PYTHON) -m gbmi.$(e).train --force load)))
-$(eval $(call add_target,test-load-experiments,max-of-2-grok,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 1500 --validate-every-epochs 1 --force-adjacent-gap 0,1 --use-log1p --training-ratio 0.04638671875 --force --force load))
+$(foreach e,$(TEST_LOAD_EXPERIMENTS),$(eval $(call add_target,test-load-experiments,$(e),$(PYTHON) -m gbmi.$(e).train $(FORCE_LOAD))))
+$(eval $(call add_target,test-load-experiments,max-of-2-grok,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 1500 --validate-every-epochs 1 --force-adjacent-gap 0,1 --use-log1p --training-ratio 0.04638671875 $(FORCE_LOAD)))
 
 # Python syntax errors or undefined names
 .PHONY: git-lint

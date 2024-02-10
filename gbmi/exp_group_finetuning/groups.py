@@ -169,14 +169,13 @@ class PermutedCyclicGroup(Group):
 
     def op(self, x, y):
         rows = self.lookup[x]
-        print(rows.shape, "rows")
         if len(rows.shape) == 1:
             rows = rows.unsqueeze(0)
-        print(rows.shape)
+
         diag = torch.diag(rows[:, y])
         if len(diag.shape) == 2:
             diag = torch.squeeze(diag)
-        print(diag.shape)
+
         return diag
 
 

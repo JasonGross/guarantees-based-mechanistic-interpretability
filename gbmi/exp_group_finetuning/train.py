@@ -49,6 +49,7 @@ torch.set_default_device("cuda")
 @dataclass
 class ModularFineTuning(ExperimentConfig):
     model_config: HookedTransformerConfig
+
     # using int instead of abstract class because i'm clueless what's going on with typing
     group_family: str
     group_index: int
@@ -78,7 +79,14 @@ class ModularFineTuning(ExperimentConfig):
         )
 
 
-def modular_addition_config(attn_rate: float, group: Group, elements: int):
+def modular_addition_config(
+    attn_rate: float,
+    group: Group,
+    elements: int,
+    epochs: int,
+    weight_decay: float = 1.0,
+    train_ratio: float = 0.5,
+):
     return Config(
         experiment=ModularFineTuning(
             model_config=HookedTransformerConfig(
@@ -100,35 +108,43 @@ def modular_addition_config(attn_rate: float, group: Group, elements: int):
             group_size=group.size(),
             group_name=group.name(),
             zero_biases=False,
+            training_ratio=train_ratio,
             attention_rate=attn_rate,
-            optimizer_kwargs={"lr": 1e-3, "weight_decay": 1.0, "betas": (0.9, 0.98)},
+            optimizer_kwargs={
+                "lr": 1e-3,
+                "weight_decay": weight_decay,
+                "betas": (0.9, 0.98),
+            },
         ),
         seed=999,
         deterministic=False,
         batch_size=int(((group.size()) ** (elements)) * 0.4),
-        train_for=(25000, "epochs"),
+        train_for=(epochs, "epochs"),
         log_every_n_steps=1,
         validate_every=(10, "epochs"),
     )
 
 
 GL2_P_CLOCK_CONFIG = modular_addition_config(
-    attn_rate=0.0000001, group=GLN_p(3), elements=2
+    attn_rate=0.0000001, group=GLN_p(3), elements=2, epochs=50000
 )
 MODULAR_ADDITION_SMALL_CLOCK_CONFIG = modular_addition_config(
-    attn_rate=0, group=CyclicGroup(13), elements=2
+    attn_rate=0, group=CyclicGroup(13), elements=2, epochs=25000
 )
 MODULAR_ADDITION_113_PIZZA_CONFIG = modular_addition_config(
-    attn_rate=1, group=CyclicGroup(101), elements=2
+    attn_rate=1, group=CyclicGroup(101), elements=2, epochs=25000
 )
 MODULAR_ADDITION_113_CLOCK_CONFIG = modular_addition_config(
-    attn_rate=0, group=CyclicGroup(101), elements=2
+    attn_rate=0, group=CyclicGroup(101), elements=2, epochs=25000
+)
+MODULAR_ADDITION_113_CLOCK_CONFIG_EPOCH_500 = modular_addition_config(
+    attn_rate=0, group=CyclicGroup(101), elements=2, epochs=500
 )
 DIHEDRAL_100_CLOCK_CONFIG = modular_addition_config(
-    attn_rate=0, group=DihedralGroup(40), elements=2
+    attn_rate=0, group=DihedralGroup(40), elements=2, epochs=25000
 )
 DIHEDRAL_100_PIZZA_CONFIG = modular_addition_config(
-    attn_rate=1, group=DihedralGroup(40), elements=2
+    attn_rate=1, group=DihedralGroup(40), elements=2, epochs=25000
 )
 
 

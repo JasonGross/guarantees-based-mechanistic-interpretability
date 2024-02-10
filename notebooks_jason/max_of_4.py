@@ -1155,6 +1155,36 @@ if DISPLAY_PLOTS:
 # %%
 # %%
 @torch.no_grad()
+def bound_max_row_diff_by_SVD(*matrices: Tensor) -> Tuple[float, Tuple[Tensor, ...]]:
+    r"""
+    Let M denote the product of the elements of `matrices` (under matrix multiplication)
+
+    Complexity: max_{a, b s.t. \exists m\in matrices, m.shape = (a, b)} O(a b min(a, b))
+
+    We compute an upper bound on the difference between elements in the same row of the product of the matrices:
+    Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt{2} \sigma_1(M)$.
+    This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
+
+    Preconditions:
+        the matrices in `matrices` can be multiplied
+    Postconditions:
+        forall r.
+          max_{i,j} M_{r, i} - M_{r, j} <= return[0]
+        return[1] == matrices
+    """
+    # take the product of the first singular values in each matrix to get a bound on the singular value of the product
+    prod_max_singular = torch.tensor(
+        [torch.linalg.matrix_norm(m, ord=2) for m in matrices]
+    ).prod()
+    # since \sigma_1(M) = \sup_x \| M x \| / \|x\|, considering vectorswith one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is sqrt(2) * \sigma_1(M)
+    return (
+        prod_max_singular * np.sqrt(2),
+        matrices,
+    )
+
+
+# %%
+@torch.no_grad()
 def decompose_EQKE_error(
     model: HookedTransformer,
     *,
@@ -1189,7 +1219,7 @@ def decompose_EQKE_error(
         EQKE_query_key is the rank 1 approximation of the query-key contribution to the EQKE matrix
         err_accumulator is the sum of the efficiently-computable (O(d_vocab^2)) error terms
         EQKE_pos_err is the contribution of the position embeddings to the error
-        remaining_error_upper_bound is a bound on the maximum difference between two elements in the same row of EQKE
+        remaining_error_upper_bound is a bound on the maximum difference between two elements in the same row of the remaining error of EQKE
 
     Note that EQKE is actually computed as (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0, keepdim=True)).T
 
@@ -1340,21 +1370,10 @@ def decompose_EQKE_error(
     # We would like a faster way to compute EQKE_err_err_err__err_cross_err
     # unfortunately, we can only get this down to O(d_vocab * d_model^2) by using SVD
 
-    # take the product of the first signular values in each matrix to get a bound on the singular value of the product
-    prod_max_singular = torch.tensor(
-        [
-            torch.linalg.matrix_norm(m, ord=2)
-            for m in (W_E_query_err2, W_Q_err, W_K_err, W_E_key_err2)
-        ]
-    ).prod()
-    # since \sigma_1(M) = \sup_x \| M x \| / \|x\|, considering vectorswith one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is sqrt(2) * \sigma_1(M)
     return (
         (EQKE_query_key, err_accumulator),
         EQKE_pos_err,
-        (
-            prod_max_singular * np.sqrt(2),
-            (W_E_query_err2, W_Q_err, W_K_err.T, W_E_key_err2.T),
-        ),
+        bound_max_row_diff_by_SVD(W_E_query_err2, W_Q_err, W_K_err.T, W_E_key_err2.T),  # type: ignore
     )
 
 
@@ -1400,6 +1419,78 @@ if DISPLAY_PLOTS:
         RENDERER
     )
 print(f"err_upper_bound: {err_upper_bound}")
+
+
+# %%
+@torch.no_grad()
+def decompose_EU_error(
+    model: HookedTransformer,
+    *,
+    W_E_U: Tensor,
+    W_U_U: Tensor,
+    sanity_check: bool = True,
+    atol: float = 1e-4,
+) -> Tuple[
+    Float[LowRankTensor, "d_vocab d_vocab_out"],  # noqa: F722
+    Tuple[
+        Float[Tensor, ""],  # noqa: F722
+        Tuple[
+            Float[Tensor, "d_vocab d_model"],  # noqa: F722
+            Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
+        ],
+    ],
+]:
+    r"""
+    Returns:
+        (EU_lowrank, (remaining_error_upper_bound, two matrices whose product is the exact remaining error))
+    where
+        EU is the rank 1 approximation of (W_E + W_pos[-1]) @ W_U
+        remaining_error_upper_bound is a bound on the maximum difference between two elements in the same row of the remaining error in EU
+
+
+    Complexity: O(d_vocab * (d_vocab + d_model) + d_vocab * d_model^2)
+
+    The d_model^2 term comes from having to do SVD to compute remaining_error_upper_bound
+
+    Preconditions:
+        (none)
+    Postconditions:
+        EU_lowrank := W_E_U @ W_U_U.T
+        Define err := (W_E + W_pos[-1]) @ W_U - EU_lowrank
+        Then we guarantee:
+        . max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
+    """
+    W_E, W_pos, W_U = (
+        model.W_E,
+        model.W_pos,
+        model.W_U,
+    )
+
+    W_E_via_U, W_E_err = factor_contribution(
+        W_E + W_pos[-1], W_E_U.squeeze(), sanity_check=sanity_check
+    )  # O(d_vocab * d_model)
+    W_E_via_U.setcheckparams(atol=atol)
+    W_U_via_U, W_U_err = factor_contribution(
+        W_U, W_U_U.squeeze(), sanity_check=sanity_check
+    )  # O(d_model * d_vocab_out)
+    W_U_via_U.setcheckparams(atol=atol)
+    EU_lowrank = W_E_via_U @ W_U_via_U  # O(d_vocab * d_vocab_out)
+
+    return (
+        EU_lowrank,
+        bound_max_row_diff_by_SVD(W_E_err, W_U_err),  # type: ignore
+    )
+
+
+# %%
+if DISPLAY_PLOTS:
+    analyze_svd(model.W_E @ model.W_U, descr="W_E @ W_U", renderer=RENDERER)
+    analyze_svd(
+        model.W_E, descr="W_E", scale_by_singular_value=False, renderer=RENDERER
+    )
+    analyze_svd(
+        model.W_U, descr="W_U", scale_by_singular_value=False, renderer=RENDERER
+    )
 
 
 # %%

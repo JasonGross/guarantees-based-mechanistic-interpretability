@@ -99,6 +99,7 @@ class Config(Generic[ExpT]):
     deterministic: bool = True
     seed: int = 123
     batch_size: int = 128
+    validation_batch_size: Optional[int] = None
     train_for: Tuple[int, Literal["steps", "epochs"]] = (15000, "steps")
     log_every_n_steps: int = 10
     validate_every: Optional[Tuple[int, Literal["steps", "epochs"]]] = (10, "steps")
@@ -106,9 +107,18 @@ class Config(Generic[ExpT]):
 
     def __post_init__(self):
         setattr(
-            self, _EXCLUDE, ("log_every_n_steps", "validate_every", "checkpoint_every")
+            self,
+            _EXCLUDE,
+            (
+                "log_every_n_steps",
+                "validate_every",
+                "checkpoint_every",
+                "validation_batch_size",
+            ),
         )
         self.experiment.config_post_init(self)
+        if self.validation_batch_size is None:
+            self.validation_batch_size = self.batch_size
 
     def get_summary_slug(self):
         return self.experiment.get_summary_slug(self)
@@ -158,6 +168,12 @@ class Config(Generic[ExpT]):
             type=int,
             default=None,
             help="Batch size",
+        )
+        parser.add_argument(
+            "--validation-batch-size",
+            type=int,
+            default=None,
+            help="Validation batch size",
         )
         parser.add_argument(
             "--train-for-steps",

@@ -40,6 +40,7 @@ Config(
         ),
         seq_len=10
     ),
+    validation_batch_size=128,
     train_for=(50000, 'steps'),
     validate_every=None
 )""",
@@ -75,6 +76,7 @@ Config(
         ),
         seq_len=10
     ),
+    validation_batch_size=128,
     train_for=(50000, 'steps'),
     validate_every=None
 )""",
@@ -101,6 +103,7 @@ Config(
         ),
         seq_len=10
     ),
+    validation_batch_size=128,
     train_for=(50000, 'steps'),
     validate_every=None
 )""",
@@ -128,6 +131,7 @@ Config(
         ),
         seq_len=10
     ),
+    validation_batch_size=128,
     train_for=(50000, 'steps'),
     validate_every=None
 )""",

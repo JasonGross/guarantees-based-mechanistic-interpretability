@@ -2,9 +2,11 @@
 from __future__ import annotations
 import argparse
 import sys
-
+import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from functools import cache
+from gbmi.utils.hashing import _EXCLUDE
+from lightning.pytorch.loggers.wandb import WandbLogger
 from typing import (
     Any,
     Callable,
@@ -66,6 +68,84 @@ DatasetCfg = Union[IterableDatasetCfg, FullDatasetCfg]
 
 
 @dataclass
+class MaxOfNLoggingOptions:
+    EQKE: bool = False
+    EQKP: bool = False
+    EUPU: bool = False
+    EVOU: bool = False
+    PVOU: bool = False
+
+    @staticmethod
+    def all() -> MaxOfNLoggingOptions:
+        return MaxOfNLoggingOptions(
+            EQKE=True, EQKP=True, EUPU=True, EVOU=True, PVOU=True
+        )
+
+    @torch.no_grad()
+    def log_matrices(
+        self,
+        log: Callable[[str, Any], None],
+        model: HookedTransformer,
+        use_end_of_sequence: bool,
+        **kwargs,
+    ):
+        W_E, W_pos, W_U, W_Q, W_K, W_V, W_O = (
+            model.W_E,
+            model.W_pos,
+            model.W_U,
+            model.W_Q,
+            model.W_K,
+            model.W_V,
+            model.W_O,
+        )
+        if self.EQKE or self.EQKP or self.EVOU or self.PVOU or self.EUPU:
+            if use_end_of_sequence:
+                W_EPQ_descr = "W_E[-1] + W_pos[-1]"
+                W_EPQ = W_E[-1] + W_pos[-1]
+                W_pos_avg_descr = "W_pos[:-1].mean(dim=0)"
+                W_pos_avg = W_pos[:-1].mean(dim=0)
+                W_posK_descr = f"W_pos[:-1] - {W_pos_avg_descr}"
+                W_posK = W_pos[:-1] - W_pos_avg
+                W_EK_descr = f"W_E[:-1] + {W_pos_avg_descr} - W_E[-1] - W_pos[-1]"
+                W_EK = W_E[:-1] + W_pos_avg - W_E[-1] - W_pos[-1]
+            else:
+                W_EPQ_descr = "W_E + W_pos[-1]"
+                W_EPQ = W_E + W_pos[-1]
+                W_pos_avg_descr = "W_pos.mean(dim=0)"
+                W_pos_avg = W_pos.mean(dim=0)
+                W_posK_descr = f"W_pos - {W_pos_avg_descr}"
+                W_posK = W_pos - W_pos_avg
+                W_EK_descr = f"W_E + {W_pos_avg_descr}"
+                W_EK = W_E + W_pos_avg
+        if self.EQKE:
+            log(
+                f"({W_EPQ_descr})QK({W_EK_descr})",
+                W_EPQ @ W_Q[0, 0, :, :] @ W_K[0, 0, :, :].T @ W_EK.T,
+                **kwargs,
+            )
+        if self.EQKP:
+            log(
+                f"({W_EPQ_descr})QK{W_posK_descr}",
+                W_EPQ @ W_Q[0, 0, :, :] @ W_K[0, 0, :, :].T @ W_posK.T,
+                **kwargs,
+            )
+        if self.EVOU:
+            log(
+                f"({W_EK_descr})VOU",
+                W_EK @ W_V[0, 0, :, :] @ W_O[0, 0, :, :] @ W_U,
+                **kwargs,
+            )
+        if self.PVOU:
+            log(
+                f"({W_posK_descr})VOU",
+                W_posK @ W_V[0, 0, :, :] @ W_O[0, 0, :, :] @ W_U,
+                **kwargs,
+            )
+        if self.EUPU:
+            log(f"({W_EPQ_descr})U", W_EPQ @ W_U, **kwargs)
+
+
+@dataclass
 class MaxOfN(ExperimentConfig):
     # Model config
     model_config: HookedTransformerConfig = field(
@@ -86,6 +166,7 @@ class MaxOfN(ExperimentConfig):
     use_end_of_sequence: bool = False
     seq_len: int = 64
     summary_slug_extra: str = ""
+    logging_options: MaxOfNLoggingOptions = field(default_factory=MaxOfNLoggingOptions)
 
     train_dataset_cfg: DatasetCfg = field(
         default_factory=lambda: IterableDatasetCfg(n_samples=None)
@@ -103,6 +184,7 @@ class MaxOfN(ExperimentConfig):
         if self.use_end_of_sequence:
             self.model_config.n_ctx = self.seq_len + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
+        setattr(self, _EXCLUDE, ("logging_options",))
         self.model_config.__post_init__()
 
     def config_post_init(self, config: Config[MaxOfN]) -> None:
@@ -290,9 +372,43 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         acc = self.acc_fn(y_preds, ys)
         if log_output:
             self.log(f"{prefix}acc", acc, prog_bar=True)
+        if log_output and prefix is not None and prefix != "":
+            assert self.logger is not None
+            self.config.experiment.logging_options.log_matrices(
+                self.log_tensor,
+                self.model,
+                use_end_of_sequence=self.config.experiment.use_end_of_sequence,
+            )
         if return_accuracy:
             return loss, acc
         return loss
+
+    def log_tensor(self, name, matrix, **kwargs):
+        assert self.logger is not None
+        # Check the number of dimensions in the matrix to determine the plot type
+        if len(matrix.shape) == 1:
+            # For 1D tensors, create a line plot
+            fig, ax = plt.subplots()
+            ax.plot(
+                matrix.cpu().numpy()
+            )  # Ensure matrix is on CPU and converted to numpy for plotting
+            ax.set_title(name)
+            # Optional: Customize the plot further with kwargs
+        elif len(matrix.shape) == 2:
+            # For 2D tensors, use imshow to create a heatmap
+            fig, ax = plt.subplots()
+            cax = ax.imshow(
+                matrix.cpu().numpy(), **kwargs
+            )  # Ensure matrix is on CPU and converted to numpy for plotting
+            fig.colorbar(cax)
+            ax.set_title(name)
+            # Optional: Customize the plot further, e.g., adjust the aspect ratio, add labels, etc.
+        else:
+            raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
+        self.logger.log_image(name, [fig], **kwargs)
+        # I'd like to do https://docs.wandb.ai/guides/track/log/plots#matplotlib-and-plotly-plots but am not sure how cf https://github.com/JasonGross/guarantees-based-mechanistic-interpretability/issues/33 cc Euan
+        # self.log(name, fig, **kwargs)
+        plt.close(fig)
 
     def training_step(self, batch, batch_idx):
         return self.run_batch(batch, prefix="")
@@ -528,7 +644,7 @@ class MaxOfNDataModule(DataModule):
         return DataLoader(self.data_train, batch_size=self.config.batch_size)
 
     def val_dataloader(self):
-        return DataLoader(self.data_test, batch_size=self.config.batch_size)
+        return DataLoader(self.data_test, batch_size=self.config.validation_batch_size)
 
     def test_dataloader(self):
         return DataLoader(self.data_test, batch_size=self.config.batch_size)
@@ -597,6 +713,12 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
         default=False,
         help="Pick the maximum value first, then fill in the rest of the sequence. Only meaningful for --max-of N > 2.",
     )
+    parser.add_argument(
+        "--checkpoint-matrix-interp",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Log matrices for checkpointing",
+    )
     HOOKED_TRANSFORMER_CONFIG_ARGS = set(
         (
             "normalization_type",
@@ -622,6 +744,11 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             ("experiment", "optimizer"): args.optimizer,
             ("experiment", "summary_slug_extra"): args.summary_slug_extra,
             ("experiment", "train_dataset_cfg", "pick_max_first"): args.pick_max_first,
+            ("experiment", "logging_options"): (
+                MaxOfNLoggingOptions.all()
+                if args.checkpoint_matrix_interp
+                else MaxOfNLoggingOptions()
+            ),
         },
     ).update_from_args(args)
     config.experiment.model_config = update_HookedTransformerConfig_from_args(

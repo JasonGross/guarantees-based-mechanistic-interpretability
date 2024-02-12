@@ -310,7 +310,10 @@ def _load_model(
 ) -> Tuple[RunData, HookedTransformer]:
     model = config.experiment.get_training_wrapper().build_model(config)
     try:
-        cached_data = torch.load(str(model_pth_path))
+        cached_data = torch.load(
+            str(model_pth_path),
+            map_location=torch.device("cpu") if not torch.cuda.is_available() else None,
+        )
         model.load_state_dict(
             cached_data.get(
                 "model", _adjust_statedict_to_model(cached_data.get("state_dict"))

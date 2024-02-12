@@ -1,5 +1,5 @@
 import torch
-from gbmi.bigram_stats.train import DEFAULT_BIGRAM
+from gbmi.exp_bigram_stats.train import DEFAULT_BIGRAM
 from gbmi.model import (
     TrainingWrapper,
     Config,

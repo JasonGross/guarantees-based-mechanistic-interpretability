@@ -1757,6 +1757,90 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 # Note, though, that this could be a worse bound if the assumption of small variation does not hold.
 
 
+# %% [markdown]
+# ## Bounding the largest diff within a row of a product of matrices
+#
+# Suppose we have matrices $A$, $B$ and we want to compute
+# $$\begin{align*}
+# &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
+# &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
+# &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+# &\ge \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+# &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ \min_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
+# &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ -\max_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
+# &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
+# &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
+# \end{align*}$$
+# %%
+@torch.no_grad()
+def max_row_diffs_per_dim(
+    A: Float[Tensor, "... a b"], B: Float[Tensor, "... b c"]  # noqa: F722
+) -> Float[Tensor, "... a"]:  # noqa: F722
+    r"""Computes the maximum difference between elements in the same row of the product of A and B
+
+    Complexity: O(ab + bc)
+
+    $$\begin{align*}
+    &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
+    &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
+    &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+    &\ge \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ \min_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
+    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ -\max_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
+    &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
+    &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
+    \end{align*}$$
+
+    Postconditions:
+        \forall r, i, j:
+            min <= (AB)_{r,i} - (AB)_{r,j} <= max
+    """
+    max_B_diffs = B.max(dim=-1).values - B.min(dim=-1).values
+    return A.abs() @ max_B_diffs.abs()
+
+
+# TODO HERE
+# @torch.no_grad()
+# def compute_largest_wrong_logit_quadratic(
+#     min_softmaxed_right_attention: Float[
+#         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+#     ],
+#     *,
+#     W_E_pos: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+#     W_U: Float[Tensor, "d_model d_vocab_out"] = torch.tensor(0),  # noqa: F722
+#     EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
+#     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
+#     min_gap: Union[
+#         int, Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
+#     ] = 1,
+#     tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
+# ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+#     r"""
+#     Computes the largest gap between the wrong logit and the right logit for each query token, max token, and number of copies of a non-max token.
+
+#     Complexity: O(d_vocab^2 * n_ctx^2)
+
+#     Preconditions:
+#         W_E_pos = W_E + W_pos[-1]
+#         EVOU = W_E @ W_V @ W_O @ W_U
+#         PVOU = W_pos @ W_V @ W_O @ W_U
+#         \forall q, m, n_copies_nonmax:
+#           if q > m: return[q, m, n_copies_nonmax] = nan
+#           elif m - min_gap[q, m, n_copies_nonmax] < q < m: return[q, m, n_copies_nonmax] = nan
+#           elif m < min_gap[q, m, n_copies_nonmax] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
+#           elif m < min_gap[q, m, n_copies_nonmax]: return[q, m, 0] = nan
+#           else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m, n_copies_nonmax]
+#     Postconditions:
+#         \forall q, m, n_copies_nonmax, x:
+#           if q > m: return[q, m, n_copies_nonmax] = nan
+#           elif m - min_gap[q, m, n_copies_nonmax] < q < m: return[q, m, n_copies_nonmax] = nan
+#           elif m < min_gap[q, m, n_copies_nonmax] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
+#           elif m < min_gap[q, m, n_copies_nonmax]: return[q, m, 0] = nan
+#           else: for all sequences with query q, max token m, n_copies_nonmax tokens not equal to m (including the query when the query is not equal to m), and all tokens either equal to m or less than or equal to m - min_gap[q, m, n_copies_nonmax], we have:
+#             return[q, m, n_copies_nonmax] <= model(sequence)[-1, x] - model(sequence)[-1, m]
+#     """
+
+
 # %%
 @torch.no_grad()
 def compute_largest_wrong_logit_quadratic(

@@ -749,11 +749,11 @@ def compute_largest_wrong_logit_cubic(
     w_qry_max = 2
     for max_tok in range(d_vocab):
         # center PVOU according to max token, O(d_vocab * n_ctx)
-        PVOU -= PVOU[:, max_tok].unsqueeze(-1)
+        PVOU = PVOU - PVOU[:, max_tok].unsqueeze(-1)
         # center EUPU according to max token, O(d_vocab^2)
-        EUPU -= EUPU[:, max_tok].unsqueeze(-1)
+        EUPU = EUPU - EUPU[:, max_tok].unsqueeze(-1)
         # center EVOU according to max token, O(d_vocab^2)
-        EVOU -= EVOU[:, max_tok].unsqueeze(-1)
+        EVOU = EVOU - EVOU[:, max_tok].unsqueeze(-1)
         # to make convexity go through, we need to consider a larger region of phase space bounded by points where
         # positional attention is independent of token attention.
         # Here we pessimize over positional attention, assuming that we pay 100% of attention to the worst position
@@ -1467,7 +1467,7 @@ def decompose_EUPU_error(
     )
 
     W_E_via_U, W_E_err = factor_contribution(
-        W_E + W_pos[-1], W_E_U.squeeze() + W_pos[-1], sanity_check=sanity_check
+        W_E + W_pos[-1], W_E_U.squeeze(), sanity_check=sanity_check
     )  # O(d_vocab * d_model)
     W_E_via_U.setcheckparams(atol=atol)
     W_U_via_U, W_U_err = factor_contribution(
@@ -1646,7 +1646,7 @@ def compute_min_softmaxed_right_attention_quadratic(
     min_right_attention = min_right_attention.expand(-1, -1, n_ctx)
     result = torch.zeros_like(min_right_attention)
     tmp = torch.zeros((n_ctx,))
-    EQKE_pos_err -= EQKE_pos_err[:, -1].unsqueeze(
+    EQKE_pos_err = EQKE_pos_err - EQKE_pos_err[:, -1].unsqueeze(
         -1
     )  # softmax is invariant to adding a constant to all inputs, so we offset by the attention paid to the query position
     EQKE_pos_err = EQKE_pos_err[:, :-1].sort(dim=-1).values
@@ -1758,14 +1758,17 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 
 
 # %%
-# FIXME HERE do low rank thing
 @torch.no_grad()
 def compute_largest_wrong_logit_quadratic(
     min_softmaxed_right_attention: Float[
         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
     ],
     *,
-    EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
+    EUPU_low_rank: Optional[
+        Float[LowRankTensor, "d_vocab_q d_vocab_out"]  # noqa: F722
+    ] = None,
+    EUPU_high_rank: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
+    EUPU_max_err: Float[Tensor, ""] = torch.tensor(0),  # noqa: F722
     EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
     min_gap: Union[
@@ -1779,9 +1782,13 @@ def compute_largest_wrong_logit_quadratic(
     Complexity: O(d_vocab^2 * n_ctx^2)
 
     Preconditions:
-        EUPU = (W_E + W_pos[-1]) @ W_U
+        Define:
+          EUPU := (W_E + W_pos[-1]) @ W_U
+          EUPU_err := EUPU - (EUPU_low_rank + EUPU_high_rank)
         EVOU = W_E @ W_V @ W_O @ W_U
         PVOU = W_pos @ W_V @ W_O @ W_U
+        \forall r, i, j:
+          EUPU_err[r, i] - EUPU_err[r, j] <= EUPU_max_err
         \forall q, m, n_copies_nonmax:
           if q > m: return[q, m, n_copies_nonmax] = nan
           elif m - min_gap[q, m, n_copies_nonmax] < q < m: return[q, m, n_copies_nonmax] = nan
@@ -1806,39 +1813,60 @@ def compute_largest_wrong_logit_quadratic(
     # EUPU is too expensive to center with respect to the max token
     # so we split it
     # this one we can center with respect to the max token
-    EUPU_mean_query: Float[Tensor, "d_vocab_out"]  # noqa: F821
+    EUPU_high_rank_mean_query: Float[Tensor, "d_vocab_out"]  # noqa: F821
     # this one we pessimize over the wrong token
-    EUPU_per_query_max_gap: Float[Tensor, "d_vocab_q"]  # noqa: F821
-    EUPU_mean_query, EUPU_per_query_max_gap = tricks.split_EUPU(EUPU)
+    EUPU_high_rank_per_query_max_gap: Float[Tensor, "d_vocab_q"]  # noqa: F821
+    EUPU_high_rank_mean_query, EUPU_high_rank_per_query_max_gap = tricks.split_EUPU(
+        EUPU_high_rank
+    )
     # center EVOU with respect to the diagonal, so it's convenient for the max token
 
-    EVOU -= EVOU.diag()[:, None]
+    EVOU = EVOU - EVOU.diag()[:, None]
     for max_tok in range(d_vocab_max):
         # center PVOU according to max token, O(d_vocab * n_ctx)
-        PVOU -= PVOU[:, max_tok].unsqueeze(-1)
+        PVOU = PVOU - PVOU[:, max_tok].unsqueeze(-1)
+
+        # center EUPU_low_rank
+        if EUPU_low_rank is not None:
+            u, v = EUPU_low_rank.u, EUPU_low_rank.v
+            v = v - v[:, max_tok].unsqueeze(-1)
+            EUPU_low_rank = LowRankTensor(u, v, **EUPU_low_rank.params())  # type: ignore
+
+        cur_EUPU: Float[Tensor, "d_vocab_out"] = EUPU_high_rank[  # noqa: F821
+            max_tok, :
+        ]
+        if EUPU_low_rank is not None:
+            cur_EUPU += EUPU_low_rank.u[max_tok] @ EUPU_low_rank.v
 
         # Pessimization over position:
         # relax to PVOU attention being indepenent of EVOU attention, and also relax to it being possible to pay 100% attention to one PVOU position (this is reasonable, the gap in pre-softmax attention between adjacent tokens is like 20, 1e-20 is essentially 0 in float32.  EDIT: except I forgot to divide by attn_scale when doing this, attn_scale is 5.7, 20/5.7 is 3.5, exp(3.5) is 0.03, so it's not quite 100% attention.  Probably still pretty small)
         cur_PVOU: Float[Tensor, "d_vocab_out"] = PVOU.max(dim=0).values  # noqa: F821
 
         # center EUPU according to max token, O(d_vocab)
-        EUPU_mean_query -= EUPU_mean_query[max_tok].item()
+        EUPU_high_rank_mean_query -= EUPU_high_rank_mean_query[max_tok].item()
 
         # handle the case with only the max token
         # here we can use EUPU exactly
         logits_only_max: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
-            EUPU[max_tok, :] + EVOU[max_tok, :] + cur_PVOU
+            cur_EUPU + EVOU[max_tok, :] + cur_PVOU
         )
         logits_only_max -= logits_only_max[max_tok].item()
         logits_only_max[max_tok] = float(
             "-inf"
         )  # so we can max the logits across the non-max tokens
-        results[max_tok, max_tok, 0] = logits_only_max.max().item()
+        results[max_tok, max_tok, 0] = (
+            logits_only_max.max().item() + EUPU_max_err.item()
+        )
 
         # now handle the cases with at least one non-max token
         # query-independent logits from the skip connection / PVOU independence
-        logits: Float[Tensor, "d_vocab_out"] = EUPU_mean_query + cur_PVOU  # noqa: F821
+        logits: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
+            EUPU_high_rank_mean_query + cur_PVOU
+        )
         assert logits[max_tok] == 0  # sanity check from centering above
+        if EUPU_low_rank is not None:
+            logits += EUPU_low_rank.u[max_tok] @ EUPU_low_rank.v
+            assert logits[max_tok] == 0  # sanity check from centering above
         # exact logits from paying attention to the right thing
         right_attention_logits: Float[Tensor, "d_vocab_out"] = EVOU[  # noqa: F821
             max_tok
@@ -1901,7 +1929,9 @@ def compute_largest_wrong_logit_quadratic(
                     - average_right_attention
                 )
                 results[q_tok, max_tok, n_copies_nonmax] = (
-                    average_wrong_logit + EUPU_per_query_max_gap[q_tok]
+                    average_wrong_logit
+                    + EUPU_high_rank_per_query_max_gap[q_tok]
+                    + EUPU_max_err
                 )
                 # add attention correction factor on right attention
                 results[q_tok, max_tok, n_copies_nonmax] += (
@@ -1943,7 +1973,11 @@ print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d
 largest_wrong_logit: Float[
     Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
 ] = compute_largest_wrong_logit_quadratic(
-    min_right_attention_softmaxed, EUPU=EUPU, EVOU=EVOU, PVOU=PVOU, min_gap=min_gap
+    min_right_attention_softmaxed,
+    EUPU_high_rank=EUPU,
+    EVOU=EVOU,
+    PVOU=PVOU,
+    min_gap=min_gap,
 )
 print(
     f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(compute_largest_wrong_logit_quadratic)}"
@@ -1957,14 +1991,11 @@ def find_min_gaps(
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
     EQKE_err_upper_bound: Union[float, Float[Tensor, ""]],  # noqa: F722
     EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
-    EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
-    EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
-    PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
-    tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
     attn_scale: Union[Float[Tensor, ""], float] = model.blocks[  # noqa: F722
         0
     ].attn.attn_scale,
     position: Optional[int] = None,
+    **compute_largest_wrong_logit_quadratic_kwargs,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     """
     Run the argument across all possible min_gaps, and return the min_gap that works for each query token and max token.
@@ -1986,11 +2017,8 @@ def find_min_gaps(
         )
         largest_wrong_logit = compute_largest_wrong_logit_quadratic(
             min_right_attention_softmaxed,
-            EUPU=EUPU,
-            EVOU=EVOU,
-            PVOU=PVOU,
             min_gap=min_gap,
-            tricks=tricks,
+            **compute_largest_wrong_logit_quadratic_kwargs,
         )
         # if the largest wrong logit is negative, then this gap works
         min_gaps[largest_wrong_logit < 0] = min_gap
@@ -2068,229 +2096,149 @@ elif use_tricks:
     all_configs = [LargestWrongLogitQuadraticConfig()]
 else:
     all_configs = [LargestWrongLogitQuadraticConfig.OFF]
-with memoshelve(
-    (
-        lambda cfg: (
-            cfg,
-            find_min_gaps(
-                EQKE=EQKE_query_key + err_accumulator,
-                EQKE_err_upper_bound=err_upper_bound,
-                EQKE_pos_err=EQKE_pos_err,
-                EUPU=EUPU,
-                EVOU=EVOU,
-                PVOU=PVOU,
-                tricks=cfg,
-                attn_scale=model.blocks[0].attn.attn_scale,
-                position=1,
-            ),
-        )
-    ),
-    filename=cache_dir / f"{Path(__file__).name}.find_min_gaps-{cfg_hash_for_filename}",
-)() as find_min_gaps_for:
-    min_gaps_list = [
-        find_min_gaps_for(cfg)
-        for cfg in tqdm(
-            all_configs,
-            position=0,
-            desc="trick cfg",
-        )
-    ]
-
-# %%
-for tricks, min_gaps in min_gaps_list:
-    print(f"========================================\nTricks: {tricks}")
-    use_exact_error = False
-    err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-    min_right_attention = compute_min_right_attention_quadratic(
-        EQKE_query_key + err_accumulator + (err_exact if use_exact_error else 0),
-        min_gap=min_gaps,
-    )
-    print(
-        f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
-    )  # O(d_vocab^2)
-    print(
-        (min_right_attention[~min_right_attention.isnan()] > err_upper_bound)
-        .sum()
-        .item()
-    )
-    min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
-        min_right_attention - (err_upper_bound if not use_exact_error else 0),
-        EQKE_pos_err,
-        min_gap=min_gaps,
-        attn_scale=model.blocks[0].attn.attn_scale,
-    )
-    print(
-        f"Complexity of compute_min_softmaxed_right_attention: {complexity_of(compute_min_softmaxed_right_attention_quadratic)}"
-    )  # O(d_vocab^2 * n_ctx^2)
-    EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
-    print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
-    EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
-    print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
-    PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
-    print(
-        f"Complexity of PVOU: {complexity_of(all_PVOU)}"
-    )  # O(n_ctx * d_vocab * d_model)
-    largest_wrong_logit: Float[
-        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-    ] = compute_largest_wrong_logit_quadratic(
-        min_right_attention_softmaxed,
-        EUPU=EUPU,
-        EVOU=EVOU,
-        PVOU=PVOU,
-        min_gap=min_gaps,
-        tricks=tricks,
-    )
-    print(
-        f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(compute_largest_wrong_logit_quadratic)}"
-    )  # O(d_vocab^2 * n_ctx^2)
-    accuracy_bound, (
-        correct_count,
-        total_sequences,
-    ) = compute_accuracy_lower_bound_from(largest_wrong_logit, min_gap=min_gaps)
-    print(
-        f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
-    )
-    left_behind = count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
-    print(
-        f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%})"
-    )
-# %%
-if DISPLAY_PLOTS:
-    d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_list[0][1].shape
-    weights = torch.zeros(
-        (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
-    )
-    for q_tok in range(d_vocab_q):
-        for max_tok in range(d_vocab_max):
-            for n_copies_nonmax in range(n_ctx_nonmax_copies):
-                if (q_tok > max_tok) or (
-                    n_copies_nonmax == n_ctx_nonmax_copies - 1 and max_tok != q_tok
-                ):
-                    continue
-                weights[q_tok, max_tok, n_copies_nonmax] = (
-                    max_tok - 1
-                ) ** n_copies_nonmax * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
-    for _, v in min_gaps_list:
-        weighted_histogram(
-            v.flatten().detach().numpy(),
-            weights.flatten().detach().numpy(),
-            labels={"x": "gap", "y": "count * # sequences"},
-            num_bins=v.max().item(),
-        ).show(RENDERER)
-
 # %% [markdown]
-# # Sub-cubic without SVD
+# # Sub-cubic Proofs
 # %%
 err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-with memoshelve(
-    (
-        lambda cfg: (
-            cfg,
-            find_min_gaps(
-                EQKE=EQKE_query_key + err_accumulator + err_exact,
-                EQKE_err_upper_bound=0,
-                EQKE_pos_err=EQKE_pos_err,
-                EUPU=EUPU,
+min_gaps_lists = {}
+for svd_EUPU in (False, True):
+    for svd_EQKE in (False, True):
+        descr = (
+            "nosvd"
+            if not svd_EUPU and not svd_EQKE
+            else "svd-EUPU"
+            if svd_EUPU
+            else "svd-EQKE"
+            if svd_EQKE
+            else "svd-EUPU-EQKE"
+        )
+        cur_EQKE = EQKE_query_key + err_accumulator + (err_exact if not svd_EQKE else 0)
+        EQKE_err_upper_bound = torch.tensor(0) if not svd_EQKE else err_upper_bound
+        cur_EUPU_low_rank = EUPU_lowrank if svd_EUPU else None
+        cur_EUPU_high_rank = torch.zeros_like(EUPU) if svd_EUPU else EUPU
+        cur_EUPU_max_err = torch.tensor(0) if not svd_EUPU else EUPU_err_upper_bound
+
+        with memoshelve(
+            (
+                lambda cfg: (
+                    cfg,
+                    find_min_gaps(
+                        EQKE=cur_EQKE,
+                        EQKE_err_upper_bound=EQKE_err_upper_bound,
+                        EQKE_pos_err=EQKE_pos_err,
+                        EUPU_high_rank=cur_EUPU_high_rank,
+                        EUPU_low_rank=cur_EUPU_low_rank,
+                        EUPU_max_err=cur_EUPU_max_err,
+                        EVOU=EVOU,
+                        PVOU=PVOU,
+                        tricks=cfg,
+                        attn_scale=model.blocks[0].attn.attn_scale,
+                        position=1,
+                    ),
+                )
+            ),
+            cache={},
+            filename=cache_dir
+            / f"{Path(__file__).name}.find_min_gaps-{descr}-{cfg_hash_for_filename}",
+        )() as find_min_gaps_for:
+            min_gaps_lists[(svd_EUPU, svd_EQKE)] = [
+                find_min_gaps_for(cfg)
+                for cfg in tqdm(
+                    all_configs,
+                    position=0,
+                    desc="trick cfg",
+                )
+            ]
+
+        for tricks, min_gaps in min_gaps_lists[(svd_EUPU, svd_EQKE)]:
+            print(f"==========={descr}=============================\nTricks: {tricks}")
+            min_right_attention = compute_min_right_attention_quadratic(
+                cur_EQKE,
+                min_gap=min_gaps,
+            )
+            print(
+                f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
+            )  # O(d_vocab^2)
+            print(
+                (min_right_attention[~min_right_attention.isnan()] > err_upper_bound)
+                .sum()
+                .item()
+            )
+            min_right_attention_softmaxed = (
+                compute_min_softmaxed_right_attention_quadratic(
+                    min_right_attention - EQKE_err_upper_bound,
+                    EQKE_pos_err,
+                    min_gap=min_gaps,
+                    attn_scale=model.blocks[0].attn.attn_scale,
+                )
+            )
+            print(
+                f"Complexity of compute_min_softmaxed_right_attention: {complexity_of(compute_min_softmaxed_right_attention_quadratic)}"
+            )  # O(d_vocab^2 * n_ctx^2)
+            EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
+            print(
+                f"Complexity of EU_PU: {complexity_of(EU_PU)}"
+            )  # O(d_vocab^2 * d_model)
+            EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
+            print(
+                f"Complexity of EVOU: {complexity_of(all_EVOU)}"
+            )  # O(d_vocab^2 * d_model)
+            PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
+            print(
+                f"Complexity of PVOU: {complexity_of(all_PVOU)}"
+            )  # O(n_ctx * d_vocab * d_model)
+            largest_wrong_logit: Float[
+                Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+            ] = compute_largest_wrong_logit_quadratic(
+                min_right_attention_softmaxed,
+                EUPU_high_rank=cur_EUPU_high_rank,
+                EUPU_low_rank=cur_EUPU_low_rank,
+                EUPU_max_err=cur_EUPU_max_err,
                 EVOU=EVOU,
                 PVOU=PVOU,
-                tricks=cfg,
-                attn_scale=model.blocks[0].attn.attn_scale,
-                position=1,
-            ),
-        )
-    ),
-    filename=cache_dir
-    / f"{Path(__file__).name}.find_min_gaps-nosvd-{cfg_hash_for_filename}",
-)() as find_min_gaps_for:
-    min_gaps_list_nosvd = [
-        find_min_gaps_for(cfg)
-        for cfg in tqdm(
-            all_configs,
-            position=0,
-            desc="trick cfg",
-        )
-    ]
+                min_gap=min_gaps,
+                tricks=tricks,
+            )
+            print(
+                f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(compute_largest_wrong_logit_quadratic)}"
+            )  # O(d_vocab^2 * n_ctx^2)
+            accuracy_bound, (
+                correct_count,
+                total_sequences,
+            ) = compute_accuracy_lower_bound_from(largest_wrong_logit, min_gap=min_gaps)
+            print(
+                f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
+            )
+            left_behind = count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
+            print(
+                f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%})"
+            )
 
-# %%
-for tricks, min_gaps in min_gaps_list_nosvd:
-    print(f"===========NO SVD=============================\nTricks: {tricks}")
-    use_exact_error = True
-    err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-    min_right_attention = compute_min_right_attention_quadratic(
-        EQKE_query_key + err_accumulator + (err_exact if use_exact_error else 0),
-        min_gap=min_gaps,
-    )
-    print(
-        f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
-    )  # O(d_vocab^2)
-    print(
-        (min_right_attention[~min_right_attention.isnan()] > err_upper_bound)
-        .sum()
-        .item()
-    )
-    min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
-        min_right_attention - (err_upper_bound if not use_exact_error else 0),
-        EQKE_pos_err,
-        min_gap=min_gaps,
-        attn_scale=model.blocks[0].attn.attn_scale,
-    )
-    print(
-        f"Complexity of compute_min_softmaxed_right_attention: {complexity_of(compute_min_softmaxed_right_attention_quadratic)}"
-    )  # O(d_vocab^2 * n_ctx^2)
-    EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
-    print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
-    EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
-    print(f"Complexity of EVOU: {complexity_of(all_EVOU)}")  # O(d_vocab^2 * d_model)
-    PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
-    print(
-        f"Complexity of PVOU: {complexity_of(all_PVOU)}"
-    )  # O(n_ctx * d_vocab * d_model)
-    largest_wrong_logit: Float[
-        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-    ] = compute_largest_wrong_logit_quadratic(
-        min_right_attention_softmaxed,
-        EUPU=EUPU,
-        EVOU=EVOU,
-        PVOU=PVOU,
-        min_gap=min_gaps,
-        tricks=tricks,
-    )
-    print(
-        f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(compute_largest_wrong_logit_quadratic)}"
-    )  # O(d_vocab^2 * n_ctx^2)
-    accuracy_bound, (
-        correct_count,
-        total_sequences,
-    ) = compute_accuracy_lower_bound_from(largest_wrong_logit, min_gap=min_gaps)
-    print(
-        f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
-    )
-    left_behind = count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
-    print(
-        f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%})"
-    )
-
-# %%
-if DISPLAY_PLOTS:
-    d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_list_nosvd[0][1].shape
-    weights = torch.zeros(
-        (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
-    )
-    for q_tok in range(d_vocab_q):
-        for max_tok in range(d_vocab_max):
-            for n_copies_nonmax in range(n_ctx_nonmax_copies):
-                if (q_tok > max_tok) or (
-                    n_copies_nonmax == n_ctx_nonmax_copies - 1 and max_tok != q_tok
-                ):
-                    continue
-                weights[q_tok, max_tok, n_copies_nonmax] = (
-                    max_tok - 1
-                ) ** n_copies_nonmax * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
-    for _, v in min_gaps_list_nosvd:
-        weighted_histogram(
-            v.flatten().detach().numpy(),
-            weights.flatten().detach().numpy(),
-            labels={"x": "gap", "y": "count * # sequences"},
-            num_bins=v.max().item(),
-        ).show(RENDERER)
+        if DISPLAY_PLOTS:
+            d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[
+                (svd_EUPU, svd_EQKE)
+            ][0][1].shape
+            weights = torch.zeros(
+                (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
+            )
+            for q_tok in range(d_vocab_q):
+                for max_tok in range(d_vocab_max):
+                    for n_copies_nonmax in range(n_ctx_nonmax_copies):
+                        if (q_tok > max_tok) or (
+                            n_copies_nonmax == n_ctx_nonmax_copies - 1
+                            and max_tok != q_tok
+                        ):
+                            continue
+                        weights[q_tok, max_tok, n_copies_nonmax] = (
+                            max_tok - 1
+                        ) ** n_copies_nonmax * math.comb(
+                            model.cfg.n_ctx - 1, n_copies_nonmax
+                        )
+            for _, v in min_gaps_lists[(svd_EUPU, svd_EQKE)]:
+                weighted_histogram(
+                    v.flatten().detach().numpy(),
+                    weights.flatten().detach().numpy(),
+                    labels={"x": "gap", "y": "count * # sequences"},
+                    num_bins=v.max().item(),
+                ).show(RENDERER)
 # %%

@@ -128,7 +128,7 @@ class LowRankTensor:
             else True
         )
 
-    def _params(self):
+    def params(self):
         return dict(
             check=self._check,
             show=self._show,
@@ -137,13 +137,13 @@ class LowRankTensor:
 
     def _mergeparams(self, other):
         if isinstance(other, LowRankTensor):
-            return _merge_check_params(self._params(), other._params())
+            return _merge_check_params(self.params(), other.params())
         else:
-            return self._params()
+            return self.params()
 
     @property
     def T(self):
-        return LowRankTensor(self.v.T, self.u.T, **self._params())  # type: ignore
+        return LowRankTensor(self.v.T, self.u.T, **self.params())  # type: ignore
 
     def __matmul__(self, other: Union[Tensor, LowRankTensor]):
         if isinstance(other, LowRankTensor):

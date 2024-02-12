@@ -112,7 +112,7 @@ jobs:
       - uses: psf/black@stable
         with:
           jupyter: true
-          version: "~= 23.12.1"
+          version: "~= 24.1.1"
 
   check-all:
     runs-on: ubuntu-latest

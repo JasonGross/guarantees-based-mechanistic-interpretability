@@ -376,17 +376,6 @@ html5lib = ["html5lib"]
 lxml = ["lxml"]
 
 [[package]]
-name = "better-abc"
-version = "0.0.3"
-description = "Python ABC plus abstract attributes"
-optional = false
-python-versions = "*"
-files = [
-    {file = "better-abc-0.0.3.tar.gz", hash = "sha256:a880fd6bc9675da2ec991e8712a555bffa0f12722efed78c739f78343cf989f6"},
-    {file = "better_abc-0.0.3-py3-none-any.whl", hash = "sha256:3ae73b473fbeb536a548f542984976e80b821676ae6e18f14e24d8e180647187"},
-]
-
-[[package]]
 name = "black"
 version = "24.2.0"
 description = "The uncompromising code formatter."
@@ -4722,19 +4711,18 @@ test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,
 
 [[package]]
 name = "transformer-lens"
-version = "1.14.0"
+version = "1.12.1"
 description = "An implementation of transformers tailored for mechanistic interpretability."
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "transformer_lens-1.14.0-py3-none-any.whl", hash = "sha256:21ab7a213429235f6276378afca2f6f56068611caa5af42dc3af9cf86dfbd579"},
-    {file = "transformer_lens-1.14.0.tar.gz", hash = "sha256:c3e054edb7bb187fd869d41f063c3a241b24b58718bfaaf6fca3a36a7a4832ab"},
+    {file = "transformer_lens-1.12.1-py3-none-any.whl", hash = "sha256:ab11cc0089d29e59954c641ff1763752406b22c78b90cad5cc56ee87a6ccaef2"},
+    {file = "transformer_lens-1.12.1.tar.gz", hash = "sha256:98ba181fe6173085dd9f2c0d23a34d75db48c73c20439ac6ddc328f260c7f22e"},
 ]
 
 [package.dependencies]
 accelerate = ">=0.23.0"
 beartype = ">=0.14.1,<0.15.0"
-better-abc = ">=0.0.3,<0.0.4"
 datasets = ">=2.7.1"
 einops = ">=0.6.0"
 fancy-einsum = ">=0.0.3"
@@ -4747,7 +4735,7 @@ pandas = ">=1.1.5"
 rich = ">=12.6.0"
 torch = ">=1.10,<2.0 || >2.0,<2.1.0 || >2.1.0"
 tqdm = ">=4.64.1"
-transformers = ">=4.34"
+transformers = ">=4.25.1"
 typing-extensions = "*"
 wandb = ">=0.13.5"
 
@@ -5276,4 +5264,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "279c59a9d2c5ff171ba1a3a8f789707f1f7a67e42d7e88c7a0566886363122db"
+content-hash = "895d8fe6f05938d601e86ac4bec7bec3bddfd3b28454b90bc06d0b3c3cbf3144"

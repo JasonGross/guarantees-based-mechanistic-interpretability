@@ -1483,6 +1483,7 @@ if DISPLAY_PLOTS:
 
 
 # %%
+# HERE TODO FIXME
 @torch.no_grad()
 def compute_min_right_attention_quadratic(
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722

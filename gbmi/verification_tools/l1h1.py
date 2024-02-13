@@ -181,9 +181,7 @@ def all_EQKP(
 
 
 @torch.no_grad()
-def find_all_d_attention_scores(
-    model: HookedTransformer, min_gap: int = 1
-) -> Union[
+def find_all_d_attention_scores(model: HookedTransformer, min_gap: int = 1) -> Union[
     Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
     Float[
         Tensor,

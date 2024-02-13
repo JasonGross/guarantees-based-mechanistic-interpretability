@@ -66,9 +66,7 @@ class LowRankTensor:
         self._checkparams = (
             checkparams
             if checkparams is not None
-            else check
-            if isinstance(check, dict)
-            else {}
+            else check if isinstance(check, dict) else {}
         )
         self._show = show
 

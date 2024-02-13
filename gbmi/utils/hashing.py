@@ -13,6 +13,7 @@ The dataclass type is ignored: two instances of different types
 will have the same hash if they have the same attribute/value pairs.
 
 """
+
 from __future__ import annotations
 import dataclasses
 import datetime

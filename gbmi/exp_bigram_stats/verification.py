@@ -679,9 +679,9 @@ def all_worst_EVOU(
 
 @dataclasses.dataclass
 class LargestWrongLogitQuadraticConfig:
-    EUPU_handling: Literal[
-        "mean_query+max_diff", "max_diff", "global_max_diff"
-    ] = "mean_query+max_diff"
+    EUPU_handling: Literal["mean_query+max_diff", "max_diff", "global_max_diff"] = (
+        "mean_query+max_diff"
+    )
     attention_handling: Literal[
         "mean_query+diff", "drop_average_query_per_output_logit_reasoning"
     ] = "mean_query+diff"

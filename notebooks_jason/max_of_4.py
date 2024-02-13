@@ -792,13 +792,13 @@ def compute_largest_wrong_logit_cubic(
             results[q_tok, max_tok, max_tok, 0] = logits_only_q_and_max.max().item()
 
         # precompose pessimization for EUPU over output logit, so we have enough compute budget
-        EUPU_tmp: Float[
-            Tensor, "d_vocab_q d_vocab_out"  # noqa: F722
-        ] = EUPU.detach().clone()
+        EUPU_tmp: Float[Tensor, "d_vocab_q d_vocab_out"] = (  # noqa: F722
+            EUPU.detach().clone()
+        )
         EUPU_tmp[:, max_tok] = float("-inf")
-        EUPU_per_query_pessimized: Float[
-            Tensor, "d_vocab_q"  # noqa: F821
-        ] = EUPU_tmp.max(dim=-1).values
+        EUPU_per_query_pessimized: Float[Tensor, "d_vocab_q"] = (  # noqa: F821
+            EUPU_tmp.max(dim=-1).values
+        )
 
         # Ditto for EVOU
         # distribute PVOU over EVOU, to avoid premature pessimization
@@ -807,9 +807,9 @@ def compute_largest_wrong_logit_cubic(
             EVOU + PVOU_pessimized
         )
         EPVOU_tmp[:, max_tok] = float("-inf")
-        EPVOU_per_key_pessimized: Float[
-            Tensor, "d_vocab_k"  # noqa: F821
-        ] = EPVOU_tmp.max(dim=-1).values
+        EPVOU_per_key_pessimized: Float[Tensor, "d_vocab_k"] = (  # noqa: F821
+            EPVOU_tmp.max(dim=-1).values
+        )
 
         # now handle the cases with at least one non-max non-query token
         for nonmax_tok in range(max_tok):
@@ -818,21 +818,21 @@ def compute_largest_wrong_logit_cubic(
 
                 # pessimize over the thing we're not supposed to be paying attention to (w.r.t. the token that is non-max that we're paying attention)
                 # maximum added to the wrong logit from paying attention to the wrong thing
-                wrong_attention_logits: Float[
-                    Tensor, ""  # noqa: F722
-                ] = EPVOU_per_key_pessimized[nonmax_tok]
+                wrong_attention_logits: Float[Tensor, ""] = (  # noqa: F722
+                    EPVOU_per_key_pessimized[nonmax_tok]
+                )
 
                 # pessimize also over the thing we are paying attention to
-                right_attention_wrong_logits: Float[
-                    Tensor, ""  # noqa: F722
-                ] = EPVOU_per_key_pessimized[max_tok]
+                right_attention_wrong_logits: Float[Tensor, ""] = (  # noqa: F722
+                    EPVOU_per_key_pessimized[max_tok]
+                )
 
                 for q_tok in range(max_tok + 1):
                     if q_tok != max_tok and n_copies_nonmax >= n_ctx - 1:
                         continue
-                    query_wrong_logits: Float[
-                        Tensor, ""  # noqa: F722
-                    ] = EPVOU_per_key_pessimized[q_tok]
+                    query_wrong_logits: Float[Tensor, ""] = (  # noqa: F722
+                        EPVOU_per_key_pessimized[q_tok]
+                    )
                     right_attn = min_softmaxed_right_attention[
                         w_max, q_tok, max_tok, nonmax_tok, n_copies_nonmax
                     ]
@@ -1843,9 +1843,9 @@ def compute_largest_wrong_logit_quadratic(
         right_attention_logits_tmp = right_attention_logits.detach().clone()
         right_attention_logits_tmp[max_tok] = float("-inf")
         # maximum added to the wrong logit from paying attention to the right thing
-        right_attention_logits_max: Float[
-            Tensor, ""  # noqa: F722
-        ] = right_attention_logits_tmp.max()
+        right_attention_logits_max: Float[Tensor, ""] = (  # noqa: F722
+            right_attention_logits_tmp.max()
+        )
         for n_copies_nonmax in range(1, n_ctx):
             cur_min_gap = (
                 min_gap
@@ -1857,9 +1857,9 @@ def compute_largest_wrong_logit_quadratic(
                 continue
             # pessimize over the thing we're not supposed to be paying attention to (w.r.t. the token that is non-max that we're paying attention)
             # maximum added to the wrong logit from paying attention to the wrong thing
-            wrong_attention_logits: Float[
-                Tensor, ""  # noqa: F722
-            ] = EVOU_max_logit_diff[: max_tok - cur_min_gap + 1].max()
+            wrong_attention_logits: Float[Tensor, ""] = (  # noqa: F722
+                EVOU_max_logit_diff[: max_tok - cur_min_gap + 1].max()
+            )
 
             # First we combine query-independent logit information, then we reduce over output tokens and loop over queries
             # drop the nan values where the query token is invalid given the number of copies and the max token
@@ -2072,11 +2072,7 @@ for svd_EUPU in (False, True):
         descr = (
             "nosvd"
             if not svd_EUPU and not svd_EQKE
-            else "svd-EUPU"
-            if svd_EUPU
-            else "svd-EQKE"
-            if svd_EQKE
-            else "svd-EUPU-EQKE"
+            else "svd-EUPU" if svd_EUPU else "svd-EQKE" if svd_EQKE else "svd-EUPU-EQKE"
         )
         cur_EQKE = EQKE_query_key + err_accumulator + (err_exact if not svd_EQKE else 0)
         EQKE_err_upper_bound = torch.tensor(0) if not svd_EQKE else err_upper_bound

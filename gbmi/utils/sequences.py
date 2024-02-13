@@ -42,8 +42,7 @@ class SequenceDataset(Dataset[Tensor]):
         ...
 
     @overload
-    def __getitem__(self, index: slice) -> Tensor:
-        ...
+    def __getitem__(self, index: slice) -> Tensor: ...
 
     def __getitem__(
         self, index: Union[int, slice]

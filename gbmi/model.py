@@ -65,8 +65,7 @@ class TrainingWrapper(ABC, LightningModule, Generic[ExpT]):
 
     @staticmethod
     @abstractmethod
-    def build_model(config: Config[ExpT]) -> HookedTransformer:
-        ...
+    def build_model(config: Config[ExpT]) -> HookedTransformer: ...
 
 
 class DataModule(LightningDataModule, Generic[ExpT], ABC):
@@ -80,12 +79,10 @@ class ExperimentConfig(ABC):
     @abstractmethod
     def get_training_wrapper(
         self: ExpT,
-    ) -> Type[TrainingWrapper[ExpT]]:
-        ...
+    ) -> Type[TrainingWrapper[ExpT]]: ...
 
     @abstractmethod
-    def get_datamodule(self: ExpT) -> Type[DataModule[ExpT]]:
-        ...
+    def get_datamodule(self: ExpT) -> Type[DataModule[ExpT]]: ...
 
     def get_summary_slug(self: ExpT, config: Config[ExpT]) -> str:
         return self.__class__.__name__

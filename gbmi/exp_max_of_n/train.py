@@ -195,8 +195,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         labels: Integer[Tensor, "batch"],  # noqa: F821
         *,
         return_per_sequence: Literal[False] = False,
-    ) -> float:
-        ...
+    ) -> float: ...
 
     @overload
     @staticmethod

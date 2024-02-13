@@ -101,9 +101,7 @@ def analyze_svd(
 
 
 @torch.no_grad()
-def split_svd_contributions(
-    M: Float[Tensor, "r c"], n: int = 1  # noqa: F722
-) -> Tuple[
+def split_svd_contributions(M: Float[Tensor, "r c"], n: int = 1) -> Tuple[  # noqa: F722
     Tuple[
         Float[Tensor, "r n"],  # noqa: F722
         Float[Tensor, "n"],  # noqa: F821

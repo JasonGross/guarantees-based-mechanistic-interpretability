@@ -94,6 +94,7 @@ class SingleTensorDataset(IterableDataset[Tensor]):
     Args:
         tensor (Tensor): a tensor to be contained within dataset
     """
+
     tensor: Tensor
 
     def __init__(self, tensor: Tensor) -> None:
@@ -114,6 +115,7 @@ class TupleIterableDataset(Dataset[Tuple[Iterable, ...]]):
 
     Each sample will be retrieved by indexing the arguments along the first dimension.
     """
+
     data: Tuple[Iterable, ...]
 
     def __init__(self, *data: Iterable) -> None:

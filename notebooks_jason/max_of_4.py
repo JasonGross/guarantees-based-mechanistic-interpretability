@@ -90,7 +90,11 @@ from gbmi.utils.sequences import (
     generate_all_sequences_for_model,
 )
 import shelve
-from gbmi.verification_tools.decomp import factor_contribution
+from gbmi.verification_tools.decomp import (
+    factor_contribution,
+    max_row_diffs_per_dim,
+    bound_max_row_diff_by_SVD,
+)
 
 from gbmi.verification_tools.general import EU_PU
 from gbmi.verification_tools.l1h1 import (
@@ -1153,34 +1157,6 @@ if DISPLAY_PLOTS:
 # & \phantom{{}={}}{} + W_{E,\text{qerr}}W_Q W_K^T (\text{size}W_E + \overline{W_\text{pos}})^T \\
 # \end{align*}$$
 # %%
-# %%
-@torch.no_grad()
-def bound_max_row_diff_by_SVD(*matrices: Tensor) -> Tuple[float, Tuple[Tensor, ...]]:
-    r"""
-    Let M denote the product of the elements of `matrices` (under matrix multiplication)
-
-    Complexity: max_{a, b s.t. \exists m\in matrices, m.shape = (a, b)} O(a b min(a, b))
-
-    We compute an upper bound on the difference between elements in the same row of the product of the matrices:
-    Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt{2} \sigma_1(M)$.
-    This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
-
-    Preconditions:
-        the matrices in `matrices` can be multiplied
-    Postconditions:
-        forall r.
-          max_{i,j} M_{r, i} - M_{r, j} <= return[0]
-        return[1] == matrices
-    """
-    # take the product of the first singular values in each matrix to get a bound on the singular value of the product
-    prod_max_singular = torch.tensor(
-        [torch.linalg.matrix_norm(m, ord=2) for m in matrices]
-    ).prod()
-    # since \sigma_1(M) = \sup_x \| M x \| / \|x\|, considering vectorswith one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is sqrt(2) * \sigma_1(M)
-    return (
-        prod_max_singular * np.sqrt(2),
-        matrices,
-    )
 
 
 # %%
@@ -1771,74 +1747,6 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 # &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
 # &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
 # \end{align*}$$
-# %%
-@torch.no_grad()
-def max_row_diffs_per_dim(
-    A: Float[Tensor, "... a b"], B: Float[Tensor, "... b c"]  # noqa: F722
-) -> Float[Tensor, "... a"]:  # noqa: F722
-    r"""Computes the maximum difference between elements in the same row of the product of A and B
-
-    Complexity: O(ab + bc)
-
-    $$\begin{align*}
-    &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
-    &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
-    &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
-    &\ge \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
-    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ \min_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
-    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ -\max_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
-    &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
-    &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
-    \end{align*}$$
-
-    Postconditions:
-        \forall r, i, j:
-            min <= (AB)_{r,i} - (AB)_{r,j} <= max
-    """
-    max_B_diffs = B.max(dim=-1).values - B.min(dim=-1).values
-    return A.abs() @ max_B_diffs.abs()
-
-
-# TODO HERE
-# @torch.no_grad()
-# def compute_largest_wrong_logit_quadratic(
-#     min_softmaxed_right_attention: Float[
-#         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-#     ],
-#     *,
-#     W_E_pos: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
-#     W_U: Float[Tensor, "d_model d_vocab_out"] = torch.tensor(0),  # noqa: F722
-#     EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
-#     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
-#     min_gap: Union[
-#         int, Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
-#     ] = 1,
-#     tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
-# ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
-#     r"""
-#     Computes the largest gap between the wrong logit and the right logit for each query token, max token, and number of copies of a non-max token.
-
-#     Complexity: O(d_vocab^2 * n_ctx^2)
-
-#     Preconditions:
-#         W_E_pos = W_E + W_pos[-1]
-#         EVOU = W_E @ W_V @ W_O @ W_U
-#         PVOU = W_pos @ W_V @ W_O @ W_U
-#         \forall q, m, n_copies_nonmax:
-#           if q > m: return[q, m, n_copies_nonmax] = nan
-#           elif m - min_gap[q, m, n_copies_nonmax] < q < m: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m, n_copies_nonmax] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m, n_copies_nonmax]: return[q, m, 0] = nan
-#           else: return[q, m, n_copies_nonmax] <= post-softmax attention paid to max token m amongst all sequences with query q, n_ctx - n_copies_nonmax tokens equal to m, and all other tokens <= m - min_gap[q, m, n_copies_nonmax]
-#     Postconditions:
-#         \forall q, m, n_copies_nonmax, x:
-#           if q > m: return[q, m, n_copies_nonmax] = nan
-#           elif m - min_gap[q, m, n_copies_nonmax] < q < m: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m, n_copies_nonmax] and n_copies_nonmax != 0: return[q, m, n_copies_nonmax] = nan
-#           elif m < min_gap[q, m, n_copies_nonmax]: return[q, m, 0] = nan
-#           else: for all sequences with query q, max token m, n_copies_nonmax tokens not equal to m (including the query when the query is not equal to m), and all tokens either equal to m or less than or equal to m - min_gap[q, m, n_copies_nonmax], we have:
-#             return[q, m, n_copies_nonmax] <= model(sequence)[-1, x] - model(sequence)[-1, m]
-#     """
 
 
 # %%
@@ -1848,31 +1756,25 @@ def compute_largest_wrong_logit_quadratic(
         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
     ],
     *,
-    EUPU_low_rank: Optional[
-        Float[LowRankTensor, "d_vocab_q d_vocab_out"]  # noqa: F722
-    ] = None,
-    EUPU_high_rank: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
-    EUPU_max_err: Float[Tensor, ""] = torch.tensor(0),  # noqa: F722
+    W_EP: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+    W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
     EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
     PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
     min_gap: Union[
         int, Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
     ] = 1,
+    W_EP_direction: Optional[Float[Tensor, "d_model"]] = None,  # noqa F722
     tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
 ) -> Float[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     r"""
     Computes the largest gap between the wrong logit and the right logit for each query token, max token, and number of copies of a non-max token.
 
-    Complexity: O(d_vocab^2 * n_ctx^2)
+    Complexity: O(d_vocab^2 * n_ctx^2) (+ d_vocab * d_model^2 if W_EP_direction is None and tricks.EUPU_handling == "svd_query+max_diff")
 
     Preconditions:
-        Define:
-          EUPU := (W_E + W_pos[-1]) @ W_U
-          EUPU_err := EUPU - (EUPU_low_rank + EUPU_high_rank)
+        W_EP := W_E + W_pos[-1]
         EVOU = W_E @ W_V @ W_O @ W_U
         PVOU = W_pos @ W_V @ W_O @ W_U
-        \forall r, i, j:
-          EUPU_err[r, i] - EUPU_err[r, j] <= EUPU_max_err
         \forall q, m, n_copies_nonmax:
           if q > m: return[q, m, n_copies_nonmax] = nan
           elif m - min_gap[q, m, n_copies_nonmax] < q < m: return[q, m, n_copies_nonmax] = nan
@@ -1897,60 +1799,41 @@ def compute_largest_wrong_logit_quadratic(
     # EUPU is too expensive to center with respect to the max token
     # so we split it
     # this one we can center with respect to the max token
-    EUPU_high_rank_mean_query: Float[Tensor, "d_vocab_out"]  # noqa: F821
+    EUPU_mean_query: Float[Tensor, "d_vocab_out"]  # noqa: F821
     # this one we pessimize over the wrong token
-    EUPU_high_rank_per_query_max_gap: Float[Tensor, "d_vocab_q"]  # noqa: F821
-    EUPU_high_rank_mean_query, EUPU_high_rank_per_query_max_gap = tricks.split_EUPU(
-        EUPU_high_rank
+    EUPU_per_query_max_gap: Float[Tensor, "d_vocab_q"]  # noqa: F821
+    EUPU_mean_query, EUPU_per_query_max_gap = tricks.split_EPU(
+        W_EP=W_EP, W_U=W_U, W_EP_mean_query=W_EP_direction
     )
-    # center EVOU with respect to the diagonal, so it's convenient for the max token
 
+    # center EVOU with respect to the diagonal, so it's convenient for the max token
     EVOU = EVOU - EVOU.diag()[:, None]
     for max_tok in range(d_vocab_max):
         # center PVOU according to max token, O(d_vocab * n_ctx)
         PVOU = PVOU - PVOU[:, max_tok].unsqueeze(-1)
-
-        # center EUPU_low_rank
-        if EUPU_low_rank is not None:
-            u, v = EUPU_low_rank.u, EUPU_low_rank.v
-            v = v - v[:, max_tok].unsqueeze(-1)
-            EUPU_low_rank = LowRankTensor(u, v, **EUPU_low_rank.params())  # type: ignore
-
-        cur_EUPU: Float[Tensor, "d_vocab_out"] = EUPU_high_rank[  # noqa: F821
-            max_tok, :
-        ]
-        if EUPU_low_rank is not None:
-            cur_EUPU += EUPU_low_rank.u[max_tok] @ EUPU_low_rank.v
+        # center EUPU_mean_query according to max token, O(d_vocab)
+        EUPU_mean_query = EUPU_mean_query - EUPU_mean_query[max_tok].item()
 
         # Pessimization over position:
         # relax to PVOU attention being indepenent of EVOU attention, and also relax to it being possible to pay 100% attention to one PVOU position (this is reasonable, the gap in pre-softmax attention between adjacent tokens is like 20, 1e-20 is essentially 0 in float32.  EDIT: except I forgot to divide by attn_scale when doing this, attn_scale is 5.7, 20/5.7 is 3.5, exp(3.5) is 0.03, so it's not quite 100% attention.  Probably still pretty small)
         cur_PVOU: Float[Tensor, "d_vocab_out"] = PVOU.max(dim=0).values  # noqa: F821
 
-        # center EUPU according to max token, O(d_vocab)
-        EUPU_high_rank_mean_query -= EUPU_high_rank_mean_query[max_tok].item()
-
         # handle the case with only the max token
         # here we can use EUPU exactly
         logits_only_max: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
-            cur_EUPU + EVOU[max_tok, :] + cur_PVOU
+            W_EP[max_tok, :] @ W_U + EVOU[max_tok, :] + cur_PVOU
         )
+        # O(d_model * d_vocab)
         logits_only_max -= logits_only_max[max_tok].item()
         logits_only_max[max_tok] = float(
             "-inf"
         )  # so we can max the logits across the non-max tokens
-        results[max_tok, max_tok, 0] = (
-            logits_only_max.max().item() + EUPU_max_err.item()
-        )
+        results[max_tok, max_tok, 0] = logits_only_max.max().item()
 
         # now handle the cases with at least one non-max token
         # query-independent logits from the skip connection / PVOU independence
-        logits: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
-            EUPU_high_rank_mean_query + cur_PVOU
-        )
+        logits: Float[Tensor, "d_vocab_out"] = EUPU_mean_query + cur_PVOU  # noqa: F821
         assert logits[max_tok] == 0  # sanity check from centering above
-        if EUPU_low_rank is not None:
-            logits += EUPU_low_rank.u[max_tok] @ EUPU_low_rank.v
-            assert logits[max_tok] == 0  # sanity check from centering above
         # exact logits from paying attention to the right thing
         right_attention_logits: Float[Tensor, "d_vocab_out"] = EVOU[  # noqa: F821
             max_tok
@@ -2013,9 +1896,7 @@ def compute_largest_wrong_logit_quadratic(
                     - average_right_attention
                 )
                 results[q_tok, max_tok, n_copies_nonmax] = (
-                    average_wrong_logit
-                    + EUPU_high_rank_per_query_max_gap[q_tok]
-                    + EUPU_max_err
+                    average_wrong_logit + EUPU_per_query_max_gap[q_tok]
                 )
                 # add attention correction factor on right attention
                 results[q_tok, max_tok, n_copies_nonmax] += (

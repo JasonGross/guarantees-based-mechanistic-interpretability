@@ -14,6 +14,10 @@ from gbmi.analysis_tools.utils import make_local_tqdm
 from gbmi.utils.sequences import generate_all_sequences_for_model
 from gbmi.utils.sequences import generate_all_sequences
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU, all_attention_scores
+from gbmi.verification_tools.decomp import (
+    max_row_diffs_per_dim,
+    bound_max_row_diff_by_SVD,
+)
 
 
 @torch.no_grad()
@@ -680,23 +684,67 @@ def all_worst_EVOU(
 @dataclasses.dataclass
 class LargestWrongLogitQuadraticConfig:
     EUPU_handling: Literal[
-        "mean_query+max_diff", "max_diff", "global_max_diff"
+        "mean_query+max_diff", "svd_query+max_diff", "max_diff", "global_max_diff_exact"
     ] = "mean_query+max_diff"
     attention_handling: Literal[
         "mean_query+diff", "drop_average_query_per_output_logit_reasoning"
     ] = "mean_query+diff"
+    attention_error_handling: Literal[
+        "svd", "max_diff", "mean+max_diff", "svd+max_diff"
+    ] = "svd"
 
-    EUPU_OFF: ClassVar[Literal["global_max_diff"]] = "global_max_diff"
+    EUPU_OFF: ClassVar[Literal["global_max_diff_exact"]] = "global_max_diff_exact"
     attention_handling_OFF: ClassVar[
         Literal["drop_average_query_per_output_logit_reasoning"]
     ] = "drop_average_query_per_output_logit_reasoning"
+    attention_error_handling_OFF: ClassVar[Literal["svd"]] = "svd"
 
     @classmethod
-    @property
     def OFF(cls):
         return cls(
-            EUPU_handling=cls.EUPU_OFF, attention_handling=cls.attention_handling_OFF
+            EUPU_handling=cls.EUPU_OFF,
+            attention_handling=cls.attention_handling_OFF,
+            attention_error_handling=cls.attention_error_handling_OFF,
         )
+
+    def split_EPU(
+        self,
+        W_EP: Float[Tensor, "d_vocab_q d_model"],  # noqa F722
+        W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa F722
+        W_EP_mean_query: Optional[Float[Tensor, "d_model"]] = None,  # noqa F722
+    ) -> Tuple[Float[Tensor, "d_vocab_out"], Float[Tensor, "d_vocab_q"]]:  # noqa F821
+        """
+        Returns (EUPU_mean_query, EUPU_per_query_max_logit_diff)
+
+        Note that this function is correct regardless of what direction is passed for W_EP_mean_query, which merely determines how good the bound is in the svd_query+max_diff case only
+
+        Complexity: O(d_vocab_q * d_model + d_model * d_vocab_out) (+ d_vocab_q * d_model^2 if W_EP_mean_query is None and self.EUPU_handling == "svd_query+max_diff")
+        """
+        if self.EUPU_handling == "mean_query+max_diff":
+            W_EP_mean_query = W_EP.mean(dim=0)
+        elif self.EUPU_handling == "svd_query+max_diff":
+            if W_EP_mean_query is None:
+                U, _, Vh = torch.linalg.svd(W_EP)
+                W_EP_mean_query = U[:, 0] @ W_EP
+        else:
+            W_EP_mean_query = torch.zeros_like(W_EP).mean(dim=0)
+        # help the type checker
+        assert W_EP_mean_query is not None
+        EUPU_mean_query: Float[Tensor, "d_vocab_out"] = (  # noqa F821
+            W_EP_mean_query @ W_U
+        )
+        W_EP_per_query: Float[Tensor, "d_vocab_q d_model"] = (  # noqa F722
+            W_EP - W_EP_mean_query[None, :]
+        )
+        W_U_per_query_max_logit_diff: Float[Tensor, "d_model"] = (  # noqa F821
+            W_U.max(dim=0).values - W_U.min(dim=0).values
+        )
+        EUPU_per_query_max_logit_diff: Float[Tensor, "d_vocab_q"] = (  # noqa F821
+            W_EP_per_query.abs() @ W_U_per_query_max_logit_diff
+        )
+        if self.EUPU_handling == "global_max_diff_exact":
+            return self.split_EUPU(W_EP @ W_U)
+        return EUPU_mean_query, EUPU_per_query_max_logit_diff
 
     def split_EUPU(
         self,
@@ -713,14 +761,27 @@ class LargestWrongLogitQuadraticConfig:
         EUPU_per_query: Float[Tensor, "d_vocab_q d_vocab_out"] = (  # noqa F722
             EUPU - EUPU_mean_query[None, :]
         )
-        EUPU_per_query_max_logit_diff: Float[Tensor, "d_vocab_out"] = (  # noqa F821
+        EUPU_per_query_max_logit_diff: Float[Tensor, "d_vocab_q"] = (  # noqa F821
             EUPU_per_query.max(dim=-1).values - EUPU_per_query.min(dim=-1).values
         )
-        if self.EUPU_handling == "global_max_diff":
+        if self.EUPU_handling == "global_max_diff_exact":
             EUPU_per_query_max_logit_diff[:] = (
                 EUPU_per_query.max(dim=0).values - EUPU_per_query.min(dim=0).values
             )
         return EUPU_mean_query, EUPU_per_query_max_logit_diff
+
+    def bound_attention_error(
+        self, *matrices: Tensor
+    ) -> Union[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]]:  # noqa F821
+        match self.attention_error_handling:
+            case "svd":
+                return torch.tensor(bound_max_row_diff_by_SVD(*matrices)[0])
+            case "max_diff":
+                return max_row_diffs_per_dim(*matrices)
+            case "mean+max_diff":
+                raise NotImplemented("FIXME")
+            case "svd+max_diff":
+                raise NotImplemented("FIXME")
 
     def split_min_softmaxed_right_attention(
         self,

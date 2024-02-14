@@ -504,7 +504,7 @@ for v in results.values():
 
 # %%
 # load all model versions
-models = runtime.model_versions(cfg, max_count=5, step=1)  # max_count=3000, step=1)
+models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None
 models = list(models)
 

@@ -20,24 +20,13 @@ import datetime
 import hashlib
 import json
 from collections.abc import Collection
-from typing import Any, Callable, Mapping, Optional, TypeVar, Union
+from typing import Any, Callable, Mapping, Optional, Union
 from typing import Dict
 from functools import partial
 import base64
 
 import torch
-from torch.nn.modules.container import ModuleList
 from transformer_lens import HookedTransformer
-from transformer_lens.components import (
-    TransformerBlock,
-    Attention,
-    HookPoint,
-    Embed,
-    Unembed,
-    MLP,
-    LayerNorm,
-    PosEmbed,
-)
 import numpy
 
 # Implemented for https://github.com/lemon24/reader/issues/179
@@ -64,7 +53,11 @@ ExcludeFilter = Union[
 ]
 
 
-def get_hash(thing: object, exclude_filter: ExcludeFilter = None) -> bytes:
+def get_hash(
+    thing: object,
+    exclude_filter: ExcludeFilter = None,
+    dictify_by_default: bool = False,
+) -> bytes:
     """
     Returns a stable hash for the given object.
 
@@ -78,21 +71,37 @@ def get_hash(thing: object, exclude_filter: ExcludeFilter = None) -> bytes:
     """
     prefix = _VERSION.to_bytes(1, "big")
     digest = hashlib.md5(
-        _json_dumps(thing, exclude_filter=exclude_filter).encode("utf-8")
+        _json_dumps(
+            thing, exclude_filter=exclude_filter, dictify_by_default=dictify_by_default
+        ).encode("utf-8")
     ).digest()
     return prefix + digest[:-1]
 
 
-def get_hash_ascii(thing: object, exclude_filter: ExcludeFilter = None) -> str:
-    return base64.b64encode(get_hash(thing, exclude_filter=exclude_filter)).decode(
-        "ascii"
-    )
+def get_hash_ascii(
+    thing: object,
+    exclude_filter: ExcludeFilter = None,
+    dictify_by_default: bool = False,
+) -> str:
+    return base64.b64encode(
+        get_hash(
+            thing, exclude_filter=exclude_filter, dictify_by_default=dictify_by_default
+        )
+    ).decode("ascii")
 
 
-def _json_dumps(thing: object, exclude_filter: ExcludeFilter = None) -> str:
+def _json_dumps(
+    thing: object,
+    exclude_filter: ExcludeFilter = None,
+    dictify_by_default: bool = False,
+) -> str:
     return json.dumps(
         thing,
-        default=partial(_json_default, exclude_filter=exclude_filter),
+        default=partial(
+            _json_default,
+            exclude_filter=exclude_filter,
+            dictify_by_default=dictify_by_default,
+        ),
         # force formatting-related options to known values
         ensure_ascii=False,
         sort_keys=True,
@@ -101,7 +110,11 @@ def _json_dumps(thing: object, exclude_filter: ExcludeFilter = None) -> str:
     )
 
 
-def _json_default(thing: object, exclude_filter: ExcludeFilter = None) -> Any:
+def _json_default(
+    thing: object,
+    exclude_filter: ExcludeFilter = None,
+    dictify_by_default: bool = False,
+) -> Any:
     if exclude_filter is True:
         return None
     try:
@@ -113,32 +126,41 @@ def _json_default(thing: object, exclude_filter: ExcludeFilter = None) -> Any:
     elif isinstance(thing, torch.device) or isinstance(thing, torch.dtype):
         return str(thing)
     elif isinstance(thing, set):
-        return _json_dumps(sorted(thing), exclude_filter=exclude_filter)
+        return _json_dumps(
+            sorted(thing),
+            exclude_filter=exclude_filter,
+            dictify_by_default=dictify_by_default,
+        )
     elif isinstance(thing, torch.Tensor) or isinstance(thing, numpy.ndarray):
-        return _json_dumps(thing.tolist(), exclude_filter=exclude_filter)
+        return _json_dumps(
+            thing.tolist(),
+            exclude_filter=exclude_filter,
+            dictify_by_default=dictify_by_default,
+        )
     elif isinstance(thing, HookedTransformer):
         return _json_dumps(
-            thing.to("cpu", print_details=False).__dict__, exclude_filter=exclude_filter
+            thing.to("cpu", print_details=False).__dict__,
+            exclude_filter=exclude_filter,
+            dictify_by_default=dictify_by_default,
         )
-    elif any(
-        isinstance(thing, t)
-        for t in (
-            ModuleList,
-            TransformerBlock,
-            Attention,
-            Embed,
-            Unembed,
-            MLP,
-            LayerNorm,
-            PosEmbed,
-            HookPoint,
-            torch.nn.modules.linear.Identity,
-        )
+    elif (
+        hasattr(thing, "__dict__")
+        and dictify_by_default
+        and (not isinstance(thing, Callable) or thing.__dict__)
     ):
-        return _json_dumps(thing.__dict__, exclude_filter=exclude_filter)
-    raise TypeError(
-        f"Object of type {type(thing).__name__} {type(thing)} is not JSON serializable"
-    )
+        return _json_dumps(
+            thing.__dict__,
+            exclude_filter=exclude_filter,
+            dictify_by_default=dictify_by_default,
+        )
+    elif (
+        isinstance(thing, Callable)
+        and not thing.__dict__
+        and thing.__closure__ is None
+        and thing.__module__ is not None
+    ):
+        return f"{thing.__module__}.{thing.__name__}"
+    raise TypeError(f"Object {thing} of type {type(thing)} is not JSON serializable")
 
 
 def getattr_or_exclude(

@@ -6,6 +6,7 @@
 #
 ### Setup
 # %%
+from functools import partial
 from pathlib import Path
 from tqdm import tqdm
 import devinterp
@@ -33,6 +34,7 @@ from gbmi.exp_max_of_n.train import (
     train_or_load_model,
 )
 import gbmi.utils as utils
+from gbmi.utils.hashing import get_hash_ascii
 from gbmi.model import Config, RunData
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 import plotly.express as px
@@ -192,6 +194,7 @@ def estimate_rlcts(
     with memoshelve(
         estimate_learning_coeff,
         filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
+        get_hash=partial(get_hash_ascii, dictify_by_default=True),
     )() as memo_estimate_learning_coeff:
         estimates = {"sgld": []}
         for model in tqdm(models):

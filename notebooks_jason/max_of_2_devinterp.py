@@ -221,16 +221,6 @@ def estimate_rlcts(
                     device=device,
                     # verbose=False,
                 )
-                print("HERE)")
-                print(
-                    {
-                        k: get_hash_ascii(v, dictify_by_default=True)
-                        for k, v in args.items()
-                    }
-                )
-                import sys
-
-                sys.exit(0)
                 estimate = memo_estimate_learning_coeff(**args)
                 # sample(
                 #     model=model,
@@ -306,11 +296,13 @@ def estimate_llcs_sweeper(
                 position=tqdm_kwargs.get("position", 0) + 1,
                 leave=tqdm_kwargs.get("leave", True) and epsilon_i == len(epsilons) - 1,
             )
-            for gamma in tqdm(gammas, desc="gamma", **gamma_tqdm_kwags):
+            for gamma_i, gamma in enumerate(
+                tqdm(gammas, desc="gamma", **gamma_tqdm_kwags)
+            ):
                 sample_tqdm_kwags = gamma_tqdm_kwags | dict(
                     position=gamma_tqdm_kwags.get("position", 0) + 1,
                     leave=gamma_tqdm_kwags.get("leave", True)
-                    and epsilon_i == len(epsilons) - 1,
+                    and gamma_i == len(gammas) - 1,
                 )
                 optim_kwargs = dict(
                     lr=epsilon,
@@ -320,7 +312,8 @@ def estimate_llcs_sweeper(
                     temperature="adaptive",
                 )
                 pair = (epsilon, gamma)
-                results[pair] = memo_estimate_learning_coeff_with_summary(
+
+                args = dict(
                     model=model,
                     loader=train_loader,
                     criterion=criterion,
@@ -332,6 +325,14 @@ def estimate_llcs_sweeper(
                     online=True,
                     tqdm_kwargs=sample_tqdm_kwags,
                 )
+                # print(get_hash_ascii(args, dictify_by_default=True))
+                # print(
+                #     {
+                #         k: get_hash_ascii(v, dictify_by_default=True)
+                #         for k, v in args.items()
+                #     }
+                # )
+                results[pair] = memo_estimate_learning_coeff_with_summary(**args)
     return results
 
 
@@ -469,7 +470,9 @@ def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
 
 
 # %%
-results = estimate_llcs_sweeper(model, EPSILONS, GAMMAS, print_cache_miss=True)
+results = estimate_llcs_sweeper(
+    model, EPSILONS, GAMMAS, print_cache_miss=True, tqdm_kwargs=dict(position=0)
+)
 # %%
 plot_sweep_single_model(
     results,
@@ -498,13 +501,13 @@ models = list(models)
 EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [1, 10, 100]  # [1, 10, 100]
 all_results = []
-for i, cur_model in enumerate(tqdm(models, desc="model", position=2)):
+for i, cur_model in enumerate(tqdm(models, desc="model", position=0)):
     all_results.append(
         estimate_llcs_sweeper(
             model,
             EPSILONS,
             GAMMAS,
-            tqdm_kwargs=dict(position=3, leave=(i == len(models) - 1)),
+            tqdm_kwargs=dict(position=1, leave=(i == len(models) - 1)),
         )
     )
     try:

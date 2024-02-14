@@ -440,9 +440,9 @@ plot_sweep_single_model(
 for v in results.values():
     plot_single_graph(v)
 # %%
-import sys
+# import sys
 
-sys.exit(0)
+# sys.exit(0)
 # rlct_sgd = estimate_rlcts(
 #     models_saved["sgd"], train_loader, criterion, data_length, DEVICE
 # )
@@ -452,6 +452,29 @@ sys.exit(0)
 models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None
 models = list(models)
+
+# %%
+EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
+GAMMAS = [1, 10, 100]  # [1, 10, 100]
+all_results = []
+for i, cur_model in enumerate(tqdm(models, desc="model", position=0)):
+    all_results.append(estimate_llcs_sweeper(model, EPSILONS, GAMMAS))
+    try:
+        plot_sweep_single_model(
+            all_results[-1],
+            EPSILONS,
+            GAMMAS,
+            title="Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+        )
+    except Exception:
+        for v in all_results[-1].values():
+            plot_single_graph(v)
+
+
+# %%
+import sys
+
+sys.exit(0)
 
 
 # %% [markdown]

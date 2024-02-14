@@ -183,7 +183,13 @@ NUM_DRAWS = 2000
 #     "pastel"
 # )[:4]
 def estimate_rlcts(
-    models, train_loader, criterion, data_length, device, callbacks=None
+    models,
+    train_loader,
+    criterion,
+    data_length,
+    device,
+    callbacks=None,
+    print_cache_miss: bool = False,
 ):
     if callbacks is None:
         llc_estimator = OnlineLLCEstimator(
@@ -195,6 +201,7 @@ def estimate_rlcts(
         estimate_learning_coeff,
         filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
         get_hash=partial(get_hash_ascii, dictify_by_default=True),
+        print_cache_miss=print_cache_miss,
     )() as memo_estimate_learning_coeff:
         estimates = {"sgld": []}
         for model in tqdm(models, position=0):
@@ -257,6 +264,7 @@ rlct = estimate_rlcts(
     data_length,
     RLCT_DEVICE,
     callbacks=norm_callbacks,
+    print_cache_miss=True,
 )
 print(rlct)
 # %%
@@ -270,11 +278,14 @@ NUM_DRAWS = 1500
 import matplotlib.pyplot as plt
 
 
-def estimate_llcs_sweeper(model, epsilons, gammas, tqdm_kwags: dict = {}):
+def estimate_llcs_sweeper(
+    model, epsilons, gammas, print_cache_miss: bool = False, tqdm_kwags: dict = {}
+):
     results = {}
     with memoshelve(
         estimate_learning_coeff_with_summary,
         filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
+        print_cache_miss=print_cache_miss,
     )() as memo_estimate_learning_coeff_with_summary:
         for epsilon_i, epsilon in enumerate(
             tqdm(epsilons, desc="epsilon", **tqdm_kwags)

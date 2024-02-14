@@ -26,6 +26,18 @@ from functools import partial
 import base64
 
 import torch
+from torch.nn.modules.container import ModuleList
+from transformer_lens import HookedTransformer
+from transformer_lens.components import (
+    TransformerBlock,
+    Attention,
+    HookPoint,
+    Embed,
+    Unembed,
+    MLP,
+    LayerNorm,
+    PosEmbed,
+)
 import numpy
 
 # Implemented for https://github.com/lemon24/reader/issues/179
@@ -100,9 +112,36 @@ def _json_default(thing: object, exclude_filter: ExcludeFilter = None) -> Any:
         return thing.isoformat(timespec="microseconds")
     elif isinstance(thing, torch.device) or isinstance(thing, torch.dtype):
         return str(thing)
+    elif isinstance(thing, set):
+        return _json_dumps(sorted(thing), exclude_filter=exclude_filter)
     elif isinstance(thing, torch.Tensor) or isinstance(thing, numpy.ndarray):
         return _json_dumps(thing.tolist(), exclude_filter=exclude_filter)
-    raise TypeError(f"Object of type {type(thing).__name__} is not JSON serializable")
+    elif isinstance(thing, HookedTransformer):
+        device = thing.device
+        result = _json_dumps(
+            thing.to("cpu", print_details=False).__dict__, exclude_filter=exclude_filter
+        )
+        thing.to(device, print_details=False)
+        return result
+    elif any(
+        isinstance(thing, t)
+        for t in (
+            ModuleList,
+            TransformerBlock,
+            Attention,
+            Embed,
+            Unembed,
+            MLP,
+            LayerNorm,
+            PosEmbed,
+            HookPoint,
+            torch.nn.modules.linear.Identity,
+        )
+    ):
+        return _json_dumps(thing.__dict__, exclude_filter=exclude_filter)
+    raise TypeError(
+        f"Object of type {type(thing).__name__} {type(thing)} is not JSON serializable"
+    )
 
 
 def getattr_or_exclude(

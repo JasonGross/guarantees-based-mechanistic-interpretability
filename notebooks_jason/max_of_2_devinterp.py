@@ -208,9 +208,9 @@ def estimate_rlcts(
             for method, kwargs in [
                 ("sgld", {"lr": 1e-5, "elasticity": 100.0}),  # 100.0
             ]:
-                estimate = memo_estimate_learning_coeff(
-                    model,
-                    train_loader,
+                args = dict(
+                    model=model,
+                    loader=train_loader,
                     criterion=criterion,
                     optimizer_kwargs=dict(num_samples=data_length, **kwargs),
                     sampling_method=SGNHT if method == "sgnht" else SGLD,
@@ -221,6 +221,17 @@ def estimate_rlcts(
                     device=device,
                     # verbose=False,
                 )
+                print("HERE)")
+                print(
+                    {
+                        k: get_hash_ascii(v, dictify_by_default=True)
+                        for k, v in args.items()
+                    }
+                )
+                import sys
+
+                sys.exit(0)
+                estimate = memo_estimate_learning_coeff(**args)
                 # sample(
                 #     model=model,
                 #     loader=train_loader,

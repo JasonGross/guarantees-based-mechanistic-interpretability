@@ -6,6 +6,7 @@
 #
 ### Setup
 # %%
+from pathlib import Path
 from tqdm import tqdm
 import devinterp
 from devinterp.slt import estimate_learning_coeff, estimate_learning_coeff_with_summary
@@ -148,6 +149,9 @@ runtime, model = train_or_load_model(cfg, force=force)
 datamodule = MaxOfNDataModule(cfg)
 datamodule.setup("train")
 training_wrapper = MaxOfNTrainingWrapper(cfg, model)
+# %%
+cache_dir = Path(__file__).parent / ".cache"
+cache_dir.mkdir(exist_ok=True)
 
 # %%
 # load all model versions
@@ -185,44 +189,48 @@ def estimate_rlcts(
         )
         callbacks = [llc_estimator]
 
-    estimates = {"sgld": []}
-    for model in tqdm(models):
-        for method, kwargs in [
-            ("sgld", {"lr": 1e-5, "elasticity": 100.0}),  # 100.0
-        ]:
-            estimate = estimate_learning_coeff(
-                model,
-                train_loader,
-                criterion=criterion,
-                optimizer_kwargs=dict(num_samples=data_length, **kwargs),
-                sampling_method=SGNHT if method == "sgnht" else SGLD,
-                num_chains=1,
-                num_draws=400,
-                num_burnin_steps=0,
-                num_steps_bw_draws=1,
-                device=device,
-                # verbose=False,
-            )
-            # sample(
-            #     model=model,
-            #     loader=train_loader,
-            #     criterion=criterion,
-            #     optimizer_kwargs=dict(num_samples=data_length, **kwargs),
-            #     sampling_method=SGLD,
-            #     num_chains=1,
-            #     num_draws=10,
-            #     callbacks=callbacks,
-            #     device=device,
-            # )
+    with memoshelve(
+        estimate_learning_coeff,
+        filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
+    )() as memo_estimate_learning_coeff:
+        estimates = {"sgld": []}
+        for model in tqdm(models):
+            for method, kwargs in [
+                ("sgld", {"lr": 1e-5, "elasticity": 100.0}),  # 100.0
+            ]:
+                estimate = memo_estimate_learning_coeff(
+                    model,
+                    train_loader,
+                    criterion=criterion,
+                    optimizer_kwargs=dict(num_samples=data_length, **kwargs),
+                    sampling_method=SGNHT if method == "sgnht" else SGLD,
+                    num_chains=1,
+                    num_draws=400,
+                    num_burnin_steps=0,
+                    num_steps_bw_draws=1,
+                    device=device,
+                    # verbose=False,
+                )
+                # sample(
+                #     model=model,
+                #     loader=train_loader,
+                #     criterion=criterion,
+                #     optimizer_kwargs=dict(num_samples=data_length, **kwargs),
+                #     sampling_method=SGLD,
+                #     num_chains=1,
+                #     num_draws=10,
+                #     callbacks=callbacks,
+                #     device=device,
+                # )
 
-            # results = {}
+                # results = {}
 
-            # for callback in callbacks:
-            #     if hasattr(callback, "sample"):
-            #         results.update(callback.sample())
+                # for callback in callbacks:
+                #     if hasattr(callback, "sample"):
+                #         results.update(callback.sample())
 
-            # estimates[method].append(results)
-            estimates[method].append(estimate)
+                # estimates[method].append(results)
+                estimates[method].append(estimate)
     return estimates
 
 
@@ -261,28 +269,31 @@ import matplotlib.pyplot as plt
 
 def estimate_llcs_sweeper(model, epsilons, gammas):
     results = {}
-    with memoshelve()
-    for epsilon in epsilons:
-        for gamma in gammas:
-            optim_kwargs = dict(
-                lr=epsilon,
-                noise_level=1.0,
-                elasticity=gamma,
-                num_samples=len(train_data),
-                temperature="adaptive",
-            )
-            pair = (epsilon, gamma)
-            results[pair] = estimate_learning_coeff_with_summary(
-                model=model,
-                loader=train_loader,
-                criterion=criterion,
-                sampling_method=SGLD,
-                optimizer_kwargs=optim_kwargs,
-                num_chains=NUM_CHAINS,
-                num_draws=NUM_DRAWS,
-                device=DEVICE,
-                online=True,
-            )
+    with memoshelve(
+        estimate_learning_coeff_with_summary,
+        filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
+    )() as memo_estimate_learning_coeff_with_summary:
+        for epsilon in epsilons:
+            for gamma in gammas:
+                optim_kwargs = dict(
+                    lr=epsilon,
+                    noise_level=1.0,
+                    elasticity=gamma,
+                    num_samples=len(train_data),
+                    temperature="adaptive",
+                )
+                pair = (epsilon, gamma)
+                results[pair] = estimate_learning_coeff_with_summary(
+                    model=model,
+                    loader=train_loader,
+                    criterion=criterion,
+                    sampling_method=SGLD,
+                    optimizer_kwargs=optim_kwargs,
+                    num_chains=NUM_CHAINS,
+                    num_draws=NUM_DRAWS,
+                    device=DEVICE,
+                    online=True,
+                )
     return results
 
 

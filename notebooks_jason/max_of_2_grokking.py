@@ -616,6 +616,8 @@ if True:
         }
     )
     wandb.finish()
+
+
 # %% [markdown]
 ### Explanation
 #
@@ -640,9 +642,14 @@ if True:
 # %% [markdown]
 # # Essential Dynamics
 # %%
-datamodule = MaxOfNDataModule(cfg)
-datamodule.setup("train")
-with torch.no_grad():
+# @title make essential dynamics code
+@torch.no_grad()
+def make_essential_dynamics(
+    cfg: Config[MaxOfN],
+    models: List[Tuple[Any, Optional[Tuple[RunData, HookedTransformer]], Any]],
+):
+    datamodule = MaxOfNDataModule(cfg)
+    datamodule.setup("train")
     essential_dynamics = [
         torch.cat(
             tuple(
@@ -654,47 +661,62 @@ with torch.no_grad():
         )
         for _, (_, old_model), _ in tqdm(models)
     ]
-# %%
-with torch.no_grad():
+
     essential_dynamics_matrix = torch.stack(essential_dynamics, dim=0)
 
-# %%
-print(essential_dynamics_matrix.shape)
-# %%
-essential_dynamics_matrix_centered = essential_dynamics_matrix[:, : 64 * 64 * 10]
-essential_dynamics_matrix_centered -= essential_dynamics_matrix_centered.mean(
-    dim=-1, keepdim=True
-)
-U, S, Vh = torch.linalg.svd(essential_dynamics_matrix_centered)
-# %%
-indices = np.arange(U.shape[0])
-# 3d scatter plot first three columns of U
-px.scatter_3d(x=U[:, 0], y=U[:, 1], z=U[:, 2], color=indices).show()
-# %%
-n = 6
-fig = make_subplots(
-    rows=n, cols=n, subplot_titles=[f"{j} vs {i}" for i in range(n) for j in range(n)]
-)
-for row in range(n):
-    for col in range(n):
-        i, j = row, col
-        fig.add_trace(
-            go.Scatter(
-                x=U[:, i],
-                y=U[:, j],
-                mode="markers",
-                marker=dict(color=indices),
-                name=f"{j} vs {i}",
-                hovertemplate="%{x}, %{y}, %{marker.color}",
-            ),
-            row=row + 1,
-            col=col + 1,
-        )
-fig.update_layout(
-    height=2000,
-    width=2000,
-    title_text="Essential Dynamics Scatter Plots Grid, Principle Components",
-)
-fig.show()
+    essential_dynamics_matrix_centered = essential_dynamics_matrix[:, : 64 * 64 * 10]
+    essential_dynamics_matrix_centered -= essential_dynamics_matrix_centered.mean(
+        dim=-1, keepdim=True
+    )
+    U, S, Vh = torch.linalg.svd(essential_dynamics_matrix_centered)
 
+    return essential_dynamics_matrix, essential_dynamics_matrix_centered, (U, S, Vh)
+
+
+def plot3d_essential_dynamics(U: Tensor):
+    indices = np.arange(U.shape[0])
+    # 3d scatter plot first three columns of U
+    px.scatter_3d(x=U[:, 0], y=U[:, 1], z=U[:, 2], color=indices).show()
+
+
+def plot_essential_dynamics(
+    U: Tensor, n: int = 6, height: int = 2000, width: int = 2000
+):
+    indices = np.arange(U.shape[0])
+    fig = make_subplots(
+        rows=n,
+        cols=n,
+        subplot_titles=[f"{i} vs {j}" for i in range(n) for j in range(n)],
+    )
+    for row in range(n):
+        for col in range(n):
+            j, i = row, col
+            fig.add_trace(
+                go.Scatter(
+                    x=U[:, i],
+                    y=U[:, j],
+                    mode="markers",
+                    marker=dict(color=indices),
+                    name=f"{j} vs {i}",
+                    hovertemplate="%{x}, %{y}, %{marker.color}",
+                ),
+                row=row + 1,
+                col=col + 1,
+            )
+    fig.update_layout(
+        height=height,
+        width=width,
+        title_text="Essential Dynamics Scatter Plots Grid, Principle Components",
+    )
+    fig.show()
+
+
+# %%
+essential_dynamics_matrix, essential_dynamics_matrix_centered, (U, S, Vh) = (
+    make_essential_dynamics(cfg, models)
+)
+# %%
+plot3d_essential_dynamics(U)
+# %%
+plot_essential_dynamics(U)
 # %%

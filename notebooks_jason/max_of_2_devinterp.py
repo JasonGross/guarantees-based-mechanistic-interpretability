@@ -270,7 +270,7 @@ NUM_DRAWS = 1500
 import matplotlib.pyplot as plt
 
 
-def estimate_llcs_sweeper(model, epsilons, gammas, position=0):
+def estimate_llcs_sweeper(model, epsilons, gammas, position=2):
     results = {}
     with memoshelve(
         estimate_learning_coeff_with_summary,
@@ -463,8 +463,8 @@ models = list(models)
 EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [1, 10, 100]  # [1, 10, 100]
 all_results = []
-for i, cur_model in enumerate(tqdm(models, desc="model", position=0)):
-    all_results.append(estimate_llcs_sweeper(model, EPSILONS, GAMMAS))
+for i, cur_model in enumerate(tqdm(models, desc="model", position=2)):
+    all_results.append(estimate_llcs_sweeper(model, EPSILONS, GAMMAS, position=3))
     try:
         plot_sweep_single_model(
             all_results[-1],

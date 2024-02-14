@@ -834,3 +834,458 @@ if UPLOAD_TO_WANDB:
     assert run is not None
     run.log({f"essential_dynamics": fig6})
     wandb.finish()
+
+
+# %%
+def osculating_circle(curve, t_index):
+    # Handle edge cases
+    if t_index == 0:
+        t_index = 1
+    if t_index == len(curve) - 1:
+        t_index = len(curve) - 2
+
+    # Central differences for first and second derivatives
+    r_prime = (curve[t_index + 1] - curve[t_index - 1]) / 2
+    r_double_prime = curve[t_index + 1] - 2 * curve[t_index] + curve[t_index - 1]
+
+    # Append a zero for 3D cross product
+    r_prime_3d = np.append(r_prime, [0])
+    r_double_prime_3d = np.append(r_double_prime, [0])
+
+    # Curvature calculation and normal vector direction
+    cross_product = np.cross(r_prime_3d, r_double_prime_3d)
+    curvature = np.linalg.norm(cross_product) / np.linalg.norm(r_prime) ** 3
+    signed_curvature = np.sign(cross_product[2])  # Sign of z-component of cross product
+    radius_of_curvature = 1 / (curvature + 1e-12)
+
+    # Unit tangent vector
+    tangent = r_prime / np.linalg.norm(r_prime)
+
+    # Unit normal vector, direction depends on the sign of the curvature
+    if signed_curvature >= 0:
+        norm_perp = np.array(
+            [-tangent[1], tangent[0]]
+        )  # Rotate tangent by 90 degrees counter-clockwise
+    else:
+        norm_perp = np.array(
+            [tangent[1], -tangent[0]]
+        )  # Rotate tangent by 90 degrees clockwise
+
+    # Center of the osculating circle
+    center = curve[t_index] + radius_of_curvature * norm_perp
+
+    return center, radius_of_curvature
+
+
+# %%
+def get_nearest_step(steps, step):
+    idx = np.argmin(np.abs(np.array(steps) - step))
+    return steps[idx]
+
+
+# %%
+def plot_essential_dynamics_grid(
+    samples,
+    steps,
+    transitions=None,
+    colors=None,
+    num_pca_components=3,
+    plot_caustic=True,
+    figsize=(20, 6),
+    marked_cusp_data=None,
+    use_cache=False,
+    num_sharp_points=20,
+    num_vertices=35,
+    osculate_start=1,
+    osculate_end_offset=0,
+    osculate_skip=8,
+    smoothing_early=10,
+    smoothing_late=60,
+    smoothing_boundary=200,
+    show_vertex_influence=False,
+    use_3D=False,
+):
+
+    CUTOFF_START = osculate_start
+    CUTOFF_END = osculate_end_offset
+    OSCULATE_SKIP = osculate_skip
+    sigma_early = smoothing_early
+    sigma_late = smoothing_late
+    LATE_BOUNDARY = smoothing_boundary
+    START_LERP = 0.2 * LATE_BOUNDARY
+    END_LERP = LATE_BOUNDARY
+
+    palette = "tab10"
+    colors = colors or sns.color_palette(palette)
+
+    num_pca_combos = (num_pca_components * (num_pca_components - 1)) // 2
+
+    if not use_3D:
+        fig, axes = plt.subplots(1, num_pca_combos, figsize=figsize)
+        if num_pca_combos == 1:
+            axes = [axes]
+    else:
+        # In 3D we show only one PC pair on the left hand side
+        figsize = (16, 7)
+        fig = plt.figure(figsize=figsize)
+        gs = gridspec.GridSpec(1, 3, figure=fig)
+        ax1 = fig.add_subplot(gs[0, 0])
+        ax2 = fig.add_subplot(gs[0, 1])
+        axes = [ax1, ax2]
+        ax_3D = fig.add_subplot(gs[0, 2], projection="3d")
+        elevation = 45  # Angle above the x-y plane
+        azimuth = 45  # Angle around the z-axis
+        ax_3D.view_init(elev=elevation, azim=azimuth)
+
+    labels = [""]
+
+    print("Number of samples: " + str(len(samples)))
+
+    #
+    # 2D plots
+    #
+
+    I = 0
+
+    # Make sure we have the smoothed data for each PC
+    smoothed_pcs = []
+
+    for i in range(0, num_pca_components):
+        print(f"Processing smoothing for PC{i+1}")
+        file_path_smoothings = f"smoothed_pc_i{i}.pkl"
+        if use_cache and os.path.exists(file_path_smoothings):
+            print("    Using cached smoothing data")
+            with open(file_path_smoothings, "rb") as file:
+                smoothed_pc = pickle.load(file)
+        else:
+            smoothed_pc = np.copy(samples[:, :1])
+            for z in range(len(samples)):
+                if z < START_LERP:
+                    sigma = sigma_early
+                elif z > END_LERP:
+                    sigma = sigma_late
+                else:
+                    sigma = (sigma_late - sigma_early) / (END_LERP - START_LERP) * (
+                        z - START_LERP
+                    ) + sigma_early
+
+                smoothed_pc[z, 0] = scipy.ndimage.gaussian_filter1d(
+                    samples[:, i], sigma
+                )[z]
+
+            with open(file_path_smoothings, "wb") as file:
+                pickle.dump(smoothed_pc, file)
+
+        smoothed_pcs.append(smoothed_pc)
+
+    # Make sure we have the osculating data for each pair of PCs
+
+    for i in range(1, num_pca_components):
+        for j in range(i):
+            # For each PC pair we first do some data processing, then plotting
+            print(f"Processing PC{j+1} vs PC{i+1}")
+
+            smoothed_pc_i = smoothed_pcs[i]
+            smoothed_pc_j = smoothed_pcs[j]
+            smoothed_samples = np.column_stack((smoothed_pc_i, smoothed_pc_j))
+
+            file_path_osculating = f"osculating_data_i{i}_j{j}.pkl"
+            if use_cache and os.path.exists(file_path_osculating):
+                print("    Using cached osculate data")
+                with open(file_path_osculating, "rb") as file:
+                    osculating_data = pickle.load(file)
+            else:
+                osculating_data = {}
+
+                for z in range(CUTOFF_START, len(samples) - CUTOFF_END, 1):
+                    osculating_data[z] = osculating_circle(smoothed_samples, z)
+
+                with open(file_path_osculating, "wb") as file:
+                    pickle.dump(osculating_data, file)
+
+            # The 3D plotting needs osculating data for the marked cusps
+            if use_3D:
+                for t in range(len(marked_cusp_data)):
+                    cusp_index = marked_cusp_data[t]["step"]
+                    if not "osculating_data" in marked_cusp_data[t].keys():
+                        marked_cusp_data[t]["osculating_data"] = []
+                    marked_cusp_data[t]["osculating_data"].append(
+                        osculating_data[cusp_index]
+                    )
+
+            radii_list = []
+            dcenter_list = []
+            dcenter = {}
+            radii = {}
+            prev_center = None
+
+            for z in range(CUTOFF_START, len(samples) - CUTOFF_END, OSCULATE_SKIP):
+                center, radius = osculating_data[z]
+                radii[z] = radius
+                radii_list.append(radius)
+                dcenter[z] = 1000
+
+                if prev_center is not None:
+                    d = np.linalg.norm(center - prev_center)
+                    dcenter[z] = d
+                    dcenter_list.append(d)
+
+                color = "lightgray"
+                circle = plt.Circle(
+                    (center[0].item(), center[1].item()),
+                    radius.item(),
+                    alpha=0.5,
+                    color=color,
+                    lw=0.5,
+                    fill=False,
+                )
+
+                if I < len(axes):
+                    axes[I].add_artist(circle)
+
+                prev_center = center
+
+            # Find high curvature points
+            radii_list.sort()
+            upper_bound = 0
+            if len(radii_list) > num_sharp_points:
+                upper_bound = radii_list[num_sharp_points]
+
+            # Find caustic cusps
+            dcenter_list.sort()
+            dcenter_bound = 0
+            if len(dcenter_list) > num_vertices:
+                dcenter_bound = dcenter_list[num_vertices]
+
+            # Plot un-smoothed points in the background
+            # if I < len(axes):
+            #    axes[I].scatter(x=samples[:, i], y=samples[:, j], alpha=0.8, color="lightgray", s=10)
+
+            if I < len(axes):
+                if transitions:
+                    for k, (start, end, stage) in enumerate(transitions):
+                        start_idx = steps.index(get_nearest_step(steps, start))
+                        end_idx = steps.index(get_nearest_step(steps, end)) + 1
+
+                        axes[I].plot(
+                            smoothed_samples[start_idx:end_idx, 0],
+                            smoothed_samples[start_idx:end_idx, 1],
+                            color=colors[k],
+                            lw=2,
+                        )
+                else:
+                    axes[I].plot(samples[:, i], samples[:, j])
+
+            for z in range(CUTOFF_START, len(samples) - CUTOFF_END, OSCULATE_SKIP):
+                if (
+                    z > 2 * OSCULATE_SKIP
+                    and dcenter[z] < dcenter_bound
+                    and dcenter[z - OSCULATE_SKIP] < dcenter_bound
+                ):
+                    print(
+                        "    Vertex ["
+                        + str(z)
+                        + "] rate of change of osculate center "
+                        + str(dcenter[z])
+                    )
+                    if I < len(axes):
+                        axes[I].scatter(
+                            smoothed_samples[z, 0], smoothed_samples[z, 1], color="gold"
+                        )
+
+            # Mark in red high curvature points
+            for z in range(CUTOFF_START, len(samples) - CUTOFF_END, OSCULATE_SKIP):
+                if radii[z] < upper_bound:
+                    print("    Sharp point [" + str(z) + "] curvature " + str(radii[z]))
+                    if I < len(axes):
+                        axes[I].scatter(
+                            smoothed_samples[z, 0], smoothed_samples[z, 1], color="red"
+                        )
+
+            if I >= len(axes):
+                continue
+
+            current_x_limits = axes[I].get_xlim()
+            current_y_limits = axes[I].get_ylim()
+
+            # Draw the evolute
+            if plot_caustic:
+                for z in range(CUTOFF_START, len(samples) - CUTOFF_END, 1):
+                    center, radius = osculating_data[z]
+
+                    if (
+                        center[0].item() > current_x_limits[0]
+                        and center[0].item() < current_x_limits[1]
+                    ):
+                        if (
+                            center[1].item() > current_y_limits[0]
+                            and center[1].item() < current_y_limits[1]
+                        ):
+                            axes[I].scatter(
+                                [center[0].item()],
+                                [center[1].item()],
+                                color="black",
+                                s=0.2,
+                            )
+
+            if marked_cusp_data:
+                for marked_cusp_id in range(len(marked_cusp_data)):
+                    marked_cusp = marked_cusp_data[marked_cusp_id]["step"]
+                    axes[I].scatter(
+                        smoothed_samples[marked_cusp, 0],
+                        smoothed_samples[marked_cusp, 1],
+                        color="green",
+                        marker="x",
+                        s=40,
+                    )
+                    center, radius = osculating_data[marked_cusp]
+                    axes[I].scatter(
+                        [center[0].item()],
+                        [center[1].item()],
+                        color="green",
+                        marker="x",
+                        s=40,
+                    )
+
+                    if show_vertex_influence:
+                        vertex_influence_start = marked_cusp_data[marked_cusp_id][
+                            "influence_start"
+                        ]
+                        vertex_influence_end = marked_cusp_data[marked_cusp_id][
+                            "influence_end"
+                        ]
+                        axes[I].scatter(
+                            smoothed_samples[vertex_influence_start, 0],
+                            smoothed_samples[vertex_influence_start, 1],
+                            color="blue",
+                            marker="x",
+                            s=40,
+                        )
+                        axes[I].scatter(
+                            smoothed_samples[vertex_influence_end, 0],
+                            smoothed_samples[vertex_influence_end, 1],
+                            color="blue",
+                            marker="x",
+                            s=40,
+                        )
+
+            axes[I].set_xlabel(f"PC {i+1}")
+            axes[I].set_ylabel(f"PC {j+1}")
+
+            I += 1
+
+    #
+    # 3D plots
+    #
+
+    if use_3D:
+        # ax_3D.scatter(samples[:, 0], samples[:, 1], samples[:,2], color="lightgray", s=10)
+
+        smoothed_samples = np.copy(samples[:, :3])
+        for z in range(len(samples)):
+            if z < START_LERP:
+                sigma = sigma_early
+            elif z > END_LERP:
+                sigma = sigma_late
+            else:
+                sigma = (sigma_late - sigma_early) / (END_LERP - START_LERP) * (
+                    z - START_LERP
+                ) + sigma_early
+
+            smoothed_samples = np.column_stack(
+                (smoothed_pcs[0], smoothed_pcs[1], smoothed_pcs[2])
+            )
+
+        if transitions:
+            for k, (start, end, stage) in enumerate(transitions):
+                start_idx = steps.index(get_nearest_step(steps, start))
+                end_idx = steps.index(get_nearest_step(steps, end)) + 1
+
+                ax_3D.plot(
+                    smoothed_samples[start_idx:end_idx, 0],
+                    smoothed_samples[start_idx:end_idx, 1],
+                    smoothed_samples[start_idx:end_idx, 2],
+                    color=colors[k],
+                )
+
+        for t in range(len(marked_cusp_data)):
+            marked_cusp = marked_cusp_data[t]
+            cusp_index = marked_cusp["step"]
+            osculating_data = marked_cusp["osculating_data"]
+
+            center_pc2_pc1, radius_pc2_pc1 = osculating_data[0]
+            center_pc3_pc1, radius_pc3_pc1 = osculating_data[1]
+
+            coeff_pc1 = center_pc2_pc1[1]
+            coeff_pc2 = center_pc2_pc1[0]
+            coeff_pc3 = center_pc3_pc1[0]
+
+            print(f"Placing sphere at ({coeff_pc1, coeff_pc2, coeff_pc3})")
+
+            print(f"Comparison of radii {radius_pc2_pc1} vs {radius_pc3_pc1}")
+            radius = np.max([radius_pc2_pc1, radius_pc3_pc1])
+
+            # Generate points for a sphere
+            u = np.linspace(0, 2 * np.pi, 100)
+            v = np.linspace(0, np.pi, 100)
+            x = (
+                radius * np.outer(np.cos(u), np.sin(v)) + coeff_pc1
+            )  # x coordinates of the sphere
+            y = (
+                radius * np.outer(np.sin(u), np.sin(v)) + coeff_pc2
+            )  # y coordinates of the sphere
+            z = (
+                radius * np.outer(np.ones(np.size(u)), np.cos(v)) + coeff_pc3
+            )  # z coordinates of the sphere
+
+            # Plot the sphere
+            ax_3D.plot_surface(
+                x, y, z, color="r", alpha=0.3, linewidth=0
+            )  # 'alpha' controls the transparency
+            ax_3D.set_xlabel("PC 1")
+            ax_3D.set_ylabel("PC 2")
+            ax_3D.set_zlabel("PC 3")
+
+    axes[0].set_ylabel(f"{labels[0]}\n\nPC 1")
+
+    plt.tight_layout(rect=[0, 0, 1, 1])
+
+    if transitions:
+        legend_ax = fig.add_axes(
+            [0.1, -0.03, 0.95, 0.05]
+        )  # Adjust these values as needed
+        handles = [
+            plt.Line2D([0], [0], color=colors[i], linestyle="-")
+            for i in range(len(transitions))
+        ]
+        labels = [label for _, _, label in transitions]
+        legend_ax.legend(handles, labels, loc="center", ncol=len(labels), frameon=False)
+        legend_ax.axis("off")
+
+    fig.set_facecolor("white")
+
+    return fig
+
+
+# %%
+import seaborn as sns
+from torch import nn
+from torch.nn import functional as F
+import matplotlib.pyplot as plt
+import matplotlib.font_manager
+import matplotlib.gridspec as gridspec
+
+import pickle
+import scipy.ndimage
+
+# from sklearn.decomposition import PCA
+
+plot_essential_dynamics_grid(
+    U,
+    torch.arange(len(U)) * 10,
+    smoothing_early=4,
+    smoothing_late=4,
+    smoothing_boundary=4,
+    num_vertices=7,
+    num_sharp_points=1,
+)

@@ -685,6 +685,7 @@ for row in range(n):
                 mode="markers",
                 marker=dict(color=indices),
                 name=f"{j} vs {i}",
+                hovertemplate="%{x}, %{y}, %{marker.color}",
             ),
             row=row + 1,
             col=col + 1,

@@ -34,7 +34,7 @@ from gbmi.exp_max_of_n.train import (
     train_or_load_model,
 )
 import gbmi.utils as utils
-from gbmi.utils.hashing import get_hash_ascii
+from gbmi.utils.hashing import get_hash_ascii, _json_dumps
 from gbmi.model import Config, RunData
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 import plotly.express as px
@@ -280,7 +280,12 @@ import matplotlib.pyplot as plt
 
 
 def estimate_llcs_sweeper(
-    model, epsilons, gammas, print_cache_miss: bool = False, tqdm_kwargs: dict = {}
+    model,
+    epsilons,
+    gammas,
+    print_cache_miss: bool = False,
+    tqdm_kwargs: dict = {},
+    verbose_cache_miss: bool = False,
 ):
     results = {}
     with memoshelve(
@@ -289,6 +294,7 @@ def estimate_llcs_sweeper(
         get_hash=partial(get_hash_ascii, dictify_by_default=True),
         print_cache_miss=print_cache_miss,
     )() as memo_estimate_learning_coeff_with_summary:
+        _ = len(train_loader)  # for consistent hashing
         for epsilon_i, epsilon in enumerate(
             tqdm(epsilons, desc="epsilon", **tqdm_kwargs)
         ):
@@ -325,13 +331,18 @@ def estimate_llcs_sweeper(
                     online=True,
                     tqdm_kwargs=sample_tqdm_kwags,
                 )
-                # print(get_hash_ascii(args, dictify_by_default=True))
-                # print(
-                #     {
-                #         k: get_hash_ascii(v, dictify_by_default=True)
-                #         for k, v in args.items()
-                #     }
-                # )
+                if verbose_cache_miss and print_cache_miss:
+                    print(get_hash_ascii(args, dictify_by_default=True))
+                    print(
+                        {
+                            k: get_hash_ascii(v, dictify_by_default=True)
+                            for k, v in args.items()
+                        }
+                    )
+                    print(
+                        f"hash(train_loader)= {get_hash_ascii(train_loader, dictify_by_default=True)}"
+                    )
+                    print(_json_dumps(train_loader, dictify_by_default=True))
                 results[pair] = memo_estimate_learning_coeff_with_summary(**args)
     return results
 
@@ -478,7 +489,7 @@ plot_sweep_single_model(
     results,
     EPSILONS,
     GAMMAS,
-    title="Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
 )
 # %%
 for v in results.values():
@@ -493,7 +504,7 @@ for v in results.values():
 
 # %%
 # load all model versions
-models = runtime.model_versions(cfg, max_count=3000, step=1)
+models = runtime.model_versions(cfg, max_count=5, step=1)  # max_count=3000, step=1)
 assert models is not None
 models = list(models)
 
@@ -501,25 +512,27 @@ models = list(models)
 EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [1, 10, 100]  # [1, 10, 100]
 all_results = []
-for i, cur_model in enumerate(tqdm(models, desc="model", position=0)):
+for i, cur_model in enumerate(tqdm(list(models)[:3], desc="model", position=0)):
     all_results.append(
         estimate_llcs_sweeper(
             model,
             EPSILONS,
             GAMMAS,
             tqdm_kwargs=dict(position=1, leave=(i == len(models) - 1)),
+            # verbose_cache_miss=True,
+            # print_cache_miss=True,
         )
     )
-    try:
-        plot_sweep_single_model(
-            all_results[-1],
-            EPSILONS,
-            GAMMAS,
-            title="Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
-        )
-    except Exception:
-        for v in all_results[-1].values():
-            plot_single_graph(v)
+    # try:
+    plot_sweep_single_model(
+        all_results[-1],
+        EPSILONS,
+        GAMMAS,
+        title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+    )
+    # except Exception:
+    #     for v in all_results[-1].values():
+    #         plot_single_graph(v)
 
 
 # %%

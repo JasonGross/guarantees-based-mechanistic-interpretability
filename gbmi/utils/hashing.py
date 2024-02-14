@@ -143,6 +143,8 @@ def _json_default(
             exclude_filter=exclude_filter,
             dictify_by_default=dictify_by_default,
         )
+    elif isinstance(thing, type):
+        return f"{thing.__module__}.{thing.__name__}"
     elif (
         hasattr(thing, "__dict__")
         and dictify_by_default

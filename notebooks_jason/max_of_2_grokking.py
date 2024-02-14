@@ -18,6 +18,7 @@ from gbmi.exp_max_of_n.plot import (
 from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
     MaxOfN,
+    MaxOfNDataModule,
     train_or_load_model,
 )
 import gbmi.utils as utils
@@ -636,4 +637,63 @@ if True:
 #
 #
 # Added note: [2210.01117: Omnigrok: Grokking Beyond Algorithmic Data](https://arxiv.org/abs/2210.01117) claims that "Grokking is caused by the mismatch between training and test loss landscapes."  This demo shows that this explanation isn't a complete picture, though, because there's still a phase transition in *training accuracy* even apart from the train-test loss landscape mismatch.
+# %% [markdown]
+# # Essential Dynamics
+# %%
+datamodule = MaxOfNDataModule(cfg)
+datamodule.setup("train")
+with torch.no_grad():
+    essential_dynamics = [
+        torch.cat(
+            tuple(
+                old_model(
+                    torch.cat([d for d, _ in datamodule.test_dataloader()], dim=0)
+                )[:, -1, :]
+            ),
+            dim=0,
+        )
+        for _, (_, old_model), _ in tqdm(models)
+    ]
+# %%
+with torch.no_grad():
+    essential_dynamics_matrix = torch.stack(essential_dynamics, dim=0)
+
+# %%
+print(essential_dynamics_matrix.shape)
+# %%
+essential_dynamics_matrix_centered = essential_dynamics_matrix[:, : 64 * 64 * 10]
+essential_dynamics_matrix_centered -= essential_dynamics_matrix_centered.mean(
+    dim=-1, keepdim=True
+)
+U, S, Vh = torch.linalg.svd(essential_dynamics_matrix_centered)
+# %%
+indices = np.arange(U.shape[0])
+# 3d scatter plot first three columns of U
+px.scatter_3d(x=U[:, 0], y=U[:, 1], z=U[:, 2], color=indices).show()
+# %%
+n = 6
+fig = make_subplots(
+    rows=n, cols=n, subplot_titles=[f"{j} vs {i}" for i in range(n) for j in range(n)]
+)
+for row in range(n):
+    for col in range(n):
+        i, j = row, col
+        fig.add_trace(
+            go.Scatter(
+                x=U[:, i],
+                y=U[:, j],
+                mode="markers",
+                marker=dict(color=indices),
+                name=f"{j} vs {i}",
+            ),
+            row=row + 1,
+            col=col + 1,
+        )
+fig.update_layout(
+    height=2000,
+    width=2000,
+    title_text="Essential Dynamics Scatter Plots Grid, Principle Components",
+)
+fig.show()
+
 # %%

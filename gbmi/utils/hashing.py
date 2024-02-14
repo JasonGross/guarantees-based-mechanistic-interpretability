@@ -117,12 +117,9 @@ def _json_default(thing: object, exclude_filter: ExcludeFilter = None) -> Any:
     elif isinstance(thing, torch.Tensor) or isinstance(thing, numpy.ndarray):
         return _json_dumps(thing.tolist(), exclude_filter=exclude_filter)
     elif isinstance(thing, HookedTransformer):
-        device = thing.device
-        result = _json_dumps(
+        return _json_dumps(
             thing.to("cpu", print_details=False).__dict__, exclude_filter=exclude_filter
         )
-        thing.to(device, print_details=False)
-        return result
     elif any(
         isinstance(thing, t)
         for t in (

@@ -197,7 +197,7 @@ def estimate_rlcts(
         get_hash=partial(get_hash_ascii, dictify_by_default=True),
     )() as memo_estimate_learning_coeff:
         estimates = {"sgld": []}
-        for model in tqdm(models):
+        for model in tqdm(models, position=0):
             for method, kwargs in [
                 ("sgld", {"lr": 1e-5, "elasticity": 100.0}),  # 100.0
             ]:
@@ -270,14 +270,25 @@ NUM_DRAWS = 1500
 import matplotlib.pyplot as plt
 
 
-def estimate_llcs_sweeper(model, epsilons, gammas, position=2):
+def estimate_llcs_sweeper(model, epsilons, gammas, tqdm_kwags: dict = {}):
     results = {}
     with memoshelve(
         estimate_learning_coeff_with_summary,
         filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
     )() as memo_estimate_learning_coeff_with_summary:
-        for epsilon in tqdm(epsilons, desc="epsilon", position=position):
-            for gamma in tqdm(gammas, desc="gamma", position=position + 1):
+        for epsilon_i, epsilon in enumerate(
+            tqdm(epsilons, desc="epsilon", **tqdm_kwags)
+        ):
+            gamma_tqdm_kwags = tqdm_kwags | dict(
+                position=tqdm_kwags.get("position", 0) + 1,
+                leave=tqdm_kwags.get("leave", True) and epsilon_i == len(epsilons) - 1,
+            )
+            for gamma in tqdm(gammas, desc="gamma", **gamma_tqdm_kwags):
+                sample_tqdm_kwags = gamma_tqdm_kwags | dict(
+                    position=gamma_tqdm_kwags.get("position", 0) + 1,
+                    leave=gamma_tqdm_kwags.get("leave", True)
+                    and epsilon_i == len(epsilons) - 1,
+                )
                 optim_kwargs = dict(
                     lr=epsilon,
                     noise_level=1.0,
@@ -286,7 +297,7 @@ def estimate_llcs_sweeper(model, epsilons, gammas, position=2):
                     temperature="adaptive",
                 )
                 pair = (epsilon, gamma)
-                results[pair] = estimate_learning_coeff_with_summary(
+                results[pair] = memo_estimate_learning_coeff_with_summary(
                     model=model,
                     loader=train_loader,
                     criterion=criterion,
@@ -296,6 +307,7 @@ def estimate_llcs_sweeper(model, epsilons, gammas, position=2):
                     num_draws=NUM_DRAWS,
                     device=DEVICE,
                     online=True,
+                    tqdm_kwargs=sample_tqdm_kwags,
                 )
     return results
 
@@ -464,7 +476,14 @@ EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [1, 10, 100]  # [1, 10, 100]
 all_results = []
 for i, cur_model in enumerate(tqdm(models, desc="model", position=2)):
-    all_results.append(estimate_llcs_sweeper(model, EPSILONS, GAMMAS, position=3))
+    all_results.append(
+        estimate_llcs_sweeper(
+            model,
+            EPSILONS,
+            GAMMAS,
+            tqdm_kwargs=dict(position=3, leave=(i == len(models) - 1)),
+        )
+    )
     try:
         plot_sweep_single_model(
             all_results[-1],

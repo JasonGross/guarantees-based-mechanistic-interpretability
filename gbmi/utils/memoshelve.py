@@ -13,6 +13,7 @@ def memoshelve(
     cache: Dict[str, Dict[str, Any]] = memoshelve_cache,
     get_hash: Callable = get_hash_ascii,
     get_hash_mem: Optional[Callable] = None,
+    print_cache_miss: bool = False,
 ):
     """Lightweight memoziation using shelve + in-memory cache"""
     filename = str(Path(filename).absolute())
@@ -29,10 +30,14 @@ def memoshelve(
                 try:
                     return mem_db[mkey]
                 except KeyError:
+                    if print_cache_miss:
+                        print(f"Cache miss (mem): {mkey}")
                     key = get_hash((args, kwargs))
                     try:
                         mem_db[mkey] = db[key]
                     except KeyError:
+                        if print_cache_miss:
+                            print(f"Cache miss (disk): {key}")
                         mem_db[mkey] = db[key] = value(*args, **kwargs)
                     return mem_db[mkey]
 

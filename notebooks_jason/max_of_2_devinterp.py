@@ -270,14 +270,14 @@ NUM_DRAWS = 1500
 import matplotlib.pyplot as plt
 
 
-def estimate_llcs_sweeper(model, epsilons, gammas):
+def estimate_llcs_sweeper(model, epsilons, gammas, position=0):
     results = {}
     with memoshelve(
         estimate_learning_coeff_with_summary,
         filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
     )() as memo_estimate_learning_coeff_with_summary:
-        for epsilon in epsilons:
-            for gamma in gammas:
+        for epsilon in tqdm(epsilons, desc="epsilon", position=position):
+            for gamma in tqdm(gammas, desc="gamma", position=position + 1):
                 optim_kwargs = dict(
                     lr=epsilon,
                     noise_level=1.0,
@@ -360,9 +360,15 @@ def plot_single_graph(result, title=""):
 def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
     llc_color = "teal"
     fig, axs = plt.subplots(len(epsilons), len(gammas))
+    # print(f"len(epsilons) = {len(epsilons)}, len(gammas) = {len(gammas)}, len(axs) = {len(axs)}")
 
     for i, epsilon in enumerate(epsilons):
         for j, gamma in enumerate(gammas):
+            cur_axs = (
+                axs[i, j]
+                if len(epsilons) > 1 and len(gammas) > 1
+                else axs[i] if len(epsilons) > 1 else axs[j] if len(gammas) > 1 else axs
+            )
             result = results[(epsilon, gamma)]
             # plot loss traces
             loss_traces = result["loss/trace"]
@@ -370,13 +376,13 @@ def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
                 init_loss = trace[0]
                 zeroed_trace = trace - init_loss
                 sgld_steps = list(range(len(trace)))
-                axs[i, j].plot(sgld_steps, zeroed_trace)
+                cur_axs.plot(sgld_steps, zeroed_trace)
 
             # plot llcs
             means = result["llc/means"]
             stds = result["llc/stds"]
             sgld_steps = list(range(len(means)))
-            axs2 = axs[i, j].twinx()
+            axs2 = cur_axs.twinx()
             axs2.plot(
                 sgld_steps,
                 means,
@@ -396,7 +402,7 @@ def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
             )
 
             # center zero, assume zero is in the range of both y axes already
-            y1_min, y1_max = axs[i, j].get_ylim()
+            y1_min, y1_max = cur_axs.get_ylim()
             y2_min, y2_max = axs2.get_ylim()
             y1_zero_ratio = abs(y1_min) / (abs(y1_min) + abs(y1_max))
             y2_zero_ratio = abs(y2_min) / (abs(y2_min) + abs(y2_max))
@@ -411,14 +417,14 @@ def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
                 # add to bottom of y2 and top of y1
                 y2_min -= y2_amt_to_add
                 y1_max += y1_amt_to_add
-            axs[i, j].set_ylim(y1_min, y1_max)
+            cur_axs.set_ylim(y1_min, y1_max)
             axs2.set_ylim(y2_min, y2_max)
 
-            axs[i, j].set_title(f"$\epsilon$ = {epsilon} : $\gamma$ = {gamma}")
+            cur_axs.set_title(f"$\epsilon$ = {epsilon} : $\gamma$ = {gamma}")
             # only show x axis label on last row
             if i == len(epsilons) - 1:
-                axs[i, j].set_xlabel("SGLD time step")
-            axs[i, j].set_ylabel("loss")
+                cur_axs.set_xlabel("SGLD time step")
+            cur_axs.set_ylabel("loss")
             axs2.set_ylabel("llc", color=llc_color)
             axs2.tick_params(axis="y", labelcolor=llc_color)
     if kwargs["title"]:

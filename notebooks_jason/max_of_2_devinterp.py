@@ -279,7 +279,7 @@ import matplotlib.pyplot as plt
 
 
 def estimate_llcs_sweeper(
-    model, epsilons, gammas, print_cache_miss: bool = False, tqdm_kwags: dict = {}
+    model, epsilons, gammas, print_cache_miss: bool = False, tqdm_kwargs: dict = {}
 ):
     results = {}
     with memoshelve(
@@ -289,11 +289,11 @@ def estimate_llcs_sweeper(
         print_cache_miss=print_cache_miss,
     )() as memo_estimate_learning_coeff_with_summary:
         for epsilon_i, epsilon in enumerate(
-            tqdm(epsilons, desc="epsilon", **tqdm_kwags)
+            tqdm(epsilons, desc="epsilon", **tqdm_kwargs)
         ):
-            gamma_tqdm_kwags = tqdm_kwags | dict(
-                position=tqdm_kwags.get("position", 0) + 1,
-                leave=tqdm_kwags.get("leave", True) and epsilon_i == len(epsilons) - 1,
+            gamma_tqdm_kwags = tqdm_kwargs | dict(
+                position=tqdm_kwargs.get("position", 0) + 1,
+                leave=tqdm_kwargs.get("leave", True) and epsilon_i == len(epsilons) - 1,
             )
             for gamma in tqdm(gammas, desc="gamma", **gamma_tqdm_kwags):
                 sample_tqdm_kwags = gamma_tqdm_kwags | dict(
@@ -458,7 +458,7 @@ def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
 
 
 # %%
-results = estimate_llcs_sweeper(model, EPSILONS, GAMMAS)
+results = estimate_llcs_sweeper(model, EPSILONS, GAMMAS, print_cache_miss=True)
 # %%
 plot_sweep_single_model(
     results,

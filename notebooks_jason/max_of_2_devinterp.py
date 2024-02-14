@@ -285,6 +285,7 @@ def estimate_llcs_sweeper(
     with memoshelve(
         estimate_learning_coeff_with_summary,
         filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
+        get_hash=partial(get_hash_ascii, dictify_by_default=True),
         print_cache_miss=print_cache_miss,
     )() as memo_estimate_learning_coeff_with_summary:
         for epsilon_i, epsilon in enumerate(

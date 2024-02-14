@@ -23,6 +23,7 @@ from gbmi.exp_max_of_n.plot import (
     compute_QK,
     display_basic_interpretation,
 )
+from gbmi.utils.memoshelve import memoshelve
 from gbmi.exp_max_of_n.train import (
     FullDatasetCfg,
     MaxOfN,
@@ -248,18 +249,19 @@ rlct = estimate_rlcts(
 )
 print(rlct)
 # %%
-EPSILONS = [4e-5]  # , 1e-4, 1e-3]
+EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [100]  # [1, 10, 100]
 train_data = train_loader.dataset
 criterion = training_wrapper.loss_fn
 DEVICE = RLCT_DEVICE
 NUM_CHAINS = 10
-NUM_DRAWS = 500
+NUM_DRAWS = 1500
 import matplotlib.pyplot as plt
 
 
 def estimate_llcs_sweeper(model, epsilons, gammas):
     results = {}
+    with memoshelve()
     for epsilon in epsilons:
         for gamma in gammas:
             optim_kwargs = dict(

@@ -246,8 +246,18 @@ def plotly_save_gif(
     frames_dir: Optional[Union[str, Path]] = None,
     duration=0.5,
     tqdm_wrapper: Optional[Callable] = tqdm,
+    hide: Collection[str] = ("sliders", "updatemenus"),
+    cleanup_frames: bool = False,
 ):
     tqdm_wrapper = tqdm_wrapper or (lambda x, **kwargs: x)
+
+    # Backup original layout components
+    originals = {}
+    # Hide sliders and buttons by setting them to empty
+    for k in hide:
+        originals[k] = getattr(fig.layout, k)
+        setattr(fig.layout, k, [])
+
     frames_dir = frames_dir or Path(output_path).with_suffix("") / "frames"
     Path(frames_dir).mkdir(exist_ok=True, parents=True)
     filenames = []
@@ -264,7 +274,15 @@ def plotly_save_gif(
         fig.write_image(filename, height=fig.layout.height, width=fig.layout.width)
         filenames.append(filename)
 
+    # Restore original layout components
+    for k, original in originals.items():
+        setattr(fig.layout, k, original)
+
     with imageio.get_writer(output_path, mode="I", duration=duration, loop=0) as writer:
         for filename in tqdm_wrapper(filenames, desc="Compiling GIF"):
             image = imageio.imread(filename)
             writer.append_data(image)  # type: ignore
+
+    if cleanup_frames:
+        for filename in filenames:
+            filename.unlink()

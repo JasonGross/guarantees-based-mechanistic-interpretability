@@ -858,7 +858,7 @@ DO_PLOT = False  # @param {type:"boolean"}
 for i, cur_model in enumerate(tqdm(list(models), desc="model", position=0)):
     all_results.append(
         estimate_llcs_sweeper(
-            model,
+            cur_model,
             EPSILONS,
             GAMMAS,
             tqdm_kwargs=dict(position=1, leave=(i == len(models) - 1)),
@@ -916,8 +916,12 @@ if not os.path.exists(plotly_gif_path):
     plotly_save_gif(fig, plotly_gif_path_tmp)
     os.rename(plotly_gif_path_tmp, plotly_gif_path)
 # %%
-with open(plt_gif_path, mode="rb") as f:
+with open(plotly_gif_path, mode="rb") as f:
     display(Image(f.read()))
+# %%
+import sys
+
+sys.exit(0)
 
 # %%
 plot_sweep_single_model(
@@ -932,10 +936,6 @@ plot_sweep_single_model_plotly(
     GAMMAS,
     title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
 )
-# %%
-import sys
-
-sys.exit(0)
 
 
 # %% [markdown]

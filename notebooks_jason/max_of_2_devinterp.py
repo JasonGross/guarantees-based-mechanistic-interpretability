@@ -853,8 +853,8 @@ assert models is not None
 models = list(models)
 
 # %%
-EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
-GAMMAS = [1, 10, 100]  # [1, 10, 100]
+EPSILONS = [1e-5]  # [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
+GAMMAS = [100]  # [1, 10, 100]  # [1, 10, 100]
 all_results = []
 DO_PLOT = False  # @param {type:"boolean"}
 for i, (_, (_, cur_model), _) in enumerate(
@@ -884,7 +884,7 @@ for i, (_, (_, cur_model), _) in enumerate(
     #         plot_single_graph(v)
 
 # %%
-llcs = [res[(EPSILONS[0], GAMMAS[-1])]["llc/means"][-1] for res in all_results]
+llcs = [res[(np.min(EPSILONS), np.max(GAMMAS))]["llc/means"][-1] for res in all_results]
 # %%
 px.line(
     {"": llcs},
@@ -895,7 +895,7 @@ px.line(
 plt_gif_path_tmp = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.tmp.gif"
 plt_gif_path = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.gif"
 plot_sweep_many_models(
-    all_results[:5],
+    all_results,
     EPSILONS,
     GAMMAS,
     title=r"Calibration sweep for max of 2, epoch {epoch}",

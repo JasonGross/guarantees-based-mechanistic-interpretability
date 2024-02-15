@@ -264,10 +264,7 @@ def plotly_save_gif(
     for i, frame in enumerate(tqdm_wrapper(fig.frames, desc="Exporting frames")):
         # Apply frame data to the figure's traces
         for trace, frame_data in zip(fig.data, frame.data):
-            trace.update(frame_data)
-        # for j, data in enumerate(frame.data):
-        #     for attr in data_attrs:
-        #         setattr(fig.data[j], attr, getattr(data, attr))
+            trace.update(frame_data)  # type: ignore
 
         # If the frame has a layout, update the figure's layout accordingly
         if frame.layout:

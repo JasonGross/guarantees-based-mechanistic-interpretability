@@ -125,7 +125,7 @@ def _json_default(
         return thing.isoformat(timespec="microseconds")
     elif isinstance(thing, torch.device) or isinstance(thing, torch.dtype):
         return str(thing)
-    elif isinstance(thing, set):
+    elif isinstance(thing, set) or isinstance(thing, frozenset):
         return _json_dumps(
             sorted(thing),
             exclude_filter=exclude_filter,

@@ -261,13 +261,17 @@ def plotly_save_gif(
     frames_dir = frames_dir or Path(output_path).with_suffix("") / "frames"
     Path(frames_dir).mkdir(exist_ok=True, parents=True)
     filenames = []
-    for i, frame in enumerate(tqdm(fig.frames, descr="Exporting frames")):
+    for i, frame in enumerate(tqdm_wrapper(fig.frames, desc="Exporting frames")):
         # Apply frame data to the figure's traces
         for trace, frame_data in zip(fig.data, frame.data):
             trace.update(frame_data)
         # for j, data in enumerate(frame.data):
         #     for attr in data_attrs:
         #         setattr(fig.data[j], attr, getattr(data, attr))
+
+        # If the frame has a layout, update the figure's layout accordingly
+        if frame.layout:
+            fig.update_layout(frame.layout)
 
         # Save as image
         filename = f"{frames_dir}/frame_{i:04d}.png"

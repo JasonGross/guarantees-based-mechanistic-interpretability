@@ -1,8 +1,12 @@
-from typing import Optional
+from pathlib import Path
+from typing import Callable, Collection, Optional, Union
+import imageio
 import numpy as np
 from matplotlib import pyplot as plt
 from plotly import express as px
+import plotly.graph_objects as go
 import plotly.express as px
+from tqdm import tqdm
 from scipy.optimize import curve_fit
 from transformer_lens import HookedTransformer, utils as utils
 
@@ -234,3 +238,33 @@ def weighted_histogram(data, weights, num_bins: Optional[int] = None, **kwargs):
             # Optionally, you can also set the line color to match the bar color exactly
             trace.marker.line.color = trace.marker.color = "rgba(0, 0, 255, 1.0)"
     return fig
+
+
+def plotly_save_gif(
+    fig: go.Figure,
+    output_path: Union[str, Path],
+    frames_dir: Optional[Union[str, Path]] = None,
+    duration=0.5,
+    tqdm_wrapper: Optional[Callable] = tqdm,
+):
+    tqdm_wrapper = tqdm_wrapper or (lambda x, **kwargs: x)
+    frames_dir = frames_dir or Path(output_path).with_suffix("") / "frames"
+    Path(frames_dir).mkdir(exist_ok=True, parents=True)
+    filenames = []
+    for i, frame in enumerate(tqdm(fig.frames, descr="Exporting frames")):
+        # Apply frame data to the figure's traces
+        for trace, frame_data in zip(fig.data, frame.data):
+            trace.update(frame_data)
+        # for j, data in enumerate(frame.data):
+        #     for attr in data_attrs:
+        #         setattr(fig.data[j], attr, getattr(data, attr))
+
+        # Save as image
+        filename = f"{frames_dir}/frame_{i:04d}.png"
+        fig.write_image(filename, height=fig.layout.height, width=fig.layout.width)
+        filenames.append(filename)
+
+    with imageio.get_writer(output_path, mode="I", duration=duration, loop=0) as writer:
+        for filename in tqdm_wrapper(filenames, desc="Compiling GIF"):
+            image = imageio.imread(filename)
+            writer.append_data(image)  # type: ignore

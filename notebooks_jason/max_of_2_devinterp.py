@@ -705,7 +705,6 @@ def plot_sweep_many_models_plotly(
     gammas,
     epochs: Optional[list[int]] = None,
     title: Optional[str] = None,
-    write_gif: Optional[Union[str, Path]] = None,
     renderer=None,
     **kwargs,
 ):
@@ -755,6 +754,13 @@ def plot_sweep_many_models_plotly(
             traces=list(
                 range(len(trace_list) + 3)
             ),  # Indices of the traces in this frame
+            layout=go.Layout(
+                title_text=(
+                    title.format(epoch=epoch)
+                    if title is not None and "{epoch" in title
+                    else title
+                )
+            ),
         )
         for epoch, (trace_list, _) in zip(epochs, tqdm(all_traces, desc="frames"))
     ]
@@ -803,35 +809,6 @@ def plot_sweep_many_models_plotly(
 
     fig.show(renderer)
     return fig
-
-
-def save_plotly_fig_to_gif(
-    fig,
-    gif_path: Union[str, Path],
-    frames_dir: Optional[Union[str, Path]] = None,
-    duration=0.5,
-):
-    if frames_dir is None:
-        frames_dir = Path(gif_path).with_suffix("") / "frames"
-    Path(frames_dir).mkdir(exist_ok=True, parents=True)
-    filenames = []
-    for i, frame in enumerate(tqdm(fig.frames, descr="frames")):
-        # Update data for each trace
-        for j, data in enumerate(frame.data):
-            fig.data[j].x = data.x
-            fig.data[j].y = data.y
-
-        # Save as image
-        filename = f"{frames_dir}/frame_{i}.png"
-        # if os.path.exists(filename):
-        #     os.remove(filename)
-        fig.write_image(filename, height=fig.layout.height, width=fig.layout.width)
-        filenames.append(filename)
-
-    with imageio.get_writer(gif_path, mode="I", duration=duration, loop=0) as writer:
-        for filename in tqdm(filenames):
-            image = imageio.imread(filename)
-            writer.append_data(image)  # type: ignore
 
 
 # %%
@@ -926,18 +903,17 @@ if not os.path.exists(plt_gif_path):
 with open(plt_gif_path, mode="rb") as f:
     display(Image(f.read()))
 # %%
-plotly_gif_path_tmp = (
-    Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.tmp.gif"
-)
-plotly_gif_path = Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.gif"
-plot_sweep_many_models_plotly(
+fig = plot_sweep_many_models_plotly(
     all_results[:5],
     EPSILONS,
     GAMMAS,
     title=r"Calibration sweep for max of 2, epoch {epoch}",
-    write_gif=plotly_gif_path_tmp if not os.path.exists(plotly_gif_path) else None,
 )
+# %%
+plotly_gif_path = Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.gif"
+plotly_gif_path_tmp = plotly_gif_path.with_suffix(".tmp.gif")
 if not os.path.exists(plotly_gif_path):
+    plotly_save_gif(fig, plotly_gif_path_tmp)
     os.rename(plotly_gif_path_tmp, plotly_gif_path)
 # %%
 with open(plt_gif_path, mode="rb") as f:

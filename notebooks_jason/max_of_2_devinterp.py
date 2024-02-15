@@ -44,6 +44,7 @@ from IPython.display import Image, display
 import torch
 import numpy as np
 import wandb
+from IPython.display import display, HTML
 from jaxtyping import Float
 from torch import Tensor
 from typing import (
@@ -56,6 +57,13 @@ from typing import (
 )
 
 api = wandb.Api()
+# %%
+# Fix for LaTeX rendering in VSCode as per https://github.com/microsoft/vscode-jupyter/issues/8131#issuecomment-1589961116
+display(
+    HTML(
+        '<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_SVG"></script>'
+    )
+)
 # %% [markdown]
 ### Introduction
 #
@@ -269,8 +277,8 @@ rlct = estimate_rlcts(
 )
 print(rlct)
 # %%
-EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
-GAMMAS = [100]  # [1, 10, 100]
+SINGLE_EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
+SINGLE_GAMMAS = [100]  # [1, 10, 100]
 train_data = train_loader.dataset
 criterion = training_wrapper.loss_fn
 DEVICE = RLCT_DEVICE
@@ -481,16 +489,139 @@ def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
 
 
 # %%
+def plot_sweep_single_model_plotly(
+    results,
+    epsilons,
+    gammas,
+    renderer=None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    vertical_spacing: float = 0.05,
+    horizontal_spacing: float = 0.05,
+    **kwargs,
+):
+    llc_color = "teal"
+    subplot_titles = [
+        rf"$\epsilon$ = {epsilon} : $\gamma$ = {gamma}"
+        for epsilon in epsilons
+        for gamma in gammas
+    ]
+
+    width = width or 350 * len(gammas)
+    height = height or 250 * len(epsilons)
+
+    # Create a subplot grid
+    fig = make_subplots(
+        rows=len(epsilons),
+        cols=len(gammas),
+        subplot_titles=subplot_titles,
+        specs=[[{"secondary_y": True} for _ in gammas] for _ in epsilons],
+        vertical_spacing=vertical_spacing,
+        horizontal_spacing=horizontal_spacing,
+    )
+
+    for i, epsilon in enumerate(epsilons):
+        for j, gamma in enumerate(gammas):
+            result = results[(epsilon, gamma)]
+            # Plot loss traces
+            loss_traces = result["loss/trace"]
+            for trace in loss_traces:
+                init_loss = trace[0]
+                zeroed_trace = trace - init_loss
+                sgld_steps = list(range(len(trace)))
+                fig.add_trace(
+                    go.Scatter(x=sgld_steps, y=zeroed_trace, mode="lines"),
+                    row=i + 1,
+                    col=j + 1,
+                    secondary_y=False,
+                )
+
+            # Plot llcs
+            means = result["llc/means"]
+            stds = result["llc/stds"]
+            sgld_steps = list(range(len(means)))
+            fig.add_trace(
+                go.Scatter(
+                    x=sgld_steps,
+                    y=means,
+                    mode="lines",
+                    line=dict(color=llc_color, dash="dash"),
+                    name="llc",
+                ),
+                row=i + 1,
+                col=j + 1,
+                secondary_y=True,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=sgld_steps,
+                    y=means - stds,
+                    fill=None,
+                    mode="lines",
+                    line=dict(color=llc_color),
+                    showlegend=False,
+                ),
+                row=i + 1,
+                col=j + 1,
+                secondary_y=True,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=sgld_steps,
+                    y=means + stds,
+                    fill="tonexty",
+                    mode="lines",
+                    line=dict(color=llc_color),
+                    fillcolor="rgba(0,128,128,0.3)",
+                    showlegend=False,
+                ),
+                row=i + 1,
+                col=j + 1,
+                secondary_y=True,
+            )
+
+            # Update y-axis labels
+            fig.update_yaxes(title_text="loss", row=i + 1, col=j + 1, secondary_y=False)
+            fig.update_yaxes(
+                title_text="llc",
+                row=i + 1,
+                col=j + 1,
+                secondary_y=True,
+                tickfont=dict(color=llc_color),
+            )
+            if i == len(epsilons) - 1:  # Only for the bottom row
+                fig.update_xaxes(title_text="SGLD time step", row=i + 1, col=j + 1)
+
+    # Additional layout configurations
+    # if kwargs.get("title"):
+    fig.update_layout(title=kwargs["title"], title_x=0.5)
+    fig.update_layout(height=height, width=width, showlegend=False)
+
+    fig.show(renderer)
+
+
+# %%
 results = estimate_llcs_sweeper(
-    model, EPSILONS, GAMMAS, print_cache_miss=True, tqdm_kwargs=dict(position=0)
+    model,
+    SINGLE_EPSILONS,
+    SINGLE_GAMMAS,
+    print_cache_miss=True,
+    tqdm_kwargs=dict(position=0),
 )
 # %%
 plot_sweep_single_model(
     results,
-    EPSILONS,
-    GAMMAS,
+    SINGLE_EPSILONS,
+    SINGLE_GAMMAS,
     title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
 )
+plot_sweep_single_model_plotly(
+    results,
+    SINGLE_EPSILONS,
+    SINGLE_GAMMAS,
+    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+)
+
 # %%
 for v in results.values():
     plot_single_graph(v)
@@ -512,6 +643,7 @@ models = list(models)
 EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [1, 10, 100]  # [1, 10, 100]
 all_results = []
+DO_PLOT = False  # @param {type:"boolean"}
 for i, cur_model in enumerate(tqdm(list(models), desc="model", position=0)):
     all_results.append(
         estimate_llcs_sweeper(
@@ -524,17 +656,38 @@ for i, cur_model in enumerate(tqdm(list(models), desc="model", position=0)):
         )
     )
     # try:
-    plot_sweep_single_model(
-        all_results[-1],
-        EPSILONS,
-        GAMMAS,
-        title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
-    )
+    if DO_PLOT:
+        plot_sweep_single_model(
+            all_results[-1],
+            EPSILONS,
+            GAMMAS,
+            title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+        )
     # except Exception:
     #     for v in all_results[-1].values():
     #         plot_single_graph(v)
 
-
+# %%
+llcs = [res[(EPSILONS[0], GAMMAS[-1])]["llc/means"][-1] for res in all_results]
+# %%
+px.line(
+    {"": llcs},
+    title="RLCT",
+    labels={"value": "LLC", "index": "Epoch / 10", "variable": ""},
+).show()
+# %%
+plot_sweep_single_model(
+    all_results[-1],
+    EPSILONS,
+    GAMMAS,
+    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+)
+plot_sweep_single_model_plotly(
+    all_results[-1],
+    EPSILONS,
+    GAMMAS,
+    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+)
 # %%
 import sys
 

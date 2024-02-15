@@ -15,7 +15,7 @@ packages = [{include = "gbmi"}]
 [tool.poetry.dependencies]
 python = "^3.10"
 torch = "^2.1.2"
-transformer-lens = "1.12.1"
+transformer-lens = "1.14.0"
 einops = "^0.7.0"
 plotly = "^5.18.0"
 jupyterlab = "^4.0.10"

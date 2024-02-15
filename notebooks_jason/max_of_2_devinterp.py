@@ -51,6 +51,7 @@ from IPython.display import display, HTML
 from jaxtyping import Float
 from torch import Tensor
 from typing import (
+    Iterable,
     Tuple,
     Dict,
     Optional,
@@ -151,6 +152,8 @@ cfg = Config(
     validate_every=(10, "epochs"),
     checkpoint_every=(10, "epochs"),
 )
+# %%
+OVERWRITE_GIF: bool = True  # @param {type:"boolean"}
 # %% [markdown]
 #### Model Training / Loading
 # %%
@@ -703,13 +706,12 @@ def plot_sweep_many_models_plotly(
     all_results,
     epsilons,
     gammas,
-    epochs: Optional[list[int]] = None,
+    epochs: Optional[Iterable[int]] = None,
     title: Optional[str] = None,
     renderer=None,
     **kwargs,
 ):
-    if epochs is None:
-        epochs = list(range(len(all_results)))
+    epochs = list(epochs or range(len(all_results)))
     all_traces = [
         prepare_traces_and_kwargs(
             result,
@@ -895,7 +897,9 @@ plot_sweep_many_models(
     EPSILONS,
     GAMMAS,
     title=r"Calibration sweep for max of 2, epoch {epoch}",
-    write_gif=plt_gif_path_tmp if not os.path.exists(plt_gif_path) else None,
+    write_gif=(
+        plt_gif_path_tmp if OVERWRITE_GIF or not os.path.exists(plt_gif_path) else None
+    ),
 )
 if not os.path.exists(plt_gif_path):
     os.rename(plt_gif_path_tmp, plt_gif_path)
@@ -903,16 +907,19 @@ if not os.path.exists(plt_gif_path):
 with open(plt_gif_path, mode="rb") as f:
     display(Image(f.read()))
 # %%
+results_to_use = all_results[:5]
 fig = plot_sweep_many_models_plotly(
-    all_results[:5],
+    results_to_use,
     EPSILONS,
     GAMMAS,
+    epochs=np.arange(0, len(results_to_use)) * (cfg.checkpoint_every or (1,))[0],
     title=r"Calibration sweep for max of 2, epoch {epoch}",
+    renderer="png",
 )
 # %%
 plotly_gif_path = Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.gif"
 plotly_gif_path_tmp = plotly_gif_path.with_suffix(".tmp.gif")
-if not os.path.exists(plotly_gif_path):
+if OVERWRITE_GIF or not os.path.exists(plotly_gif_path):
     plotly_save_gif(fig, plotly_gif_path_tmp)
     os.rename(plotly_gif_path_tmp, plotly_gif_path)
 # %%

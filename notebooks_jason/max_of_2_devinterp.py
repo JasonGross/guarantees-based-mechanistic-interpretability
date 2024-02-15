@@ -35,6 +35,7 @@ from gbmi.exp_max_of_n.train import (
     MaxOfNTrainingWrapper,
     train_or_load_model,
 )
+from gbmi.analysis_tools.plot import plotly_save_gif
 import gbmi.utils as utils
 from gbmi.utils.hashing import get_hash_ascii, _json_dumps
 from gbmi.model import Config, RunData

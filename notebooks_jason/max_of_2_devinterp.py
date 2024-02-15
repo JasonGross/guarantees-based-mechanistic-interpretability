@@ -907,7 +907,7 @@ if not os.path.exists(plt_gif_path):
 with open(plt_gif_path, mode="rb") as f:
     display(Image(f.read()))
 # %%
-results_to_use = all_results[:5]
+results_to_use = all_results[:]
 fig = plot_sweep_many_models_plotly(
     results_to_use,
     EPSILONS,

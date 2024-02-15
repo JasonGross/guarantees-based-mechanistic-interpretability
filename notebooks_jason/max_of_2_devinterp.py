@@ -857,7 +857,9 @@ EPSILONS = [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [1, 10, 100]  # [1, 10, 100]
 all_results = []
 DO_PLOT = False  # @param {type:"boolean"}
-for i, cur_model in enumerate(tqdm(list(models), desc="model", position=0)):
+for i, (_, (_, cur_model), _) in enumerate(
+    tqdm(list(models), desc="model", position=0)
+):
     all_results.append(
         estimate_llcs_sweeper(
             cur_model,

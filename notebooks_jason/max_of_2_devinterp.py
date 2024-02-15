@@ -8,6 +8,8 @@
 # %%
 from functools import partial
 from pathlib import Path
+from matplotlib.animation import FuncAnimation, PillowWriter
+from matplotlib.figure import Figure
 from tqdm import tqdm
 import devinterp
 from devinterp.slt import estimate_learning_coeff, estimate_learning_coeff_with_summary
@@ -54,6 +56,7 @@ from typing import (
     Any,
     List,
     Collection,
+    Union,
 )
 
 api = wandb.Api()
@@ -294,8 +297,18 @@ def estimate_llcs_sweeper(
     print_cache_miss: bool = False,
     tqdm_kwargs: dict = {},
     verbose_cache_miss: bool = False,
+    print_model_loss: bool = False,
 ):
     results = {}
+    if print_model_loss:
+        batches = list(datamodule.test_dataloader())
+        losses = [
+            model(batch)[:, -1, :].softmax(dim=-1)[
+                torch.arange(labels.shape[0]), labels
+            ]
+            for batch, labels in batches
+        ]
+        print(f"loss: {torch.cat(losses, dim=0).mean()}")
     with memoshelve(
         estimate_learning_coeff_with_summary,
         filename=cache_dir / f"{Path(__file__).name}.estimate_learning_coeff",
@@ -355,9 +368,20 @@ def estimate_llcs_sweeper(
     return results
 
 
-def plot_single_graph(result, title=""):
-    llc_color = "teal"
-    fig, axs = plt.subplots(1, 1)
+# %%
+
+
+def plot_single_graph(
+    result,
+    title: Optional[str] = "",
+    llc_color="teal",
+    fig_axs: Optional[Tuple[Figure, Any]] = None,
+    xlabel: Optional[str] = "SGLD time step",
+    axhline: bool = True,
+    show: bool = True,
+):
+    fig, axs = fig_axs or plt.subplots(1, 1)
+    axs.clear()
     # plot loss traces
     loss_traces = result["loss/trace"]
     for trace in loss_traces:
@@ -402,202 +426,411 @@ def plot_single_graph(result, title=""):
         y1_max += y1_amt_to_add
     axs.set_ylim(y1_min, y1_max)
     axs2.set_ylim(y2_min, y2_max)
-    axs.set_xlabel("SGLD time step")
+    if xlabel:
+        axs.set_xlabel(xlabel)
     axs.set_ylabel("loss")
     axs2.set_ylabel("llc", color=llc_color)
     axs2.tick_params(axis="y", labelcolor=llc_color)
-    axs.axhline(color="black", linestyle=":")
-    fig.suptitle(title, fontsize=16)
-    plt.tight_layout()
-    plt.show()
+    if axhline:
+        axs.axhline(color="black", linestyle=":")
+    if title:
+        fig.suptitle(title, fontsize=16)
+    if show:
+        plt.tight_layout()
+        plt.show()
 
 
-def plot_sweep_single_model(results, epsilons, gammas, **kwargs):
-    llc_color = "teal"
-    fig, axs = plt.subplots(len(epsilons), len(gammas))
-    # print(f"len(epsilons) = {len(epsilons)}, len(gammas) = {len(gammas)}, len(axs) = {len(axs)}")
-
-    for i, epsilon in enumerate(epsilons):
-        for j, gamma in enumerate(gammas):
-            cur_axs = (
-                axs[i, j]
-                if len(epsilons) > 1 and len(gammas) > 1
-                else axs[i] if len(epsilons) > 1 else axs[j] if len(gammas) > 1 else axs
-            )
-            result = results[(epsilon, gamma)]
-            # plot loss traces
-            loss_traces = result["loss/trace"]
-            for trace in loss_traces:
-                init_loss = trace[0]
-                zeroed_trace = trace - init_loss
-                sgld_steps = list(range(len(trace)))
-                cur_axs.plot(sgld_steps, zeroed_trace)
-
-            # plot llcs
-            means = result["llc/means"]
-            stds = result["llc/stds"]
-            sgld_steps = list(range(len(means)))
-            axs2 = cur_axs.twinx()
-            axs2.plot(
-                sgld_steps,
-                means,
-                color=llc_color,
-                linestyle="--",
-                linewidth=2,
-                label=f"llc",
-                zorder=3,
-            )
-            axs2.fill_between(
-                sgld_steps,
-                means - stds,
-                means + stds,
-                color=llc_color,
-                alpha=0.3,
-                zorder=2,
-            )
-
-            # center zero, assume zero is in the range of both y axes already
-            y1_min, y1_max = cur_axs.get_ylim()
-            y2_min, y2_max = axs2.get_ylim()
-            y1_zero_ratio = abs(y1_min) / (abs(y1_min) + abs(y1_max))
-            y2_zero_ratio = abs(y2_min) / (abs(y2_min) + abs(y2_max))
-            percent_to_add = abs(y1_zero_ratio - y2_zero_ratio)
-            y1_amt_to_add = (y1_max - y1_min) * percent_to_add
-            y2_amt_to_add = (y2_max - y2_min) * percent_to_add
-            if y1_zero_ratio < y2_zero_ratio:
-                # add to bottom of y1 and top of y2
-                y1_min -= y1_amt_to_add
-                y2_max += y2_amt_to_add
-            elif y2_zero_ratio < y1_zero_ratio:
-                # add to bottom of y2 and top of y1
-                y2_min -= y2_amt_to_add
-                y1_max += y1_amt_to_add
-            cur_axs.set_ylim(y1_min, y1_max)
-            axs2.set_ylim(y2_min, y2_max)
-
-            cur_axs.set_title(f"$\epsilon$ = {epsilon} : $\gamma$ = {gamma}")
-            # only show x axis label on last row
-            if i == len(epsilons) - 1:
-                cur_axs.set_xlabel("SGLD time step")
-            cur_axs.set_ylabel("loss")
-            axs2.set_ylabel("llc", color=llc_color)
-            axs2.tick_params(axis="y", labelcolor=llc_color)
-    if kwargs["title"]:
-        fig.suptitle(kwargs["title"], fontsize=16)
-    plt.tight_layout()
-    plt.show()
-
-
-# %%
-def plot_sweep_single_model_plotly(
+def plot_sweep_single_model(
     results,
     epsilons,
     gammas,
-    renderer=None,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
-    vertical_spacing: float = 0.05,
-    horizontal_spacing: float = 0.05,
-    **kwargs,
+    llc_color="teal",
+    fig_axs: Optional[Tuple[Figure, Any]] = None,
+    xlabel: Optional[str] = "SGLD time step",
+    axhline: bool = False,
+    show: bool = True,
+    title: Optional[str] = "",
 ):
-    llc_color = "teal"
+    fig, axs = fig_axs or plt.subplots(len(epsilons), len(gammas))
+
+    if len(epsilons) == 1 or len(gammas) == 1:
+        axs = np.array(axs).reshape(len(epsilons), len(gammas))
+    for i, epsilon in enumerate(epsilons):
+        for j, gamma in enumerate(gammas):
+            # only show x axis label on last row
+            cur_xlabel = xlabel if i == len(epsilons) - 1 else None
+            plot_single_graph(
+                results[(epsilon, gamma)],
+                title="",
+                llc_color=llc_color,
+                fig_axs=(fig, axs[i, j]),
+                xlabel=cur_xlabel,
+                axhline=axhline,
+                show=False,
+            )
+    if title:
+        fig.suptitle(title, fontsize=16)
+    if show:
+        plt.tight_layout()
+        plt.show()
+
+
+def plot_sweep_many_models(
+    all_results,
+    epsilons,
+    gammas,
+    epochs: Optional[list[int]] = None,
+    title: Optional[str] = None,
+    write_gif: Optional[Union[str, Path]] = None,
+    figsize: Optional[Tuple[int, int]] = None,
+):
+    if epochs is None:
+        epochs = list(range(len(all_results)))
+    if figsize is None:
+        figsize = (5 * len(gammas), 3 * len(epsilons))
+    fig, axs = plt.subplots(len(epsilons), len(gammas), squeeze=False, figsize=figsize)
+
+    def update(frame):
+        results = all_results[frame]
+        plot_sweep_single_model(
+            results,
+            epsilons,
+            gammas,
+            fig_axs=(fig, axs),
+            show=False,
+            title=(
+                title.format(epoch=frame)
+                if title is not None and "{epoch" in title
+                else title
+            ),
+        )
+        plt.tight_layout()
+
+    anim = FuncAnimation(fig, update, frames=len(epochs), interval=200, repeat=True)
+    plt.show()
+
+    if write_gif:
+        print("Exporting GIF, please wait...")
+        with tqdm(total=len(epochs)) as pbar:
+
+            def progress_callback(current_frame, total_frames):
+                pbar.update(1)
+
+            anim.save(
+                write_gif,
+                writer=PillowWriter(fps=10),
+                progress_callback=progress_callback,
+            )
+        print(f"GIF saved as {write_gif}")
+    return anim
+
+
+# %%
+def plot_single_graph_plotly_traces(
+    result: dict, llc_color: str = "teal", llc_fillcolor: str = "rgba(0,128,128,0.3)"
+) -> List[Tuple[go.Scatter, Dict]]:
+    traces = []
+    # Plot loss traces
+    for trace in result["loss/trace"]:
+        init_loss = trace[0]
+        zeroed_trace = trace - init_loss
+        sgld_steps = list(range(len(trace)))
+        traces.append(
+            (
+                go.Scatter(x=sgld_steps, y=zeroed_trace, mode="lines"),
+                dict(secondary_y=False),
+            )
+        )
+
+    # Plot llcs with shading for standard deviation
+    means = result["llc/means"]
+    stds = result["llc/stds"]
+    sgld_steps = list(range(len(means)))
+    traces.append(
+        (
+            go.Scatter(
+                x=sgld_steps,
+                y=means,
+                mode="lines",
+                line=dict(color=llc_color, dash="dash"),
+                name="llc",
+            ),
+            dict(secondary_y=True),
+        )
+    )
+    traces.append(
+        (
+            go.Scatter(
+                x=sgld_steps,
+                y=means,
+                mode="lines",
+                line=dict(color=llc_color, dash="dash"),
+                name="llc",
+            ),
+            dict(
+                secondary_y=True,
+            ),
+        )
+    )
+    traces.append(
+        (
+            go.Scatter(
+                x=sgld_steps,
+                y=means - stds,
+                fill=None,
+                mode="lines",
+                line=dict(color=llc_color),
+                showlegend=False,
+            ),
+            dict(
+                secondary_y=True,
+            ),
+        )
+    )
+    traces.append(
+        (
+            go.Scatter(
+                x=sgld_steps,
+                y=means + stds,
+                fill="tonexty",
+                mode="lines",
+                line=dict(color=llc_color),
+                fillcolor=llc_fillcolor,
+                showlegend=False,
+            ),
+            dict(
+                secondary_y=True,
+            ),
+        )
+    )
+    return traces
+
+
+def prepare_traces_and_kwargs(
+    results,
+    epsilons,
+    gammas,
+    title: Optional[str] = None,
+    llc_color="teal",
+    width=None,
+    height=None,
+    vertical_spacing=0.05,
+    horizontal_spacing=0.05,
+    **kwargs,
+) -> Tuple[List[Tuple[go.Scatter, Dict]], Tuple[Dict, Dict, Dict]]:
     subplot_titles = [
         rf"$\epsilon$ = {epsilon} : $\gamma$ = {gamma}"
         for epsilon in epsilons
         for gamma in gammas
     ]
-
     width = width or 350 * len(gammas)
     height = height or 250 * len(epsilons)
 
-    # Create a subplot grid
-    fig = make_subplots(
-        rows=len(epsilons),
-        cols=len(gammas),
-        subplot_titles=subplot_titles,
-        specs=[[{"secondary_y": True} for _ in gammas] for _ in epsilons],
-        vertical_spacing=vertical_spacing,
-        horizontal_spacing=horizontal_spacing,
+    trace_list = []
+    for i, epsilon in enumerate(epsilons):
+        for j, gamma in enumerate(gammas):
+            traces = plot_single_graph_plotly_traces(
+                results[(epsilon, gamma)], llc_color=llc_color, **kwargs
+            )
+            for trace, trace_kwargs in traces:
+                # Append subplot positioning to trace_kwargs
+                trace_list.append((trace, trace_kwargs | {"row": i + 1, "col": j + 1}))
+
+    subplots_layout = {
+        "rows": len(epsilons),
+        "cols": len(gammas),
+        "subplot_titles": subplot_titles,
+        "specs": [[{"secondary_y": True} for _ in gammas] for _ in epsilons],
+        "vertical_spacing": vertical_spacing,
+        "horizontal_spacing": horizontal_spacing,
+    }
+
+    layout: dict[str, Any] = dict(
+        title_x=0.5, height=height, width=width, showlegend=False
     )
+    if title is not None:
+        layout["title"] = title
+
+    axes_layouts = {"xaxes": [], "yaxes": []}
 
     for i, epsilon in enumerate(epsilons):
         for j, gamma in enumerate(gammas):
-            result = results[(epsilon, gamma)]
-            # Plot loss traces
-            loss_traces = result["loss/trace"]
-            for trace in loss_traces:
-                init_loss = trace[0]
-                zeroed_trace = trace - init_loss
-                sgld_steps = list(range(len(trace)))
-                fig.add_trace(
-                    go.Scatter(x=sgld_steps, y=zeroed_trace, mode="lines"),
+            # Update y-axis labels
+            axes_layouts["yaxes"].append(
+                dict(title_text="loss", row=i + 1, col=j + 1, secondary_y=False)
+            )
+            axes_layouts["yaxes"].append(
+                dict(
+                    title_text="llc",
                     row=i + 1,
                     col=j + 1,
-                    secondary_y=False,
+                    secondary_y=True,
+                    tickfont=dict(color=llc_color),
                 )
-
-            # Plot llcs
-            means = result["llc/means"]
-            stds = result["llc/stds"]
-            sgld_steps = list(range(len(means)))
-            fig.add_trace(
-                go.Scatter(
-                    x=sgld_steps,
-                    y=means,
-                    mode="lines",
-                    line=dict(color=llc_color, dash="dash"),
-                    name="llc",
-                ),
-                row=i + 1,
-                col=j + 1,
-                secondary_y=True,
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=sgld_steps,
-                    y=means - stds,
-                    fill=None,
-                    mode="lines",
-                    line=dict(color=llc_color),
-                    showlegend=False,
-                ),
-                row=i + 1,
-                col=j + 1,
-                secondary_y=True,
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=sgld_steps,
-                    y=means + stds,
-                    fill="tonexty",
-                    mode="lines",
-                    line=dict(color=llc_color),
-                    fillcolor="rgba(0,128,128,0.3)",
-                    showlegend=False,
-                ),
-                row=i + 1,
-                col=j + 1,
-                secondary_y=True,
-            )
-
-            # Update y-axis labels
-            fig.update_yaxes(title_text="loss", row=i + 1, col=j + 1, secondary_y=False)
-            fig.update_yaxes(
-                title_text="llc",
-                row=i + 1,
-                col=j + 1,
-                secondary_y=True,
-                tickfont=dict(color=llc_color),
             )
             if i == len(epsilons) - 1:  # Only for the bottom row
-                fig.update_xaxes(title_text="SGLD time step", row=i + 1, col=j + 1)
+                axes_layouts["xaxes"].append(
+                    dict(title_text="SGLD time step", row=i + 1, col=j + 1)
+                )
 
-    # Additional layout configurations
-    # if kwargs.get("title"):
-    fig.update_layout(title=kwargs["title"], title_x=0.5)
-    fig.update_layout(height=height, width=width, showlegend=False)
+    return trace_list, (subplots_layout, layout, axes_layouts)
+
+
+def plot_sweep_single_model_plotly(
+    *args,
+    renderer=None,
+    **kwargs,
+):
+    trace_list, (subplots_layout, layout, axes_layout) = prepare_traces_and_kwargs(
+        *args,
+        **kwargs,
+    )
+
+    # Create a subplot grid
+    fig = make_subplots(**subplots_layout)
+    for trace, trace_kwargs in trace_list:
+        fig.add_trace(trace, **trace_kwargs)
+    for axis in axes_layout["xaxes"]:
+        fig.update_xaxes(**axis)
+    for axis in axes_layout["yaxes"]:
+        fig.update_yaxes(**axis)
+    fig.update_layout(**layout)
+    fig.show(renderer)
+
+
+def plot_sweep_many_models_plotly(
+    all_results,
+    epsilons,
+    gammas,
+    epochs: Optional[list[int]] = None,
+    title: Optional[str] = None,
+    write_gif: Optional[Union[str, Path]] = None,
+    renderer=None,
+    **kwargs,
+):
+    if epochs is None:
+        epochs = list(range(len(all_results)))
+    all_traces = [
+        prepare_traces_and_kwargs(
+            result,
+            epsilons,
+            gammas,
+            title=(
+                title.format(epoch=epoch)
+                if title is not None and "{epoch" in title
+                else title
+            ),
+            **kwargs,
+        )
+        for epoch, result in zip(epochs, tqdm(all_results, desc="traces"))
+    ]
+
+    slider_steps = [
+        dict(
+            method="animate",
+            args=[
+                [str(epoch)],
+                {
+                    "frame": {"duration": 0, "redraw": True},
+                    "mode": "immediate",
+                    "transition": {"duration": 0},
+                },
+            ],
+            label=str(epoch),
+        )
+        for epoch in epochs
+    ]
+
+    trace_list, (subplots_layout, layout, axes_layout) = all_traces[0]
+
+    # Create a subplot grid
+    fig = make_subplots(**subplots_layout)
+    for trace, trace_kwargs in trace_list:
+        fig.add_trace(trace, **trace_kwargs)
+    fig.frames = [
+        go.Frame(
+            data=[trace for trace, _ in trace_list],
+            name=str(epoch),
+            traces=list(
+                range(len(trace_list) + 3)
+            ),  # Indices of the traces in this frame
+        )
+        for epoch, (trace_list, _) in zip(epochs, tqdm(all_traces, desc="frames"))
+    ]
+    fig.update_layout(**layout)
+    fig.update_layout(
+        updatemenus=[
+            {
+                "type": "buttons",
+                "showactive": False,
+                "buttons": [
+                    {
+                        "label": "Play",
+                        "method": "animate",
+                        "args": [
+                            None,
+                            {
+                                "frame": {"duration": 100, "redraw": True},
+                                "fromcurrent": True,
+                                "transition": {"duration": 60, "easing": "linear"},
+                                "mode": "immediate",
+                                "repeat": True,
+                            },
+                        ],
+                    },
+                    {
+                        "label": "Pause",
+                        "method": "animate",
+                        "args": [
+                            [None],
+                            {
+                                "frame": {"duration": 0, "redraw": False},
+                                "mode": "immediate",
+                                "transition": {"duration": 0},
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+        sliders=[{"steps": slider_steps, "active": len(slider_steps) - 1}],
+    )
+    for axis in tqdm(axes_layout["xaxes"], desc="xaxes"):
+        fig.update_xaxes(**axis)
+    for axis in tqdm(axes_layout["yaxes"], desc="yaxes"):
+        fig.update_yaxes(**axis)
 
     fig.show(renderer)
+    return fig
+
+
+def save_plotly_fig_to_gif(
+    fig,
+    gif_path: Union[str, Path],
+    frames_dir: Optional[Union[str, Path]] = None,
+    duration=0.5,
+):
+    if frames_dir is None:
+        frames_dir = Path(gif_path).with_suffix("") / "frames"
+    Path(frames_dir).mkdir(exist_ok=True, parents=True)
+    filenames = []
+    for i, frame in enumerate(tqdm(fig.frames, descr="frames")):
+        # Update data for each trace
+        for j, data in enumerate(frame.data):
+            fig.data[j].x = data.x
+            fig.data[j].y = data.y
+
+        # Save as image
+        filename = f"{frames_dir}/frame_{i}.png"
+        # if os.path.exists(filename):
+        #     os.remove(filename)
+        fig.write_image(filename, height=fig.layout.height, width=fig.layout.width)
+        filenames.append(filename)
+
+    with imageio.get_writer(gif_path, mode="I", duration=duration, loop=0) as writer:
+        for filename in tqdm(filenames):
+            image = imageio.imread(filename)
+            writer.append_data(image)  # type: ignore
 
 
 # %%
@@ -651,6 +884,7 @@ for i, cur_model in enumerate(tqdm(list(models), desc="model", position=0)):
             EPSILONS,
             GAMMAS,
             tqdm_kwargs=dict(position=1, leave=(i == len(models) - 1)),
+            # print_model_loss=True,
             # verbose_cache_miss=True,
             # print_cache_miss=True,
         )
@@ -675,6 +909,39 @@ px.line(
     title="RLCT",
     labels={"value": "LLC", "index": "Epoch / 10", "variable": ""},
 ).show()
+# %%
+plt_gif_path_tmp = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.tmp.gif"
+plt_gif_path = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.gif"
+plot_sweep_many_models(
+    all_results[:5],
+    EPSILONS,
+    GAMMAS,
+    title=r"Calibration sweep for max of 2, epoch {epoch}",
+    write_gif=plt_gif_path_tmp if not os.path.exists(plt_gif_path) else None,
+)
+if not os.path.exists(plt_gif_path):
+    os.rename(plt_gif_path_tmp, plt_gif_path)
+# %%
+with open(plt_gif_path, mode="rb") as f:
+    display(Image(f.read()))
+# %%
+plotly_gif_path_tmp = (
+    Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.tmp.gif"
+)
+plotly_gif_path = Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.gif"
+plot_sweep_many_models_plotly(
+    all_results[:5],
+    EPSILONS,
+    GAMMAS,
+    title=r"Calibration sweep for max of 2, epoch {epoch}",
+    write_gif=plotly_gif_path_tmp if not os.path.exists(plotly_gif_path) else None,
+)
+if not os.path.exists(plotly_gif_path):
+    os.rename(plotly_gif_path_tmp, plotly_gif_path)
+# %%
+with open(plt_gif_path, mode="rb") as f:
+    display(Image(f.read()))
+
 # %%
 plot_sweep_single_model(
     all_results[-1],

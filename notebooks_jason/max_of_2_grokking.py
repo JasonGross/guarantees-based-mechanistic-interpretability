@@ -523,57 +523,104 @@ def compute_traces_and_frames(
     )
 
 
-include_l2_regularization = True  # @param {type:"boolean"}
-traces_and_frames = compute_traces_and_frames(
-    models, include_l2_regularization=include_l2_regularization
-)
+# %%
+fig_html = {}
+traces_and_frames = {}
+grokking_fig = {}
+# %%
+for include_l2_regularization in [True, False]:
+    traces_and_frames[include_l2_regularization] = compute_traces_and_frames(
+        models, include_l2_regularization=include_l2_regularization
+    )
 # %%
 # @title plot
-fig = make_subplots(
-    rows=3,
-    cols=1,
-    subplot_titles=(
-        "Attention Plot",
-        f"Loss{'+L2 Regularization' if include_l2_regularization else ''} Plot",
-        "Accuracy Plot",
-    ),
-    # vertical_spacing=0.15,
-)
+for include_l2_regularization in [True, False]:
+    grokking_fig[include_l2_regularization] = make_subplots(
+        rows=3,
+        cols=1,
+        subplot_titles=(
+            "Attention Plot",
+            f"Loss{'+L2 Regularization' if include_l2_regularization else ''} Plot",
+            "Accuracy Plot",
+        ),
+        # vertical_spacing=0.15,
+    )
 
-for trace_args, trace_kwargs in traces_and_frames["traces"]:
-    fig.add_trace(*trace_args, **trace_kwargs)  # type: ignore
+    for trace_args, trace_kwargs in traces_and_frames[include_l2_regularization][
+        "traces"
+    ]:
+        grokking_fig[include_l2_regularization].add_trace(*trace_args, **trace_kwargs)  # type: ignore
 
-# Add frames to the figure
-fig.frames = traces_and_frames["frames"]
-# Update layout for the figure
-fig.update_layout(**traces_and_frames["layout"])  # type: ignore
-# Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
-fig.update_layout(width=600)
-fig.update_layout(height=600)
+    # Add frames to the figure
+    grokking_fig[include_l2_regularization].frames = traces_and_frames[
+        include_l2_regularization
+    ]["frames"]
+    # Update layout for the figure
+    grokking_fig[include_l2_regularization].update_layout(**traces_and_frames[include_l2_regularization]["layout"])  # type: ignore
+    # Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
+    grokking_fig[include_l2_regularization].update_layout(width=600)
+    grokking_fig[include_l2_regularization].update_layout(height=600)
+
 # Show the figure
-fig.show()
+for include_l2_regularization in [True, False]:
+    grokking_fig[include_l2_regularization].show()
+# %%
+# Save to html
+for include_l2_regularization in [True, False]:
+    fig_html[include_l2_regularization] = (
+        f"max_of_2_grokking{'_regularized' if include_l2_regularization else ''}.html"
+    )
+    grokking_fig[include_l2_regularization].write_html(
+        fig_html[include_l2_regularization], auto_play=False
+    )
+# %%
+# log artifact to wandb
+if True or UPLOAD_TO_WANDB:
+    runtime_run = runtime.run()
+    assert runtime_run is not None
+    run = wandb.init(
+        entity=runtime_run.entity,
+        project=runtime_run.project,
+        name=runtime_run.name,
+        id=runtime_run.id,
+        resume="must",
+    )
+    assert run is not None
+    for k, v in fig_html.items():
+        run.log({f"grokking{'_regularized' if k else ''}": wandb.Html(v)})
+    wandb.finish()
+
 # %%
 # @title make frames for a gif
+include_l2_regularization: bool = False  # @param {type:"boolean"}
 # Assuming 'fig', 'models', and the lists 'max_abs_value_attention', 'max_value_losses', 'max_value_accuracies' are defined
 
 # Prepare a directory to save frames
 frames_dir = "frames"
 os.makedirs(frames_dir, exist_ok=True)
 
-all_min_value_attention = traces_and_frames["all_min_value_attention"]
-all_max_value_attention = traces_and_frames["all_max_value_attention"]
-all_max_value_losses = traces_and_frames["all_max_value_losses"]
-all_max_value_accuracies = traces_and_frames["all_max_value_accuracies"]
+all_min_value_attention = traces_and_frames[include_l2_regularization][
+    "all_min_value_attention"
+]
+all_max_value_attention = traces_and_frames[include_l2_regularization][
+    "all_max_value_attention"
+]
+all_max_value_losses = traces_and_frames[include_l2_regularization][
+    "all_max_value_losses"
+]
+all_max_value_accuracies = traces_and_frames[include_l2_regularization][
+    "all_max_value_accuracies"
+]
 
 filenames = []
-for i, frame in enumerate(tqdm(fig.frames)):
+for i, frame in enumerate(tqdm(grokking_fig[include_l2_regularization].frames)):
     # Update data for each trace
     for j, data in enumerate(frame.data):
-        fig.data[j].x = data.x
-        fig.data[j].y = data.y
+        grokking_fig[include_l2_regularization].data[j].x = data.x
+        grokking_fig[include_l2_regularization].data[j].y = data.y
 
     # Update layout (axis bounds)
-    fig.update_layout(
+    grokking_fig[include_l2_regularization].update_layout(
         yaxis={"range": [all_min_value_attention[i], all_max_value_attention[i]]},
         yaxis2={"range": [0, all_max_value_losses[i]]},
         yaxis3={"range": [0, all_max_value_accuracies[i]]},
@@ -583,7 +630,11 @@ for i, frame in enumerate(tqdm(fig.frames)):
     filename = f"{frames_dir}/frame_{i}.png"
     # if os.path.exists(filename):
     #     os.remove(filename)
-    fig.write_image(filename, height=fig.layout.height, width=fig.layout.width)
+    grokking_fig[include_l2_regularization].write_image(
+        filename,
+        height=grokking_fig[include_l2_regularization].layout.height,
+        width=grokking_fig[include_l2_regularization].layout.width,
+    )
     filenames.append(filename)
 # %%
 # @title make gif

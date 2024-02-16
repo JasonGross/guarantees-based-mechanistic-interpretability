@@ -99,7 +99,7 @@ class ModelMatrixLoggingOptions:
                     f"EVOU.{h}",
                     (
                         (W_E @ W_V[0, h, :, :] + b_V[0, h, None, :]) @ W_O[0, h, :, :]
-                        + b_O[0, None, None, :]
+                        + b_O[0, None, None, :][0]
                     )
                     @ W_U
                     + b_U,
@@ -110,7 +110,7 @@ class ModelMatrixLoggingOptions:
                     f"PVOU.{h}",
                     (
                         (W_pos @ W_V[0, h, :, :] + b_V[0, h, None, :]) @ W_O[0, h, :, :]
-                        + b_O[0, None, None, :]
+                        + b_O[0, None, None, :][0]
                     )
                     @ W_U
                     + b_U,
@@ -124,6 +124,7 @@ class ModelMatrixLoggingOptions:
 
 @torch.no_grad()
 def log_tensor(logger: WandbLogger, name, matrix, **kwargs):
+    matrix = matrix.squeeze()
     # Check the number of dimensions in the matrix to determine the plot type
     if len(matrix.shape) == 1:
         # For 1D tensors, create a line plot

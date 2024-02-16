@@ -780,6 +780,7 @@ class LargestWrongLogitQuadraticConfig:
                 return max_row_diffs_per_dim(*matrices)
             case "mean+max_diff":
                 raise NotImplemented("FIXME")
+                # FIXME HERE
             case "svd+max_diff":
                 raise NotImplemented("FIXME")
 

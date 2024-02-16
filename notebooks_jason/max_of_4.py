@@ -1172,6 +1172,7 @@ def decompose_EQKE_error(
     W_K_U: Tensor,
     sanity_check: bool = True,
     atol: float = 1e-4,
+    tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
 ) -> Tuple[
     Tuple[
         Float[LowRankTensor, "d_vocab_q d_vocab_k"],  # noqa: F722
@@ -1345,6 +1346,9 @@ def decompose_EQKE_error(
 
     # We would like a faster way to compute EQKE_err_err_err__err_cross_err
     # unfortunately, we can only get this down to O(d_vocab * d_model^2) by using SVD
+
+    # tricks.split_min_softmaxed_right_attention
+    # FIXME HERE
 
     return (
         (EQKE_query_key, err_accumulator),

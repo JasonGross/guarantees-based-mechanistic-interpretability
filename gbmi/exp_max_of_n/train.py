@@ -223,7 +223,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     @overload
     def run_batch(
         self,
-        x_y: Tuple[Float[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
+        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
         prefix: Literal[None] = None,
         *,
         return_accuracy: Literal[True],
@@ -235,7 +235,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     @overload
     def run_batch(
         self,
-        x_y: Tuple[Float[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
+        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
         prefix: Literal[None] = None,
         *,
         return_accuracy: Literal[False] = False,
@@ -247,7 +247,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     @overload
     def run_batch(
         self,
-        x_y: Tuple[Float[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
+        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
         prefix: str,
         *,
         return_accuracy: Literal[True],
@@ -259,7 +259,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     @overload
     def run_batch(
         self,
-        x_y: Tuple[Float[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
+        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
         prefix: str,
         *,
         return_accuracy: Literal[False] = False,
@@ -270,7 +270,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     def run_batch(
         self,
-        x_y: Tuple[Float[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
+        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
         prefix: Optional[str] = None,
         *,
         return_accuracy: bool = False,
@@ -376,7 +376,7 @@ class MaxOfNLabeledDataset(
         self.dataset = unlabeled_dataset
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.dataset)  # type: ignore
 
     def label(
         self, val: Integer[Tensor, "seq_length"]  # noqa: F821
@@ -409,7 +409,7 @@ class MaxOfNCatEOSLabeledDataset(
         self.eos = eos
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.dataset)  # type: ignore
 
     def cat_eos(
         self,
@@ -447,10 +447,10 @@ class MaxOfNCatEOSLabeledDataset(
 class MaxOfNDataModule(DataModule):
     data_train: Dataset[
         Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
-    ]  # noqa: F722
+    ]
     data_test: Dataset[
         Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
-    ]  # noqa: F722
+    ]
     batch_size: Optional[int]
     seq_len: int
     eos: Optional[int]

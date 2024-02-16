@@ -1279,13 +1279,41 @@ import pickle
 import scipy.ndimage
 
 # from sklearn.decomposition import PCA
-
-plot_essential_dynamics_grid(
-    U,
-    torch.arange(len(U)) * 10,
-    smoothing_early=4,
-    smoothing_late=4,
-    smoothing_boundary=4,
+# %%
+plot_essential_dynamics_grid_args = dict(
+    smoothing_early=3,
+    smoothing_late=3,
+    smoothing_boundary=3,
     num_vertices=7,
     num_sharp_points=1,
 )
+essential_dynamics_grid_fig = plot_essential_dynamics_grid(
+    U,
+    torch.arange(len(U)) * 10,
+    **plot_essential_dynamics_grid_args,
+    # use_3D=True
+)
+# %%
+# log artifact to wandb
+if UPLOAD_TO_WANDB:
+    runtime_run = runtime.run()
+    assert runtime_run is not None
+    run = wandb.init(
+        entity=runtime_run.entity,
+        project=runtime_run.project,
+        name=runtime_run.name,
+        id=runtime_run.id,
+        resume="must",
+    )
+    assert run is not None
+    run.log(
+        {
+            f"essential_dynamics_osculating_circles": {
+                "figure": essential_dynamics_grid_fig,
+                "config": plot_essential_dynamics_grid_args,
+            }
+        }
+    )
+    wandb.finish()
+
+# %%

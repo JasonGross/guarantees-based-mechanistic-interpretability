@@ -711,7 +711,7 @@ def plot_sweep_many_models_plotly(
     renderer=None,
     **kwargs,
 ):
-    epochs = list(epochs or range(len(all_results)))
+    epochs = list(range(len(all_results)) if epochs is None else epochs)
     all_traces = [
         prepare_traces_and_kwargs(
             result,
@@ -886,11 +886,14 @@ for i, (_, (_, cur_model), _) in enumerate(
 # %%
 llcs = [res[(np.min(EPSILONS), np.max(GAMMAS))]["llc/means"][-1] for res in all_results]
 # %%
+epochs = np.arange(0, len(llcs)) * (cfg.checkpoint_every or (1,))[0]
 px.line(
-    {"": llcs},
+    x=epochs,
+    y=llcs,
     title="RLCT",
-    labels={"value": "LLC", "index": "Epoch / 10", "variable": ""},
-).show()
+    labels={"y": "llc", "x": "epoch", "variable": ""},
+).show("png")
+# %%
 # %%
 plt_gif_path_tmp = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.tmp.gif"
 plt_gif_path = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.gif"
@@ -909,15 +912,35 @@ if not os.path.exists(plt_gif_path):
 with open(plt_gif_path, mode="rb") as f:
     display(Image(f.read()))
 # %%
+if False:
+    runtime_run = runtime.run()
+    assert runtime_run is not None
+    run = wandb.init(
+        entity=runtime_run.entity,
+        project=runtime_run.project,
+        name=runtime_run.name,
+        id=runtime_run.id,
+        resume="must",
+    )
+    assert run is not None
+    run.log({plt_gif_path.name: wandb.Video(plt_gif_path, fps=2, format="gif")})
+    wandb.finish()
+
+# %%
 results_to_use = all_results[:]
+epochs = np.arange(0, len(results_to_use)) * (cfg.checkpoint_every or (1,))[0]
 fig = plot_sweep_many_models_plotly(
     results_to_use,
     EPSILONS,
     GAMMAS,
-    epochs=np.arange(0, len(results_to_use)) * (cfg.checkpoint_every or (1,))[0],
+    epochs=epochs,
     title=r"Calibration sweep for max of 2, epoch {epoch}",
     renderer="png",
 )
+# %%
+plotly_html_path = Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.html"
+fig.write_html(plotly_html_path, auto_play=False)
+
 # %%
 plotly_gif_path = Path(".") / "max_of_2_grokking_devinterp_plotly_calibration.gif"
 plotly_gif_path_tmp = plotly_gif_path.with_suffix(".tmp.gif")
@@ -927,11 +950,11 @@ if OVERWRITE_GIF or not os.path.exists(plotly_gif_path):
 # %%
 with open(plotly_gif_path, mode="rb") as f:
     display(Image(f.read()))
+
 # %%
 import sys
 
 sys.exit(0)
-
 # %%
 plot_sweep_single_model(
     all_results[-1],

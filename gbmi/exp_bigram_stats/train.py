@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-
+from functools import partial
 from dataclasses import dataclass
 from dataclasses import field
 from collections.abc import Callable
@@ -56,6 +56,12 @@ from gbmi.utils import (
 )
 from gbmi.utils.sequences import generate_all_sequences
 
+from gbmi.utils.hashing import _EXCLUDE
+from gbmi.training_tools.logging import (
+    ModelMatrixLoggingOptions,
+    log_tensor,
+)
+
 torch.set_default_device("cuda")
 
 
@@ -75,12 +81,16 @@ class Bigram(ExperimentConfig):
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
     version_number: int = 1
+    logging_options: ModelMatrixLoggingOptions = field(
+        default_factory=ModelMatrixLoggingOptions
+    )
 
     def __post_init__(self):
         self.model_config.n_ctx = self.seq_length
         if self.bos:
             self.model_config.n_ctx = self.seq_length + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
+        setattr(self, _EXCLUDE, ("logging_options",))
         self.model_config.__post_init__()
 
     def config_post_init(self, config: Config[Bigram]) -> None:
@@ -107,6 +117,7 @@ def bigram_config(
     bos: bool = True,
     d_vocab_out=3,
     batch_size=512,
+    log_matrices: bool = True,
 ):
     return Config(
         experiment=Bigram(
@@ -123,6 +134,11 @@ def bigram_config(
                 normalization_type=None,
             ),
             zero_biases=False,
+            logging_options=(
+                ModelMatrixLoggingOptions()
+                if not log_matrices
+                else ModelMatrixLoggingOptions.all()
+            ),
             seq_length=seq_length,
             bos=bos,
             optimizer_kwargs={
@@ -375,6 +391,14 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         loss = self.loss_fn(y_preds, ys)
         if log_output:
             self.log(f"{prefix}loss", loss, prog_bar=True)
+
+        if log_output and prefix is not None and prefix != "":
+            assert self.logger is not None
+            self.config.experiment.logging_options.log_matrices(
+                partial(log_tensor, self.logger),  # type: ignore
+                self.model,
+                unsafe=True,
+            )
         return loss
 
     def training_step(self, batch, batch_idx):

@@ -385,7 +385,7 @@ def plot_single_graph(
     show: bool = True,
 ):
     fig, axs = fig_axs or plt.subplots(1, 1)
-    axs.clear()
+    fig.clear()
     # plot loss traces
     loss_traces = result["loss/trace"]
     for trace in loss_traces:
@@ -890,9 +890,10 @@ epochs = np.arange(0, len(llcs)) * (cfg.checkpoint_every or (1,))[0]
 px.line(
     x=epochs,
     y=llcs,
-    title="RLCT",
+    title=f"RLCT (ε={np.min(EPSILONS)}, γ={np.max(GAMMAS)})",
     labels={"y": "llc", "x": "epoch", "variable": ""},
-).show("png")
+).show()
+
 # %%
 # %%
 plt_gif_path_tmp = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.tmp.gif"

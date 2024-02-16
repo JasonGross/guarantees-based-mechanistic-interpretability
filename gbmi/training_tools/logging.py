@@ -94,6 +94,20 @@ class ModelMatrixLoggingOptions:
                     @ (W_pos @ W_K[0, h, :, :] + b_K[0, h, None, :]).transpose(-1, -2),
                     **kwargs,
                 )
+            if self.PQKE:
+                log(
+                    f"PQKE.{h}",
+                    (W_pos @ W_Q[0, h, :, :] + b_Q[0, h, None, :])
+                    @ (W_E @ W_K[0, h, :, :] + b_K[0, h, None, :]).transpose(-1, -2),
+                    **kwargs,
+                )
+            if self.PQKP:
+                log(
+                    f"PQKP.{h}",
+                    (W_pos @ W_Q[0, h, :, :] + b_Q[0, h, None, :])
+                    @ (W_pos @ W_K[0, h, :, :] + b_K[0, h, None, :]).transpose(-1, -2),
+                    **kwargs,
+                )
             if self.EVOU:
                 log(
                     f"EVOU.{h}",

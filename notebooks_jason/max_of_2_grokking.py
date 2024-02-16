@@ -54,6 +54,7 @@ api = wandb.Api()
 #
 #### Model configuration
 # %%
+UPLOAD_TO_WANDB = False  # @param {type:"boolean"}
 seq_len = 2  # training data setup code only works for sequence length 2
 vocab = 64  # @param {type:"number"}
 d_head = 32  # @param {type:"number"}
@@ -126,6 +127,7 @@ cfg = Config(
     validate_every=(10, "epochs"),
     checkpoint_every=(10, "epochs"),
 )
+
 # %% [markdown]
 #### Model Training / Loading
 # %%
@@ -597,7 +599,7 @@ with open(grokking_gif, mode="rb") as f:
     display(Image(f.read()))
 # %%
 # log artifact to wandb
-if True:
+if UPLOAD_TO_WANDB:
     runtime_run = runtime.run()
     assert runtime_run is not None
     run = wandb.init(
@@ -673,16 +675,41 @@ def make_essential_dynamics(
     return essential_dynamics_matrix, essential_dynamics_matrix_centered, (U, S, Vh)
 
 
-def plot3d_essential_dynamics(U: Tensor):
-    indices = np.arange(U.shape[0])
-    # 3d scatter plot first three columns of U
-    px.scatter_3d(x=U[:, 0], y=U[:, 1], z=U[:, 2], color=indices).show()
+def plot3d_essential_dynamics(
+    U: Tensor,
+    x_label: str = "pc 0",
+    y_label: str = "pc 1",
+    z_label: str = "pc 2",
+    index_label: str = "epoch",
+    indices=None,
+    epoch_scale: float = 1,
+    title: str = "3D Essential Dynamics",
+):
+    indices = np.arange(U.shape[0]) * epoch_scale if indices is None else indices
+    hover_template = f"{x_label}: %{{x}}<br>{y_label}: %{{y}}<br>{z_label}: %{{z}}<br>{index_label}: %{{marker.color}}"
+    fig = px.scatter_3d(
+        x=U[:, 0],
+        y=U[:, 1],
+        z=U[:, 2],
+        color=indices,
+        labels={"x": x_label, "y": y_label, "z": z_label, "color": index_label},
+        title=title,
+    )
+    fig.update_traces(hovertemplate=hover_template)
+
+    fig.show()
+    return fig
 
 
 def plot_essential_dynamics(
-    U: Tensor, n: int = 6, height: int = 2000, width: int = 2000
+    U: Tensor,
+    n: int = 6,
+    height: int = 2000,
+    width: int = 2000,
+    indices=None,
+    epoch_scale: float = 1,
 ):
-    indices = np.arange(U.shape[0])
+    indices = np.arange(U.shape[0]) * epoch_scale if indices is None else indices
     fig = make_subplots(
         rows=n,
         cols=n,
@@ -698,7 +725,7 @@ def plot_essential_dynamics(
                     mode="markers",
                     marker=dict(color=indices),
                     name=f"{j} vs {i}",
-                    hovertemplate="%{x}, %{y}, %{marker.color}",
+                    hovertemplate=f"pc{j}: %{{y}}<br>pc{i}: %{{y}}<br>epoch: %{{marker.color}}",
                 ),
                 row=row + 1,
                 col=col + 1,
@@ -707,8 +734,10 @@ def plot_essential_dynamics(
         height=height,
         width=width,
         title_text="Essential Dynamics Scatter Plots Grid, Principle Components",
+        showlegend=False,
     )
     fig.show()
+    return fig
 
 
 # %%
@@ -716,7 +745,41 @@ essential_dynamics_matrix, essential_dynamics_matrix_centered, (U, S, Vh) = (
     make_essential_dynamics(cfg, models)
 )
 # %%
-plot3d_essential_dynamics(U)
+fig3d012 = plot3d_essential_dynamics(
+    U, epoch_scale=(cfg.checkpoint_every[0] if cfg.checkpoint_every is not None else 1)
+)
 # %%
-plot_essential_dynamics(U)
+# log artifact to wandb
+if UPLOAD_TO_WANDB:
+    runtime_run = runtime.run()
+    assert runtime_run is not None
+    run = wandb.init(
+        entity=runtime_run.entity,
+        project=runtime_run.project,
+        name=runtime_run.name,
+        id=runtime_run.id,
+        resume="must",
+    )
+    assert run is not None
+    run.log({f"3d_essential_dynamics_0_1_2": fig3d012})
+    wandb.finish()
+
 # %%
+fig6 = plot_essential_dynamics(
+    U, epoch_scale=(cfg.checkpoint_every[0] if cfg.checkpoint_every is not None else 1)
+)
+# %%
+# log artifact to wandb
+if UPLOAD_TO_WANDB:
+    runtime_run = runtime.run()
+    assert runtime_run is not None
+    run = wandb.init(
+        entity=runtime_run.entity,
+        project=runtime_run.project,
+        name=runtime_run.name,
+        id=runtime_run.id,
+        resume="must",
+    )
+    assert run is not None
+    run.log({f"essential_dynamics": fig6})
+    wandb.finish()

@@ -4,8 +4,9 @@ import argparse
 import sys
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
-from functools import cache
+from functools import cache, partial
 from gbmi.utils.hashing import _EXCLUDE
+from gbmi.training_tools.logging import ModelMatrixLoggingOptions, log_tensor
 from lightning.pytorch.loggers.wandb import WandbLogger
 from typing import (
     Any,
@@ -375,40 +376,13 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         if log_output and prefix is not None and prefix != "":
             assert self.logger is not None
             self.config.experiment.logging_options.log_matrices(
-                self.log_tensor,
+                partial(log_tensor, self.logger),  # type: ignore
                 self.model,
                 use_end_of_sequence=self.config.experiment.use_end_of_sequence,
             )
         if return_accuracy:
             return loss, acc
         return loss
-
-    def log_tensor(self, name, matrix, **kwargs):
-        assert self.logger is not None
-        # Check the number of dimensions in the matrix to determine the plot type
-        if len(matrix.shape) == 1:
-            # For 1D tensors, create a line plot
-            fig, ax = plt.subplots()
-            ax.plot(
-                matrix.cpu().numpy()
-            )  # Ensure matrix is on CPU and converted to numpy for plotting
-            ax.set_title(name)
-            # Optional: Customize the plot further with kwargs
-        elif len(matrix.shape) == 2:
-            # For 2D tensors, use imshow to create a heatmap
-            fig, ax = plt.subplots()
-            cax = ax.imshow(
-                matrix.cpu().numpy(), **kwargs
-            )  # Ensure matrix is on CPU and converted to numpy for plotting
-            fig.colorbar(cax)
-            ax.set_title(name)
-            # Optional: Customize the plot further, e.g., adjust the aspect ratio, add labels, etc.
-        else:
-            raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
-        self.logger.log_image(name, [fig], **kwargs)
-        # I'd like to do https://docs.wandb.ai/guides/track/log/plots#matplotlib-and-plotly-plots but am not sure how cf https://github.com/JasonGross/guarantees-based-mechanistic-interpretability/issues/33 cc Euan
-        # self.log(name, fig, **kwargs)
-        plt.close(fig)
 
     def training_step(self, batch, batch_idx):
         return self.run_batch(batch, prefix="")

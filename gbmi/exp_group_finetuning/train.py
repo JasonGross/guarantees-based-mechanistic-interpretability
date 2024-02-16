@@ -12,7 +12,18 @@ from gbmi.exp_group_finetuning.groups import (
     GLN_p,
 )
 import sys
-from typing import Any, Dict, List, Optional, cast, Literal, Generic, TypeVar, Type
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    cast,
+    Literal,
+    Generic,
+    TypeVar,
+    Type,
+    Tuple,
+)
 from gbmi import utils
 
 import numpy as np

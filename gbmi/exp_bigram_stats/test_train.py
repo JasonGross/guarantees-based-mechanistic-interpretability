@@ -12,4 +12,5 @@ from gbmi.model import (
     update_HookedTransformerConfig_from_args,
 )
 
+print(DEFAULT_BIGRAM)
 model = train_or_load_model(DEFAULT_BIGRAM, force="train")

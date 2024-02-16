@@ -234,6 +234,24 @@ class RunData:
     epoch: Optional[int] = None
     global_step: Optional[int] = None
 
+    def log_extra(self, data: Dict[str, Any], commit: Optional[bool] = None):
+        """Logs artifacts to wandb even after the run is complete.  NB: This reinitializes wandb."""
+        runtime_run = self.run()
+        assert runtime_run is not None
+        run = wandb.init(
+            entity=runtime_run.entity,
+            project=runtime_run.project,
+            name=runtime_run.name,
+            id=runtime_run.id,
+            resume="must",
+        )
+        assert run is not None
+        run.log(data, commit=commit)
+        if commit is False:
+            return run
+        else:
+            wandb.finish()
+
     def artifact(self) -> Optional[wandb.Artifact]:
         if self.wandb_id is None:
             return None

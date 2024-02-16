@@ -291,7 +291,7 @@ train_data = train_loader.dataset
 criterion = training_wrapper.loss_fn
 DEVICE = RLCT_DEVICE
 NUM_CHAINS = 10
-NUM_DRAWS = 1500
+NUM_DRAWS = 4500
 import matplotlib.pyplot as plt
 
 
@@ -897,7 +897,7 @@ assert models is not None
 models = list(models)
 
 # %%
-EPSILONS = [1e-5]  # [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
+EPSILONS = [1e-5, 2e-5, 3e-5]  # [1e-5, 2e-5, 3e-5, 4e-5]  # , 1e-4, 1e-3]
 GAMMAS = [100]  # [1, 10, 100]  # [1, 10, 100]
 all_results = []
 DO_PLOT = False  # @param {type:"boolean"}

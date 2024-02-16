@@ -575,7 +575,7 @@ for include_l2_regularization in [True, False]:
     )
 # %%
 # log artifact to wandb
-if True or UPLOAD_TO_WANDB:
+if UPLOAD_TO_WANDB:
     runtime_run = runtime.run()
     assert runtime_run is not None
     run = wandb.init(

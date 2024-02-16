@@ -5,6 +5,7 @@ from transformer_lens import HookedTransformer
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 from lightning.pytorch.loggers.wandb import WandbLogger
+import logging
 
 
 @dataclass
@@ -31,26 +32,37 @@ class ModelMatrixLoggingOptions:
             PQKE=True,
         )
 
-    def assert_model_supported(self, model: HookedTransformer):
-        assert (
-            model.cfg.normalization_type is None
-        ), f"Automatic logging for normalization type {model.cfg.normalization_type} is not yet implemented"
+    def assert_model_supported(self, model: HookedTransformer, unsafe: bool = False):
+        def error_unless(test: bool, message: str):
+            if unsafe:
+                if not test:
+                    logging.warning(message)
+            else:
+                assert test, message
+
+        error_unless(
+            (model.cfg.normalization_type is None),
+            f"Automatic logging for normalization type {model.cfg.normalization_type} is not yet implemented",
+        )
         max_supported_layers = 1
-        assert (
-            model.cfg.n_layers == 1
-        ), f"Automatic logging for {model.cfg.n_layers} layers is not yet implemented (max is {max_supported_layers})"
-        assert (
-            model.cfg.attn_only
-        ), "Automatic logging is only supported for attention-only models"
+        error_unless(
+            (model.cfg.n_layers == 1),
+            f"Automatic logging for {model.cfg.n_layers} layers is not yet implemented (max is {max_supported_layers})",
+        )
+        error_unless(
+            (model.cfg.attn_only),
+            "Automatic logging is only supported for attention-only models",
+        )
 
     @torch.no_grad()
     def log_matrices(
         self,
         log: Callable[[str, Any], None],
         model: HookedTransformer,
+        unsafe: bool = False,
         **kwargs,
     ):
-        self.assert_model_supported(model)
+        self.assert_model_supported(model, unsafe=unsafe)
         W_E, W_pos, W_U, W_Q, W_K, W_V, W_O = (
             model.W_E,
             model.W_pos,

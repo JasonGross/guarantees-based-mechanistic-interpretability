@@ -80,6 +80,7 @@ display(
 #
 #### Model configuration
 # %%
+UPLOAD_TO_WANDB: bool = False  # @param {type:"boolean"}
 seq_len = 2  # training data setup code only works for sequence length 2
 vocab = 64  # @param {type:"number"}
 d_head = 32  # @param {type:"number"}
@@ -294,6 +295,16 @@ NUM_DRAWS = 1500
 import matplotlib.pyplot as plt
 
 
+def estimate_llcs_sweeper_optim_kwargs(epsilon, gamma):
+    return dict(
+        lr=epsilon,
+        noise_level=1.0,
+        elasticity=gamma,
+        num_samples=len(train_data),
+        temperature="adaptive",
+    )
+
+
 def estimate_llcs_sweeper(
     model,
     epsilons,
@@ -335,13 +346,7 @@ def estimate_llcs_sweeper(
                     leave=gamma_tqdm_kwags.get("leave", True)
                     and gamma_i == len(gammas) - 1,
                 )
-                optim_kwargs = dict(
-                    lr=epsilon,
-                    noise_level=1.0,
-                    elasticity=gamma,
-                    num_samples=len(train_data),
-                    temperature="adaptive",
-                )
+                optim_kwargs = estimate_llcs_sweeper_optim_kwargs(epsilon, gamma)
                 pair = (epsilon, gamma)
 
                 args = dict(
@@ -379,13 +384,14 @@ def plot_single_graph(
     result,
     title: Optional[str] = "",
     llc_color="teal",
-    fig_axs: Optional[Tuple[Figure, Any]] = None,
+    fig_axs_axs2: Optional[Tuple[Tuple[Figure, Any], Any]] = None,
     xlabel: Optional[str] = "SGLD time step",
     axhline: bool = True,
     show: bool = True,
+    prior_lims: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None,
+    w_pad: Optional[float] = None,
 ):
-    fig, axs = fig_axs or plt.subplots(1, 1)
-    fig.clear()
+    (fig, axs), axs2 = fig_axs_axs2 or (plt.subplots(1, 1), None)
     # plot loss traces
     loss_traces = result["loss/trace"]
     for trace in loss_traces:
@@ -398,7 +404,7 @@ def plot_single_graph(
     means = result["llc/means"]
     stds = result["llc/stds"]
     sgld_steps = list(range(len(means)))
-    axs2 = axs.twinx()
+    axs2 = axs.twinx() if axs2 is None else axs2
     axs2.plot(
         sgld_steps,
         means,
@@ -428,20 +434,29 @@ def plot_single_graph(
         # add to bottom of y2 and top of y1
         y2_min -= y2_amt_to_add
         y1_max += y1_amt_to_add
+    if prior_lims:
+        prior_y1_min, prior_y1_max = prior_lims[0]
+        prior_y2_min, prior_y2_max = prior_lims[1]
+        y1_min = min(y1_min, prior_y1_min)
+        y1_max = max(y1_max, prior_y1_max)
+        y2_min = min(y2_min, prior_y2_min)
+        y2_max = max(y2_max, prior_y2_max)
     axs.set_ylim(y1_min, y1_max)
     axs2.set_ylim(y2_min, y2_max)
     if xlabel:
         axs.set_xlabel(xlabel)
     axs.set_ylabel("loss")
     axs2.set_ylabel("llc", color=llc_color)
+    axs2.yaxis.set_label_position("right")
     axs2.tick_params(axis="y", labelcolor=llc_color)
     if axhline:
         axs.axhline(color="black", linestyle=":")
     if title:
         fig.suptitle(title, fontsize=16)
     if show:
-        plt.tight_layout()
+        plt.tight_layout(w_pad=w_pad)
         plt.show()
+    return ((fig, axs), axs2), ((y1_min, y1_max), (y2_min, y2_max))
 
 
 def plot_sweep_single_model(
@@ -449,34 +464,47 @@ def plot_sweep_single_model(
     epsilons,
     gammas,
     llc_color="teal",
-    fig_axs: Optional[Tuple[Figure, Any]] = None,
+    fig_axs_axs2: Optional[Tuple[Tuple[Figure, Any], Any]] = None,
     xlabel: Optional[str] = "SGLD time step",
     axhline: bool = False,
     show: bool = True,
     title: Optional[str] = "",
+    prior_lims: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None,
+    w_pad: Optional[float] = None,
 ):
-    fig, axs = fig_axs or plt.subplots(len(epsilons), len(gammas))
+    (fig, axs), axs2 = fig_axs_axs2 or (plt.subplots(len(epsilons), len(gammas)), None)
 
+    if axs2 is None:
+        axs2 = np.array([None for _ in epsilons for _ in gammas]).reshape(
+            len(epsilons), len(gammas)
+        )
     if len(epsilons) == 1 or len(gammas) == 1:
-        axs = np.array(axs).reshape(len(epsilons), len(gammas))
+        if axs.ndim == 1:
+            axs = np.array(axs).reshape(len(epsilons), len(gammas))
+        if axs2.ndim == 1:
+            axs2 = np.array(axs2).reshape(len(epsilons), len(gammas))
+
     for i, epsilon in enumerate(epsilons):
         for j, gamma in enumerate(gammas):
             # only show x axis label on last row
             cur_xlabel = xlabel if i == len(epsilons) - 1 else None
-            plot_single_graph(
+            ((fig, axs[i, j]), axs2[i, j]), prior_lims = plot_single_graph(
                 results[(epsilon, gamma)],
                 title="",
                 llc_color=llc_color,
-                fig_axs=(fig, axs[i, j]),
+                fig_axs_axs2=((fig, axs[i, j]), axs2[i, j]),
                 xlabel=cur_xlabel,
                 axhline=axhline,
                 show=False,
+                prior_lims=prior_lims,
+                w_pad=w_pad,
             )
     if title:
         fig.suptitle(title, fontsize=16)
     if show:
-        plt.tight_layout()
+        plt.tight_layout(w_pad=w_pad)
         plt.show()
+    return ((fig, axs), axs2), prior_lims
 
 
 def plot_sweep_many_models(
@@ -487,28 +515,46 @@ def plot_sweep_many_models(
     title: Optional[str] = None,
     write_gif: Optional[Union[str, Path]] = None,
     figsize: Optional[Tuple[int, int]] = None,
+    w_pad: Optional[float] = None,
 ):
     if epochs is None:
         epochs = list(range(len(all_results)))
     if figsize is None:
         figsize = (5 * len(gammas), 3 * len(epsilons))
-    fig, axs = plt.subplots(len(epsilons), len(gammas), squeeze=False, figsize=figsize)
+    (fig, axs), axs2 = (
+        plt.subplots(len(epsilons), len(gammas), squeeze=False, figsize=figsize),
+        None,
+    )
+    state = {"fig": fig, "axs": axs, "axs2": axs2, "lims": None}
 
     def update(frame):
         results = all_results[frame]
-        plot_sweep_single_model(
+        fig, axs, axs2, lims = state["fig"], state["axs"], state["axs2"], state["lims"]
+        print(type(axs))
+        for ax_row in axs:
+            for ax in ax_row:
+                ax.clear()
+        if axs2 is not None:
+            for ax_row in axs2:
+                for ax in ax_row:
+                    ax.clear()
+        ((fig, axs), axs2), lims = plot_sweep_single_model(
             results,
             epsilons,
             gammas,
-            fig_axs=(fig, axs),
+            fig_axs_axs2=((fig, axs), axs2),
             show=False,
             title=(
                 title.format(epoch=frame)
                 if title is not None and "{epoch" in title
                 else title
             ),
+            prior_lims=lims,
+            w_pad=w_pad,
         )
-        plt.tight_layout()
+        state.update({"fig": fig, "axs": axs, "axs2": axs2, "lims": lims})
+        plt.tight_layout(w_pad=w_pad)
+        return fig, axs, axs2
 
     anim = FuncAnimation(fig, update, frames=len(epochs), interval=200, repeat=True)
     plt.show()
@@ -623,9 +669,7 @@ def prepare_traces_and_kwargs(
     **kwargs,
 ) -> Tuple[List[Tuple[go.Scatter, Dict]], Tuple[Dict, Dict, Dict]]:
     subplot_titles = [
-        rf"$\epsilon$ = {epsilon} : $\gamma$ = {gamma}"
-        for epsilon in epsilons
-        for gamma in gammas
+        rf"ε = {epsilon} : γ = {gamma}" for epsilon in epsilons for gamma in gammas
     ]
     width = width or 350 * len(gammas)
     height = height or 250 * len(epsilons)
@@ -826,13 +870,13 @@ plot_sweep_single_model(
     results,
     SINGLE_EPSILONS,
     SINGLE_GAMMAS,
-    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+    title=r"Calibration sweep of MNIST model for lr (ε) and elasticity (γ)",
 )
 plot_sweep_single_model_plotly(
     results,
     SINGLE_EPSILONS,
     SINGLE_GAMMAS,
-    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+    title=r"Calibration sweep of MNIST model for lr (ε) and elasticity (γ)",
 )
 
 # %%
@@ -877,7 +921,7 @@ for i, (_, (_, cur_model), _) in enumerate(
             all_results[-1],
             EPSILONS,
             GAMMAS,
-            title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+            title=r"Calibration sweep of MNIST model for lr (ε) and elasticity (γ)",
         )
     # except Exception:
     #     for v in all_results[-1].values():
@@ -887,45 +931,65 @@ for i, (_, (_, cur_model), _) in enumerate(
 llcs = [res[(np.min(EPSILONS), np.max(GAMMAS))]["llc/means"][-1] for res in all_results]
 # %%
 epochs = np.arange(0, len(llcs)) * (cfg.checkpoint_every or (1,))[0]
-px.line(
+rlct_fig = px.line(
     x=epochs,
     y=llcs,
     title=f"RLCT (ε={np.min(EPSILONS)}, γ={np.max(GAMMAS)})",
     labels={"y": "llc", "x": "epoch", "variable": ""},
-).show()
-
+)
+rlct_fig.show()
+# %%
+# log artifact to wandb
+if UPLOAD_TO_WANDB:
+    runtime.log_extra(
+        {f"rlct.ε={np.min(EPSILONS)}_γ={np.max(GAMMAS)}.figure": rlct_fig}
+    )
+# %%
+if UPLOAD_TO_WANDB:
+    run = None
+    for epsilon, gamma in all_results[0].keys():
+        sample_kwargs = dict(
+            sampling_method="SGLD",
+            optimizer_kwargs=estimate_llcs_sweeper_optim_kwargs(epsilon, gamma),
+            num_chains=NUM_CHAINS,
+            num_draws=NUM_DRAWS,
+        )
+        data = {
+            f"rlct.ε={epsilon}_γ={gamma}.estimate_llcs_sweeper": {
+                "results": [r[(epsilon, gamma)] for r in all_results],
+                "config": sample_kwargs,
+            }
+        }
+        if run is None:
+            run = runtime.log_extra(data, commit=False)
+        else:
+            run.log(data, commit=False)
+    wandb.finish()
 # %%
 # %%
 plt_gif_path_tmp = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.tmp.gif"
 plt_gif_path = Path(".") / "max_of_2_grokking_devinterp_plt_calibration.gif"
+use_results = all_results[:]
 plot_sweep_many_models(
-    all_results,
+    use_results,
     EPSILONS,
     GAMMAS,
+    epochs=list(np.arange(0, len(use_results)) * (cfg.checkpoint_every or (1,))[0]),
     title=r"Calibration sweep for max of 2, epoch {epoch}",
     write_gif=(
         plt_gif_path_tmp if OVERWRITE_GIF or not os.path.exists(plt_gif_path) else None
     ),
 )
-if not os.path.exists(plt_gif_path):
+if OVERWRITE_GIF or not os.path.exists(plt_gif_path):
     os.rename(plt_gif_path_tmp, plt_gif_path)
 # %%
 with open(plt_gif_path, mode="rb") as f:
     display(Image(f.read()))
 # %%
-if False:
-    runtime_run = runtime.run()
-    assert runtime_run is not None
-    run = wandb.init(
-        entity=runtime_run.entity,
-        project=runtime_run.project,
-        name=runtime_run.name,
-        id=runtime_run.id,
-        resume="must",
+if UPLOAD_TO_WANDB:
+    runtime.log_extra(
+        {plt_gif_path.name: wandb.Video(str(plt_gif_path), fps=2, format="gif")}
     )
-    assert run is not None
-    run.log({plt_gif_path.name: wandb.Video(plt_gif_path, fps=2, format="gif")})
-    wandb.finish()
 
 # %%
 results_to_use = all_results[:]
@@ -961,13 +1025,13 @@ plot_sweep_single_model(
     all_results[-1],
     EPSILONS,
     GAMMAS,
-    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+    title=r"Calibration sweep of MNIST model for lr (ε) and elasticity (γ)",
 )
 plot_sweep_single_model_plotly(
     all_results[-1],
     EPSILONS,
     GAMMAS,
-    title=r"Calibration sweep of MNIST model for lr ($\epsilon$) and elasticity ($\gamma$)",
+    title=r"Calibration sweep of MNIST model for lr (ε) and elasticity (γ)",
 )
 
 

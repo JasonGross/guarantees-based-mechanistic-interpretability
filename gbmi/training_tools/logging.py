@@ -61,6 +61,10 @@ class ModelMatrixLoggingOptions:
         self,
         log: Callable[[str, Any], None],
         model: HookedTransformer,
+        *,
+        qpos: Optional[int] = None,
+        qtok: Optional[int] = None,
+        add_mean_pos_to_tok: bool = True,
         unsafe: bool = False,
         **kwargs,
     ):
@@ -93,130 +97,243 @@ class ModelMatrixLoggingOptions:
             model.b_V,
             model.b_O,
         )
+        if (
+            self.EQKE
+            or self.EQKP
+            or self.PQKE
+            or self.PQKP
+            or self.EVOU
+            or self.PVOU
+            or self.EU
+            or self.PU
+        ):
+            if qpos is not None:
+                sU = f"U[{qpos}]"
+
+                def apply_U(
+                    x: Float[Tensor, "... pos d_model"]  # noqa: F722
+                ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
+                    return x[..., qpos, :] @ W_U + b_U
+
+            else:
+                sU = f"U"
+
+                def apply_U(
+                    x: Float[Tensor, "... pos d_model"]  # noqa: F722
+                ) -> Float[Tensor, "... pos d_vocab_out"]:  # noqa: F722
+                    return x @ W_U + b_U
+
+            if qtok is not None:
+                sEq = f"E[{qtok}]"
+                W_E_q: Float[Tensor, "d_model"]  # noqa: F821
+                W_E_q = W_E[qtok]
+                if qtok == -1:
+                    sEk = f"(E[:-1] - E[-1])"
+                elif qtok == 0:
+                    sEk = f"(E[1:] - E[0])"
+                else:
+                    sEk = f"(E[:{qtok}] + E[{qtok+1}:] - E[{qtok}])"
+                W_E_k: Float[Tensor, "d_vocab-1 d_model"]  # noqa: F722
+                W_E_k = torch.cat([W_E[:qtok], W_E[qtok + 1 :]], dim=0) - W_E_q
+            else:
+                sEq = f"E"
+                W_E_q: Float[Tensor, "d_vocab d_model"]  # noqa: F722
+                W_E_q = W_E
+                sEk = f"E"
+                W_E_k: Float[Tensor, "d_vocab d_model"]  # noqa: F722
+                W_E_k = W_E
+            if qpos is not None:
+                sPq = f"P[{qpos}]"
+                W_pos_q: Float[Tensor, "d_model"]  # noqa: F821
+                W_pos_q = W_pos[qpos]
+                match qpos, add_mean_pos_to_tok:
+                    case -1, False:
+                        sPk = f"(P[:-1] - P[-1])"
+                    case 0, False:
+                        sPk = f"(P[1:] - P[0])"
+                    case _, False:
+                        sPk = f"(P[:{qpos}] + P[{qpos+1}:] - P[{qpos}])"
+                    case -1, True:
+                        sEk = f"({sEk} + mean(P[:-1] - P[-1]))"
+                        sPk = f"(P[:-1] - mean(P[:-1]))"
+                    case 0, True:
+                        sEk = f"({sEk} + mean(P[1:] - P[0]))"
+                        sPk = f"(P[1:] - mean(P[1:]))"
+                    case _, True:
+                        sEk = f"({sEk} + mean(P[:{qpos}] + P[{qpos+1}:] - P[{qpos}]))"
+                        sPk = f"(P[:{qpos}] + P[{qpos+1}:] - mean(P[:{qpos}] + P[{qpos+1}:]))"
+                W_pos_k: Float[Tensor, "n_ctx-1 d_model"]  # noqa: F722
+                W_pos_k = torch.cat([W_pos[:qpos], W_pos[qpos + 1 :]], dim=0) - W_pos_q
+                if add_mean_pos_to_tok:
+                    W_E_q = W_E_q + W_pos_q
+                    W_pos_q = W_pos_q - W_pos_q
+                    W_pos_k_avg = W_pos_k.mean(dim=0)
+                    W_E_k = W_E_k + W_pos_k_avg
+                    W_pos_k = W_pos_k - W_pos_k_avg
+                    sEq = f"({sEq} + {sPq})"
+                    sPq = f"0"
+            else:
+                W_pos_q: Float[Tensor, "n_ctx d_model"]  # noqa: F722
+                W_pos_q = W_pos
+                sPq = f"P"
+                W_pos_k: Float[Tensor, "n_ctx d_model"]  # noqa: F722
+                W_pos_k = W_pos
+                sPk = f"P"
+                if add_mean_pos_to_tok:
+                    W_pos_k_avg = W_pos_k.mean(dim=0)
+                    W_pos_q_avg = W_pos_q.mean(dim=0)
+                    W_E_q = W_E_q + W_pos_q_avg
+                    W_pos_q = W_pos_q - W_pos_q_avg
+                    W_E_k = W_E_k + W_pos_k_avg
+                    W_pos_k = W_pos_k - W_pos_k_avg
+                    sEq = f"({sEq} + mean({sPq}))"
+                    sPq = f"({sPq} - mean({sPq}))"
+                    sEk = f"({sEk} + mean({sPk}))"
+                    sPk = f"({sPk} - mean({sPk}))"
+            W_E_v: Float[Tensor, "d_vocab d_model"]  # noqa: F722
+            W_pos_v: Float[Tensor, "n_ctx d_model"]  # noqa: F722
+            W_E_v = W_E
+            W_pos_v = W_pos
+            sEv = f"E"
+            sPv = f"P"
+            if add_mean_pos_to_tok:
+                W_E_v = W_E_v + W_pos_v.mean(dim=0)
+                W_pos_v = W_pos_v - W_pos_v.mean(dim=0)
+                sEv = f"({sEv} + mean({sPv}))"
+                sPv = f"({sPv} - mean({sPv}))"
+        sPk = f"{sPk}ᵀ"
+        sEk = f"{sEk}ᵀ"
         if self.EU:
-            log(f"EU", W_E @ W_U, **kwargs)
+            log(f"{sEq}{sU}", apply_U(W_E_q), **kwargs)
         if self.PU:
-            log(f"PU", W_pos @ W_U, **kwargs)
-        if self.EQKE or self.EQKP or self.PQKE or self.PQKP or self.EVOU or self.PVOU:
-            EVO: Float[Tensor, "n_layers n_heads d_vocab d_model"] = (  # noqa: F722
-                W_E @ W_V + b_V[:, :, None, :]
-            ) @ W_O[:, :, :, :] + b_O[:, None, None, :]
-            PVO: Float[Tensor, "n_layers n_heads n_ctx d_model"] = (  # noqa: F722
-                W_pos @ W_V + b_V[:, :, None, :]
-            ) @ W_O[:, :, :, :] + b_O[:, None, None, :]
+            log(f"{sPq}{sU}", apply_U(W_pos_q), **kwargs)
 
-            def apply_VO(
-                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
-            ) -> Float[Tensor, "... a d_model"]:  # noqa: F722
-                return (x @ W_V[l, h, :, :] + b_V[l, h, None, :]) @ W_O[
-                    l, h, :, :
-                ] + b_O[l, None, None, :]
+        def apply_VO(
+            x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+        ) -> Float[Tensor, "... a d_model"]:  # noqa: F722
+            return (x @ W_V[l, h, :, :] + b_V[l, h, None, :]) @ W_O[l, h, :, :] + b_O[
+                l, None, None, :
+            ]
 
-            def apply_Q(
-                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
-            ) -> Float[Tensor, "... a d_head"]:  # noqa: F722
-                return x @ W_Q[l, h, :, :] + b_Q[l, h, None, :]
+        def apply_Q(
+            x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+        ) -> Float[Tensor, "... a d_head"]:  # noqa: F722
+            return x @ W_Q[l, h, :, :] + b_Q[l, h, None, :]
 
-            def apply_KT(
-                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
-            ) -> Float[Tensor, "... d_head a"]:  # noqa: F722
-                return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
+        def apply_KT(
+            x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+        ) -> Float[Tensor, "... d_head a"]:  # noqa: F722
+            return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
 
-            for l in range(W_Q.shape[0]):
+        for l in range(W_Q.shape[0]):
+            for h in range(W_Q.shape[1]):
+                if self.EQKE:
+                    log(
+                        f"{sEq}QKᵀ{sEk}.l{l}h{h}",
+                        apply_Q(W_E_q, l, h) @ apply_KT(W_E_k, l, h),
+                        **kwargs,
+                    )
+                if self.EQKP:
+                    log(
+                        f"{sEq}QKᵀ{sPk}.l{l}h{h}",
+                        apply_Q(W_E_q, l, h) @ apply_KT(W_pos_k, l, h),
+                        **kwargs,
+                    )
+                if self.PQKE:
+                    log(
+                        f"{sPq}QKᵀ{sEk}.l{l}h{h}",
+                        apply_Q(W_pos_q, l, h) @ apply_KT(W_E_k, l, h),
+                        **kwargs,
+                    )
+                if self.PQKP:
+                    log(
+                        f"{sPq}QKᵀ{sPk}.l{l}h{h}",
+                        apply_Q(W_pos_q, l, h) @ apply_KT(W_pos_k, l, h),
+                        **kwargs,
+                    )
+                if self.EVOU:
+                    log(
+                        f"{sEv}VO{sU}.l{l}h{h}",
+                        apply_U(apply_VO(W_E_v, l, h)),
+                        **kwargs,
+                    )
+                if self.PVOU:
+                    log(
+                        f"{sPv}VO{sU}.l{l}h{h}",
+                        apply_U(apply_VO(W_pos_v, l, h)),
+                        **kwargs,
+                    )
+        for l in range(1, W_Q.shape[0]):
+            for h0 in range(W_Q.shape[1]):
+                W_E_q_possibilities = (
+                    (W_E_q, f"{sEq}"),
+                    (apply_VO(W_E_v, 0, h0), "{sEv}VO"),
+                )
+                W_pos_q_possibilities = (
+                    (W_pos_q, f"{sPq}"),
+                    (apply_VO(W_pos_v, 0, h0), "{sPv}VO"),
+                )
+                W_E_k_possibilities = (
+                    (W_E_k, f"{sEk}"),
+                    (apply_VO(W_E_v, 0, h0), "OᵀVᵀ{sEv}ᵀ"),
+                )
+                W_pos_k_possibilities = (
+                    (W_pos_k, f"{sPk}"),
+                    (apply_VO(W_pos_v, 0, h0), "OᵀVᵀ{sPv}ᵀ"),
+                )
                 for h in range(W_Q.shape[1]):
                     if self.EQKE:
-                        log(
-                            f"EQKE.l{l}h{h}",
-                            apply_Q(W_E, l, h) @ apply_KT(W_E, l, h),
-                            **kwargs,
-                        )
+                        for li, (lhs, lhs_name) in enumerate(W_E_q_possibilities):
+                            for ri, (rhs, rhs_name) in enumerate(W_E_k_possibilities):
+                                if li == 0 and ri == 0:
+                                    continue
+                                log(
+                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                    **kwargs,
+                                )
                     if self.EQKP:
-                        log(
-                            f"EQKP.l{l}h{h}",
-                            apply_Q(W_E, l, h) @ apply_KT(W_pos, l, h),
-                            **kwargs,
-                        )
+                        for li, (lhs, lhs_name) in enumerate(W_E_q_possibilities):
+                            for ri, (rhs, rhs_name) in enumerate(W_pos_k_possibilities):
+                                if li == 0 and ri == 0:
+                                    continue
+                                log(
+                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                    **kwargs,
+                                )
                     if self.PQKE:
-                        log(
-                            f"PQKE.l{l}h{h}",
-                            apply_Q(W_pos, l, h) @ apply_KT(W_E, l, h),
-                            **kwargs,
-                        )
+                        for li, (lhs, lhs_name) in enumerate(W_pos_q_possibilities):
+                            for ri, (rhs, rhs_name) in enumerate(W_E_k_possibilities):
+                                if li == 0 and ri == 0:
+                                    continue
+                                log(
+                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                    **kwargs,
+                                )
                     if self.PQKP:
-                        log(
-                            f"PQKP.l{l}h{h}",
-                            apply_Q(W_pos, l, h) @ apply_KT(W_pos, l, h),
-                            **kwargs,
-                        )
+                        for li, (lhs, lhs_name) in enumerate(W_pos_q_possibilities):
+                            for ri, (rhs, rhs_name) in enumerate(W_pos_k_possibilities):
+                                if li == 0 and ri == 0:
+                                    continue
+                                log(
+                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                    **kwargs,
+                                )
                     if self.EVOU:
                         log(
-                            f"EVOU.l{l}h{h}",
-                            EVO[l, h] @ W_U + b_U,
+                            f"{sEv}VOVO{sU}.l{l}h{h}h₀{h0}",
+                            apply_U(apply_VO(apply_VO(W_E_v, 0, h0), l, h)),
                             **kwargs,
                         )
                     if self.PVOU:
                         log(
-                            f"PVOU.l{l}h{h}",
-                            PVO[l, h] @ W_U + b_U,
+                            f"{sPv}VOVO{sU}.l{l}h{h}h₀{h0}",
+                            apply_U(apply_VO(apply_VO(W_pos_v, 0, h0), l, h)),
                             **kwargs,
                         )
-            for l in range(1, W_Q.shape[0]):
-                for h0 in range(W_Q.shape[1]):
-                    W_E_possibilities = ((W_E, "E"), (EVO[0, h0], "EVO"))
-                    W_pos_possibilities = ((W_pos, "P"), (PVO[0, h0], "PVO"))
-                    for h in range(W_Q.shape[1]):
-                        if self.EQKE:
-                            for lhs, lhs_name in W_E_possibilities:
-                                for rhs, rhs_name in W_E_possibilities:
-                                    if "VO" not in lhs_name and "VO" not in rhs_name:
-                                        continue
-                                    log(
-                                        f"{lhs_name}QK{rhs_name[::-1]}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                        if self.EQKP:
-                            for lhs, lhs_name in W_E_possibilities:
-                                for rhs, rhs_name in W_pos_possibilities:
-                                    if "VO" not in lhs_name and "VO" not in rhs_name:
-                                        continue
-                                    log(
-                                        f"{lhs_name}QK{rhs_name[::-1]}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                        if self.PQKE:
-                            for lhs, lhs_name in W_pos_possibilities:
-                                for rhs, rhs_name in W_E_possibilities:
-                                    if "VO" not in lhs_name and "VO" not in rhs_name:
-                                        continue
-                                    log(
-                                        f"{lhs_name}QK{rhs_name[::-1]}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                        if self.PQKP:
-                            for lhs, lhs_name in W_pos_possibilities:
-                                for rhs, rhs_name in W_pos_possibilities:
-                                    if "VO" not in lhs_name and "VO" not in rhs_name:
-                                        continue
-                                    log(
-                                        f"{lhs_name}QK{rhs_name[::-1]}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                        if self.EVOU:
-                            log(
-                                f"EVOU.l{l}h{h}h₀{h0}",
-                                (apply_VO(EVO[0, h0], l, h)) @ W_U + b_U,
-                                **kwargs,
-                            )
-                        if self.PVOU:
-                            log(
-                                f"PVOU.l{l}h{h}h₀{h0}",
-                                (apply_VO(PVO[0, h0], l, h)) @ W_U + b_U,
-                                **kwargs,
-                            )
 
 
 @torch.no_grad()

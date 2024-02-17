@@ -5,10 +5,12 @@ import torch
 from torch import Tensor
 from transformer_lens import HookedTransformer
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Iterable, Literal, Optional, Tuple
 from jaxtyping import Float
 from lightning.pytorch.loggers.wandb import WandbLogger
 import logging
+
+from gbmi.utils import subscript
 
 
 @torch.no_grad()
@@ -93,14 +95,63 @@ class ModelMatrixLoggingOptions:
             (model.cfg.normalization_type is None),
             f"Automatic logging for normalization type {model.cfg.normalization_type} is not yet implemented",
         )
-        max_supported_layers = 2
-        error_unless(
-            (model.cfg.n_layers <= max_supported_layers),
-            f"Automatic logging for {model.cfg.n_layers} layers is not yet implemented (max is {max_supported_layers})",
-        )
         error_unless(
             (model.cfg.attn_only),
             "Automatic logging is only supported for attention-only models",
+        )
+
+    @staticmethod
+    @torch.no_grad()
+    def _compute_paths(
+        apply_VO: Callable[
+            [Float[Tensor, "... a d_model"], int, int],  # noqa: F722
+            Float[Tensor, "... a d_model"],  # noqa: F722
+        ],  # x, layer, head
+        n_heads: int,
+        x: Float[Tensor, "... a d_model"],  # noqa: F722
+        sx: str,
+        l: int,  # layer that we're computing input paths to
+        reverse_strs: bool = False,
+    ) -> Iterable[Tuple[str, str, Float[Tensor, "... a d_model"]]]:  # noqa: F722
+        """Returns an iterable of ("VO"*, "lₙ{l}hₙ{h}"*, value) tuples of what x transforms to under repeated applications of apply_VO to layers up to and inlcuding l"""
+        if l < 0:
+            return
+        if l == 0:
+            for h in range(n_heads):
+                cur_vo = "{sx}VO" if not reverse_strs else f"OᵀVᵀ{sx}"
+                yield cur_vo, f"h{subscript(str(l))}{h}", apply_VO(x, l, h)
+            return
+        vo2 = "VO" if not reverse_strs else "OᵀVᵀ"
+        for vo, lh, value in ModelMatrixLoggingOptions._compute_paths(
+            apply_VO, n_heads, x, sx, l - 1, reverse_strs=reverse_strs
+        ):
+            for h in range(n_heads):
+                lh2 = f"h{subscript(str(l-1))}{h}"
+                cur_vo, cur_lh = (
+                    (f"{vo}{vo2}", f"{lh}{lh2}")
+                    if not reverse_strs
+                    else (f"{vo2}{vo}", f"{lh2}{lh}")
+                )
+                yield cur_vo, cur_lh, apply_VO(value, l, h)
+
+    @staticmethod
+    def compute_paths(
+        apply_VO: Callable[
+            [Float[Tensor, "... a d_model"], int, int],  # noqa: F722
+            Float[Tensor, "... a d_model"],  # noqa: F722
+        ],  # x, layer, head
+        n_heads: int,
+        x: Float[Tensor, "... a d_model"],  # noqa: F722
+        x_direct: Float[Tensor, "... a d_model"],  # noqa: F722
+        sx: str,
+        sx_direct: str,
+        l: int,  # layer that we're computing input paths to
+        reverse_strs: bool = False,
+    ) -> Iterable[Tuple[str, str, Float[Tensor, "... a d_model"]]]:  # noqa: F722
+        """Returns an iterable of ("VO"*, "lₙ{l}hₙ{h}"*, value) tuples of what x transforms to under repeated applications of apply_VO to layers strictly before l"""
+        yield sx_direct, "", x_direct
+        yield from ModelMatrixLoggingOptions._compute_paths(
+            apply_VO, n_heads, x, sx, l - 1, reverse_strs=reverse_strs
         )
 
     @torch.no_grad()
@@ -151,11 +202,6 @@ class ModelMatrixLoggingOptions:
             or self.EU
             or self.PU
         ):
-
-            def apply_U(
-                x: Float[Tensor, "... d_model"]  # noqa: F722
-            ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
-                return x @ W_U + b_U
 
             d_vocab = W_E.shape[0]
             n_ctx = W_pos.shape[0]
@@ -252,10 +298,11 @@ class ModelMatrixLoggingOptions:
                 sPv = f"({sPv} - mean({sPv}))"
         sPk = f"{sPk}ᵀ"
         sEk = f"{sEk}ᵀ"
-        if self.EU:
-            log(f"{sEq}U", apply_U(W_E_q), **kwargs)
-        if self.PU and (sPq != "0" or self.log_zeros):
-            log(f"{sPq}U", apply_U(W_pos_q), **kwargs)
+
+        def apply_U(
+            x: Float[Tensor, "... d_model"]  # noqa: F722
+        ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
+            return x @ W_U + b_U
 
         def apply_VO(
             x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
@@ -274,117 +321,96 @@ class ModelMatrixLoggingOptions:
         ) -> Float[Tensor, "... d_head a"]:  # noqa: F722
             return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
 
+        if self.EU:
+            log(f"{sEq}U", apply_U(W_E_q), **kwargs)
+        if self.PU and (sPq != "0" or self.log_zeros):
+            log(f"{sPq}U", apply_U(W_pos_q), **kwargs)
+
         for l in range(W_Q.shape[0]):
             for h in range(W_Q.shape[1]):
-                if self.EQKE:
-                    log(
-                        f"{sEq}QKᵀ{sEk}.l{l}h{h}",
-                        apply_Q(W_E_q, l, h) @ apply_KT(W_E_k, l, h),
-                        **kwargs,
-                    )
-                if self.EQKP:
-                    log(
-                        f"{sEq}QKᵀ{sPk}.l{l}h{h}",
-                        apply_Q(W_E_q, l, h) @ apply_KT(W_pos_k, l, h),
-                        **kwargs,
-                    )
-                if self.PQKE and (sPq != "0" or self.log_zeros):
-                    log(
-                        f"{sPq}QKᵀ{sEk}.l{l}h{h}",
-                        apply_Q(W_pos_q, l, h) @ apply_KT(W_E_k, l, h),
-                        **kwargs,
-                    )
-                if self.PQKP and (sPq != "0" or self.log_zeros):
-                    log(
-                        f"{sPq}QKᵀ{sPk}.l{l}h{h}",
-                        apply_Q(W_pos_q, l, h) @ apply_KT(W_pos_k, l, h),
-                        **kwargs,
-                    )
+                for (
+                    (qx, qx_direct, qsx, qsx_direct),
+                    (kx, kx_direct, ksx, ksx_direct),
+                    test,
+                ) in (
+                    ((W_E_v, W_E_q, sEv, sEq), (W_E_v, W_E_k, sEv, sEk), self.EQKE),
+                    (
+                        (W_E_v, W_pos_q, sEv, sPq),
+                        (W_pos_v, W_pos_k, sPv, sPk),
+                        self.EQKP,
+                    ),
+                    (
+                        (W_pos_v, W_pos_q, sPv, sPq),
+                        (W_E_v, W_E_k, sEv, sEk),
+                        self.PQKE,
+                    ),
+                    (
+                        (W_pos_v, W_pos_q, sPv, sPq),
+                        (W_pos_v, W_pos_k, sPv, sPk),
+                        self.PQKP,
+                    ),
+                ):
+                    if test:
+                        for sq, lh_q, v_q in ModelMatrixLoggingOptions.compute_paths(
+                            apply_VO,
+                            model.cfg.n_heads,
+                            x=qx,
+                            x_direct=qx_direct,
+                            sx=qsx,
+                            sx_direct=qsx_direct,
+                            l=l,
+                            reverse_strs=False,
+                        ):
+                            for (
+                                sk,
+                                lh_k,
+                                v_k,
+                            ) in ModelMatrixLoggingOptions.compute_paths(
+                                apply_VO,
+                                model.cfg.n_heads,
+                                x=kx,
+                                x_direct=kx_direct,
+                                sx=f"{ksx}ᵀ",
+                                sx_direct=ksx_direct,
+                                l=l,
+                                reverse_strs=True,
+                            ):
+                                if sq != "0" or self.log_zeros:
+                                    log(
+                                        f"{sq}QKᵀ{sk}.{lh_q}l{l}h{h}{lh_k}",
+                                        apply_Q(v_q, l, h) @ apply_KT(v_k, l, h),
+                                        **kwargs,
+                                    )
                 if self.EVOU:
-                    log(
-                        f"{sEv}VOU.l{l}h{h}",
-                        apply_U(apply_VO(W_E_v, l, h)),
-                        **kwargs,
-                    )
-                if self.PVOU:
-                    log(
-                        f"{sPv}VOU.l{l}h{h}",
-                        apply_U(apply_VO(W_pos_v, l, h)),
-                        **kwargs,
-                    )
-        for l in range(1, W_Q.shape[0]):
-            for h0 in range(W_Q.shape[1]):
-                W_E_q_possibilities = (
-                    (W_E_q, f"{sEq}"),
-                    (apply_VO(W_E_v, 0, h0), "{sEv}VO"),
-                )
-                W_pos_q_possibilities = (
-                    (W_pos_q, f"{sPq}"),
-                    (apply_VO(W_pos_v, 0, h0), "{sPv}VO"),
-                )
-                W_E_k_possibilities = (
-                    (W_E_k, f"{sEk}"),
-                    (apply_VO(W_E_v, 0, h0), "OᵀVᵀ{sEv}ᵀ"),
-                )
-                W_pos_k_possibilities = (
-                    (W_pos_k, f"{sPk}"),
-                    (apply_VO(W_pos_v, 0, h0), "OᵀVᵀ{sPv}ᵀ"),
-                )
-                for h in range(W_Q.shape[1]):
-                    if self.EQKE:
-                        for li, (lhs, lhs_name) in enumerate(W_E_q_possibilities):
-                            for ri, (rhs, rhs_name) in enumerate(W_E_k_possibilities):
-                                if li == 0 and ri == 0:
-                                    continue
-                                if lhs_name != "0" or self.log_zeros:
-                                    log(
-                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                    if self.EQKP:
-                        for li, (lhs, lhs_name) in enumerate(W_E_q_possibilities):
-                            for ri, (rhs, rhs_name) in enumerate(W_pos_k_possibilities):
-                                if li == 0 and ri == 0:
-                                    continue
-                                if lhs_name != "0" or self.log_zeros:
-                                    log(
-                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                    if self.PQKE:
-                        for li, (lhs, lhs_name) in enumerate(W_pos_q_possibilities):
-                            for ri, (rhs, rhs_name) in enumerate(W_E_k_possibilities):
-                                if li == 0 and ri == 0:
-                                    continue
-                                if lhs_name != "0" or self.log_zeros:
-                                    log(
-                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                    if self.PQKP:
-                        for li, (lhs, lhs_name) in enumerate(W_pos_q_possibilities):
-                            for ri, (rhs, rhs_name) in enumerate(W_pos_k_possibilities):
-                                if li == 0 and ri == 0:
-                                    continue
-                                if lhs_name != "0" or self.log_zeros:
-                                    log(
-                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                        **kwargs,
-                                    )
-                    if self.EVOU:
+                    for sv, lh_v, v in ModelMatrixLoggingOptions.compute_paths(
+                        apply_VO,
+                        model.cfg.n_heads,
+                        x=W_E_v,
+                        x_direct=W_E_v,
+                        sx=sEv,
+                        sx_direct=sEv,
+                        l=l,
+                        reverse_strs=False,
+                    ):
                         log(
-                            f"{sEv}VOVOU.l{l}h{h}h₀{h0}",
-                            apply_U(apply_VO(apply_VO(W_E_v, 0, h0), l, h)),
+                            f"{sv}VOU.{lh_v}l{l}h{h}",
+                            apply_U(apply_VO(v, l, h)),
                             **kwargs,
                         )
-                    if self.PVOU:
+                if self.PVOU:
+                    for sv, lh_v, v in ModelMatrixLoggingOptions.compute_paths(
+                        apply_VO,
+                        model.cfg.n_heads,
+                        x=W_pos_v,
+                        x_direct=W_pos_v,
+                        sx=sPv,
+                        sx_direct=sPv,
+                        l=l,
+                        reverse_strs=False,
+                    ):
                         log(
-                            f"{sPv}VOVOU.l{l}h{h}h₀{h0}",
-                            apply_U(apply_VO(apply_VO(W_pos_v, 0, h0), l, h)),
+                            f"{sv}VOU.{lh_v}l{l}h{h}",
+                            apply_U(apply_VO(v, l, h)),
                             **kwargs,
                         )
 

@@ -244,3 +244,32 @@ def dropnan(x: Tensor) -> Tensor:
 
 def map_values(f: Callable[[V], T], d: dict[K, V]) -> dict[K, T]:
     return {k: f(v) for k, v in d.items()}
+
+
+_pre_subsuperscripts = " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+_superscripts0 = " !#$%&'⁽⁾*⁺,⁻./⁰¹²³⁴⁵⁶⁷⁸⁹:;<⁼>?@ᴬᴮᶜᴰᴱᶠᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾQᴿˢᵀᵁⱽᵂˣʸᶻ[\\]^_`ᵃᵇᶜᵈᵉᶠᵍʰᶦʲᵏˡᵐⁿᵒᵖᑫʳˢᵗᵘᵛʷˣʸᶻ{|}~"
+_subscripts0 = " !#$%&'₍₎*₊,₋./₀₁₂₃₄₅₆₇₈₉:;<₌>?@ₐ₈CDₑբGₕᵢⱼₖₗₘₙₒₚQᵣₛₜᵤᵥᵥᵥₓᵧZ[\\]^_`ₐ₆꜀ₔₑբ₉ₕᵢⱼₖₗₘₙₒₚqᵣₛₜᵤᵥᵥᵥₓᵧ₂{|}~"
+_superscript = {k: v for k, v in zip(_pre_subsuperscripts, _superscripts0) if k != v}
+_subscript = {k: v for k, v in zip(_pre_subsuperscripts, _subscripts0) if k != v}
+_unsuperscript = {v: k for k, v in _superscript.items()}
+_unsubscript = {v: k for k, v in _subscript.items()}
+
+
+def subscript(s: str) -> str:
+    """Converts a string of digits to subscript."""
+    return "".join(map(_subscript.__getitem__, s))
+
+
+def superscript(s: str) -> str:
+    """Converts a string of digits to superscript."""
+    return "".join(map(_superscript.__getitem__, s))
+
+
+def unsuperscript(s: str) -> str:
+    """Converts a string of superscript digits to regular digits."""
+    return "".join(map(_unsuperscript.__getitem__, s))
+
+
+def unsubscript(s: str) -> str:
+    """Converts a string of subscript digits to regular digits."""
+    return "".join(map(_unsubscript.__getitem__, s))

@@ -113,7 +113,7 @@ class MaxOfN(ExperimentConfig):
             self.model_config.n_ctx = self.seq_len + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
             self.logging_options.qtok = -1
-        setattr(self, _EXCLUDE, ("logging_options", "log_matrix_phases"))
+        setattr(self, _EXCLUDE, ("logging_options", "log_matrix_on_run_batch_prefixes"))
         self.model_config.__post_init__()
         self.logging_options.__post_init__()
 
@@ -302,7 +302,10 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         acc = self.acc_fn(y_preds, ys)
         if log_output:
             self.log(f"{prefix}acc", acc, prog_bar=True)
-        if log_output and prefix in self.log_matrix_phases:
+        if (
+            log_output
+            and prefix in self.config.experiment.log_matrix_on_run_batch_prefixes
+        ):
             assert self.logger is not None
             self.config.experiment.logging_options.log_matrices(
                 self.logger,  # type: ignore
@@ -659,7 +662,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             ("experiment", "summary_slug_extra"): args.summary_slug_extra,
             ("experiment", "train_dataset_cfg", "pick_max_first"): args.pick_max_first,
             ("experiment", "logging_options"): ModelMatrixLoggingOptions.all(),
-            ("experiment", "log_matrix_phases"): set()
+            ("experiment", "log_matrix_on_run_batch_prefixes"): set()
             | ({"test_"} if args.log_final_matrix_interp else set())
             | ({"periodic_test_"} if args.checkpoint_matrix_interp else set())
             | ({""} if args.log_matrix_interp else set()),

@@ -1,13 +1,51 @@
 from __future__ import annotations
+from functools import partial
 from matplotlib import pyplot as plt
 import torch
 from torch import Tensor
 from transformer_lens import HookedTransformer
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 from jaxtyping import Float
 from lightning.pytorch.loggers.wandb import WandbLogger
 import logging
+
+
+@torch.no_grad()
+def log_tensor(
+    logger: WandbLogger,
+    name,
+    matrix,
+    plot_1D_kind: Literal["line", "scatter"] = "line",
+    **kwargs,
+):
+    # Ensure matrix is on CPU and converted to numpy for plotting
+    matrix = matrix.squeeze().cpu().numpy()
+    # Check the number of dimensions in the matrix to determine the plot type
+    if len(matrix.shape) == 1:
+        # For 1D tensors, create a line plot
+        fig, ax = plt.subplots()
+        match plot_1D_kind:
+            case "line":
+                ax.plot(matrix)
+            case "scatter":
+                ax.scatter(range(len(matrix)), matrix)
+        ax.set_title(name)
+    elif len(matrix.shape) == 2:
+        # For 2D tensors, use imshow to create a heatmap
+        fig, ax = plt.subplots()
+        cax = ax.imshow(
+            matrix, **kwargs
+        )  # Ensure matrix is on CPU and converted to numpy for plotting
+        fig.colorbar(cax)
+        ax.set_title(name)
+        # Optional: Customize the plot further, e.g., adjust the aspect ratio, add labels, etc.
+    else:
+        raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
+    logger.log_image(name, [fig], **kwargs)
+    # I'd like to do https://docs.wandb.ai/guides/track/log/plots#matplotlib-and-plotly-plots but am not sure how cf https://github.com/JasonGross/guarantees-based-mechanistic-interpretability/issues/33 cc Euan
+    # self.log(name, fig, **kwargs)
+    plt.close(fig)
 
 
 @dataclass
@@ -20,9 +58,14 @@ class ModelMatrixLoggingOptions:
     PU: bool = False
     EVOU: bool = False
     PVOU: bool = False
+    log_zeros: bool = False
+    qpos: Optional[int] = None
+    qtok: Optional[int] = None
+    add_mean_pos_to_tok: bool = True
+    plot_1D_kind: Literal["line", "scatter"] = "line"
 
     @staticmethod
-    def all() -> ModelMatrixLoggingOptions:
+    def all(**kwargs) -> ModelMatrixLoggingOptions:
         return ModelMatrixLoggingOptions(
             EQKE=True,
             EQKP=True,
@@ -32,7 +75,11 @@ class ModelMatrixLoggingOptions:
             PVOU=True,
             PQKP=True,
             PQKE=True,
+            **kwargs,
         )
+
+    def __post_init__(self):
+        pass
 
     def assert_model_supported(self, model: HookedTransformer, unsafe: bool = False):
         def error_unless(test: bool, message: str):
@@ -57,14 +104,11 @@ class ModelMatrixLoggingOptions:
         )
 
     @torch.no_grad()
-    def log_matrices(
+    def _log_matrices(
         self,
         log: Callable[[str, Any], None],
         model: HookedTransformer,
         *,
-        qpos: Optional[int] = None,
-        qtok: Optional[int] = None,
-        add_mean_pos_to_tok: bool = True,
         unsafe: bool = False,
         **kwargs,
     ):
@@ -107,34 +151,31 @@ class ModelMatrixLoggingOptions:
             or self.EU
             or self.PU
         ):
-            if qpos is not None:
-                sU = f"U[{qpos}]"
 
-                def apply_U(
-                    x: Float[Tensor, "... pos d_model"]  # noqa: F722
-                ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
-                    return x[..., qpos, :] @ W_U + b_U
+            def apply_U(
+                x: Float[Tensor, "... d_model"]  # noqa: F722
+            ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
+                return x @ W_U + b_U
 
-            else:
-                sU = f"U"
-
-                def apply_U(
-                    x: Float[Tensor, "... pos d_model"]  # noqa: F722
-                ) -> Float[Tensor, "... pos d_vocab_out"]:  # noqa: F722
-                    return x @ W_U + b_U
-
-            if qtok is not None:
-                sEq = f"E[{qtok}]"
+            d_vocab = W_E.shape[0]
+            n_ctx = W_pos.shape[0]
+            if self.qtok is not None:
+                sEq = f"E[{self.qtok}]"
                 W_E_q: Float[Tensor, "d_model"]  # noqa: F821
-                W_E_q = W_E[qtok]
-                if qtok == -1:
-                    sEk = f"(E[:-1] - E[-1])"
-                elif qtok == 0:
-                    sEk = f"(E[1:] - E[0])"
-                else:
-                    sEk = f"(E[:{qtok}] + E[{qtok+1}:] - E[{qtok}])"
+                W_E_q = W_E[self.qtok]
                 W_E_k: Float[Tensor, "d_vocab-1 d_model"]  # noqa: F722
-                W_E_k = torch.cat([W_E[:qtok], W_E[qtok + 1 :]], dim=0) - W_E_q
+                if self.qtok % d_vocab == -1 % d_vocab:
+                    sEk = f"(E[:-1] - E[-1])"
+                    W_E_k = W_E[: self.qtok] - W_E_q
+                elif self.qtok == 0:
+                    sEk = f"(E[1:] - E[0])"
+                    W_E_k = W_E[self.qtok + 1 :] - W_E_q
+                else:
+                    sEk = f"(E[:{self.qtok}] + E[{self.qtok+1}:] - E[{self.qtok}])"
+                    W_E_k = (
+                        torch.cat([W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0)
+                        - W_E_q
+                    )
             else:
                 sEq = f"E"
                 W_E_q: Float[Tensor, "d_vocab d_model"]  # noqa: F722
@@ -142,17 +183,17 @@ class ModelMatrixLoggingOptions:
                 sEk = f"E"
                 W_E_k: Float[Tensor, "d_vocab d_model"]  # noqa: F722
                 W_E_k = W_E
-            if qpos is not None:
-                sPq = f"P[{qpos}]"
+            if self.qpos is not None:
+                sPq = f"P[{self.qpos}]"
                 W_pos_q: Float[Tensor, "d_model"]  # noqa: F821
-                W_pos_q = W_pos[qpos]
-                match qpos, add_mean_pos_to_tok:
+                W_pos_q = W_pos[self.qpos]
+                match self.qpos, self.add_mean_pos_to_tok:
                     case -1, False:
                         sPk = f"(P[:-1] - P[-1])"
                     case 0, False:
                         sPk = f"(P[1:] - P[0])"
                     case _, False:
-                        sPk = f"(P[:{qpos}] + P[{qpos+1}:] - P[{qpos}])"
+                        sPk = f"(P[:{self.qpos}] + P[{self.qpos+1}:] - P[{self.qpos}])"
                     case -1, True:
                         sEk = f"({sEk} + mean(P[:-1] - P[-1]))"
                         sPk = f"(P[:-1] - mean(P[:-1]))"
@@ -160,11 +201,19 @@ class ModelMatrixLoggingOptions:
                         sEk = f"({sEk} + mean(P[1:] - P[0]))"
                         sPk = f"(P[1:] - mean(P[1:]))"
                     case _, True:
-                        sEk = f"({sEk} + mean(P[:{qpos}] + P[{qpos+1}:] - P[{qpos}]))"
-                        sPk = f"(P[:{qpos}] + P[{qpos+1}:] - mean(P[:{qpos}] + P[{qpos+1}:]))"
+                        sEk = f"({sEk} + mean(P[:{self.qpos}] + P[{self.qpos+1}:] - P[{self.qpos}]))"
+                        sPk = f"(P[:{self.qpos}] + P[{self.qpos+1}:] - mean(P[:{self.qpos}] + P[{self.qpos+1}:]))"
                 W_pos_k: Float[Tensor, "n_ctx-1 d_model"]  # noqa: F722
-                W_pos_k = torch.cat([W_pos[:qpos], W_pos[qpos + 1 :]], dim=0) - W_pos_q
-                if add_mean_pos_to_tok:
+                if self.qpos % n_ctx == -1 % n_ctx:
+                    W_pos_k = W_pos[: self.qpos] - W_pos_q
+                elif self.qpos == 0:
+                    W_pos_k = W_pos[self.qpos + 1 :] - W_pos_q
+                else:
+                    W_pos_k = (
+                        torch.cat([W_pos[: self.qpos], W_pos[self.qpos + 1 :]], dim=0)
+                        - W_pos_q
+                    )
+                if self.add_mean_pos_to_tok:
                     W_E_q = W_E_q + W_pos_q
                     W_pos_q = W_pos_q - W_pos_q
                     W_pos_k_avg = W_pos_k.mean(dim=0)
@@ -179,7 +228,7 @@ class ModelMatrixLoggingOptions:
                 W_pos_k: Float[Tensor, "n_ctx d_model"]  # noqa: F722
                 W_pos_k = W_pos
                 sPk = f"P"
-                if add_mean_pos_to_tok:
+                if self.add_mean_pos_to_tok:
                     W_pos_k_avg = W_pos_k.mean(dim=0)
                     W_pos_q_avg = W_pos_q.mean(dim=0)
                     W_E_q = W_E_q + W_pos_q_avg
@@ -196,7 +245,7 @@ class ModelMatrixLoggingOptions:
             W_pos_v = W_pos
             sEv = f"E"
             sPv = f"P"
-            if add_mean_pos_to_tok:
+            if self.add_mean_pos_to_tok:
                 W_E_v = W_E_v + W_pos_v.mean(dim=0)
                 W_pos_v = W_pos_v - W_pos_v.mean(dim=0)
                 sEv = f"({sEv} + mean({sPv}))"
@@ -204,9 +253,9 @@ class ModelMatrixLoggingOptions:
         sPk = f"{sPk}ᵀ"
         sEk = f"{sEk}ᵀ"
         if self.EU:
-            log(f"{sEq}{sU}", apply_U(W_E_q), **kwargs)
-        if self.PU:
-            log(f"{sPq}{sU}", apply_U(W_pos_q), **kwargs)
+            log(f"{sEq}U", apply_U(W_E_q), **kwargs)
+        if self.PU and (sPq != "0" or self.log_zeros):
+            log(f"{sPq}U", apply_U(W_pos_q), **kwargs)
 
         def apply_VO(
             x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
@@ -239,13 +288,13 @@ class ModelMatrixLoggingOptions:
                         apply_Q(W_E_q, l, h) @ apply_KT(W_pos_k, l, h),
                         **kwargs,
                     )
-                if self.PQKE:
+                if self.PQKE and (sPq != "0" or self.log_zeros):
                     log(
                         f"{sPq}QKᵀ{sEk}.l{l}h{h}",
                         apply_Q(W_pos_q, l, h) @ apply_KT(W_E_k, l, h),
                         **kwargs,
                     )
-                if self.PQKP:
+                if self.PQKP and (sPq != "0" or self.log_zeros):
                     log(
                         f"{sPq}QKᵀ{sPk}.l{l}h{h}",
                         apply_Q(W_pos_q, l, h) @ apply_KT(W_pos_k, l, h),
@@ -253,13 +302,13 @@ class ModelMatrixLoggingOptions:
                     )
                 if self.EVOU:
                     log(
-                        f"{sEv}VO{sU}.l{l}h{h}",
+                        f"{sEv}VOU.l{l}h{h}",
                         apply_U(apply_VO(W_E_v, l, h)),
                         **kwargs,
                     )
                 if self.PVOU:
                     log(
-                        f"{sPv}VO{sU}.l{l}h{h}",
+                        f"{sPv}VOU.l{l}h{h}",
                         apply_U(apply_VO(W_pos_v, l, h)),
                         **kwargs,
                     )
@@ -287,77 +336,69 @@ class ModelMatrixLoggingOptions:
                             for ri, (rhs, rhs_name) in enumerate(W_E_k_possibilities):
                                 if li == 0 and ri == 0:
                                     continue
-                                log(
-                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                    **kwargs,
-                                )
+                                if lhs_name != "0" or self.log_zeros:
+                                    log(
+                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                        **kwargs,
+                                    )
                     if self.EQKP:
                         for li, (lhs, lhs_name) in enumerate(W_E_q_possibilities):
                             for ri, (rhs, rhs_name) in enumerate(W_pos_k_possibilities):
                                 if li == 0 and ri == 0:
                                     continue
-                                log(
-                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                    **kwargs,
-                                )
+                                if lhs_name != "0" or self.log_zeros:
+                                    log(
+                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                        **kwargs,
+                                    )
                     if self.PQKE:
                         for li, (lhs, lhs_name) in enumerate(W_pos_q_possibilities):
                             for ri, (rhs, rhs_name) in enumerate(W_E_k_possibilities):
                                 if li == 0 and ri == 0:
                                     continue
-                                log(
-                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                    **kwargs,
-                                )
+                                if lhs_name != "0" or self.log_zeros:
+                                    log(
+                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                        **kwargs,
+                                    )
                     if self.PQKP:
                         for li, (lhs, lhs_name) in enumerate(W_pos_q_possibilities):
                             for ri, (rhs, rhs_name) in enumerate(W_pos_k_possibilities):
                                 if li == 0 and ri == 0:
                                     continue
-                                log(
-                                    f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
-                                    apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
-                                    **kwargs,
-                                )
+                                if lhs_name != "0" or self.log_zeros:
+                                    log(
+                                        f"{lhs_name}QKᵀ{rhs_name}.l{l}h{h}h₀{h0}",
+                                        apply_Q(lhs, l, h) @ apply_KT(rhs, l, h),
+                                        **kwargs,
+                                    )
                     if self.EVOU:
                         log(
-                            f"{sEv}VOVO{sU}.l{l}h{h}h₀{h0}",
+                            f"{sEv}VOVOU.l{l}h{h}h₀{h0}",
                             apply_U(apply_VO(apply_VO(W_E_v, 0, h0), l, h)),
                             **kwargs,
                         )
                     if self.PVOU:
                         log(
-                            f"{sPv}VOVO{sU}.l{l}h{h}h₀{h0}",
+                            f"{sPv}VOVOU.l{l}h{h}h₀{h0}",
                             apply_U(apply_VO(apply_VO(W_pos_v, 0, h0), l, h)),
                             **kwargs,
                         )
 
-
-@torch.no_grad()
-def log_tensor(logger: WandbLogger, name, matrix, **kwargs):
-    matrix = matrix.squeeze()
-    # Check the number of dimensions in the matrix to determine the plot type
-    if len(matrix.shape) == 1:
-        # For 1D tensors, create a line plot
-        fig, ax = plt.subplots()
-        # Ensure matrix is on CPU and converted to numpy for plotting
-        ax.plot(matrix.cpu().numpy())
-        ax.set_title(name)
-    elif len(matrix.shape) == 2:
-        # For 2D tensors, use imshow to create a heatmap
-        fig, ax = plt.subplots()
-        cax = ax.imshow(
-            matrix.cpu().numpy(), **kwargs
-        )  # Ensure matrix is on CPU and converted to numpy for plotting
-        fig.colorbar(cax)
-        ax.set_title(name)
-        # Optional: Customize the plot further, e.g., adjust the aspect ratio, add labels, etc.
-    else:
-        raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
-    logger.log_image(name, [fig], **kwargs)
-    # I'd like to do https://docs.wandb.ai/guides/track/log/plots#matplotlib-and-plotly-plots but am not sure how cf https://github.com/JasonGross/guarantees-based-mechanistic-interpretability/issues/33 cc Euan
-    # self.log(name, fig, **kwargs)
-    plt.close(fig)
+    @torch.no_grad()
+    def log_matrices(
+        self,
+        logger: WandbLogger,
+        model: HookedTransformer,
+        *,
+        unsafe: bool = False,
+        **kwargs,
+    ):
+        self._log_matrices(
+            partial(log_tensor, logger, plot_1D_kind=self.plot_1D_kind, **kwargs),
+            model,
+            unsafe=unsafe,
+        )

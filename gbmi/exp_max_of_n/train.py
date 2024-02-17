@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from functools import cache, partial
 from gbmi.utils.hashing import _EXCLUDE
 from gbmi.training_tools.logging import ModelMatrixLoggingOptions, log_tensor
-from lightning.pytorch.loggers.wandb import WandbLogger
 from typing import (
     Any,
     Callable,
@@ -69,84 +68,6 @@ DatasetCfg = Union[IterableDatasetCfg, FullDatasetCfg]
 
 
 @dataclass
-class MaxOfNLoggingOptions:
-    EQKE: bool = False
-    EQKP: bool = False
-    EUPU: bool = False
-    EVOU: bool = False
-    PVOU: bool = False
-
-    @staticmethod
-    def all() -> MaxOfNLoggingOptions:
-        return MaxOfNLoggingOptions(
-            EQKE=True, EQKP=True, EUPU=True, EVOU=True, PVOU=True
-        )
-
-    @torch.no_grad()
-    def log_matrices(
-        self,
-        log: Callable[[str, Any], None],
-        model: HookedTransformer,
-        use_end_of_sequence: bool,
-        **kwargs,
-    ):
-        W_E, W_pos, W_U, W_Q, W_K, W_V, W_O = (
-            model.W_E,
-            model.W_pos,
-            model.W_U,
-            model.W_Q,
-            model.W_K,
-            model.W_V,
-            model.W_O,
-        )
-        if self.EQKE or self.EQKP or self.EVOU or self.PVOU or self.EUPU:
-            if use_end_of_sequence:
-                W_EPQ_descr = "W_E[-1] + W_pos[-1]"
-                W_EPQ = W_E[-1] + W_pos[-1]
-                W_pos_avg_descr = "W_pos[:-1].mean(dim=0)"
-                W_pos_avg = W_pos[:-1].mean(dim=0)
-                W_posK_descr = f"W_pos[:-1] - {W_pos_avg_descr}"
-                W_posK = W_pos[:-1] - W_pos_avg
-                W_EK_descr = f"W_E[:-1] + {W_pos_avg_descr} - W_E[-1] - W_pos[-1]"
-                W_EK = W_E[:-1] + W_pos_avg - W_E[-1] - W_pos[-1]
-            else:
-                W_EPQ_descr = "W_E + W_pos[-1]"
-                W_EPQ = W_E + W_pos[-1]
-                W_pos_avg_descr = "W_pos.mean(dim=0)"
-                W_pos_avg = W_pos.mean(dim=0)
-                W_posK_descr = f"W_pos - {W_pos_avg_descr}"
-                W_posK = W_pos - W_pos_avg
-                W_EK_descr = f"W_E + {W_pos_avg_descr}"
-                W_EK = W_E + W_pos_avg
-        if self.EQKE:
-            log(
-                f"({W_EPQ_descr})QK({W_EK_descr})",
-                W_EPQ @ W_Q[0, 0, :, :] @ W_K[0, 0, :, :].T @ W_EK.T,
-                **kwargs,
-            )
-        if self.EQKP:
-            log(
-                f"({W_EPQ_descr})QK{W_posK_descr}",
-                W_EPQ @ W_Q[0, 0, :, :] @ W_K[0, 0, :, :].T @ W_posK.T,
-                **kwargs,
-            )
-        if self.EVOU:
-            log(
-                f"({W_EK_descr})VOU",
-                W_EK @ W_V[0, 0, :, :] @ W_O[0, 0, :, :] @ W_U,
-                **kwargs,
-            )
-        if self.PVOU:
-            log(
-                f"({W_posK_descr})VOU",
-                W_posK @ W_V[0, 0, :, :] @ W_O[0, 0, :, :] @ W_U,
-                **kwargs,
-            )
-        if self.EUPU:
-            log(f"({W_EPQ_descr})U", W_EPQ @ W_U, **kwargs)
-
-
-@dataclass
 class MaxOfN(ExperimentConfig):
     # Model config
     model_config: HookedTransformerConfig = field(
@@ -167,7 +88,9 @@ class MaxOfN(ExperimentConfig):
     use_end_of_sequence: bool = False
     seq_len: int = 64
     summary_slug_extra: str = ""
-    logging_options: MaxOfNLoggingOptions = field(default_factory=MaxOfNLoggingOptions)
+    logging_options: ModelMatrixLoggingOptions = field(
+        default_factory=ModelMatrixLoggingOptions
+    )
 
     train_dataset_cfg: DatasetCfg = field(
         default_factory=lambda: IterableDatasetCfg(n_samples=None)
@@ -182,11 +105,14 @@ class MaxOfN(ExperimentConfig):
 
     def __post_init__(self):
         self.model_config.n_ctx = self.seq_len
+        self.logging_options.qpos = -1
         if self.use_end_of_sequence:
             self.model_config.n_ctx = self.seq_len + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
+            self.logging_options.qtok = -1
         setattr(self, _EXCLUDE, ("logging_options",))
         self.model_config.__post_init__()
+        self.logging_options.__post_init__()
 
     def config_post_init(self, config: Config[MaxOfN]) -> None:
         self.model_config.seed = reseed(config.seed, "model")
@@ -376,9 +302,8 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         if log_output and prefix is not None and prefix != "":
             assert self.logger is not None
             self.config.experiment.logging_options.log_matrices(
-                partial(log_tensor, self.logger),  # type: ignore
+                self.logger,  # type: ignore
                 self.model,
-                use_end_of_sequence=self.config.experiment.use_end_of_sequence,
             )
         if return_accuracy:
             return loss, acc
@@ -719,9 +644,9 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             ("experiment", "summary_slug_extra"): args.summary_slug_extra,
             ("experiment", "train_dataset_cfg", "pick_max_first"): args.pick_max_first,
             ("experiment", "logging_options"): (
-                MaxOfNLoggingOptions.all()
+                ModelMatrixLoggingOptions.all()
                 if args.checkpoint_matrix_interp
-                else MaxOfNLoggingOptions()
+                else ModelMatrixLoggingOptions()
             ),
         },
     ).update_from_args(args)

@@ -690,7 +690,8 @@ class LargestWrongLogitQuadraticConfig:
         "mean_query+diff", "drop_average_query_per_output_logit_reasoning"
     ] = "mean_query+diff"
     attention_error_handling: Literal[
-        "svd", "max_diff", "mean+max_diff", "svd+max_diff"
+        "svd",
+        "max_diff",
     ] = "svd"
 
     EUPU_OFF: ClassVar[Literal["global_max_diff_exact"]] = "global_max_diff_exact"
@@ -737,7 +738,7 @@ class LargestWrongLogitQuadraticConfig:
             W_EP - W_EP_mean_query[None, :]
         )
         W_U_per_query_max_logit_diff: Float[Tensor, "d_model"] = (  # noqa F821
-            W_U.max(dim=0).values - W_U.min(dim=0).values
+            W_U.max(dim=-1).values - W_U.min(dim=-1).values
         )
         EUPU_per_query_max_logit_diff: Float[Tensor, "d_vocab_q"] = (  # noqa F821
             W_EP_per_query.abs() @ W_U_per_query_max_logit_diff
@@ -778,11 +779,6 @@ class LargestWrongLogitQuadraticConfig:
                 return torch.tensor(bound_max_row_diff_by_SVD(*matrices)[0])
             case "max_diff":
                 return max_row_diffs_per_dim(*matrices)
-            case "mean+max_diff":
-                raise NotImplemented("FIXME")
-                # FIXME HERE
-            case "svd+max_diff":
-                raise NotImplemented("FIXME")
 
     def split_min_softmaxed_right_attention(
         self,

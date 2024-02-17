@@ -59,7 +59,6 @@ from gbmi.utils.sequences import generate_all_sequences
 from gbmi.utils.hashing import _EXCLUDE
 from gbmi.training_tools.logging import (
     ModelMatrixLoggingOptions,
-    log_tensor,
 )
 
 torch.set_default_device("cuda")
@@ -395,9 +394,8 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         if log_output and prefix is not None and prefix != "":
             assert self.logger is not None
             self.config.experiment.logging_options.log_matrices(
-                partial(log_tensor, self.logger),  # type: ignore
+                self.logger,  # type: ignore
                 self.model,
-                unsafe=True,
             )
         return loss
 

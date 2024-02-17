@@ -127,6 +127,7 @@ class MaxOfN(ExperimentConfig):
         return MaxOfNDataModule
 
     def get_summary_slug(self, config: Config[MaxOfN]) -> str:
+        n_layers = config.experiment.model_config.n_layers
         if isinstance(config.experiment.train_dataset_cfg, FullDatasetCfg):
             force_adjacent = ",".join(
                 map(str, config.experiment.train_dataset_cfg.force_adjacent)
@@ -139,6 +140,7 @@ class MaxOfN(ExperimentConfig):
             max_first = config.experiment.train_dataset_cfg.pick_max_first
         return (
             f"MaxOf{config.experiment.seq_len}-{config.train_for[0]}-{config.train_for[1]}"
+            f"{f'-{n_layers}L' if n_layers != 1 else ''}"
             f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
             f"{'-max-first' if max_first else ''}"
             f"{f'-training-ratio-{training_ratio:.3f}' if training_ratio is not None else ''}"

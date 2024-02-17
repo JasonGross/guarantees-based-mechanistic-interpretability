@@ -118,7 +118,7 @@ class ModelMatrixLoggingOptions:
             return
         if l == 0:
             for h in range(n_heads):
-                cur_vo = "{sx}VO" if not reverse_strs else f"OᵀVᵀ{sx}"
+                cur_vo = f"{sx}VO" if not reverse_strs else f"OᵀVᵀ{sx}"
                 yield cur_vo, f"h{subscript(str(l))}{h}", apply_VO(x, l, h)
             return
         vo2 = "VO" if not reverse_strs else "OᵀVᵀ"

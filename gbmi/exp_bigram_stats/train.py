@@ -115,7 +115,7 @@ def bigram_config(
     seq_length: int = 5,
     bos: bool = True,
     d_vocab_out=3,
-    batch_size=512,
+    batch_size=32,
     log_matrices: bool = True,
 ):
     return Config(
@@ -124,8 +124,8 @@ def bigram_config(
                 d_vocab=d_vocab_out + bos,
                 d_vocab_out=d_vocab_out,
                 n_ctx=seq_length + bos,
-                d_model=32,
-                d_head=32,
+                d_model=30,
+                d_head=30,
                 n_layers=2,
                 n_heads=1,
                 init_weights=True,
@@ -143,7 +143,7 @@ def bigram_config(
             optimizer_kwargs={
                 "lr": 1e-3,
                 "weight_decay": weight_decay,
-                "betas": (0.5, 0.5),
+                "betas": (0.99, 0.98),
             },
         ),
         seed=999,
@@ -151,16 +151,17 @@ def bigram_config(
         batch_size=batch_size,
         train_for=(samples // batch_size, "steps"),
         log_every_n_steps=1,
-        validate_every=(10, "steps"),
+        validate_every=(1000, "steps"),
     )
 
 
-DEFAULT_BIGRAM = bigram_config(125000, 1.0, seq_length=15)
+DEFAULT_BIGRAM = bigram_config(1250000, 0.0, seq_length=6)
 
 
 def calculate_batch_probabilities(
     batch_input: Integer[Tensor, "... seq_length"], num_tokens: int  # noqa: F821, F722
 ) -> Float[Tensor, "... seq_length num_tokens"]:  # noqa: F821, F722
+    # Convert batch input to a PyTorch tensor
     # Convert batch input to a PyTorch tensor
     batch_tensor = torch.tensor(batch_input, dtype=torch.long)
 
@@ -177,16 +178,28 @@ def calculate_batch_probabilities(
     # Create tensors to count occurrences and calculate cumulative probabilities
     for i in range(1, seq_length):
         # Count occurrences of each token in positions before the current one
-        for token in range(num_tokens):
-            token_occurrences = (batch_tensor[..., :i] == token).float().sum(dim=-1)
-            probability_distributions[..., i, token] = token_occurrences
+        tokens = torch.zeros(batch_dims)
+        tokens = batch_tensor[..., i]
+        token_occurrences = torch.zeros(batch_dims + (num_tokens,))
+        for next_token in range(num_tokens):
+
+            token_occurrences[..., next_token] = (
+                (
+                    torch.logical_and(
+                        batch_tensor[..., :i]
+                        == tokens[...].unsqueeze(-1).expand_as(batch_tensor[..., :i]),
+                        batch_tensor[..., 1 : i + 1] == next_token,
+                    )
+                )
+                .float()
+                .sum(dim=-1)
+            )
+            token_occurrences[..., next_token] += 1
+        probability_distributions[..., i, :] = (
+            token_occurrences / token_occurrences.sum(dim=-1, keepdims=True)
+        )
 
         # Normalize to get probabilities for positions from the second onwards
-
-        sums = probability_distributions[..., i, :].sum(
-            dim=len(probability_distributions.shape) - 2, keepdim=True
-        )
-        probability_distributions[..., i, :] /= sums
 
     return probability_distributions
 
@@ -218,14 +231,14 @@ class BigramBaseIterableDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
             default_device = torch.tensor([]).device
 
             g = torch.Generator(device=default_device)
+
             g.manual_seed(self.seed)
             n_samples = 0
             while True:
-                val = torch.randint(
-                    0,
-                    self.model_config.d_vocab_out,
-                    (self.seq_length,),
-                    generator=g,
+                distribution = torch.rand(self.model_config.d_vocab_out)
+                distribution = distribution / distribution.sum()
+                val = torch.multinomial(
+                    distribution, self.seq_length, replacement=True, generator=g
                 )
 
                 yield val
@@ -363,9 +376,10 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
         labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
-        logits = torch.softmax(logits, dim=-1)
+        logits = einops.rearrange(logits, "b p d -> b d p")
+        labels = einops.rearrange(labels, "b p d -> b d p")
 
-        loss = torch.nn.functional.cross_entropy(logits, labels)
+        loss = torch.nn.functional.cross_entropy(logits[:, :, 1:], labels[:, :, 1:])
 
         return loss
 

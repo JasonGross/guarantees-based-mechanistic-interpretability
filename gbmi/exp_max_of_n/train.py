@@ -88,6 +88,9 @@ class MaxOfN(ExperimentConfig):
     use_end_of_sequence: bool = False
     seq_len: int = 64
     summary_slug_extra: str = ""
+    log_matrix_on_run_batch_prefixes: set[
+        Optional[Literal["", "periodic_test_", "test_"]]
+    ] = field(default_factory=lambda: {"periodic_test_", "test_"})
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
@@ -110,7 +113,7 @@ class MaxOfN(ExperimentConfig):
             self.model_config.n_ctx = self.seq_len + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
             self.logging_options.qtok = -1
-        setattr(self, _EXCLUDE, ("logging_options",))
+        setattr(self, _EXCLUDE, ("logging_options", "log_matrix_phases"))
         self.model_config.__post_init__()
         self.logging_options.__post_init__()
 
@@ -299,7 +302,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         acc = self.acc_fn(y_preds, ys)
         if log_output:
             self.log(f"{prefix}acc", acc, prog_bar=True)
-        if log_output and prefix is not None and prefix != "":
+        if log_output and prefix in self.log_matrix_phases:
             assert self.logger is not None
             self.config.experiment.logging_options.log_matrices(
                 self.logger,  # type: ignore
@@ -613,10 +616,22 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
         help="Pick the maximum value first, then fill in the rest of the sequence. Only meaningful for --max-of N > 2.",
     )
     parser.add_argument(
+        "--log-matrix-interp",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Log matrices every train step",
+    )
+    parser.add_argument(
         "--checkpoint-matrix-interp",
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Log matrices for checkpointing",
+    )
+    parser.add_argument(
+        "--log-final-matrix-interp",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Log matrices after training",
     )
     HOOKED_TRANSFORMER_CONFIG_ARGS = set(
         (
@@ -643,11 +658,11 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             ("experiment", "optimizer"): args.optimizer,
             ("experiment", "summary_slug_extra"): args.summary_slug_extra,
             ("experiment", "train_dataset_cfg", "pick_max_first"): args.pick_max_first,
-            ("experiment", "logging_options"): (
-                ModelMatrixLoggingOptions.all()
-                if args.checkpoint_matrix_interp
-                else ModelMatrixLoggingOptions()
-            ),
+            ("experiment", "logging_options"): ModelMatrixLoggingOptions.all(),
+            ("experiment", "log_matrix_phases"): set()
+            | ({"test_"} if args.log_final_matrix_interp else set())
+            | ({"periodic_test_"} if args.checkpoint_matrix_interp else set())
+            | ({""} if args.log_matrix_interp else set()),
         },
     ).update_from_args(args)
     config.experiment.model_config = update_HookedTransformerConfig_from_args(

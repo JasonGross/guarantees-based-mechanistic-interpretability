@@ -31,6 +31,7 @@ importlib.reload(gbmi.exp_max_of_n.verification)
 importlib.reload(gbmi.utils.memoshelve)
 importlib.reload(gbmi.utils.sequences)
 # %%
+import traceback
 import dataclasses
 import math
 from collections import defaultdict
@@ -1967,7 +1968,9 @@ print(
     f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
 )  # O(d_vocab^2)
 print(
-    (min_right_attention[~min_right_attention.isnan()] > err_upper_bound).sum().item()
+    (min_right_attention[~min_right_attention.isnan()] > err_upper_bound.min())
+    .sum()
+    .item()
 )
 min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
     min_right_attention - err_upper_bound,
@@ -2267,13 +2270,22 @@ for use_exact_EQKE in (True, False):
         print(
             f"Complexity of compute_min_right_attention_quadratic: {complexity_of(compute_min_right_attention_quadratic)}"
         )  # O(d_vocab^2)
+        if not isinstance(EQKE_err_upper_bound, Tensor):
+            EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
+        if EQKE_err_upper_bound.ndim < 1:
+            EQKE_err_upper_bound = EQKE_err_upper_bound[None]
         print(
-            (min_right_attention[~min_right_attention.isnan()] > err_upper_bound)
+            (
+                (min_right_attention > EQKE_err_upper_bound[:, None, None])[
+                    ~min_right_attention.isnan()
+                ]
+            )
             .sum()
             .item()
         )
+
         min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
-            min_right_attention - EQKE_err_upper_bound,
+            min_right_attention - EQKE_err_upper_bound[:, None, None],
             EQKE_pos_err,
             min_gap=min_gaps,
             attn_scale=model.blocks[0].attn.attn_scale,
@@ -2338,10 +2350,13 @@ for use_exact_EQKE in (True, False):
                         model.cfg.n_ctx - 1, n_copies_nonmax
                     )
         for _, v in min_gaps_lists[use_exact_EQKE]:
-            weighted_histogram(
-                v.flatten().detach().numpy(),
-                weights.flatten().detach().numpy(),
-                labels={"x": "gap", "y": "count * # sequences"},
-                num_bins=v.max().item(),
-            ).show(RENDERER)
+            try:
+                weighted_histogram(
+                    v.flatten().detach().numpy(),
+                    weights.flatten().detach().numpy(),
+                    labels={"x": "gap", "y": "count * # sequences"},
+                    num_bins=v.max().item(),
+                ).show(RENDERER)
+            except Exception as e:
+                traceback.print_exception(e)
 # %%

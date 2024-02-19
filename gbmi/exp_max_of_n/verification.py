@@ -776,7 +776,7 @@ class LargestWrongLogitQuadraticConfig:
     ) -> Union[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]]:  # noqa F821
         match self.attention_error_handling:
             case "svd":
-                result = bound_max_row_diff_by_SVD(*matrices)[0]
+                return bound_max_row_diff_by_SVD(*matrices)[0]
             case "max_diff":
                 return max_row_diffs_per_dim(*matrices)
 

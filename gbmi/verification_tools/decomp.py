@@ -156,7 +156,9 @@ def max_row_diffs_per_dim(*m: Tensor) -> Tensor:
 
 # %%
 @torch.no_grad()
-def bound_max_row_diff_by_SVD(*matrices: Tensor) -> Tuple[float, Tuple[Tensor, ...]]:
+def bound_max_row_diff_by_SVD(
+    *matrices: Tensor,
+) -> Tuple[Float[Tensor, ""], Tuple[Tensor, ...]]:  # noqa: F722
     r"""
     Let M denote the product of the elements of `matrices` (under matrix multiplication)
 

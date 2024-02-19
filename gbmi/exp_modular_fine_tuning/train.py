@@ -49,6 +49,10 @@ class ModularFineTuning(ExperimentConfig):
     )
     version_number: int = 1
 
+    @property
+    def seq_len(self) -> int:
+        return self.model_config.n_ctx - 1
+
     def get_training_wrapper(self):
         return ModularFineTuningTrainingWrapper
 
@@ -61,6 +65,15 @@ class ModularFineTuning(ExperimentConfig):
             f"{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
+
+    def __post_init__(self):
+        self.model_config.d_vocab = self.p + 1
+        self.model_config.d_vocab_out = self.p
+        self.model_config.__post_init__()
+
+    def config_post_init(self, config: Config[ModularFineTuning]) -> None:
+        self.model_config.seed = reseed(config.seed, "model")
+        config.batch_size = int(self.p**self.seq_len * self.training_ratio)
 
 
 def modular_addition_config(attn_rate: float, p: int = 113):
@@ -105,16 +118,6 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
 
     @staticmethod
     def build_model(config: Config[ModularFineTuning]) -> HookedTransformer:
-        config.experiment.model_config = set_params(
-            config.experiment.model_config,
-            {
-                "seed": reseed(config.seed, "model"),
-                "d_vocab": config.experiment.p + 1,
-                "d_vocab_out": config.experiment.p,
-            },
-            warn_if_not_default=False,
-        )
-
         model = HookedTransformer(config.experiment.model_config)
         if config.experiment.zero_biases:
             for name, param in model.named_parameters():

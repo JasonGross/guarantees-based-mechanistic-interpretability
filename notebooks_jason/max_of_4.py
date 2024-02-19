@@ -2161,6 +2161,7 @@ def count_correct_sequences(
                     or q_tok > max_tok
                     or (q_tok != max_tok and n_copies_nonmax == 0)
                     or (q_tok != max_tok and max_tok - q_tok < cur_min_gap)
+                    or (max_tok == 0 and n_copies_nonmax > 0)
                 ):
                     continue
                 if n_copies_nonmax == 0:
@@ -2364,19 +2365,32 @@ for use_exact_EQKE in (True, False):
         for q_tok in range(d_vocab_q):
             for max_tok in range(d_vocab_max):
                 for n_copies_nonmax in range(n_ctx_nonmax_copies):
-                    if (q_tok > max_tok) or (
-                        n_copies_nonmax == n_ctx_nonmax_copies - 1 and max_tok != q_tok
+                    if (
+                        (q_tok > max_tok)
+                        or (
+                            n_copies_nonmax == n_ctx_nonmax_copies - 1
+                            and max_tok != q_tok
+                        )
+                        or (max_tok == 0 and n_copies_nonmax > 0)
                     ):
                         continue
+                    if max_tok == 0:
+                        assert q_tok == max_tok
+                        assert n_copies_nonmax == 0
+                        weights[q_tok, max_tok, n_copies_nonmax] = 1
                     weights[q_tok, max_tok, n_copies_nonmax] = (
                         max_tok - 1
                     ) ** n_copies_nonmax * math.comb(
                         model.cfg.n_ctx - 1, n_copies_nonmax
                     )
         for _, v in min_gaps_lists[use_exact_EQKE]:
+            v = v.flatten().detach().cpu()
+            if v.max().item() == 1:
+                print(f"All gaps are: {set(v.numpy())}")
+                continue
             try:
                 weighted_histogram(
-                    v.flatten().detach().numpy(),
+                    v.numpy(),
                     weights.flatten().detach().numpy(),
                     labels={"x": "gap", "y": "count * # sequences"},
                     num_bins=v.max().item(),

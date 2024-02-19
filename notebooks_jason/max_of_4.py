@@ -1766,6 +1766,11 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 # &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
 # &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
 # \end{align*}$$
+# %% [markdown]
+# \[\begin{align*}
+# \text{max\_diff}[q, m, c]
+# &= \max_{k \ne m} (\text{EVOU}[q, k] - \text{EVOU}[q, m]) \text{attn}[q, m, c]
+# \end{align*}\]
 
 
 # %%
@@ -2130,6 +2135,19 @@ def count_correct_sequences(
     correct_count = 0
     for q_tok in range(d_vocab_q):
         for max_tok in range(d_vocab_max):
+            # if the largest wrong logit is positive when the sequence is all max tokens, then pessimizing over position is not adequate for the convexity argument, so we skip these sequences.
+            # in practice, we lose 6**4 == 1296 sequences this way, which is 0.0077% of the total
+            largest_wrong_logit_in_only_max_sequences = largest_wrong_logit[
+                max_tok, max_tok, 0
+            ]
+            largest_wrong_logit_in_only_max_sequences = (
+                largest_wrong_logit_in_only_max_sequences[
+                    ~largest_wrong_logit_in_only_max_sequences.isnan()
+                ]
+            )
+            if largest_wrong_logit_in_only_max_sequences.item() > 0:
+                # we did not account for these sequences in convexity
+                continue
             for n_copies_nonmax in range(n_ctx):
                 cur_min_gap = (
                     min_gap

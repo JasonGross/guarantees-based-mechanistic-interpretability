@@ -2252,7 +2252,7 @@ for use_exact_EQKE in (True, False):
         try:
             print(f"err_upper_bound: {err_upper_bound.item()}")
         except Exception:
-            print(f"err_upper_bound: {err_upper_bound}")
+            # print(f"err_upper_bound: {err_upper_bound}")
             print(f"err_upper_bound.max(): {err_upper_bound.max()}")
 
         if use_exact_EQKE:

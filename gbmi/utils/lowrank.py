@@ -2,8 +2,9 @@ from __future__ import annotations
 from torch import Tensor
 import torch
 from jaxtyping import Float
-from typing import TypeVar, Union, Optional
+from typing import TypeVar, Union, Optional, overload
 import plotly.express as px
+from transformer_lens import FactoredMatrix
 
 
 T = TypeVar("T")
@@ -11,7 +12,7 @@ T = TypeVar("T")
 
 def _via_tensor(attr: str):
     def delegate(self: LowRankTensor, *args, **kwargs):
-        return getattr(self.totensor(), attr)(*args, **kwargs)
+        return getattr(self.AB, attr)(*args, **kwargs)
 
     if hasattr(Tensor, attr):
         reference = getattr(Tensor, attr)
@@ -43,25 +44,49 @@ def _merge_check_params(
     return result
 
 
-class LowRankTensor:
+# TODO: Drop wrapper around FactoredMatrix at some point
+class LowRankTensor(FactoredMatrix):
+    @overload
     def __init__(
         self,
-        u: Tensor,
-        v: Tensor,
+        A: Tensor,
+        B: Tensor,
+        *,
+        check: Union[bool, dict] = False,
+        show: bool = True,
+        checkparams: Optional[dict] = None,
+    ): ...
+    @overload
+    def __init__(
+        self,
+        A: FactoredMatrix,
+        *,
+        check: Union[bool, dict] = False,
+        show: bool = True,
+        checkparams: Optional[dict] = None,
+    ): ...
+
+    def __init__(
+        self,
+        A: Union[Tensor, FactoredMatrix],
+        B: Optional[Tensor] = None,
         *,
         check: Union[bool, dict] = False,
         show: bool = True,
         checkparams: Optional[dict] = None,
     ):
-        if u.ndim == 1:
-            u = u[:, None]
-        if v.ndim == 1:
-            v = v[None, :]
-        assert (
-            u.shape[-1] == v.shape[-2]
-        ), f"u.shape[-1] must equal v.shape[-2]; u.shape={u.shape}; v.shape={v.shape}"
-        self._u = u
-        self._v = v
+        if isinstance(A, FactoredMatrix):
+            assert B is None, "B must not be provided if A is a FactoredMatrix"
+            assert not isinstance(A, LowRankTensor), "Cannot pass a LowRankTensor as A"
+            return self.__init__(
+                A.A, A.B, check=check, show=show, checkparams=checkparams
+            )
+        assert B is not None, "B must be provided if A is not a FactoredMatrix"
+        if A.ndim == 1:
+            A = A[:, None]
+        if B.ndim == 1:
+            B = B[None, :]
+        super().__init__(A, B)
         self._check = bool(check)
         self._checkparams = (
             checkparams
@@ -70,24 +95,14 @@ class LowRankTensor:
         )
         self._show = show
 
-    @property
-    def u(self):
-        return self._u
-
-    @property
-    def v(self):
-        return self._v
-
-    def totensor(self) -> Tensor:
-        return self.u @ self.v
-
-    def setcheckparams(self, **kwargs):
+    def setcheckparams(self, **kwargs) -> LowRankTensor:
         self._checkparams = kwargs
+        return self
 
     @torch.no_grad()
     def check(
         self,
-        other: Union[Tensor, LowRankTensor],
+        other: Union[Tensor, LowRankTensor, FactoredMatrix],
         show: Optional[bool] = None,
         descr: Optional[str] = None,
         renderer: Optional[str] = None,
@@ -97,16 +112,18 @@ class LowRankTensor:
             show = self._show
         full_kwargs = dict(self._checkparams)
         full_kwargs.update(kwargs)
-        if isinstance(other, LowRankTensor):
-            other = other.totensor()
-        if torch.allclose(self.totensor(), other, **full_kwargs):
+        if isinstance(other, LowRankTensor) or isinstance(other, FactoredMatrix):
+            other = other.AB
+        if torch.allclose(self.AB, other, **full_kwargs):
             return True
         descr = "" if descr is None else " " + descr
         if show:
             px.imshow(self.numpy(), title=f"self{descr}").show(renderer=renderer)
-            px.imshow(other.numpy(), title=f"other{descr}").show(renderer=renderer)
+            px.imshow(other.cpu().numpy(), title=f"other{descr}").show(
+                renderer=renderer
+            )
             px.imshow(
-                (self - other).abs().detach().numpy(),
+                (self - other).abs().cpu().numpy(),
                 title=f"difference{descr} ({self._checkparams})",
             ).show(renderer=renderer)
         return False
@@ -114,7 +131,7 @@ class LowRankTensor:
     @torch.no_grad()
     def maybe_check(
         self,
-        other: Union[Tensor, LowRankTensor],
+        other: Union[Tensor, LowRankTensor, FactoredMatrix],
         show: Optional[bool] = None,
         descr: Optional[str] = None,
         renderer: Optional[str] = None,
@@ -140,60 +157,26 @@ class LowRankTensor:
             return self.params()
 
     @property
-    def T(self):
-        return LowRankTensor(self.v.T, self.u.T, **self.params())  # type: ignore
+    def T(self) -> LowRankTensor:
+        return LowRankTensor(super().T, **self.params())  # type: ignore
 
-    def __matmul__(self, other: Union[Tensor, LowRankTensor]):
-        if isinstance(other, LowRankTensor):
-            # prefer to keep the dimensions of stored matrices as low as possible
-            u, mid, v = self.u, self.v @ other.u, other.v
-            if len(mid.shape) <= 1:
-                if u.shape[-1] <= v.shape[-2]:
-                    v = mid @ v
-                else:
-                    u = u @ mid
-            elif mid.shape[-2] <= mid.shape[-1]:
-                v = mid @ v
-            else:
-                u = u @ mid
-        else:
-            u, v = self.u, self.v @ other
-        result = LowRankTensor(u, v, **self._mergeparams(other))  # type: ignore
+    def __matmul__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix]):
+        result = LowRankTensor(super().__matmul__(other), **self._mergeparams(other))  # type: ignore
         if self._check:
-            assert result.check(self.totensor() @ other, descr="matmul")
+            assert result.check(self.AB @ other, descr="matmul")
         return result
 
     def __rmatmul__(self, other: Union[Tensor, LowRankTensor]):
-        if isinstance(other, LowRankTensor):
-            # prefer to keep the dimensions of stored matrices as low as possible
-            u, mid, v = other.u, other.v @ self.u, self.v
-            if len(mid.shape) <= 1:
-                if u.shape[-1] <= v.shape[-2]:
-                    v = mid @ v
-                else:
-                    u = u @ mid
-            elif mid.shape[-2] <= mid.shape[-1]:
-                v = mid @ v
-            else:
-                u = u @ mid
-        else:
-            u, v = other @ self.u, self.v
-        result = LowRankTensor(u, v, **self._mergeparams(other))  # type: ignore
+        result = LowRankTensor(super().__rmatmul__(other), **self._mergeparams(other))  # type: ignore
         if self._check:
-            assert result.check(other @ self.totensor(), descr="matmul")
+            assert result.check(other @ self.AB, descr="matmul")
         return result
 
     @torch.no_grad()
     def numpy(self):
-        return self.totensor().detach().numpy()
+        return self.AB.cpu().numpy()
 
     __add__ = _via_tensor("__add__")
     __radd__ = _via_tensor("__radd__")
     __sub__ = _via_tensor("__sub__")
     __rsub__ = _via_tensor("__rsub__")
-
-    def __repr__(self):
-        return f"LowRankTensor(u={self.u!r}, v={self.v!r})"
-
-    def __str__(self):
-        return f"LowRankTensor(u={self.u}, v={self.v})"

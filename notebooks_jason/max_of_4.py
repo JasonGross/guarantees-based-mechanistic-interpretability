@@ -1292,7 +1292,7 @@ def decompose_EQKE_error(
     EQKE_query_key = (W_E_query @ W_Q[0, 0]) @ (
         W_K[0, 0].T @ W_E_key.T
     )  # O(d_vocab * d_vocab)
-    err_accumulator = torch.zeros_like(EQKE_query_key.totensor())  # O(d_vocab^2)
+    err_accumulator = torch.zeros_like(EQKE_query_key.AB)  # O(d_vocab^2)
     EQKE_query_cross_err = (
         (W_E_query @ W_Q[0, 0]) @ W_K[0, 0].T
     ) @ W_E_key_err.T  # O(d_vocab * d_model)

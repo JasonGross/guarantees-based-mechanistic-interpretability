@@ -42,7 +42,7 @@ import gbmi.utils as utils
 from gbmi.utils import (
     shuffle_data,
     SingleTensorDataset,
-    TupleIterableDataset,
+    TupleCollectionDataset,
     reseed,
     set_params,
 )

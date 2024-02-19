@@ -1,4 +1,4 @@
-from typing import Literal, Tuple, Union, overload
+from typing import Tuple
 import numpy as np
 import torch
 from torch import Tensor
@@ -6,8 +6,6 @@ from jaxtyping import Float
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 from transformer_lens import utils as utils
-
-import gbmi.utils
 
 
 def analyze_svd(

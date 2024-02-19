@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import (
     Callable,
+    Collection,
     Optional,
     Tuple,
     TypeVar,
@@ -110,15 +111,15 @@ class SingleTensorDataset(IterableDataset[Tensor]):
         return iter(self.tensor)
 
 
-class TupleIterableDataset(Dataset[Tuple[Iterable, ...]]):
+class TupleCollectionDataset(Dataset[Tuple[Collection, ...]]):
     r"""Dataset wrapping a tuple of arrays.
 
     Each sample will be retrieved by indexing the arguments along the first dimension.
     """
 
-    data: Tuple[Iterable, ...]
+    data: Tuple[Collection, ...]
 
-    def __init__(self, *data: Iterable) -> None:
+    def __init__(self, *data: Collection) -> None:
         self.data = data
         assert all(
             len(data[0]) == len(datum) for datum in data

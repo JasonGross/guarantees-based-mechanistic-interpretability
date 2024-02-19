@@ -172,6 +172,7 @@ def make_fit_traces(
     )
     if fit_equation is None:
         fit_equation = fit_function.equation
+    assert fit_equation is not None
     if reference_lines is None:
         reference_lines = []
     reference_line_traces = [

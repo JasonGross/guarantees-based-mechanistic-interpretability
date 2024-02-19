@@ -3,7 +3,6 @@ from typing import Callable, Collection, Optional, Union
 import imageio
 import numpy as np
 from matplotlib import pyplot as plt
-from plotly import express as px
 import plotly.graph_objects as go
 import plotly.express as px
 from tqdm import tqdm
@@ -119,6 +118,7 @@ def summarize(
     if fit_equation is None and fit_function is not None:
         fit_equation = fit_function.equation
     if fit_function is not None:
+        assert fit_equation is not None
         assert len(values.shape) in (1, 2)
         if len(values.shape) == 1:
             x_vals = np.arange(values.shape[0])
@@ -146,7 +146,7 @@ def summarize(
         )  # Adjust the figure size to your liking
 
         # Scatter plot the data & best fit line on the first subplot
-        gbmi.analysis.plot.scatter(x_vals, y_vals, label="Data", alpha=0.5, s=1)
+        scatter(x_vals, y_vals, label="Data", alpha=0.5, s=1)
         axs[0].plot(
             x_vals,
             fit_function(x_vals, *popt),
@@ -159,9 +159,7 @@ def summarize(
         # Plot residual errors on the second subplot
         residuals = y_vals - fit_function(x_vals, *popt)
         order_indices = np.argsort(x_vals)
-        gbmi.analysis.plot.scatter(
-            x_vals[order_indices], residuals[order_indices], c="b", alpha=0.5
-        )
+        scatter(x_vals[order_indices], residuals[order_indices], c="b", alpha=0.5)
         axs[1].set_title(resid_title)
 
         # Adjust the layout

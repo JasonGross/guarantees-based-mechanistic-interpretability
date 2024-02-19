@@ -168,16 +168,28 @@ def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
     log_softmax is only precise to around 2e-7, cf https://github.com/pytorch/pytorch/issues/113708
     we can get better precision by using log1p
     """
-    x_max_idxs = x.argmax(dim=dim, keepdim=True)
-    x_centered = x - x.gather(dim=dim, index=x_max_idxs)
-    x_exp = x_centered.exp()
-    # x_exp[max] will be 1, so we can zero it and use log1p(x) = log(1 + x)
-    x_exp = x_exp.scatter(
-        dim=dim,
-        index=x_max_idxs,
-        src=torch.zeros_like(x_max_idxs, device=x.device, dtype=x.dtype),
-    )
-    return x_centered - x_exp.sum(dim=dim, keepdim=True).log1p()
+    x_argmax = torch.argmax(x, dim=dim, keepdim=True)
+    x_max = torch.take_along_dim(x, indices=x_argmax, dim=dim)
+    finite_max_mask = x_max.isfinite()
+    x_max[~finite_max_mask] = 0
+    tmp = x - x_max
+    exp_tmp = torch.exp(tmp)
+    # we know that exp_tmp at the location of the max is either 1 or infinite,
+    # depending on finite_max_mask, so we can set it to zero and use log1p
+    exp_tmp_max = torch.take_along_dim(exp_tmp, indices=x_argmax, dim=dim)
+    exp_tmp_max[finite_max_mask] = 0
+    if dim is not None:
+        exp_tmp.scatter_(
+            dim=dim,
+            index=x_argmax,
+            src=exp_tmp_max,
+        )
+    else:
+        exp_tmp_flattened = torch.flatten(exp_tmp)
+        exp_tmp_flattened[x_argmax.flatten()] = torch.flatten(exp_tmp_max)
+        exp_tmp = torch.reshape(exp_tmp_flattened, exp_tmp.shape)
+        # exp_tmp[x_argmax] = 0
+    return tmp - torch.log1p(torch.sum(exp_tmp, dim=dim, keepdim=True))
 
 
 def deep_getattr_or_item(obj: T, key: Union[str, Sequence[str]]) -> Any:

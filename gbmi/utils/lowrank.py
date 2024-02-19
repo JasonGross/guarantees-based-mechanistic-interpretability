@@ -161,13 +161,17 @@ class LowRankTensor(FactoredMatrix):
         return LowRankTensor(super().T, **self.params())  # type: ignore
 
     def __matmul__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix]):
-        result = LowRankTensor(super().__matmul__(other), **self._mergeparams(other))  # type: ignore
+        result = super().__matmul__(other)
+        if not isinstance(result, LowRankTensor):
+            result = LowRankTensor(result, **self._mergeparams(other))  # type: ignore
         if self._check:
             assert result.check(self.AB @ other, descr="matmul")
         return result
 
     def __rmatmul__(self, other: Union[Tensor, LowRankTensor]):
-        result = LowRankTensor(super().__rmatmul__(other), **self._mergeparams(other))  # type: ignore
+        result = super().__rmatmul__(other)
+        if not isinstance(result, LowRankTensor):
+            result = LowRankTensor(result, **self._mergeparams(other))  # type: ignore
         if self._check:
             assert result.check(other @ self.AB, descr="matmul")
         return result

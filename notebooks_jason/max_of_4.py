@@ -1643,7 +1643,7 @@ def compute_min_softmaxed_right_attention_quadratic(
     tmp = torch.zeros((n_ctx,))
     EQKE_pos_err = EQKE_pos_err - EQKE_pos_err[:, -1].unsqueeze(
         -1
-    )  # softmax is invariant to adding a constant to all inputs, so we offset by the attention paid to the query position
+    )  # softmax is invariant to adding a constant to all inputs, so we offset by the attention paid to the query position; this lets us uniformly fill in 0 for the attention paid to the query position further down, without it interfering with sorting
     EQKE_pos_err = EQKE_pos_err[:, :-1].sort(dim=-1).values
     for q_tok in range(min_right_attention.shape[0]):
         for max_tok in range(min_right_attention.shape[1]):

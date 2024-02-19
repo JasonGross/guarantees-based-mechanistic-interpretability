@@ -684,7 +684,11 @@ def all_worst_EVOU(
 @dataclasses.dataclass
 class LargestWrongLogitQuadraticConfig:
     EUPU_handling: Literal[
-        "mean_query+max_diff", "svd_query+max_diff", "max_diff", "global_max_diff_exact"
+        "mean_query+max_diff",
+        "svd_query+max_diff",
+        "max_diff",
+        "max_diff_exact",
+        "global_max_diff_exact",
     ] = "mean_query+max_diff"
     attention_handling: Literal[
         "mean_query+diff", "drop_average_query_per_output_logit_reasoning"
@@ -743,7 +747,7 @@ class LargestWrongLogitQuadraticConfig:
         EUPU_per_query_max_logit_diff: Float[Tensor, "d_vocab_q"] = (  # noqa F821
             W_EP_per_query.abs() @ W_U_per_query_max_logit_diff
         )
-        if self.EUPU_handling == "global_max_diff_exact":
+        if self.EUPU_handling in ("global_max_diff_exact", "max_diff_exact"):
             return self.split_EUPU(W_EP @ W_U)
         return EUPU_mean_query, EUPU_per_query_max_logit_diff
 

@@ -1769,7 +1769,7 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 # %% [markdown]
 # \[\begin{align*}
 # \text{max\_diff}[q, m, c]
-# &= \max_{k \ne m} (\text{EVOU}[q, k] - \text{EVOU}[q, m]) \text{attn}[q, m, c]
+# &= \max_{k \ne m} (\text{EVOU}[q, k] - \text{EVOU}[q, m]) \text{attn}[q, m, c] + \max_{0 \le n \le m - \text{min\_gap}[q, m, c]} (\text{EVOU}[q, m - n] - \text{EVOU}[q, m]) \text{attn}[q, m - n, c] \\
 # \end{align*}\]
 
 

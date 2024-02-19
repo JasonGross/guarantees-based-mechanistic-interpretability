@@ -32,6 +32,7 @@ importlib.reload(gbmi.utils.memoshelve)
 importlib.reload(gbmi.utils.sequences)
 # %%
 import traceback
+import sys
 import dataclasses
 import math
 from collections import defaultdict
@@ -2381,5 +2382,12 @@ for use_exact_EQKE in (True, False):
                     num_bins=v.max().item(),
                 ).show(RENDERER)
             except Exception as e:
-                traceback.print_exception(e)
+                etype, value, tb = sys.exc_info()
+                if value is None:
+                    traceback.print_exception(e)
+                else:
+                    for line in traceback.TracebackException(
+                        type(value), value, tb, capture_locals=True
+                    ).format():
+                        print(line, file=sys.stderr)
 # %%

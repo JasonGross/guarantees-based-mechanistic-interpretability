@@ -2249,6 +2249,11 @@ for use_exact_EQKE in (True, False):
         print(
             f"Complexity of decompose_EQKE_error: {complexity_of(decompose_EQKE_error)}"
         )
+        try:
+            print(f"err_upper_bound: {err_upper_bound.item()}")
+        except Exception:
+            print(f"err_upper_bound: {err_upper_bound}")
+            print(f"err_upper_bound.max(): {err_upper_bound.max()}")
 
         if use_exact_EQKE:
             print(f"Complexity of using exact EQKE: O(d_vocab^2 d_model)")

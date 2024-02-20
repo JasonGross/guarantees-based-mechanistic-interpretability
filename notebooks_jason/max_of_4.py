@@ -1441,14 +1441,24 @@ if DISPLAY_PLOTS:
         EQKE_pos_err.numpy(),
         title="(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub> - 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
     ).show(RENDERER)
+    zmax = (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).abs().max().item()
     px.imshow(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).numpy(),
         title="EQKE_err",
         labels={"x": "key token", "y": "query token"},
+        color_continuous_midpoint=0,
+        zmax=zmax,
+        zmin=-zmax,
     ).show(RENDERER)
     analyze_svd(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T),
         descr="EQKE_err",
+        renderer=RENDERER,
+    )
+    analyze_svd(
+        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T),
+        descr="EQKE_err",
+        colorscale="plasma",
         renderer=RENDERER,
     )
     s1 = torch.linalg.matrix_norm(
@@ -1467,7 +1477,23 @@ if DISPLAY_PLOTS:
         (W_K_errT, "K<sup>⟂</sup>"),
         (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>"),
     ):
-        analyze_svd(m, scale_by_singular_value=False, descr=s, renderer=RENDERER)
+        fig = px.imshow(
+            m.numpy(),
+            title=s,
+            color_continuous_midpoint=0,
+            zmax=zmax,
+            zmin=-zmax,
+        )
+        fig.update_xaxes(showticklabels=False)
+        fig.update_yaxes(showticklabels=False)
+        fig.show(RENDERER)
+        analyze_svd(
+            m,
+            scale_by_singular_value=False,
+            descr=s,
+            colorscale="plasma",
+            renderer=RENDERER,
+        )
     sf1 = torch.linalg.matrix_norm(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord="fro"
     )
@@ -1478,8 +1504,42 @@ if DISPLAY_PLOTS:
     ]
     print(f"singular fro values: {sfs}")
     print(f"√2∏σf₁ = {np.prod(sfs)}√2 = {np.prod(sfs)*np.sqrt(2)}")
-
 print(f"err_upper_bound: {err_upper_bound}")
+
+# %%
+if DISPLAY_PLOTS:
+    uvs = []
+    ss = []
+    for m, s in (
+        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>"),
+        (W_Q_err, "Q<sup>⟂</sup>"),
+        (W_K_errT, "K<sup>⟂</sup>"),
+        (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>"),
+        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T, "EQKE_err"),
+    ):
+        U, S, Vh = torch.linalg.svd(m)
+        U = U[:, : S.shape[0]] * S[None, : U.shape[1]].sqrt()
+        Vh = Vh[: S.shape[0], :] * S[: Vh.shape[0], None].sqrt()
+        uvs.extend(((U, s), (Vh, s)))
+        ss.append((S, s))
+        for mv, us in ((U, "U"), (Vh, "V<sup>T</sup>")):
+            title = f"{s} {us}"
+            title = ""
+            fig = px.imshow(
+                mv.numpy(),
+                title=title,
+                color_continuous_midpoint=0,
+                zmax=zmax,
+                zmin=-zmax,
+                showscale=False,
+            )
+            # fig.update_traces(colorbar=None)
+            fig.update_xaxes(showticklabels=False)
+            fig.update_yaxes(showticklabels=False)
+            fig.show(RENDERER)
+    for s, st in ss:
+        fig = px.line(s.numpy(), title=f"{st} singular values").show(RENDERER)
+        # analyze_svd(m, scale_by_singular_value=True, descr=s, colorscale="plasma", renderer=RENDERER)
 
 
 # %%

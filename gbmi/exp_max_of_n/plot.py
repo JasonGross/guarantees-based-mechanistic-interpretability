@@ -82,7 +82,7 @@ def compute_OV(
         result.update(
             {
                 "data": OV.numpy(),
-                "title": f"Attention Computation: (W<sub>E</sub>{W_E_pos_suffix} + W<sub>pos</sub>{W_E_pos_suffix}.mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
+                "title": f"Attention Computation: (W<sub>E</sub>{W_E_pos_suffix} + 𝔼<sub>p</sub>W<sub>pos</sub>{W_E_pos_suffix}[p]) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
             }
         )
         return result

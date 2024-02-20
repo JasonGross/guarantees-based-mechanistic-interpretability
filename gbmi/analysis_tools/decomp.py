@@ -19,8 +19,8 @@ def analyze_svd(
     U, S, Vh = torch.linalg.svd(M)
     V = Vh.T
     if scale_by_singular_value:
-        U = U * S[None, : U.shape[1]].sqrt()
-        V = V * S[None, : V.shape[1]].sqrt()
+        U = U[:, : S.shape[0]] * S[None, : U.shape[1]].sqrt()
+        V = V[:, : S.shape[0]] * S[None, : V.shape[1]].sqrt()
     if descr:
         descr = f" for {descr}"
 

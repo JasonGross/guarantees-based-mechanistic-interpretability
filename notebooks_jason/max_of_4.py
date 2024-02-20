@@ -1289,11 +1289,11 @@ def decompose_EQKE_error(
     &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
     &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
     &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
-    &\ge \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+    &\le \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
     &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ \min_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
     &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ -\max_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
     &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
-    &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
+    &= \max_r \sum_k \left|A_{r,k}\right|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right) \\
     \end{align*}$$
     """
     W_E, W_pos, W_Q, W_K = (
@@ -1432,12 +1432,53 @@ def decompose_EQKE_error(
 # # more plots
 # %%
 if DISPLAY_PLOTS:
-    px.imshow(EQKE_query_key.numpy(), title="EQKE_query_key").show(RENDERER)
+    px.imshow(EQKE_query_key.numpy(), title="EQKE<sub>1</sub>").show(RENDERER)
     px.imshow(err_accumulator.numpy(), title="err_accumulator").show(RENDERER)
-    px.imshow(EQKE_pos_err.numpy(), title="EQKE_pos_err").show(RENDERER)
-    px.imshow((W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).numpy()).show(
-        RENDERER
+    px.imshow(
+        (EQKE_query_key + err_accumulator).numpy(), title="EQKE<sub>2</sub>"
+    ).show(RENDERER)
+    px.imshow(
+        EQKE_pos_err.numpy(),
+        title="(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub> - 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
+    ).show(RENDERER)
+    px.imshow(
+        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).numpy(),
+        title="EQKE_err",
+        labels={"x": "key token", "y": "query token"},
+    ).show(RENDERER)
+    analyze_svd(
+        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T),
+        descr="EQKE_err",
+        renderer=RENDERER,
     )
+    s1 = torch.linalg.matrix_norm(
+        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord=2
+    )
+    print(f"σ₁(EQKE_err)√2 = {s1}√2 = {s1*np.sqrt(2)}")
+    ss = [
+        torch.linalg.matrix_norm(m, ord=2).item()
+        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    ]
+    print(f"singular values: {ss}")
+    print(f"√2∏σ₁ = {np.prod(ss)}√2 = {np.prod(ss)*np.sqrt(2)}")
+    for m, s in (
+        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>"),
+        (W_Q_err, "Q<sup>⟂</sup>"),
+        (W_K_errT, "K<sup>⟂</sup>"),
+        (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>"),
+    ):
+        analyze_svd(m, scale_by_singular_value=False, descr=s, renderer=RENDERER)
+    sf1 = torch.linalg.matrix_norm(
+        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord="fro"
+    )
+    print(f"σf₁(EQKE_err)√2 = {sf1}√2 = {sf1*np.sqrt(2)}")
+    sfs = [
+        torch.linalg.matrix_norm(m, ord="fro").item()
+        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    ]
+    print(f"singular fro values: {sfs}")
+    print(f"√2∏σf₁ = {np.prod(sfs)}√2 = {np.prod(sfs)*np.sqrt(2)}")
+
 print(f"err_upper_bound: {err_upper_bound}")
 
 
@@ -1785,17 +1826,31 @@ min_right_attention_softmaxed = compute_min_softmaxed_right_attention_quadratic(
 # &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
 # &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
 # &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
-# &\ge \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+# &\le \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
 # &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ \min_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
 # &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ -\max_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
 # &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
-# &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
+# &= \max_r \sum_k \left|A_{r,k}\right|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right) \\
 # \end{align*}$$
 # %% [markdown]
-# \[\begin{align*}
-# \text{max\_diff}[q, m, c]
-# &= \max_{k \ne m} (\text{EVOU}[q, k] - \text{EVOU}[q, m]) \text{attn}[q, m, c] + \max_{0 \le n \le m - \text{min\_gap}[q, m, c]} (\text{EVOU}[q, m - n] - \text{EVOU}[q, m]) \text{attn}[q, m - n, c] \\
-# \end{align*}\]
+# ## Fusing Bounding the largest diff within a row of a product of matrices with Mean+Diff
+#
+# Suppose we have matrices $A$, $B$ and we want to compute
+# $$\begin{align*}
+# &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
+# &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
+# &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+# &= \max_{r,i,j} \sum_k \left(\mathbb{E}_rA_{r,k} + \left(A_{r,k} - \mathbb{E}_rA_{r,k}\right)\right) \left(B_{k,i} - B_{k,j}\right) \\
+# &= \max_{i,j} \left(\sum_k \mathbb{E}_rA_{r,k}\left(B_{k,i} - B_{k,j}\right) + \max_r \sum_k \left(A_{r,k} - \mathbb{E}_rA_{r,k}\right) \left(B_{k,i} - B_{k,j}\right)\right) \\
+# &\le \left(\max_{i,j} \sum_k \mathbb{E}_rA_{r,k}\left(B_{k,i} - B_{k,j}\right)\right) + \max_r \sum_k \max_{i,j}\left(A_{r,k} - \mathbb{E}_rA_{r,k}\right) \left(B_{k,i} - B_{k,j}\right) \\
+# &\le \left(\max_{i,j} \sum_k \mathbb{E}_rA_{r,k}\left(B_{k,i} - B_{k,j}\right)\right) + \max_r \sum_k \left|A_{r,k} - \mathbb{E}_rA_{r,k}\right| \max_{i,j}\left(B_{k,i} - B_{k,j}\right) \\
+# \end{align*}$$
+# %%
+# # %% [markdown]
+# # \[\begin{align*}
+# # \text{max\_diff}[q, m, c]
+# #  &= \max_{k \ne m} (\text{EVOU}[q, k] - \text{EVOU}[q, m]) \text{attn}[q, m, c] + \max_{0 \le n \le m - \text{min\_gap}[q, m, c]} (\text{EVOU}[q, m - n] - \text{EVOU}[q, m]) \text{attn}[q, m - n, c] \\
+# # \end{align*}\]
 
 
 # %%

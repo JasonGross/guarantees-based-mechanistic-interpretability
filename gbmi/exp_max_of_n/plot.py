@@ -44,7 +44,7 @@ def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) ->
         QK = (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)).T
         return {
             "data": QK.numpy(),
-            "title": "Attention Score<br>QK := (W<sub>E</sub> + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>E</sub> + W<sub>pos</sub>.mean(dim=0))<sup>T</sup>",
+            "title": "Attention Score<br>EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>E</sub> + W<sub>pos</sub>.mean(dim=0))<sup>T</sup>",
             "xaxis": "key token",
             "yaxis": "query token",
         }

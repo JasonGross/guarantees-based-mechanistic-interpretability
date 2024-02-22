@@ -6,7 +6,8 @@ import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from transformer_lens import HookedTransformer
+from functools import reduce
+from transformer_lens import HookedTransformer, FactoredMatrix
 
 from gbmi.utils import dropnan
 from gbmi.analysis_tools.plot import summarize
@@ -695,7 +696,9 @@ class LargestWrongLogitQuadraticConfig:
     ] = "mean_query+diff"
     attention_error_handling: Literal[
         "svd",
+        "svd_product",
         "max_diff",
+        "max_diff_exact",
     ] = "svd"
 
     EUPU_OFF: ClassVar[Literal["global_max_diff_exact"]] = "global_max_diff_exact"
@@ -780,9 +783,18 @@ class LargestWrongLogitQuadraticConfig:
     ) -> Union[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]]:  # noqa F821
         match self.attention_error_handling:
             case "svd":
+                A, B, ms = matrices[0], matrices[1], matrices[2:]
+                AB = FactoredMatrix(A, B)
+                m = reduce(FactoredMatrix.__matmul__, ms, AB)  # type: ignore
+                U, S, Vh = m.svd()
+                return S[0] * np.sqrt(2)
+            case "svd_product":
                 return bound_max_row_diff_by_SVD(*matrices)[0]
             case "max_diff":
                 return max_row_diffs_per_dim(*matrices)
+            case "max_diff_exact":
+                m = reduce(torch.matmul, matrices)
+                return m.max(dim=-1).values - m.min(dim=-1).values
 
     def split_min_softmaxed_right_attention(
         self,

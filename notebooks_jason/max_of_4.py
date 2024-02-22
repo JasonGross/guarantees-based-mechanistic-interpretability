@@ -3,6 +3,7 @@ from __future__ import annotations
 
 # %%
 import importlib
+
 import gbmi.analysis_tools.plot
 import gbmi.exp_max_of_n.analysis
 import gbmi.analysis_tools.decomp
@@ -48,6 +49,8 @@ from typing import (
     List,
     Iterator,
 )
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
     hist_attention_difference_over_gap,
@@ -149,7 +152,7 @@ cfgs = {
                 d_model=32,
                 d_vocab=64,
                 device="cpu",
-                n_ctx=2,
+                n_ctx=4,
                 n_heads=1,
                 n_layers=1,
                 normalization_type=None,
@@ -1098,6 +1101,98 @@ print(
 if DISPLAY_PLOTS:
     display_basic_interpretation(model, include_uncentered=True, renderer=RENDERER)
 
+
+# %%
+# for slides
+@torch.no_grad()
+def make_slides_plots_00(
+    model: HookedTransformer,
+    OV_colorscale="Picnic_r",
+    QK_colorscale="Plasma",
+    renderer=None,
+):
+    W_E, W_pos, W_U, W_V, W_O, W_Q, W_K = (
+        model.W_E,
+        model.W_pos,
+        model.W_U,
+        model.W_V[0, 0],
+        model.W_O[0, 0],
+        model.W_Q[0, 0],
+        model.W_K[0, 0],
+    )
+    EPq = W_E + W_pos[-1]
+    EPk = W_E + W_pos.mean(dim=0)
+    Pk = W_pos - W_pos.mean(dim=0)
+    EPU = EPq @ W_U
+    EVOU = EPk @ W_V @ W_O @ W_U
+    EVOU_centered = EVOU - EVOU.diag()[:, None]
+    PVOU = Pk @ W_V @ W_O @ W_U
+    EQKE = EPq @ W_Q @ W_K.T @ EPk.T
+    EQKP = EPq @ W_Q @ W_K.T @ Pk.T
+    OV_zmax = np.max(
+        [EVOU.abs().max().item(), PVOU.abs().max().item(), EPU.abs().max().item()]
+    )
+    QK_zmax = np.max([EQKE.abs().max().item(), EQKP.abs().max().item()])
+    for m, title, colorscale, zmax, labels in (
+        (
+            EPU,
+            "EPU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "query token t<sub>i</sub>"},
+        ),
+        (
+            EVOU,
+            "EVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "key token t<sub>j</sub>"},
+        ),
+        (
+            PVOU,
+            "PVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "position j"},
+        ),
+        (
+            EQKE,
+            "EQKE",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key token t<sub>k</sub>", "y": "query token t<sub>q</sub>"},
+        ),
+        (
+            EQKP,
+            "EQKP",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key position k", "y": "query token t<sub>q</sub>"},
+        ),
+    ):
+        fig = px.imshow(
+            m,
+            title=title,
+            color_continuous_scale=colorscale,
+            color_continuous_midpoint=0,
+            zmin=-zmax,
+            zmax=zmax,
+            labels=labels,
+        )
+        fig.show(renderer)
+        # remove title
+        fig.update_layout(title_text="")
+        fig.update(layout_coloraxis_showscale=False)
+        # crop whitespace
+        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+        fig.show(renderer)
+
+
+## %%
+if DISPLAY_PLOTS:
+    make_slides_plots_00(model, renderer=RENDERER)
+
+
 # %% [markdown]
 # # Back of the envelope math for sub-cubic
 # %%
@@ -1432,10 +1527,34 @@ def decompose_EQKE_error(
 # # more plots
 # %%
 if DISPLAY_PLOTS:
-    px.imshow(EQKE_query_key.numpy(), title="EQKE<sub>1</sub>").show(RENDERER)
-    px.imshow(err_accumulator.numpy(), title="err_accumulator").show(RENDERER)
     px.imshow(
-        (EQKE_query_key + err_accumulator).numpy(), title="EQKE<sub>2</sub>"
+        (
+            EQKE_query_key
+            + err_accumulator
+            + W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+        ).numpy(),
+        color_continuous_scale="plasma",
+        color_continuous_midpoint=0,
+        title="EQKE",
+        labels={"x": "key token", "y": "query token"},
+    ).show(RENDERER)
+    px.imshow(
+        EQKE_query_key.numpy(),
+        title="EQKE<sub>1</sub>",
+        color_continuous_scale="plasma",
+        color_continuous_midpoint=0,
+    ).show(RENDERER)
+    px.imshow(
+        err_accumulator.numpy(),
+        title="err_accumulator",
+        color_continuous_scale="plasma",
+        color_continuous_midpoint=0,
+    ).show(RENDERER)
+    px.imshow(
+        (EQKE_query_key + err_accumulator).numpy(),
+        title="EQKE<sub>2</sub>",
+        color_continuous_scale="plasma",
+        color_continuous_midpoint=0,
     ).show(RENDERER)
     px.imshow(
         EQKE_pos_err.numpy(),
@@ -1508,6 +1627,7 @@ print(f"err_upper_bound: {err_upper_bound}")
 
 # %%
 if DISPLAY_PLOTS:
+    zmax = (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).abs().max().item()
     uvs = []
     ss = []
     for m, s in (
@@ -1520,26 +1640,58 @@ if DISPLAY_PLOTS:
         U, S, Vh = torch.linalg.svd(m)
         U = U[:, : S.shape[0]] * S[None, : U.shape[1]].sqrt()
         Vh = Vh[: S.shape[0], :] * S[: Vh.shape[0], None].sqrt()
-        uvs.extend(((U, s), (Vh, s)))
+        uvs.extend(((U, f"{s} U"), (Vh, f"{s} Vh")))
         ss.append((S, s))
-        for mv, us in ((U, "U"), (Vh, "V<sup>T</sup>")):
-            title = f"{s} {us}"
-            title = ""
-            fig = px.imshow(
-                mv.numpy(),
-                title=title,
-                color_continuous_midpoint=0,
-                zmax=zmax,
-                zmin=-zmax,
-                showscale=False,
-            )
-            # fig.update_traces(colorbar=None)
-            fig.update_xaxes(showticklabels=False)
-            fig.update_yaxes(showticklabels=False)
-            fig.show(RENDERER)
-    for s, st in ss:
-        fig = px.line(s.numpy(), title=f"{st} singular values").show(RENDERER)
-        # analyze_svd(m, scale_by_singular_value=True, descr=s, colorscale="plasma", renderer=RENDERER)
+    pre_uvs = uvs[:]
+    num_subplots = len(pre_uvs)
+    fig = make_subplots(rows=1, cols=num_subplots, horizontal_spacing=0.02)
+    for i, (mv, us) in enumerate(pre_uvs, start=1):
+        fig.add_trace(
+            go.Heatmap(z=mv, zmin=-zmax, zmax=zmax, colorbar=None, showscale=False),
+            row=1,
+            col=i,
+        )
+    fig.update_xaxes(showticklabels=False)
+    fig.update_yaxes(showticklabels=False)
+    for axis in fig.layout:
+        if axis.startswith("xaxis") or axis.startswith("yaxis"):
+            fig.layout[axis].scaleanchor = "x1"
+            fig.layout[axis].scaleratio = 1
+    fig.update_layout(height=600, width=300 * num_subplots, plot_bgcolor="white")
+    fig.show(RENDERER)
+    # for mv, us in uvs:
+    #     fig = px.imshow(
+    #         mv.numpy(),
+    #         title="",
+    #         color_continuous_midpoint=0,
+    #         zmax=zmax,
+    #         zmin=-zmax,
+    #     )
+    #     # fig.update_traces(colorbar=None)
+    #     fig.update_xaxes(showticklabels=False)
+    #     fig.update_yaxes(showticklabels=False)
+    #     fig.update(layout_coloraxis_showscale=False)
+    #     fig.show(RENDERER)
+    num_subplots = len(ss)
+    fig = make_subplots(rows=1, cols=num_subplots)  # , horizontal_spacing=0.02)
+    for i, (s, st) in enumerate(ss, start=1):
+        fig.add_trace(
+            go.Scatter(
+                x=np.arange(len(s)), y=s, mode="lines+markers", line=dict(color="blue")
+            ),
+            row=1,
+            col=i,
+        )
+    fig.update_layout(
+        height=300,  # Adjust as needed
+        width=300 * num_subplots,  # Adjust width to fit all subplots side by side
+        showlegend=False,  # Optionally hide the legend if it's not needed
+    )
+    fig.update_xaxes(showticklabels=False)
+    # fig.update_yaxes(showticklabels=False)
+    fig.show(RENDERER)
+    # fig = px.line(s.numpy(), title=f"{st} singular values").show(RENDERER)
+    # analyze_svd(m, scale_by_singular_value=True, descr=s, colorscale="plasma", renderer=RENDERER)
 
 
 # %%

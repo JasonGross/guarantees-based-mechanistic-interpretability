@@ -9,10 +9,11 @@ def pm_round(
     extra_digits: int = 1,
     total_digits: Optional[int] = None,
     format_specifier: Literal["f", "e"] = "f",
+    sep: str = " ± ",
 ) -> str:
     if total_digits is None:
         total_digits = int(1 + extra_digits - np.log10(std))
-    return f"{mean:.{total_digits}{format_specifier}} ± {std:.{total_digits}{format_specifier}}"
+    return f"{mean:.{total_digits}{format_specifier}}{sep}{std:.{total_digits}{format_specifier}}"
 
 
 def pm_range(values, round: bool = True):

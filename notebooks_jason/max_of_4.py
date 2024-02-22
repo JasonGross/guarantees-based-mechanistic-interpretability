@@ -3,7 +3,6 @@ from __future__ import annotations
 
 # %%
 import importlib
-
 import gbmi.analysis_tools.plot
 import gbmi.exp_max_of_n.analysis
 import gbmi.analysis_tools.decomp
@@ -35,8 +34,10 @@ importlib.reload(gbmi.utils.sequences)
 import traceback
 import sys
 import time
+from functools import reduce
 import dataclasses
 import math
+from scipy import stats
 from collections import defaultdict
 from typing import (
     Callable,
@@ -58,7 +59,7 @@ from gbmi.exp_max_of_n.plot import (
 )
 from gbmi.analysis_tools.plot import hist_EVOU_max_logit_diff, weighted_histogram
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-from gbmi.analysis_tools.utils import pm_round
+from gbmi.analysis_tools.utils import pm_round, pm_mean_std
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.sequences import count_sequences
@@ -88,7 +89,7 @@ from torch import Tensor
 import plotly.express as px
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 from pathlib import Path
-from gbmi.utils import default_device, dropnan
+from gbmi.utils import default_device, dropnan, shuffle_tensors, shuffle_tensor
 from gbmi.utils.memocache import Memoize
 from gbmi.utils.sequences import (
     SequenceDataset,
@@ -1693,6 +1694,74 @@ if DISPLAY_PLOTS:
     # fig = px.line(s.numpy(), title=f"{st} singular values").show(RENDERER)
     # analyze_svd(m, scale_by_singular_value=True, descr=s, colorscale="plasma", renderer=RENDERER)
 
+# %% [markdown]
+
+# %%
+# random resampling of EQKE_err
+with torch.no_grad():
+    ms = (
+        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>"),
+        (W_Q_err, "Q<sup>⟂</sup>"),
+        (W_K_errT, "K<sup>⟂</sup>"),
+        (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>"),
+    )
+    if DISPLAY_PLOTS:
+        for m, s in ms:
+            m_numpy = m.flatten().numpy()
+            edges = np.histogram_bin_edges(m_numpy, bins="auto")
+            counts, _ = np.histogram(m_numpy, bins=edges)
+            bin_centers = (edges[:-1] + edges[1:]) / 2
+            pdf_values = stats.norm.pdf(
+                bin_centers, loc=m.mean().item(), scale=m.std().item()
+            )
+            pdf_scaled = pdf_values * m.numel() * np.diff(edges)
+            fig = px.histogram(
+                {"": m_numpy},
+                nbins=len(edges) - 1,
+                title=s,
+                labels={"variable": "", "value": "matrix element value"},
+            )
+            fig.add_scatter(
+                x=bin_centers,
+                y=pdf_scaled,
+                mode="lines",
+                name=f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})",
+            )
+            fig.show(RENDERER)
+    # what if we randomize the order of all matrices without replacement?
+    torch.manual_seed(1234)
+    nsamples = 100
+    row_diffs = []
+    max_row_diffs = []
+    for _ in range(nsamples):
+        ms_no_replacement = [shuffle_tensor(m) for m, s in ms]
+        result = reduce(torch.matmul, ms_no_replacement)
+        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
+        max_row_diffs.append(
+            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
+        )
+    row_diffs = torch.stack(row_diffs)
+    max_row_diffs = torch.tensor(max_row_diffs)
+    print(f"max row diff (n = {nsamples}): {pm_mean_std(max_row_diffs)}")
+    # print(f"row diff: {pm_mean_std(row_diffs)}")
+    # sampling from normal
+    row_diffs = []
+    max_row_diffs = []
+    for _ in range(nsamples):
+        ms_normal = [torch.randn_like(m) * m.std() + m.mean() for m, s in ms]
+        result = reduce(torch.matmul, ms_normal)
+        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
+        max_row_diffs.append(
+            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
+        )
+    row_diffs = torch.stack(row_diffs)
+    max_row_diffs = torch.tensor(max_row_diffs)
+    m_descr = ", ".join(
+        f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})" for m, s in ms
+    )
+    print(f"max row diff (n = {nsamples}, m ~ {m_descr}): {pm_mean_std(max_row_diffs)}")
+    # print(f"row diff: {pm_mean_std(row_diffs)}")
+
 
 # %%
 @torch.no_grad()
@@ -2503,7 +2572,7 @@ else:
 # err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
 min_gaps_lists = {}
 with torch.no_grad():
-    for use_exact_EQKE in (True, False):
+    for use_exact_EQKE in (False, True):
         # for svd_EUPU in (False, True):
         descr = "exact-EQKE" if use_exact_EQKE else ""
         with memoshelve(

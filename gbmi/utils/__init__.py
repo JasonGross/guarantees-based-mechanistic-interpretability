@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import (
     Callable,
     Collection,
+    Iterator,
     Optional,
     Tuple,
     TypeVar,
@@ -286,3 +287,14 @@ def unsuperscript(s: str) -> str:
 def unsubscript(s: str) -> str:
     """Converts a string of subscript digits to regular digits."""
     return "".join(map(_unsubscript.__getitem__, s))
+
+
+@torch.no_grad()
+def shuffle_tensor(t: Tensor) -> Tensor:
+    return t.flatten()[torch.randperm(t.numel())].reshape(t.shape)
+
+
+@torch.no_grad()
+def shuffle_tensors(*ts: Tensor) -> Iterator[Tensor]:
+    for t in ts:
+        yield shuffle_tensor(t)

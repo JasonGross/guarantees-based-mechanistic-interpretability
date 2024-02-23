@@ -71,7 +71,7 @@ class Bigram(ExperimentConfig):
     # using int instead of abstract class because i'm clueless what's going on with typing
 
     zero_biases: bool = False
-    bos: bool = True
+    eos: bool = True
     seq_length: int = 30
 
     n_test_samples: int = 1024
@@ -86,7 +86,7 @@ class Bigram(ExperimentConfig):
 
     def __post_init__(self):
         self.model_config.n_ctx = self.seq_length
-        if self.bos:
+        if self.eos:
             self.model_config.n_ctx = self.seq_length + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
         setattr(self, _EXCLUDE, ("logging_options",))
@@ -113,19 +113,19 @@ def bigram_config(
     samples: int,
     weight_decay: float = 1.0,
     seq_length: int = 5,
-    bos: bool = True,
+    eos: bool = True,
     d_vocab_out=3,
-    batch_size=32,
+    batch_size=512,
     log_matrices: bool = True,
 ):
     return Config(
         experiment=Bigram(
             model_config=HookedTransformerConfig(
-                d_vocab=d_vocab_out + bos,
+                d_vocab=d_vocab_out + eos,
                 d_vocab_out=d_vocab_out,
-                n_ctx=seq_length + bos,
-                d_model=30,
-                d_head=30,
+                n_ctx=seq_length + eos,
+                d_model=5,
+                d_head=5,
                 n_layers=2,
                 n_heads=1,
                 init_weights=True,
@@ -139,7 +139,7 @@ def bigram_config(
                 else ModelMatrixLoggingOptions.all()
             ),
             seq_length=seq_length,
-            bos=bos,
+            eos=eos,
             optimizer_kwargs={
                 "lr": 1e-3,
                 "weight_decay": weight_decay,
@@ -151,11 +151,11 @@ def bigram_config(
         batch_size=batch_size,
         train_for=(samples // batch_size, "steps"),
         log_every_n_steps=1,
-        validate_every=(1000, "steps"),
+        validate_every=(10000, "steps"),
     )
 
 
-DEFAULT_BIGRAM = bigram_config(1250000, 0.0, seq_length=6)
+DEFAULT_BIGRAM = bigram_config(12500000, 1.0, seq_length=6)
 
 
 def calculate_batch_probabilities(
@@ -273,7 +273,15 @@ class BigramLabeledDataset(
         Integer[Tensor, "seq_length"],  # noqa: F821, F722
         Float[Tensor, "seq_length num_tokens"],  # noqa: F821, F722
     ]:
-        return val, calculate_batch_probabilities(val, self.num_tokens)
+        return val, torch.cat(
+            (
+                torch.nn.functional.one_hot(val[1:], num_classes=self.num_tokens),
+                torch.nn.functional.one_hot(
+                    torch.tensor([0]), num_classes=self.num_tokens
+                ),
+            ),
+            dim=1,
+        )
 
     def __iter__(self):
         for val in self.dataset:
@@ -283,7 +291,7 @@ class BigramLabeledDataset(
         return self.label(self.dataset[index])
 
 
-class BigramCatBOSLabeledDataset(
+class BigramCatEOSLabeledDataset(
     IterableDataset[
         Tuple[
             Integer[Tensor, "n_ctx"],  # noqa: F821, F722
@@ -299,15 +307,15 @@ class BigramCatBOSLabeledDataset(
                 Float[Tensor, "seq_length num_tokens"],  # noqa: F821, F722
             ]
         ],
-        bos: Optional[int] = None,
+        eos: Optional[int] = None,
     ):
         self.dataset = labeled_dataset
-        self.bos = bos
+        self.eos = eos
 
     def __len__(self):
         return len(self.dataset)
 
-    def cat_bos(
+    def cat_eos(
         self,
         val: Tuple[
             Integer[Tensor, "... seq_length"],  # noqa: F821, F722
@@ -319,30 +327,30 @@ class BigramCatBOSLabeledDataset(
     ]:
         x, y = val
         num_tokens = y.shape[-1]
-        if self.bos is None:
+        if self.eos is None:
             return x, y
         return (
             torch.cat(
                 [
+                    x,
                     torch.full(
                         x.shape[:-1] + (1,),
-                        self.bos,
+                        self.eos,
                         dtype=torch.long,
                         device=x.device,
                     ),
-                    x,
                 ],
                 dim=-1,
             ),
             torch.cat(
                 [
+                    y,
                     torch.full(
                         y.shape[:-2] + (1, num_tokens),
                         1 / num_tokens,
                         dtype=y.dtype,
                         device=y.device,
                     ),
-                    y,
                 ],
                 dim=-2,
             ),
@@ -350,10 +358,10 @@ class BigramCatBOSLabeledDataset(
 
     def __iter__(self):
         for val in self.dataset:
-            yield self.cat_bos(val)
+            yield self.cat_eos(val)
 
     def __getitem__(self, index):
-        return self.cat_bos(self.dataset[index])
+        return self.cat_eos(self.dataset[index])
 
 
 class BigramTrainingWrapper(TrainingWrapper[Bigram]):
@@ -376,10 +384,13 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
         labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
+        logits = logits.softmax(dim=-1)
+        labels = labels.float()
         logits = einops.rearrange(logits, "b p d -> b d p")
         labels = einops.rearrange(labels, "b p d -> b d p")
-
-        loss = torch.nn.functional.cross_entropy(logits[:, :, 1:], labels[:, :, 1:])
+        print(logits.shape)
+        print(labels.shape)
+        loss = torch.nn.functional.mse_loss(logits[:, :, 1:], labels[:, :, 1:])
 
         return loss
 
@@ -443,7 +454,7 @@ class BigramDataModule(DataModule):
     ]
     batch_size: Optional[int]
     seq_length: int
-    bos: Optional[int]
+    eos: Optional[int]
     dataset_seed: int
     num_tokens: int
 
@@ -454,9 +465,9 @@ class BigramDataModule(DataModule):
 
         self.num_tokens = self.model_config.d_vocab_out
         self.seq_length = config.experiment.seq_length
-        self.bos = (
+        self.eos = (
             config.experiment.model_config.d_vocab - 1
-            if config.experiment.bos
+            if config.experiment.eos
             else None
         )
         self.dataset_seed = reseed(config.seed, "dataset_seed")
@@ -474,9 +485,9 @@ class BigramDataModule(DataModule):
             ),
         )
 
-        return BigramCatBOSLabeledDataset(
+        return BigramCatEOSLabeledDataset(
             BigramLabeledDataset(base_dataset, num_tokens=self.num_tokens),
-            bos=self.bos,
+            eos=self.eos,
         )
 
     def setup(self, stage: str):

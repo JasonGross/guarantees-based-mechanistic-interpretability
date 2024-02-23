@@ -103,7 +103,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
             fun_elements=elements,
             zero_biases=True,
             # attention_rate=attn_rate,
-            optimizer_kwargs={"lr": 1e-3, "weight_decay": 0.1, "betas": (0.9, 0.98)},
+            optimizer_kwargs={"lr": 1e-4, "weight_decay": 0.1, "betas": (0.1, 0.11)},
         ),
         seed=999,
         deterministic=False,
@@ -180,6 +180,8 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
             self.config.experiment.fun_index,
             self.config.experiment.fun_elements,
         ).reduce_1(list(x[:, : self.config.experiment.fun_elements].T))
+
+        # print(self.model.W_E_pos)
 
         # print(x[1000])
         # print(labels[1000])

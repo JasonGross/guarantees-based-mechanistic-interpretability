@@ -121,10 +121,10 @@ class Bigram(ExperimentConfig):
 def bigram_config(
     samples: int,
     weight_decay: float = 1.0,
-    seq_length: int = 10,
+    seq_length: int = 5,
     bos: bool = True,
     d_vocab_out=3,
-    hidden_dim: int = 13,
+    hidden_dim: int = 8,
     batch_size=512,
     log_matrices: bool = True,
 ):
@@ -161,7 +161,8 @@ def bigram_config(
         batch_size=batch_size,
         train_for=(samples // batch_size, "steps"),
         log_every_n_steps=1,
-        validate_every=(10000, "steps"),
+        validate_every=(100, "steps"),
+        validation_batch_size=1,  # we want validation right now only to log the plots
     )
 
 
@@ -407,7 +408,7 @@ class BigramDataModule(DataModule):
         return DataLoader(self.data_train, batch_size=self.config.batch_size)
 
     def val_dataloader(self):
-        return DataLoader(self.data_test, batch_size=self.config.batch_size)
+        return DataLoader(self.data_test, batch_size=self.config.validation_batch_size)
 
     def test_dataloader(self):
         return DataLoader(self.data_test, batch_size=self.config.batch_size)

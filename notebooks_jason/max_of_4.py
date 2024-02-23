@@ -1106,7 +1106,7 @@ if DISPLAY_PLOTS:
 # %%
 # for slides
 @torch.no_grad()
-def make_slides_plots_00(
+def make_FAR_slides_plots(
     model: HookedTransformer,
     OV_colorscale="Picnic_r",
     QK_colorscale="Plasma",
@@ -1191,8 +1191,99 @@ def make_slides_plots_00(
 
 ## %%
 if DISPLAY_PLOTS:
-    make_slides_plots_00(model, renderer=RENDERER)
+    make_FAR_slides_plots(model, renderer=RENDERER)
 
+
+# %%
+# for slides
+@torch.no_grad()
+def make_better_slides_plots_00(
+    model: HookedTransformer,
+    OV_colorscale="Picnic_r",
+    QK_colorscale="Plasma",
+    renderer=None,
+):
+    W_E, W_pos, W_U, W_V, W_O, W_Q, W_K = (
+        model.W_E,
+        model.W_pos,
+        model.W_U,
+        model.W_V[0, 0],
+        model.W_O[0, 0],
+        model.W_Q[0, 0],
+        model.W_K[0, 0],
+    )
+    attn_scale = model.blocks[0].attn.attn_scale
+    EPq = W_E + W_pos[-1]
+    EPk = W_E + W_pos.mean(dim=0)
+    Pk = W_pos - W_pos.mean(dim=0)
+    EPU = EPq @ W_U
+    EVOU = EPk @ W_V @ W_O @ W_U
+    EVOU_centered = EVOU - EVOU.diag()[:, None]
+    PVOU = Pk @ W_V @ W_O @ W_U
+    EQKE = EPq @ W_Q @ W_K.T @ EPk.T / attn_scale
+    EQKP = EPq @ W_Q @ W_K.T @ Pk.T / attn_scale
+    OV_zmax = np.max(
+        [EVOU.abs().max().item(), PVOU.abs().max().item(), EPU.abs().max().item()]
+    )
+    QK_zmax = np.max([EQKE.abs().max().item(), EQKP.abs().max().item()])
+    for m, title, colorscale, zmax, labels in (
+        (
+            EPU,
+            "EPU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "query token t<sub>i</sub>"},
+        ),
+        (
+            EVOU,
+            "EVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "key token t<sub>j</sub>"},
+        ),
+        (
+            PVOU,
+            "PVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "position j"},
+        ),
+        (
+            EQKE,
+            "EQKE",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key token t<sub>k</sub>", "y": "query token t<sub>q</sub>"},
+        ),
+        (
+            EQKP,
+            "EQKP",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key position k", "y": "query token t<sub>q</sub>"},
+        ),
+    ):
+        fig = px.imshow(
+            m,
+            title=title,
+            color_continuous_scale=colorscale,
+            color_continuous_midpoint=0,
+            zmin=-zmax,
+            zmax=zmax,
+            labels=labels,
+        )
+        fig.show(renderer)
+        # remove title
+        fig.update_layout(title_text="")
+        fig.update(layout_coloraxis_showscale=False)
+        # crop whitespace
+        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+        fig.show(renderer)
+
+
+## %%
+if DISPLAY_PLOTS:
+    make_better_slides_plots_00(model, renderer=RENDERER)
 
 # %% [markdown]
 # # Back of the envelope math for sub-cubic

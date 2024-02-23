@@ -4,6 +4,12 @@ from functools import partial
 from dataclasses import dataclass
 from dataclasses import field
 from collections.abc import Callable
+from gbmi.exp_bigram_stats.data_utils import (
+    ExactBigramTask,
+    calculate_batch_probabilities,
+    cat_bos_token,
+    cat_bos_uniform_labels,
+)
 
 from gbmi.exp_group_finetuning.groups import (
     Group,
@@ -103,7 +109,9 @@ class Bigram(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[Bigram]) -> str:
         return (
-            f"IndHead-Len{config.experiment.seq_length}-d_model{config.experiment.model_config.d_model}-d_head{config.experiment.model_config.d_head}"
+            f"IndHead-Len{config.experiment.seq_length}"
+            f"-d_model{config.experiment.model_config.d_model}"
+            f"-d_head{config.experiment.model_config.d_head}"
             f"-config{config.train_for[0]}-"
             f"{config.train_for[1]}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
@@ -113,9 +121,10 @@ class Bigram(ExperimentConfig):
 def bigram_config(
     samples: int,
     weight_decay: float = 1.0,
-    seq_length: int = 5,
+    seq_length: int = 10,
     bos: bool = True,
     d_vocab_out=3,
+    hidden_dim: int = 13,
     batch_size=512,
     log_matrices: bool = True,
 ):
@@ -125,8 +134,8 @@ def bigram_config(
                 d_vocab=d_vocab_out + bos,
                 d_vocab_out=d_vocab_out,
                 n_ctx=seq_length + bos,
-                d_model=5,
-                d_head=5,
+                d_model=hidden_dim,
+                d_head=hidden_dim,
                 n_layers=2,
                 n_heads=1,
                 init_weights=True,
@@ -174,19 +183,14 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
                     param.requires_grad = False
         return model
 
-    @staticmethod
     def loss_fn(
+        self,
         logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
         labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
-        logits = logits.softmax(dim=-1)
-        labels = labels.float()
-        logits = einops.rearrange(logits, "b p d -> b d p")
-        labels = einops.rearrange(labels, "b p d -> b d p")
-
-        loss = torch.nn.functional.cross_entropy(logits[:, :, 1:], labels[:, :, 1:])
-
-        return loss
+        return ExactBigramTask.loss_fn(
+            logits, labels, use_bos=self.config.experiment.bos
+        )
 
     def run_batch(
         self,
@@ -233,52 +237,6 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         )
 
 
-def calculate_batch_probabilities(
-    batch_input: Integer[Tensor, "... seq_length"], num_tokens: int  # noqa: F821, F722
-) -> Float[Tensor, "... seq_length num_tokens"]:  # noqa: F821, F722
-    # Convert batch input to a PyTorch tensor
-    # Convert batch input to a PyTorch tensor
-    batch_tensor = torch.tensor(batch_input, dtype=torch.long)
-
-    # Get the shape of the batch tensor
-    batch_dims, seq_length = batch_tensor.shape[:-1], batch_tensor.shape[-1]
-
-    # Initialize a tensor to store the probability distributions
-    # Starting with a uniform distribution for the first position
-    probability_distributions = (
-        torch.ones(batch_dims + (seq_length, num_tokens), dtype=torch.float)
-        / num_tokens
-    )
-
-    # Create tensors to count occurrences and calculate cumulative probabilities
-    for i in range(1, seq_length):
-        # Count occurrences of each token in positions before the current one
-        tokens = torch.zeros(batch_dims)
-        tokens = batch_tensor[..., i]
-        token_occurrences = torch.zeros(batch_dims + (num_tokens,))
-        for next_token in range(num_tokens):
-
-            token_occurrences[..., next_token] = (
-                (
-                    torch.logical_and(
-                        batch_tensor[..., :i]
-                        == tokens[...].unsqueeze(-1).expand_as(batch_tensor[..., :i]),
-                        batch_tensor[..., 1 : i + 1] == next_token,
-                    )
-                )
-                .float()
-                .sum(dim=-1)
-            )
-            token_occurrences[..., next_token] += 1
-        probability_distributions[..., i, :] = (
-            token_occurrences / token_occurrences.sum(dim=-1, keepdims=True)
-        )
-
-        # Normalize to get probabilities for positions from the second onwards
-
-    return probability_distributions
-
-
 class BigramBaseIterableDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
     def __init__(
         self,
@@ -302,27 +260,14 @@ class BigramBaseIterableDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
         return self.max_length
 
     def __iter__(self):
-        def generator():
-            default_device = torch.tensor([]).device
-
-            g = torch.Generator(device=default_device)
-
-            g.manual_seed(self.seed)
-            n_samples = 0
-            while True:
-                distribution = torch.rand(self.model_config.d_vocab_out)
-                distribution = distribution / distribution.sum()
-                val = torch.multinomial(
-                    distribution, self.seq_length, replacement=True, generator=g
-                )
-
-                yield val
-                n_samples += 1
-                if self.max_length is not None and n_samples >= self.max_length:
-                    return
-                # TODO: add adversarial generation
-
-        return iter(generator())
+        return iter(
+            ExactBigramTask.generator(
+                seed=self.seed,
+                num_tokens=self.model_config.d_vocab_out,
+                seq_length=self.seq_length,
+                max_length=self.max_length,
+            )
+        )
 
 
 class BigramLabeledDataset(
@@ -393,35 +338,7 @@ class BigramCatEOSLabeledDataset(
         Float[Tensor, "seq_length num_tokens"],  # noqa: F821, F722
     ]:
         x, y = val
-        num_tokens = y.shape[-1]
-        if self.bos is None:
-            return x, y
-        return (
-            torch.cat(
-                [
-                    torch.full(
-                        x.shape[:-1] + (1,),
-                        self.bos,
-                        dtype=torch.long,
-                        device=x.device,
-                    ),
-                    x,
-                ],
-                dim=-1,
-            ),
-            torch.cat(
-                [
-                    torch.full(
-                        y.shape[:-2] + (1, num_tokens),
-                        1 / num_tokens,
-                        dtype=y.dtype,
-                        device=y.device,
-                    ),
-                    y,
-                ],
-                dim=-2,
-            ),
-        )
+        return cat_bos_token(x, bos=self.bos), cat_bos_uniform_labels(y, bos=self.bos)
 
     def __iter__(self):
         for val in self.dataset:

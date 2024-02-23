@@ -22,6 +22,7 @@ from typing import (
     Sequence,
 )
 
+from jaxtyping import Float
 from torch.utils.data import Dataset, IterableDataset
 
 import numpy as np
@@ -30,6 +31,7 @@ from lightning import Callback
 from numpy.random import Generator
 from torch import Tensor
 
+from gbmi.utils import ein
 from gbmi.utils.hashing import get_hash
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -62,6 +64,10 @@ def shuffle_data(data, rng: Generator):
     rng.shuffle(indices)
     data = data[indices]
     return data
+
+
+def add_eos(x: Float[Tensor, "b n"], eos: int) -> Float[Tensor, "b (n + 1)"]:
+    return ein.array(lambda i: torch.cat([x[i], torch.tensor([eos])]))
 
 
 class MetricsCallback(Callback):

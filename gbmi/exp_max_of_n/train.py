@@ -24,7 +24,7 @@ import torch
 from jaxtyping import Float, Integer, Bool
 from torch import Tensor
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, IterableDataset
+from torch.utils.data import Dataset, DataLoader, IterableDataset, TensorDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 from gbmi.model import (
@@ -45,6 +45,7 @@ from gbmi.utils import (
     TupleCollectionDataset,
     reseed,
     set_params,
+    ein,
 )
 from gbmi.utils.sequences import generate_all_sequences
 
@@ -85,8 +86,9 @@ class MaxOfN(ExperimentConfig):
     zero_biases: bool = True
     use_log1p: bool = False
     # TODO(Euan, from Jason): Should this go in DatasetCfg?  In some shared dataset cfg?
-    use_end_of_sequence: bool = False
+    use_end_of_sequence: bool = False  # if set, is final token
     seq_len: int = 64
+    nth_max: int = 1
     summary_slug_extra: str = ""
     log_matrix_on_run_batch_prefixes: set[
         Optional[Literal["", "periodic_test_", "test_"]]
@@ -120,6 +122,9 @@ class MaxOfN(ExperimentConfig):
     def config_post_init(self, config: Config[MaxOfN]) -> None:
         self.model_config.seed = reseed(config.seed, "model")
 
+    def get_eos_token(self) -> Optional[int]:
+        return self.model_config.d_vocab - 1 if self.use_end_of_sequence else None
+
     def get_training_wrapper(self):
         return MaxOfNTrainingWrapper
 
@@ -149,8 +154,16 @@ class MaxOfN(ExperimentConfig):
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
+    def get_ground_truth(self, x: Integer[Tensor, "... n"]) -> Integer[Tensor, "..."]:
+        if self.nth_max == 1:
+            return x.max(dim=-1).values
+        else:
+            return torch.topk(
+                x, self.nth_max, dim=-1, sorted=True, largest=True
+            ).values[..., self.nth_max - 1]
 
-MAX_OF_2_CONFIG = Config(
+
+MAX_OF_2_CONFIG: Config[MaxOfN] = Config(
     experiment=MaxOfN(
         train_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
         test_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
@@ -158,7 +171,7 @@ MAX_OF_2_CONFIG = Config(
     ),
     validate_every=None,
 )
-MAX_OF_10_CONFIG = Config(
+MAX_OF_10_CONFIG: Config[MaxOfN] = Config(
     experiment=MaxOfN(
         train_dataset_cfg=IterableDatasetCfg(n_samples=None, pick_max_first=False),
         test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
@@ -202,123 +215,57 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         correct_log_probs = log_probs.gather(-1, labels.unsqueeze(-1))
         return -correct_log_probs.mean()
 
-    @overload
     @staticmethod
-    def acc_fn(
+    def acc_fn_per_seq(
         logits: Float[Tensor, "batch n_ctx d_vocab"],  # noqa: F722
         labels: Integer[Tensor, "batch"],  # noqa: F821
-        *,
-        return_per_sequence: Literal[False] = False,
-    ) -> float: ...
-
-    @overload
-    @staticmethod
-    def acc_fn(
-        logits: Float[Tensor, "batch n_ctx d_vocab"],  # noqa: F722
-        labels: Integer[Tensor, "batch"],  # noqa: F821
-        *,
-        return_per_sequence: Literal[True],
-    ) -> Bool[Tensor, "batch"]:  # noqa F821
-        ...
-
-    @staticmethod
-    def acc_fn(
-        logits: Float[Tensor, "batch n_ctx d_vocab"],  # noqa: F722
-        labels: Integer[Tensor, "batch"],  # noqa: F821
-        *,
-        return_per_sequence: bool = False,
-    ) -> Union[float, Bool[Tensor, "batch"]]:  # noqa F821
+    ) -> Bool[Tensor, "batch"]:
         pred_tokens = torch.argmax(logits[:, -1, :], dim=-1)
-        acc = pred_tokens == labels
-        if return_per_sequence:
-            return acc
-        return acc.float().mean().item()
+        return pred_tokens == labels
 
-    @overload
-    def run_batch(
-        self,
-        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
-        prefix: Literal[None] = None,
-        *,
-        return_accuracy: Literal[True],
-        log_output: Literal[False],
-        device: Optional[Union[torch.device, str]] = None,
-    ) -> Tuple[Float[Tensor, ""], float]:  # noqa F722
-        ...
-
-    @overload
-    def run_batch(
-        self,
-        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
-        prefix: Literal[None] = None,
-        *,
-        return_accuracy: Literal[False] = False,
-        log_output: Literal[False],
-        device: Optional[Union[torch.device, str]] = None,
-    ) -> Float[Tensor, ""]:  # noqa F722
-        ...
-
-    @overload
-    def run_batch(
-        self,
-        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
-        prefix: str,
-        *,
-        return_accuracy: Literal[True],
-        log_output: bool = True,
-        device: Optional[Union[torch.device, str]] = None,
-    ) -> Tuple[Float[Tensor, ""], float]:  # noqa F722
-        ...
-
-    @overload
-    def run_batch(
-        self,
-        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
-        prefix: str,
-        *,
-        return_accuracy: Literal[False] = False,
-        log_output: bool = True,
-        device: Optional[Union[torch.device, str]] = None,
-    ) -> Float[Tensor, ""]:  # noqa F722
-        ...
+    @staticmethod
+    def acc_fn(
+        logits: Float[Tensor, "batch n_ctx d_vocab"],  # noqa: F722
+        labels: Integer[Tensor, "batch"],  # noqa: F821
+    ) -> float:
+        return (
+            MaxOfNTrainingWrapper.acc_fn_per_seq(logits, labels).float().mean().item()
+        )
 
     def run_batch(
         self,
         x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
         prefix: Optional[str] = None,
         *,
-        return_accuracy: bool = False,
         log_output: bool = True,
         device: Optional[Union[torch.device, str]] = None,
     ) -> Union[Float[Tensor, ""], Tuple[Float[Tensor, ""], float]]:  # noqa F722
         assert prefix is not None or not log_output, "Must not log if prefix is None"
         xs, ys = x_y
+
         if device is not None:
             xs = xs.to(device)
-        ys = ys.to(xs.device)
+            ys = ys.to(device)
         self.model.to(xs.device, print_details=False)
+
         y_preds = self.model(xs)
         loss = self.loss_fn(y_preds, ys)
+        acc = self.acc_fn(y_preds, ys)
+
         if log_output:
             self.log(f"{prefix}loss", loss, prog_bar=True)
-        acc = self.acc_fn(y_preds, ys)
-        if log_output:
             self.log(f"{prefix}acc", acc, prog_bar=True)
-        if (
-            log_output
-            and prefix in self.config.experiment.log_matrix_on_run_batch_prefixes
-        ):
-            assert self.logger is not None
-            self.config.experiment.logging_options.log_matrices(
-                self.logger,  # type: ignore
-                self.model,
-            )
-        if return_accuracy:
-            return loss, acc
-        return loss
+            if prefix in self.config.experiment.log_matrix_on_run_batch_prefixes:
+                assert self.logger is not None
+                self.config.experiment.logging_options.log_matrices(
+                    self.logger,  # type: ignore
+                    self.model,
+                )
+        return loss, acc
 
     def training_step(self, batch, batch_idx):
-        return self.run_batch(batch, prefix="")
+        loss, acc = self.run_batch(batch, prefix="")
+        return loss
 
     def validation_step(self, batch, batch_idx):
         self.run_batch(batch, prefix="periodic_test_")
@@ -335,7 +282,9 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         return optimizer(self.parameters(), **self.config.experiment.optimizer_kwargs)
 
 
-class MaxOfNBaseIterableDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
+class MaxOfNIterableDataset(
+    IterableDataset[Tuple[Integer[Tensor, "seq_length"], Integer[Tensor, ""]]]
+):
     def __init__(
         self,
         seed: int,
@@ -344,9 +293,6 @@ class MaxOfNBaseIterableDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
         pick_max_first: bool = False,
     ):
         self.config = config
-        self.model_config = config.experiment.model_config
-        self.seq_len = config.experiment.seq_len
-        self.use_end_of_sequence = config.experiment.use_end_of_sequence
         self.seed = seed
         self.pick_max_first = pick_max_first
         if max_length is None:
@@ -366,105 +312,39 @@ class MaxOfNBaseIterableDataset(IterableDataset[Integer[Tensor, "seq_length"]]):
             n_samples = 0
             while True:
                 max_val = (
-                    int(torch.randint(0, self.model_config.d_vocab_out, tuple()).item())
+                    int(
+                        torch.randint(
+                            0, self.config.experiment.model_config.d_vocab_out, tuple()
+                        ).item()
+                    )
                     if self.pick_max_first
-                    else self.model_config.d_vocab_out - 1
+                    else self.config.experiment.model_config.d_vocab_out - 1
                 )
                 val = torch.randint(
                     0,
                     max_val + 1,
-                    (self.seq_len,),
+                    (self.config.experiment.seq_len,),
                     generator=g,
                 )
                 if self.pick_max_first and max_val not in val:
-                    val[torch.randint(0, self.seq_len, (1,), generator=g)] = max_val
-                yield val
+                    val[
+                        torch.randint(
+                            0, self.config.experiment.seq_len, (1,), generator=g
+                        )
+                    ] = max_val
+
+                # Process output
+                eos_token = self.config.experiment.get_eos_token()
+                if eos_token is not None:
+                    val = utils.add_eos(val, eos_token)
+                yield val, self.config.experiment.get_ground_truth(val)
+
                 n_samples += 1
                 if self.max_length is not None and n_samples >= self.max_length:
                     return
                 # TODO: add adversarial generation
 
         return iter(generator())
-
-
-class MaxOfNLabeledDataset(
-    IterableDataset[
-        Tuple[Integer[Tensor, "seq_length"], Integer[Tensor, ""]]  # noqa: F821, F722
-    ]
-):
-    def __init__(
-        self,
-        unlabeled_dataset: IterableDataset[Integer[Tensor, "seq_length"]],  # noqa: F821
-    ):
-        self.dataset = unlabeled_dataset
-
-    def __len__(self):
-        return len(self.dataset)  # type: ignore
-
-    def label(
-        self, val: Integer[Tensor, "seq_length"]  # noqa: F821
-    ) -> Tuple[Integer[Tensor, "seq_length"], Integer[Tensor, ""]]:  # noqa: F821, F722
-        return val, val.max()
-
-    def __iter__(self):
-        for val in self.dataset:
-            yield self.label(val)
-
-    def __getitem__(self, index):
-        return self.label(self.dataset[index])
-
-
-class MaxOfNCatEOSLabeledDataset(
-    IterableDataset[
-        Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
-    ]
-):
-    def __init__(
-        self,
-        labeled_dataset: IterableDataset[
-            Tuple[
-                Integer[Tensor, "seq_length"], Integer[Tensor, ""]  # noqa: F821, F722
-            ]
-        ],
-        eos: Optional[int] = None,
-    ):
-        self.dataset = labeled_dataset
-        self.eos = eos
-
-    def __len__(self):
-        return len(self.dataset)  # type: ignore
-
-    def cat_eos(
-        self,
-        val: Tuple[
-            Integer[Tensor, "... seq_length"], Integer[Tensor, ""]  # noqa: F821, F722
-        ],
-    ) -> Tuple[Integer[Tensor, "... n_ctx"], Integer[Tensor, ""]]:  # noqa: F821, F722
-        x, y = val
-        if self.eos is None:
-            return x, y
-        return (
-            torch.cat(
-                [
-                    x,
-                    torch.full(
-                        list(x.shape[:-1]) + [1],
-                        self.eos,
-                        dtype=torch.long,
-                        device=x.device,
-                    ),
-                ],
-                dim=-1,
-            ),
-            y,
-        )
-
-    def __iter__(self):
-        for val in self.dataset:
-            yield self.cat_eos(val)
-
-    def __getitem__(self, index):
-        return self.cat_eos(self.dataset[index])
 
 
 class MaxOfNDataModule(DataModule):
@@ -484,11 +364,6 @@ class MaxOfNDataModule(DataModule):
         self.config = config
         self.model_config = config.experiment.model_config
         self.seq_len = config.experiment.seq_len
-        self.eos = (
-            config.experiment.model_config.d_vocab - 1
-            if config.experiment.use_end_of_sequence
-            else None
-        )
         self.dataset_seed = reseed(config.seed, "dataset_seed")
 
     @cache
@@ -518,8 +393,11 @@ class MaxOfNDataModule(DataModule):
         Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
     ]:
         # TODO: factor these out into the classes
+        base_dataset: Dataset[
+            Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
+        ]
         if isinstance(cfg, IterableDatasetCfg):
-            base_dataset = MaxOfNBaseIterableDataset(
+            base_dataset = MaxOfNIterableDataset(
                 reseed(self.dataset_seed, mode),
                 self.config,
                 max_length=cfg.n_samples,
@@ -529,15 +407,22 @@ class MaxOfNDataModule(DataModule):
             data_train, data_test = self.get_full_dataset(
                 cfg.force_adjacent, cfg.training_ratio
             )
+            eos_token = self.config.experiment.get_eos_token()
+            if eos_token is not None:
+                data_train = utils.add_eos(data_train, eos_token)
+                data_test = utils.add_eos(data_test, eos_token)
+
             base_dataset = {
-                "train": SingleTensorDataset(data_train),
-                "test": SingleTensorDataset(data_test),
+                "train": TensorDataset(
+                    data_train, self.config.experiment.get_ground_truth(data_train)
+                ),
+                "test": TensorDataset(
+                    data_test, self.config.experiment.get_ground_truth(data_test)
+                ),
             }[mode]
         else:
             raise NotImplementedError
-        return MaxOfNCatEOSLabeledDataset(
-            MaxOfNLabeledDataset(base_dataset), eos=self.eos
-        )
+        return base_dataset
 
     def setup(self, stage: str):
         self.data_train = self.build_dataset(

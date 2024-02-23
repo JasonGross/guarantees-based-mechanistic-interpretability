@@ -6,6 +6,23 @@ from gbmi.utils import ein
 from gbmi.utils.testing import TestCase
 
 
+class TestMaxOfN(TestCase):
+    def test_gen_output(self):
+        cfg = MAX_OF_10_CONFIG
+        data = torch.tensor([[1, 2, 3, 4, 3, 2], [2, 3, 4, 5, 4, 3]])
+        self.assertExpectedPretty(
+            cfg.experiment.get_ground_truth(data), """tensor([4, 5])"""
+        )
+
+    def test_max_of_k(self):
+        cfg = MAX_OF_10_CONFIG
+        cfg.experiment.nth_max = 4
+        data = torch.tensor([[1, 2, 3, 4, 3, 2], [2, 3, 4, 5, 4, 3]])
+        self.assertExpectedPretty(
+            cfg.experiment.get_ground_truth(data), """tensor([2, 3])"""
+        )
+
+
 class TestOneLayerTransformer(TestCase):
     def test_forward_pass(self):
         model = MAX_OF_10_CONFIG.build_model()

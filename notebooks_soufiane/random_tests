@@ -1,0 +1,6 @@
+from gbmi.utils import log_softmax
+import torch
+
+t = torch.tensor([1.0, 2.0, 3.0])
+
+print(log_softmax(t))

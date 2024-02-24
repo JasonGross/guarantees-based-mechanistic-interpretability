@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt  # To use the colormap
 
 
 def pca_2d(
-    matrix: Shaped[Tensor, "n_vectors n_dims"],
+    matrix: Shaped[Tensor, "n_vectors n_dims"],  # noqa: F722
     labels: Optional[List[str] | List[List[str]]] = None,
     markers: int | List[int] = 0,
     line: bool = False,
@@ -47,7 +47,7 @@ def pca_2d(
 
 
 def tsne_2d(
-    matrix: Shaped[Tensor, "n_vectors n_dims"],
+    matrix: Shaped[Tensor, "n_vectors n_dims"],  # noqa: F722
     labels: Optional[List[str] | List[List[str]]] = None,
     markers: int | List[int] = 0,
     perplexity: float = 30,
@@ -72,11 +72,11 @@ def tsne_2d(
 
 
 def _analyse_2d(
-    matrix: Shaped[Tensor, "n_vectors n_dims"],
+    matrix: Shaped[Tensor, "n_vectors n_dims"],  # noqa: F722
     title: str,
     component_fn: Callable[
-        [Float[np.ndarray, "n_vectors n_dims"]],
-        Float[np.ndarray, "n_vectors n_components"],
+        [Float[np.ndarray, "n_vectors n_dims"]],  # noqa: F722
+        Float[np.ndarray, "n_vectors n_components"],  # noqa: F722
     ],
     labels: Optional[List[str] | List[List[str]]] = None,
     markers: int | List[int] = 0,
@@ -141,12 +141,12 @@ def _analyse_2d(
 
 
 def _analyse(
-    matrix: Shaped[Tensor, "n_vectors n_dims"],
+    matrix: Shaped[Tensor, "n_vectors n_dims"],  # noqa: F722
     title: str,
     n_dims: Literal[2, 3],
     component_fn: Callable[
-        [Float[np.ndarray, "n_vectors n_dims"]],
-        Float[np.ndarray, "n_vectors n_components"],
+        [Float[np.ndarray, "n_vectors n_dims"]],  # noqa: F722
+        Float[np.ndarray, "n_vectors n_components"],  # noqa: F722
     ],
     labels: Optional[List[str] | List[List[str]]] = None,
     markers: int | List[int] = 0,
@@ -330,9 +330,7 @@ def analyze_svd(
 
 
 @torch.no_grad()
-def split_svd_contributions(
-    M: Float[Tensor, "r c"], n: int = 1
-) -> Tuple[  # noqa: F722
+def split_svd_contributions(M: Float[Tensor, "r c"], n: int = 1) -> Tuple[  # noqa: F722
     Tuple[
         Float[Tensor, "r n"],  # noqa: F722
         Float[Tensor, "n"],  # noqa: F821

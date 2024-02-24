@@ -1,21 +1,94 @@
 from __future__ import annotations
 from functools import partial
 from matplotlib import pyplot as plt
+import plotly.express as px
 import torch
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
 from torch import Tensor
 from transformer_lens import HookedTransformer
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Literal, Optional, Tuple
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 from jaxtyping import Float
 from lightning.pytorch.loggers.wandb import WandbLogger
 import logging
 
+from wandb.sdk.wandb_run import Run
+
 from gbmi.utils import subscript
+
+
+def plot_tensors(
+    matrices: Iterable[Tuple[str, Tensor]],
+    plot_1D_kind: Literal["line", "scatter"] = "line",
+    title="Subplots of Matrices",
+    **kwargs,
+) -> go.Figure:
+    # Calculate grid size based on the number of matrices
+    matrices = list(matrices)
+    num_matrices = len(matrices)
+    grid_size = int(np.ceil(np.sqrt(num_matrices)))
+    subplot_titles = [name for name, _ in matrices] if len(matrices) else None
+
+    # Create a subplot figure with calculated grid size
+    fig = make_subplots(
+        rows=grid_size,
+        cols=grid_size,
+        subplot_titles=subplot_titles,
+    )
+
+    # Initialize subplot position trackers
+    row = 1
+    col = 1
+
+    # Iterate through each matrix in the dictionary
+    for name, matrix in matrices:
+        matrix = matrix.squeeze().cpu()  # Ensure matrix is 2D or 1D
+
+        # Determine plot type based on matrix dimensions and add to subplot
+        if len(matrix.shape) == 1:
+            # 1D data - line plot
+            fig.add_trace(
+                go.Scatter(
+                    y=matrix,
+                    mode="lines" if plot_1D_kind == "line" else "markers",
+                    name=name,
+                ),
+                row=row,
+                col=col,
+            )
+        elif len(matrix.shape) == 2:
+            # 2D data - heatmap
+            fig.add_trace(go.Heatmap(z=matrix, name=name), row=row, col=col)
+        else:
+            raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
+
+        # Update subplot position for next plot
+        col += 1
+        if col > grid_size:
+            col = 1
+            row += 1
+
+    # Update layout to adjust aspect ratio if necessary
+    fig.update_layout(title_text=title, **kwargs)
+
+    return fig
 
 
 @torch.no_grad()
 def log_tensor(
-    logger: WandbLogger,
+    logger: Run,
     name,
     matrix,
     plot_1D_kind: Literal["line", "scatter"] = "line",
@@ -44,7 +117,7 @@ def log_tensor(
         # Optional: Customize the plot further, e.g., adjust the aspect ratio, add labels, etc.
     else:
         raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
-    logger.log_image(name, [fig], **kwargs)
+    logger.log({name: fig}, commit=False, **kwargs)
     # I'd like to do https://docs.wandb.ai/guides/track/log/plots#matplotlib-and-plotly-plots but am not sure how cf https://github.com/JasonGross/guarantees-based-mechanistic-interpretability/issues/33 cc Euan
     # self.log(name, fig, **kwargs)
     plt.close(fig)
@@ -65,6 +138,8 @@ class ModelMatrixLoggingOptions:
     qtok: Optional[int] = None
     add_mean_pos_to_tok: bool = True
     plot_1D_kind: Literal["line", "scatter"] = "line"
+    use_subplots: bool = True
+    superplot_title = "model matrices"
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -155,14 +230,12 @@ class ModelMatrixLoggingOptions:
         )
 
     @torch.no_grad()
-    def _log_matrices(
+    def matrices_to_log(
         self,
-        log: Callable[[str, Any], None],
         model: HookedTransformer,
         *,
         unsafe: bool = False,
-        **kwargs,
-    ):
+    ) -> Iterable[Tuple[str, Tensor]]:
         self.assert_model_supported(model, unsafe=unsafe)
         W_E: Float[Tensor, "d_vocab d_model"]  # noqa: F722
         W_pos: Float[Tensor, "n_ctx d_model"]  # noqa: F722
@@ -322,9 +395,9 @@ class ModelMatrixLoggingOptions:
             return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
 
         if self.EU:
-            log(f"{sEq}U", apply_U(W_E_q), **kwargs)
+            yield f"{sEq}U", apply_U(W_E_q)
         if self.PU and (sPq != "0" or self.log_zeros):
-            log(f"{sPq}U", apply_U(W_pos_q), **kwargs)
+            yield f"{sPq}U", apply_U(W_pos_q)
 
         for l in range(W_Q.shape[0]):
             for h in range(W_Q.shape[1]):
@@ -376,10 +449,9 @@ class ModelMatrixLoggingOptions:
                                 reverse_strs=True,
                             ):
                                 if sq != "0" or self.log_zeros:
-                                    log(
+                                    yield (
                                         f"{sq}QKᵀ{sk}.{lh_q}l{l}h{h}{lh_k}",
                                         apply_Q(v_q, l, h) @ apply_KT(v_k, l, h),
-                                        **kwargs,
                                     )
                 if self.EVOU:
                     for sv, lh_v, v in ModelMatrixLoggingOptions.compute_paths(
@@ -392,11 +464,7 @@ class ModelMatrixLoggingOptions:
                         l=l,
                         reverse_strs=False,
                     ):
-                        log(
-                            f"{sv}VOU.{lh_v}l{l}h{h}",
-                            apply_U(apply_VO(v, l, h)),
-                            **kwargs,
-                        )
+                        yield (f"{sv}VOU.{lh_v}l{l}h{h}", apply_U(apply_VO(v, l, h)))
                 if self.PVOU:
                     for sv, lh_v, v in ModelMatrixLoggingOptions.compute_paths(
                         apply_VO,
@@ -408,23 +476,34 @@ class ModelMatrixLoggingOptions:
                         l=l,
                         reverse_strs=False,
                     ):
-                        log(
+                        yield (
                             f"{sv}VOU.{lh_v}l{l}h{h}",
                             apply_U(apply_VO(v, l, h)),
-                            **kwargs,
                         )
 
     @torch.no_grad()
     def log_matrices(
         self,
-        logger: WandbLogger,
+        logger: Run,
         model: HookedTransformer,
         *,
         unsafe: bool = False,
         **kwargs,
     ):
-        self._log_matrices(
-            partial(log_tensor, logger, plot_1D_kind=self.plot_1D_kind, **kwargs),
-            model,
-            unsafe=unsafe,
-        )
+        matrices = dict(self.matrices_to_log(model, unsafe=unsafe))
+        if self.use_subplots:
+            figs = {
+                self.superplot_title: plot_tensors(
+                    matrices.items(),
+                    title=self.superplot_title,
+                    plot_1D_kind=self.plot_1D_kind,
+                )
+            }
+        else:
+            figs = {
+                name: plot_tensors(
+                    [(name, matrix)], plot_1D_kind=self.plot_1D_kind, title=name
+                )
+                for name, matrix in matrices.items()
+            }
+        logger.log(figs, commit=False, **kwargs)

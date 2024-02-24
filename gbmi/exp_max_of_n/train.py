@@ -5,6 +5,8 @@ import sys
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from functools import cache, partial
+
+from wandb.sdk.wandb_run import Run
 from gbmi.utils.hashing import _EXCLUDE
 from gbmi.training_tools.logging import ModelMatrixLoggingOptions, log_tensor
 from typing import (
@@ -154,7 +156,9 @@ class MaxOfN(ExperimentConfig):
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
-    def get_ground_truth(self, x: Integer[Tensor, "... n"]) -> Integer[Tensor, "..."]:
+    def get_ground_truth(
+        self, x: Integer[Tensor, "... n"]  # noqa: F722
+    ) -> Integer[Tensor, "..."]:  # noqa: F722
         if self.nth_max == 1:
             return x.max(dim=-1).values
         else:
@@ -217,9 +221,9 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
     @staticmethod
     def acc_fn_per_seq(
-        logits: Float[Tensor, "batch n_ctx d_vocab"],  # noqa: F722
+        logits: Float[Tensor, "batch n_ctx d_vocab"],  # noqa: F722, F821
         labels: Integer[Tensor, "batch"],  # noqa: F821
-    ) -> Bool[Tensor, "batch"]:
+    ) -> Bool[Tensor, "batch"]:  # noqa: F821
         pred_tokens = torch.argmax(logits[:, -1, :], dim=-1)
         return pred_tokens == labels
 
@@ -258,7 +262,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
             if prefix in self.config.experiment.log_matrix_on_run_batch_prefixes:
                 assert self.logger is not None
                 self.config.experiment.logging_options.log_matrices(
-                    self.logger,  # type: ignore
+                    self.logger.experiment,
                     self.model,
                 )
         return loss, acc
@@ -283,7 +287,9 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
 
 
 class MaxOfNIterableDataset(
-    IterableDataset[Tuple[Integer[Tensor, "seq_length"], Integer[Tensor, ""]]]
+    IterableDataset[
+        Tuple[Integer[Tensor, "seq_length"], Integer[Tensor, ""]]  # noqa: F821, F722
+    ]
 ):
     def __init__(
         self,

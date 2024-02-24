@@ -66,7 +66,9 @@ def shuffle_data(data, rng: Generator):
     return data
 
 
-def add_eos(x: Float[Tensor, "b n"], eos: int) -> Float[Tensor, "b (n + 1)"]:
+def add_eos(
+    x: Float[Tensor, "b n"], eos: int  # noqa: F722
+) -> Float[Tensor, "b (n + 1)"]:  # noqa: F722, F821
     return ein.array(lambda i: torch.cat([x[i], torch.tensor([eos])]))
 
 

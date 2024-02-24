@@ -218,7 +218,7 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         if log_output and prefix is not None and prefix != "":
             assert self.logger is not None
             self.config.experiment.logging_options.log_matrices(
-                self.logger,  # type: ignore
+                self.logger.experiment,  # type: ignore
                 self.model,
             )
         return loss

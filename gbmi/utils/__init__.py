@@ -180,24 +180,28 @@ def log_softmax(x: torch.Tensor, dim: Optional[int] = None) -> torch.Tensor:
     x_argmax = torch.argmax(x, dim=dim, keepdim=True)
     x_max = torch.take_along_dim(x, indices=x_argmax, dim=dim)
     finite_max_mask = x_max.isfinite()
-    x_max[~finite_max_mask] = 0
+    x_max = torch.where(~finite_max_mask, 0, x_max)
     tmp = x - x_max
     exp_tmp = torch.exp(tmp)
     # we know that exp_tmp at the location of the max is either 1 or infinite,
     # depending on finite_max_mask, so we can set it to zero and use log1p
     exp_tmp_max = torch.take_along_dim(exp_tmp, indices=x_argmax, dim=dim)
-    exp_tmp_max[finite_max_mask] = 0
+    exp_tmp_max = torch.where(finite_max_mask, 0, exp_tmp_max)
     if dim is not None:
-        exp_tmp.scatter_(
+        exp_tmp = torch.scatter(
+            exp_tmp,
             dim=dim,
             index=x_argmax,
             src=exp_tmp_max,
         )
     else:
-        exp_tmp_flattened = torch.flatten(exp_tmp)
-        exp_tmp_flattened[x_argmax.flatten()] = torch.flatten(exp_tmp_max)
+        exp_tmp_flattened = torch.scatter(
+            torch.flatten(exp_tmp),
+            dim=0,
+            index=torch.flatten(x_argmax),
+            src=torch.flatten(exp_tmp_max),
+        )
         exp_tmp = torch.reshape(exp_tmp_flattened, exp_tmp.shape)
-        # exp_tmp[x_argmax] = 0
     return tmp - torch.log1p(torch.sum(exp_tmp, dim=dim, keepdim=True))
 
 

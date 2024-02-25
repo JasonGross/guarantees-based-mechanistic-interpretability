@@ -262,7 +262,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
             if prefix in self.config.experiment.log_matrix_on_run_batch_prefixes:
                 assert self.logger is not None
                 self.config.experiment.logging_options.log_matrices(
-                    self.logger.experiment,
+                    self.logger.experiment,  # type: ignore
                     self.model,
                 )
         return loss, acc

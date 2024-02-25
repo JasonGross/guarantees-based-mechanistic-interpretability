@@ -122,3 +122,10 @@ class TestInit(TestCase):
             ]
         )
         self.log_softmax_tester_helper(x, expected, rtol=1e-13, dim=1)
+
+    def test_log_softmax_autograd(self):
+        x = torch.tensor([1.0, 2.0, 3.0], requires_grad=True)
+        logits = log_softmax(x, dim=0)
+        loss = logits.sum()
+        loss.backward()
+        self.assertIsNotNone(x.grad, "Gradients should not be None")

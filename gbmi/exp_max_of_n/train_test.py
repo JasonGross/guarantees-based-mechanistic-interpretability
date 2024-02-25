@@ -49,7 +49,7 @@ class TestOneLayerTransformer(TestCase):
         self.assertExpectedPretty(x.shape, """Size((10, 32))""")
 
         # QK path (a[i]: attention from last element to input token i)
-        a = ein.array(lambda i: (x[9] + W_pos[9]) @ W_Q @ W_K.T @ (x[i] + W_pos[i]).T)
+        a = ein.array(lambda i: ((x[9] + W_pos[9]) @ W_Q) @ ((x[i] + W_pos[i]) @ W_K))
         a_softmax = torch.softmax(a / (d_head**0.5), dim=0)
         self.assertExpectedPretty(a_softmax.shape, """Size((10,))""")
 
@@ -67,7 +67,7 @@ class TestOneLayerTransformer(TestCase):
         self.assertExpectedPretty(y.argmax(-1), """tensor(59)""")
 
         # === True logits ===
-        true_logits, cache = model.run_with_cache(torch.tensor(seq))
+        true_logits, cache = model.run_with_cache(seq)
         self.assertTrue(torch.allclose(y, true_logits.squeeze()[-1], atol=1e-5))
         self.assertExpectedPretty(
             true_logits.argmax(-1).squeeze()[-1],

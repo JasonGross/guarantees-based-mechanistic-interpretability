@@ -236,6 +236,26 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
             MaxOfNTrainingWrapper.acc_fn_per_seq(logits, labels).float().mean().item()
         )
 
+    def compute_batch(
+        self,
+        x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
+        *,
+        device: Optional[Union[torch.device, str]] = None,
+    ) -> Tuple[
+        Integer[Tensor, "batch pos"],  # noqa F722
+        Integer[Tensor, "batch"],  # noqa F821
+        Float[Tensor, "batch pos d_vocab_out"],  # noqa F722
+    ]:
+        xs, ys = x_y
+
+        if device is not None:
+            xs = xs.to(device)
+            ys = ys.to(device)
+        self.model.to(xs.device, print_details=False)
+
+        y_preds = self.model(xs)
+        return xs, ys, y_preds
+
     def run_batch(
         self,
         x_y: Tuple[Integer[Tensor, "batch pos"], Integer[Tensor, "batch"]],  # noqa F722
@@ -245,14 +265,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         device: Optional[Union[torch.device, str]] = None,
     ) -> Tuple[Float[Tensor, ""], float]:  # noqa F722
         assert prefix is not None or not log_output, "Must not log if prefix is None"
-        xs, ys = x_y
-
-        if device is not None:
-            xs = xs.to(device)
-            ys = ys.to(device)
-        self.model.to(xs.device, print_details=False)
-
-        y_preds = self.model(xs)
+        xs, ys, y_preds = self.compute_batch(x_y, device=device)
         loss = self.loss_fn(y_preds, ys)
         acc = self.acc_fn(y_preds, ys)
 

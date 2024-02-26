@@ -235,7 +235,7 @@ def display_basic_interpretation(
             color_continuous_midpoint=0,
             labels={"x": OV["xaxis"], "y": OV["yaxis"]},
         )
-        result["EOVU"] = fig_ov
+        result["EVOU"] = fig_ov
         fig_ov.show(renderer=renderer)
     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
     fig_ov = px.imshow(

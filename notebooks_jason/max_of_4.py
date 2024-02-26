@@ -332,15 +332,17 @@ def _run_batch_loss_accuracy(
 ) -> Union[Tuple[float, float, int], Tuple[Tuple[float, float, int], Tensor]]:
     batch = all_tokens_dataset[i : i + batch_size]
     size = batch.shape[0]
-    batch.to(default_device(deterministic=brute_force_proof_deterministic))
-    y_preds, x = training_wrapper.compute_batch(batch)
+    device = default_device(deterministic=brute_force_proof_deterministic)
+    batch.to(device)
+    labels = training_wrapper.config.experiment.get_ground_truth(batch)
+    xs, ys, y_preds = training_wrapper.compute_batch((batch, labels), device=device)
     loss = training_wrapper.loss_fn(
-        y_preds, x, log_softmax=training_wrapper.log_softmax
+        y_preds, ys, log_softmax=training_wrapper.log_softmax
     ).item()
-    full_accuracy = training_wrapper.acc_fn_per_seq(y_preds, x)
+    full_accuracy = training_wrapper.acc_fn_per_seq(y_preds, ys)
     accuracy = full_accuracy.float().mean().item()
     if return_incorrect_sequences:
-        return (loss, accuracy, size), x[~full_accuracy]
+        return (loss, accuracy, size), xs[~full_accuracy]
     return loss, accuracy, size
 
 
@@ -2922,9 +2924,13 @@ with torch.no_grad():
 # %%
 # @title export LaTeX figures
 for k, fig in latex_figures.items():
-    p = LATEX_FIGURE_PATH / f"{k}.tex"
-    print(f"Saving {p}...")
-    tikzplotly.save(p, fig)
+    if any(isinstance(trace, go.Heatmap) for trace in fig.data):
+        print(f"Skipping {k} because it has a heatmap")
+    else:
+        p = LATEX_FIGURE_PATH / f"{k}.tex"
+        print(f"Saving {p}...")
+        tikzplotly.save(p, fig)
+        print(fig.to_dict())
 # %%
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))

@@ -2924,8 +2924,11 @@ with torch.no_grad():
 # %%
 # @title export LaTeX figures
 for k, fig in latex_figures.items():
-    if any(isinstance(trace, go.Heatmap) for trace in fig.data):
-        print(f"Skipping {k} because it has a heatmap")
+    if True or any(isinstance(trace, go.Heatmap) for trace in fig.data):
+        for ext in (".pdf", ".svg"):
+            p = LATEX_FIGURE_PATH / f"{k}{ext}"
+            print(f"Saving {p}...")
+            fig.write_image(p)
     else:
         p = LATEX_FIGURE_PATH / f"{k}.tex"
         print(f"Saving {p}...")

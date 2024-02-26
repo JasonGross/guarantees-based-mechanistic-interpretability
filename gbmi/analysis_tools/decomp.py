@@ -327,6 +327,7 @@ def analyze_svd(
     # line(S, title=f"Singular Values{descr}")
     # imshow(U, title=f"Principal Components on U{descr}")
     # imshow(Vh, title=f"Principal Components on Vh{descr}")
+    return fig
 
 
 @torch.no_grad()

@@ -16,6 +16,7 @@ import gbmi.utils
 import gbmi.utils.memoshelve
 import gbmi.utils.sequences
 import gbmi.analysis_tools.utils
+import gbmi.utils.latex_export
 
 importlib.reload(gbmi.analysis_tools.plot)
 importlib.reload(gbmi.exp_max_of_n.plot)
@@ -30,6 +31,7 @@ importlib.reload(gbmi.utils)
 importlib.reload(gbmi.exp_max_of_n.verification)
 importlib.reload(gbmi.utils.memoshelve)
 importlib.reload(gbmi.utils.sequences)
+importlib.reload(gbmi.utils.latex_export)
 # %%
 import traceback
 import sys
@@ -66,6 +68,7 @@ from gbmi.utils.sequences import count_sequences
 from gbmi.utils.lowrank import LowRankTensor
 import gbmi.utils.ein as ein
 from gbmi.utils.memoshelve import memoshelve
+from gbmi.utils.latex_export import to_latex_defs
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
@@ -82,7 +85,7 @@ from gbmi.exp_max_of_n.train import (
 from gbmi.model import Config, RunData
 from torch.utils.data import DataLoader
 import torch
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import numpy as np
 from jaxtyping import Float, Integer, Bool
 from torch import Tensor
@@ -126,6 +129,9 @@ RENDERER: Optional[str] = "png"  # @param ["png", None]
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
+# %%
+latex_values: dict[str, Union[int, float]] = {}
+latex_figures: dict[str, go.Figure] = {}
 # %%
 # hack around newlines of black formatting
 seeds = (
@@ -223,7 +229,8 @@ def _run_train_batch_loss_accuracy(
     return loss, accuracy, batch_size
 
 
-for seed in tqdm(runtime_models.keys(), desc="seed", position=0):
+for seedi, seed in enumerate(tqdm(runtime_models.keys(), desc="seed", position=0)):
+    leave = seedi == len(runtime_models.keys()) - 1
     train_total_loss[seed] = 0.0
     train_total_accuracy[seed] = 0.0
     train_total_samples[seed] = 0
@@ -239,7 +246,12 @@ for seed in tqdm(runtime_models.keys(), desc="seed", position=0):
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     )() as run_batch_loss_accuracy:
-        for i in tqdm(range(0, len(dataloader)), desc=f"batches", position=1):
+        for i in tqdm(
+            range(0, len(dataloader)),
+            desc=f"batches",
+            position=1,
+            leave=leave,
+        ):
             loss, accuracy, size = run_batch_loss_accuracy(seed, i, cfg.batch_size)  # type: ignore
             # Accumulate loss and accuracy
             train_total_loss[seed] += loss * size
@@ -255,8 +267,13 @@ for seed in tqdm(runtime_models.keys(), desc="seed", position=0):
 num_seeds = len(train_average_loss)
 avg_train_average_loss = sum(train_average_loss.values()) / num_seeds
 avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
-std_dev_train_average_loss = np.std(list(train_average_loss.values()))
-std_dev_train_average_accuracy = np.std(list(train_average_accuracy.values()))
+std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
+std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
+latex_values["NumSeeds"] = num_seeds
+latex_values["AvgTrainAccuracy"] = avg_train_average_accuracy
+latex_values["StdDevTrainAccuracy"] = std_dev_train_average_accuracy
+latex_values["AvgTrainLoss"] = avg_train_average_loss
+latex_values["StdDevTrainLoss"] = std_dev_train_average_loss
 print(f"Overall Training stats ({num_seeds} training runs):")
 print(
     f"Model Accuracy: ({pm_round(avg_train_average_accuracy * 100, std_dev_train_average_accuracy * 100)})%"
@@ -273,6 +290,9 @@ cfg_hash = cfg_hashes[seed]
 cfg_hash_for_filename = cfg_hashes_for_filename[seed]
 runtime, model = runtime_models[seed]
 training_wrapper = training_wrappers[seed]
+latex_values["seed"] = seed
+latex_values["TrainAccuracy"] = train_average_accuracy[seed]
+latex_values["TrainLoss"] = train_average_accuracy[seed]
 # %%
 print(f"Training stats:")
 print(f"Model Accuracy: {train_average_accuracy[seed] * 100}%")
@@ -286,6 +306,7 @@ all_tokens_dataset = SequenceDataset(
 )
 # %%
 batch_size = 4096  # 16_384 # 8182
+latex_values["BruteForceBatchSize"] = batch_size
 # Resetting the DataLoader without shuffle for consistent processing
 # data_loader = DataLoader(all_tokens_dataset, batch_size=batch_size, shuffle=False)
 
@@ -296,6 +317,7 @@ total_samples = 0
 all_incorrect_sequences = []
 
 brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
+latex_values["BruteForceCPU"] = brute_force_proof_deterministic
 
 
 # loop for computing overall loss and accuracy
@@ -336,15 +358,17 @@ with memoshelve(
 average_loss = total_loss / total_samples
 average_accuracy = total_accuracy / total_samples
 incorrect_sequences = torch.cat(all_incorrect_sequences, dim=0)
+num_correct_sequences = int(round(average_accuracy * all_tokens_dataset.length))
+num_incorrect_sequences = all_tokens_dataset.length - num_correct_sequences
+latex_values["BruteForceLoss"] = average_loss
+latex_values["BruteForceAccuracy"] = average_accuracy
+latex_values["BruteForceNumCorrect"] = num_correct_sequences
+latex_values["BruteForceNumIncorrect"] = num_incorrect_sequences
 # %%
 print(f"Brute force proof:")
 print(f"Model Accuracy: {average_accuracy * 100}%")
-print(
-    f"Number Correct Sequences: {int(round(average_accuracy * all_tokens_dataset.length))}"
-)
-print(
-    f"Number Incorrect Sequences: {all_tokens_dataset.length - int(round(average_accuracy * all_tokens_dataset.length))}"
-)
+print(f"Number Correct Sequences: {num_correct_sequences}")
+print(f"Number Incorrect Sequences: {num_incorrect_sequences}")
 print(f"Model Loss: {average_loss}")
 # %%
 fraction_of_incorrect_sequences_by_max = []
@@ -1087,9 +1111,18 @@ print(
 )
 prooftime += time.time() - starttime
 print(f"Proof time: {prooftime}s")
-print(
-    f"Note that we are leaving {count_unaccounted_for_by_cubic_convexity_sequences(largest_wrong_logit_cubic)} sequences on the floor, which is {count_unaccounted_for_by_cubic_convexity_sequences(largest_wrong_logit_cubic) / total_sequences * 100}% of the total"
+cubic_dropped_sequences = count_unaccounted_for_by_cubic_convexity_sequences(
+    largest_wrong_logit_cubic
 )
+cubic_dropped_sequences_frac = cubic_dropped_sequences / total_sequences
+print(
+    f"Note that we are leaving {cubic_dropped_sequences} sequences on the floor, which is {cubic_dropped_sequences_frac * 100}% of the total"
+)
+latex_values["CubicAccuracy"] = accuracy_bound_cubic
+latex_values["CubicCorrectCount"] = correct_count_cubic
+latex_values["CubicProofTime"] = prooftime
+latex_values["CubicDroppedSequences"] = cubic_dropped_sequences
+latex_values["CubicDroppedSequencesFrac"] = cubic_dropped_sequences_frac
 
 # # %%
 
@@ -1098,7 +1131,17 @@ print(
 # # Plots
 # %%
 if DISPLAY_PLOTS:
-    display_basic_interpretation(model, include_uncentered=True, renderer=RENDERER)
+    figs = display_basic_interpretation(
+        model, include_uncentered=True, renderer=RENDERER
+    )
+    latex_figures["EQKE"] = figs["EQKE"]
+    latex_figures["EVOU"] = figs["EVOU"]
+    latex_figures["EVOU-centered"] = figs["EVOU-centered"]
+    latex_figures["EQKP"] = figs["EQKP"]
+    EUPU_keys = [k for k in figs.keys() if k.startswith("irrelevant_")]
+    assert len(EUPU_keys) == 1, f"EUPU_keys: {EUPU_keys}"
+    latex_figures["EUPU"] = figs[EUPU_keys[0]]
+    latex_figures["PVOU"] = figs["irrelevant"]
 
 
 # %%
@@ -1745,8 +1788,8 @@ if DISPLAY_PLOTS:
     fig.update_yaxes(showticklabels=False)
     for axis in fig.layout:
         if axis.startswith("xaxis") or axis.startswith("yaxis"):
-            fig.layout[axis].scaleanchor = "x1"
-            fig.layout[axis].scaleratio = 1
+            fig.layout[axis].scaleanchor = "x1"  # type: ignore
+            fig.layout[axis].scaleratio = 1  # type: ignore
     fig.update_layout(height=600, width=300 * num_subplots, plot_bgcolor="white")
     fig.show(RENDERER)
     # for mv, us in uvs:

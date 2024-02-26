@@ -243,7 +243,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         *,
         log_output: bool = True,
         device: Optional[Union[torch.device, str]] = None,
-    ) -> Union[Float[Tensor, ""], Tuple[Float[Tensor, ""], float]]:  # noqa F722
+    ) -> Tuple[Float[Tensor, ""], float]:  # noqa F722
         assert prefix is not None or not log_output, "Must not log if prefix is None"
         xs, ys = x_y
 

@@ -4435,6 +4435,24 @@ files = [
 ]
 
 [[package]]
+name = "tikzplotly"
+version = "0.1.2"
+description = "Convert plotly figures to LaTeX / tikz figures"
+optional = false
+python-versions = "*"
+files = [
+    {file = "tikzplotly-0.1.2-py3-none-any.whl", hash = "sha256:f7de60501d7ef966ea198697c5c07b8a6319689d81cafac09b3a696c3a00983c"},
+    {file = "tikzplotly-0.1.2.tar.gz", hash = "sha256:d3a99addb16980bf2409117706846bf7f396f3811888dc0e15f8f8083f56b8c5"},
+]
+
+[package.dependencies]
+numpy = "*"
+plotly = "*"
+
+[package.extras]
+dev = ["pandas"]
+
+[[package]]
 name = "tinycss2"
 version = "1.2.1"
 description = "A tiny CSS parser"
@@ -5339,4 +5357,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "5a96f5167fe6f0049309066e767e0427e820d6d16108c9e02abfa0490a211f11"
+content-hash = "d06572e2ac49c1af248c35f0cd3e23c6988fd7da7ac253488f354b4b8f746304"

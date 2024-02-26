@@ -6,6 +6,7 @@ import math
 from jaxtyping import Float, Integer
 from transformer_lens import HookedTransformer
 import plotly.express as px
+import plotly.graph_objects as go
 from gbmi.analysis_tools.plot import weighted_histogram
 from gbmi.analysis_tools.utils import pm_round
 
@@ -36,7 +37,7 @@ def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) ->
         )
         return {
             "data": (QK - QK_last).numpy(),
-            "title": "Attention Score<br>QK[p] := (W<sub>E</sub>[-1] + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>E</sub> + W<sub>pos</sub>[p])<sup>T</sup><br>𝔼<sub>dim=0</sub>(QK[:-1,:-1]) - QK[-1, -1]",
+            "title": "Attention Score<br>QK[p] := (W<sub>E</sub>[-1] + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>E</sub> + W<sub>pos</sub>[p])<sup>T</sup><br>𝔼<sub>dim=0</sub>(QK[:-1,:-1]) - QK[-1, -1]",
             "xaxis": "input token",
             "yaxis": "attention score pre-softmax",
         }
@@ -44,7 +45,7 @@ def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) ->
         QK = (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)).T
         return {
             "data": QK.numpy(),
-            "title": "Attention Score<br>EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>E</sub> + 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
+            "title": "Attention Score<br>EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>E</sub> + 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
             "xaxis": "key token",
             "yaxis": "query token",
         }
@@ -82,14 +83,14 @@ def compute_OV(
         result.update(
             {
                 "data": OV.numpy(),
-                "title": f"Attention Computation: (W<sub>E</sub>{W_E_pos_suffix} + 𝔼<sub>p</sub>W<sub>pos</sub>{W_E_pos_suffix}[p]) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>",
+                "title": f"Attention Computation: (W<sub>E</sub>{W_E_pos_suffix} + 𝔼<sub>p</sub>W<sub>pos</sub>{W_E_pos_suffix}[p])W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>",
             }
         )
         return result
     result.update(
         {
             "data": (OV - OV.diag()[:, None]).numpy(),
-            "title": f"Attention Computation (centered)<br>OV := (W<sub>E</sub>{W_E_pos_suffix} + W<sub>pos</sub>{W_E_pos_suffix}.mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub><br>OV - OV.diag()[:, None]",
+            "title": f"Attention Computation (centered)<br>OV := (W<sub>E</sub>{W_E_pos_suffix} + 𝔼<sub>dim=0</sub>W<sub>pos</sub>{W_E_pos_suffix})W<sub>V</sub>W<sub>O</sub>W<sub>U</sub><br>OV - OV.diag()[:, None]",
         }
     )
     return result
@@ -116,7 +117,7 @@ def compute_QK_by_position(
         )
         return {
             "data": {"QK": QK.numpy()},
-            "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub>[-1] + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>pos</sub>[:-1] - W<sub>pos</sub>[:-1].mean(dim=0))<sup>T</sup>",
+            "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub>[-1] + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub>[:-1] - 𝔼<sub>dim=0</sub>W<sub>pos</sub>[:-1])<sup>T</sup>",
             "xaxis": "position",
             "yaxis": "attention score pre-softmax",
         }
@@ -124,7 +125,7 @@ def compute_QK_by_position(
         QK = (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_pos - W_pos.mean(dim=0)).T
         return {
             "data": {"QK": QK.numpy()},
-            "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub> + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ (W<sub>pos</sub> - W<sub>pos</sub>.mean(dim=0))<sup>T</sup>",
+            "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub> - 𝔼<sub>dim=0</sub>W<sub>pos</sub>)<sup>T</sup>",
             "xaxis": "key position",
             "yaxis": "query token",
         }
@@ -151,21 +152,21 @@ def compute_irrelevant(
     W_E_q_index = "[-1]" if includes_eos else ""
     W_pos_k_index = "[:-1]" if includes_eos else ""
     data = {
-        f"(W<sub>E</sub>{W_E_q_index}+W<sub>pos</sub>[-1]) @ W<sub>U</sub>": (
+        f"(W<sub>E</sub>{W_E_q_index}+W<sub>pos</sub>[-1])W<sub>U</sub>": (
             ((W_E_q + W_pos[-1]) @ W_U).numpy()
         ),
     }
     if include_equals_OV:
         data.update(
             {
-                f"(W<sub>E</sub>{W_E_q_index}+W<sub>pos</sub>[-1]) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>": (
+                f"(W<sub>E</sub>{W_E_q_index}+W<sub>pos</sub>[-1])W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>": (
                     (W_E_q + W_pos[-1]) @ W_V[0, 0] @ W_O[0, 0] @ W_U
                 ),
             }
         )
     data.update(
         {
-            f"(W<sub>pos</sub>[{i}] - W<sub>pos</sub>{W_pos_k_index}.mean(dim=0)) @ W<sub>V</sub> @ W<sub>O</sub> @ W<sub>U</sub>": (
+            f"(W<sub>pos</sub>[{i}] - 𝔼<sub>dim=0</sub>W<sub>pos</sub>{W_pos_k_index})W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>": (
                 (
                     (W_pos_k[i] - W_pos_k.mean(dim=0))
                     @ W_V[0, 0, :, :]
@@ -192,13 +193,17 @@ def display_basic_interpretation(
     legend_at_bottom: bool = False,
     include_equals_OV: bool = False,
     includes_eos: Optional[bool] = None,
+    OV_colorscale: str = "Picnic_r",
+    QK_colorscale: str = "Plasma",  # "Sunsetdark_r"
+    QK_SVD_colorscale: str = "Picnic_r",
     renderer: Optional[str] = None,
-):
+) -> dict[str, go.Figure]:
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
     QK = compute_QK(model, includes_eos=includes_eos)
+    result = {}
     if includes_eos:
-        px.line(
+        fig_qk = px.line(
             {"QK": QK["data"]},
             title=QK["title"],
             labels={
@@ -206,61 +211,73 @@ def display_basic_interpretation(
                 "variable": "",
                 "value": QK["yaxis"],
             },
-        ).show(renderer=renderer)
+        )
+        fig_qk.show(renderer=renderer)
     else:
-        px.imshow(
+        fig_qk = px.imshow(
             QK["data"],
             title=QK["title"],
-            color_continuous_scale="Sunsetdark",
+            color_continuous_scale=QK_colorscale,
             labels={"x": QK["xaxis"], "y": QK["yaxis"]},
-        ).show(renderer=renderer)
-        find_size_and_query_direction(
-            model, plot_heatmaps=True, renderer=renderer, colorscale="Picnic_r"
         )
+        fig_qk.show(renderer=renderer)
+        find_size_and_query_direction(
+            model, plot_heatmaps=True, renderer=renderer, colorscale=QK_SVD_colorscale
+        )
+    result["EQKE"] = fig_qk
 
     if include_uncentered:
         OV = compute_OV(model, centered=False, includes_eos=includes_eos)
-        px.imshow(
+        fig_ov = px.imshow(
             OV["data"],
             title=OV["title"],
-            color_continuous_scale="Picnic_r",
+            color_continuous_scale=OV_colorscale,
             color_continuous_midpoint=0,
             labels={"x": OV["xaxis"], "y": OV["yaxis"]},
-        ).show(renderer=renderer)
+        )
+        result["EOVU"] = fig_ov
+        fig_ov.show(renderer=renderer)
     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
-    px.imshow(
+    fig_ov = px.imshow(
         OV["data"],
         title=OV["title"],
-        color_continuous_scale="Picnic_r",
+        color_continuous_scale=OV_colorscale,
         labels={"x": OV["xaxis"], "y": OV["yaxis"]},
-    ).show(renderer=renderer)
+    )
+    result["EVOU-centered"] = fig_ov
+    fig_ov.show(renderer=renderer)
 
     pos_QK = compute_QK_by_position(model, includes_eos=includes_eos)
     if includes_eos:
-        px.scatter(
+        fig_qk = px.scatter(
             pos_QK["data"],
             title=pos_QK["title"],
             labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
-        ).show(renderer=renderer)
+        )
+        fig_qk.show(renderer=renderer)
     else:
-        px.imshow(
+        fig_qk = px.imshow(
             pos_QK["data"]["QK"],
             title=pos_QK["title"],
-            color_continuous_scale="Sunsetdark",
+            color_continuous_scale=QK_colorscale,
             labels={"x": pos_QK["xaxis"], "y": pos_QK["yaxis"]},
-        ).show(renderer=renderer)
+        )
+        fig_qk.show(renderer=renderer)
+    result["EQKP"] = fig_qk
 
     irrelevant = compute_irrelevant(
         model, include_equals_OV=include_equals_OV, includes_eos=includes_eos
     )
     for key, data in irrelevant["data"].items():
         if len(data.shape) == 2:
-            px.imshow(
+            fig = px.imshow(
                 data,
                 title=key,
-                color_continuous_scale="Picnic_r",
+                color_continuous_scale=OV_colorscale,
                 labels={"x": irrelevant["xaxis"], "y": irrelevant["yaxis"]},
-            ).show(renderer=renderer)
+            )
+            result[f"irrelevant_{key}"] = fig
+            fig.show(renderer=renderer)
     fig = px.scatter(
         {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
         title=irrelevant["title"],
@@ -280,7 +297,9 @@ def display_basic_interpretation(
                 x=0.5,
             )
         )
+    result["irrelevant"] = fig
     fig.show(renderer=renderer)
+    return result
 
 
 @torch.no_grad()

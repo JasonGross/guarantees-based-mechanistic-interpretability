@@ -37,6 +37,7 @@ frozendict = "^2.4.0"
 torchvision = "^0.17.0"
 pillow = "^10.2.0"
 scikit-learn = "^1.4.1.post1"
+tikzplotly = "^0.1.2"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"

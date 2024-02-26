@@ -16,6 +16,7 @@ import gbmi.utils.memoshelve
 import gbmi.utils.sequences
 import gbmi.analysis_tools.utils
 import gbmi.utils.latex_export
+import gbmi.utils.images
 
 importlib.reload(gbmi.analysis_tools.plot)
 importlib.reload(gbmi.exp_max_of_n.plot)
@@ -31,14 +32,19 @@ importlib.reload(gbmi.exp_max_of_n.verification)
 importlib.reload(gbmi.utils.memoshelve)
 importlib.reload(gbmi.utils.sequences)
 importlib.reload(gbmi.utils.latex_export)
+importlib.reload(gbmi.utils.images)
 # %%
 import traceback
 import sys
+import re
 import time
 from functools import reduce
+from PIL import Image
+import io
 import dataclasses
 import math
 from scipy import stats
+from contextlib import contextmanager
 from collections import defaultdict
 import tikzplotly
 from typing import (
@@ -67,6 +73,8 @@ from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.sequences import count_sequences
 from gbmi.utils.lowrank import LowRankTensor
 import gbmi.utils.ein as ein
+import gbmi.utils.images as image_utils
+from gbmi.utils.images import trim_plotly_figure
 from gbmi.utils.memoshelve import memoshelve
 from gbmi.utils.latex_export import to_latex_defs
 from gbmi.exp_max_of_n.analysis import (
@@ -131,10 +139,10 @@ cache_dir.mkdir(exist_ok=True)
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
 LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
-LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "values.tex"
+LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "perf-numbers.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 # %%
-latex_values: dict[str, Union[int, float]] = {}
+latex_values: dict[str, Union[int, float, str]] = {}
 latex_figures: dict[str, go.Figure] = {}
 # %%
 # hack around newlines of black formatting
@@ -274,10 +282,10 @@ avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
 std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
 std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
 latex_values["NumSeeds"] = num_seeds
-latex_values["AvgTrainAccuracy"] = avg_train_average_accuracy
-latex_values["StdDevTrainAccuracy"] = std_dev_train_average_accuracy
-latex_values["AvgTrainLoss"] = avg_train_average_loss
-latex_values["StdDevTrainLoss"] = std_dev_train_average_loss
+latex_values["AvgTrainAccuracyFloat"] = avg_train_average_accuracy
+latex_values["StdDevTrainAccuracyFloat"] = std_dev_train_average_accuracy
+latex_values["AvgTrainLossFloat"] = avg_train_average_loss
+latex_values["StdDevTrainLossFloat"] = std_dev_train_average_loss
 print(f"Overall Training stats ({num_seeds} training runs):")
 print(
     f"Model Accuracy: ({pm_round(avg_train_average_accuracy * 100, std_dev_train_average_accuracy * 100)})%"
@@ -295,8 +303,9 @@ cfg_hash_for_filename = cfg_hashes_for_filename[seed]
 runtime, model = runtime_models[seed]
 training_wrapper = training_wrappers[seed]
 latex_values["seed"] = seed
-latex_values["TrainAccuracy"] = train_average_accuracy[seed]
-latex_values["TrainLoss"] = train_average_accuracy[seed]
+latex_values["ModelSeed"] = cfg.experiment.model_config.seed
+latex_values["TrainAccuracyFloat"] = train_average_accuracy[seed]
+latex_values["TrainLossFloat"] = train_average_accuracy[seed]
 # %%
 print(f"Training stats:")
 print(f"Model Accuracy: {train_average_accuracy[seed] * 100}%")
@@ -366,8 +375,8 @@ average_accuracy = total_accuracy / total_samples
 incorrect_sequences = torch.cat(all_incorrect_sequences, dim=0)
 num_correct_sequences = int(round(average_accuracy * all_tokens_dataset.length))
 num_incorrect_sequences = all_tokens_dataset.length - num_correct_sequences
-latex_values["BruteForceLoss"] = average_loss
-latex_values["BruteForceAccuracy"] = average_accuracy
+latex_values["BruteForceLossFloat"] = average_loss
+latex_values["BruteForceAccuracyFloat"] = average_accuracy
 latex_values["BruteForceNumCorrect"] = num_correct_sequences
 latex_values["BruteForceNumIncorrect"] = num_incorrect_sequences
 # %%
@@ -1124,11 +1133,11 @@ cubic_dropped_sequences_frac = cubic_dropped_sequences / total_sequences
 print(
     f"Note that we are leaving {cubic_dropped_sequences} sequences on the floor, which is {cubic_dropped_sequences_frac * 100}% of the total"
 )
-latex_values["CubicAccuracy"] = accuracy_bound_cubic
+latex_values["CubicAccuracyFloat"] = accuracy_bound_cubic
 latex_values["CubicCorrectCount"] = correct_count_cubic
-latex_values["CubicProofTime"] = prooftime
+latex_values["CubicProofTimeFloat"] = prooftime
 latex_values["CubicDroppedSequences"] = cubic_dropped_sequences
-latex_values["CubicDroppedSequencesFrac"] = cubic_dropped_sequences_frac
+latex_values["CubicDroppedSequencesFracFloat"] = cubic_dropped_sequences_frac
 
 # # %%
 
@@ -1253,18 +1262,18 @@ if DISPLAY_PLOTS:
 @torch.no_grad()
 def make_better_slides_plots_00(
     model: HookedTransformer,
-    OV_colorscale="Picnic_r",
-    QK_colorscale="Plasma",
-    renderer=None,
-):
+    OV_colorscale: str = "Picnic_r",
+    QK_colorscale: str = "Plasma",
+    renderer: Optional[str] = None,
+) -> dict[str, go.Figure]:
     W_E, W_pos, W_U, W_V, W_O, W_Q, W_K = (
-        model.W_E,
-        model.W_pos,
-        model.W_U,
-        model.W_V[0, 0],
-        model.W_O[0, 0],
-        model.W_Q[0, 0],
-        model.W_K[0, 0],
+        model.W_E.cpu(),
+        model.W_pos.cpu(),
+        model.W_U.cpu(),
+        model.W_V[0, 0].cpu(),
+        model.W_O[0, 0].cpu(),
+        model.W_Q[0, 0].cpu(),
+        model.W_K[0, 0].cpu(),
     )
     attn_scale = model.blocks[0].attn.attn_scale
     EPq = W_E + W_pos[-1]
@@ -1280,6 +1289,43 @@ def make_better_slides_plots_00(
         [EVOU.abs().max().item(), PVOU.abs().max().item(), EPU.abs().max().item()]
     )
     QK_zmax = np.max([EQKE.abs().max().item(), EQKP.abs().max().item()])
+    results = {}
+    for key, zmax, colorscale in (
+        ("OV", OV_zmax, OV_colorscale),
+        ("QK", QK_zmax, QK_colorscale),
+    ):
+        results[f"{key}-colorbar"] = fig = go.Figure(
+            data=go.Heatmap(
+                z=[[0]],
+                colorscale=colorscale,
+                showscale=True,
+                zmin=-zmax,
+                zmax=zmax,
+                zmid=0,
+                colorbar=dict(x=0),
+            )
+        )
+        fig.add_trace(
+            go.Heatmap(
+                z=[[0]],
+                colorscale="Picnic_r",
+                showscale=False,
+                zmin=-zmax,
+                zmax=zmax,
+                zmid=0,
+            )
+        )
+        fig.update_layout(
+            width=75,
+            xaxis_showgrid=False,
+            yaxis_showgrid=False,
+            xaxis_zeroline=False,
+            yaxis_zeroline=False,
+            xaxis_visible=False,
+            yaxis_visible=False,
+            margin=dict(l=0, r=0, b=0, t=0),
+        )
+        fig.show(renderer)
     for m, title, colorscale, zmax, labels in (
         (
             EPU,
@@ -1317,7 +1363,8 @@ def make_better_slides_plots_00(
             {"x": "key position k", "y": "query token t<sub>q</sub>"},
         ),
     ):
-        fig = px.imshow(
+        key = title
+        results[key] = fig = px.imshow(
             m,
             title=title,
             color_continuous_scale=colorscale,
@@ -1332,12 +1379,16 @@ def make_better_slides_plots_00(
         fig.update(layout_coloraxis_showscale=False)
         # crop whitespace
         fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+        trim_plotly_figure(fig)
         fig.show(renderer)
+    return results
 
 
 ## %%
 if DISPLAY_PLOTS:
-    make_better_slides_plots_00(model, renderer=RENDERER)
+    figs = make_better_slides_plots_00(model, renderer=RENDERER)
+    for k, fig in figs.items():
+        latex_figures[f"Decomposition-{k}"] = fig
 
 # %% [markdown]
 # # Back of the envelope math for sub-cubic
@@ -2927,10 +2978,70 @@ with torch.no_grad():
                             type(value), value, tb, capture_locals=True
                         ).format():
                             print(line, file=sys.stderr)
+
+
 # %%
 # @title export LaTeX figures
+@contextmanager
+def texify_title(fig: go.Figure):
+    orig_title = fig.layout.title.text  # type: ignore
+    new_title = None
+    if orig_title is not None and ("𝔼" in orig_title or r"$\mathbb{E}$" in orig_title):
+        print(f"Replacing 𝔼 in {orig_title}...")
+        new_title = orig_title.replace("𝔼", r"\mathbb{E}")
+        for word in ("None", "dim", "OV", "EQKE", ".diag"):
+            new_title = new_title.replace(word, r"\text{%s}" % word)
+        new_title = re.sub(r"<sub>([^<]*)</sub>", r"_{\1}", new_title)
+        new_title = re.sub(r"<sup>([^<]*)</sup>", r"^{\1}", new_title)
+        new_title = new_title.replace("{pos}", r"{\text{pos}}")
+        lines = new_title.split("<br>")
+        if len(lines) > 1:
+            lines = [r"\text{%s}" % lines[0]] + lines[1:]
+        elif ": " in lines[0]:
+            lines = lines[0].split(": ")
+            lines = [r"\text{%s: }%s" % (lines[0], ": ".join(lines[1:]))]
+        new_title = r"\\".join(lines)
+        new_title = f"${new_title}$"
+        print(new_title)
+    try:
+        # if new_title is not None:
+
+        yield fig
+    finally:
+        pass
+
+
 for k, fig in latex_figures.items():
-    if True or any(isinstance(trace, go.Heatmap) for trace in fig.data):
+    fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
+    if fig.layout.title.text is not None and (
+        "𝔼" in fig.layout.title.text or r"$\mathbb{E}$" in fig.layout.title.text
+    ):
+        print(f"Replacing 𝔼 in title of {k}...")
+        print("orig_title")
+        orig_title = fig.layout.title.text
+        new_title = orig_title.replace("𝔼", r"\mathbb{E}")
+        for word in ("None", "dim", "OV", "EQKE", ".diag"):
+            new_title = new_title.replace(word, r"\text{%s}" % word)
+        new_title = re.sub(r"<sub>([^<]*)</sub>", r"_{\1}", new_title)
+        new_title = re.sub(r"<sup>([^<]*)</sup>", r"^{\1}", new_title)
+        new_title = new_title.replace("{pos}", r"{\text{pos}}")
+        lines = new_title.split("<br>")
+        if len(lines) > 1:
+            lines = [r"\text{%s}" % lines[0]] + lines[1:]
+        elif ": " in lines[0]:
+            lines = lines[0].split(": ")
+            lines = [r"\text{%s: }%s" % (lines[0], ": ".join(lines[1:]))]
+        new_title = r"\\".join(lines)
+        new_title = f"${new_title}$"
+        print(new_title)
+        fig.update_layout(title_text=new_title)
+        fig.show("png")
+        for ext in (".pdf", ".svg"):
+            p = LATEX_FIGURE_PATH / f"{k}{ext}"
+            print(f"Saving {p}...")
+            fig.write_image(p)
+        fig.update_layout(title_text=orig_title)
+    elif True or any(isinstance(trace, go.Heatmap) for trace in fig.data):
         for ext in (".pdf", ".svg"):
             p = LATEX_FIGURE_PATH / f"{k}{ext}"
             print(f"Saving {p}...")

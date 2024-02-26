@@ -54,7 +54,7 @@ def key_to_command(key: str, prefix: str = "", postfix: str = "") -> Tuple[str, 
     return rf"\csname \detokenize{{{prefix}{key}}}\endcsname", True
 
 
-SupportedLaTeXType = Union[int, float, bool]
+SupportedLaTeXType = Union[int, float, bool, str]
 
 
 def to_latex_defs(values: dict[str, SupportedLaTeXType], sort: bool = True) -> str:
@@ -71,7 +71,7 @@ def to_latex_defs(values: dict[str, SupportedLaTeXType], sort: bool = True) -> s
         else:
             key, expand = key_to_command(key)
             expand = r"\expandafter" if expand else ""
-            if isinstance(value, int):
+            if isinstance(value, int) or isinstance(value, str):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")
             elif isinstance(value, float):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")

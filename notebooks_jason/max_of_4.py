@@ -2983,7 +2983,7 @@ with torch.no_grad():
 # %%
 # @title export LaTeX figures
 @contextmanager
-def texify_title(fig: go.Figure):
+def texify_title(fig: go.Figure, show: bool = False, renderer=None):
     orig_title = fig.layout.title.text  # type: ignore
     new_title = None
     if orig_title is not None and ("𝔼" in orig_title or r"$\mathbb{E}$" in orig_title):
@@ -3004,53 +3004,29 @@ def texify_title(fig: go.Figure):
         new_title = f"${new_title}$"
         print(new_title)
     try:
-        # if new_title is not None:
-
+        if new_title is not None:
+            fig.update_layout(title_text=new_title)
+            if show:
+                fig.show(renderer)
         yield fig
     finally:
-        pass
+        if new_title is not None:
+            fig.update_layout(title_text=orig_title)
 
 
 for k, fig in latex_figures.items():
     fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
-    if fig.layout.title.text is not None and (
-        "𝔼" in fig.layout.title.text or r"$\mathbb{E}$" in fig.layout.title.text
-    ):
-        print(f"Replacing 𝔼 in title of {k}...")
-        print("orig_title")
-        orig_title = fig.layout.title.text
-        new_title = orig_title.replace("𝔼", r"\mathbb{E}")
-        for word in ("None", "dim", "OV", "EQKE", ".diag"):
-            new_title = new_title.replace(word, r"\text{%s}" % word)
-        new_title = re.sub(r"<sub>([^<]*)</sub>", r"_{\1}", new_title)
-        new_title = re.sub(r"<sup>([^<]*)</sup>", r"^{\1}", new_title)
-        new_title = new_title.replace("{pos}", r"{\text{pos}}")
-        lines = new_title.split("<br>")
-        if len(lines) > 1:
-            lines = [r"\text{%s}" % lines[0]] + lines[1:]
-        elif ": " in lines[0]:
-            lines = lines[0].split(": ")
-            lines = [r"\text{%s: }%s" % (lines[0], ": ".join(lines[1:]))]
-        new_title = r"\\".join(lines)
-        new_title = f"${new_title}$"
-        print(new_title)
-        fig.update_layout(title_text=new_title)
-        fig.show("png")
-        for ext in (".pdf", ".svg"):
-            p = LATEX_FIGURE_PATH / f"{k}{ext}"
+    with texify_title(fig) as fig:
+        if True or any(isinstance(trace, go.Heatmap) for trace in fig.data):
+            for ext in (".pdf", ".svg"):
+                p = LATEX_FIGURE_PATH / f"{k}{ext}"
+                print(f"Saving {p}...")
+                fig.write_image(p)
+        else:
+            p = LATEX_FIGURE_PATH / f"{k}.tex"
             print(f"Saving {p}...")
-            fig.write_image(p)
-        fig.update_layout(title_text=orig_title)
-    elif True or any(isinstance(trace, go.Heatmap) for trace in fig.data):
-        for ext in (".pdf", ".svg"):
-            p = LATEX_FIGURE_PATH / f"{k}{ext}"
-            print(f"Saving {p}...")
-            fig.write_image(p)
-    else:
-        p = LATEX_FIGURE_PATH / f"{k}.tex"
-        print(f"Saving {p}...")
-        tikzplotly.save(p, fig)
-        print(fig.to_dict())
+            tikzplotly.save(p, fig)
+            print(fig.to_dict())
 # %%
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))

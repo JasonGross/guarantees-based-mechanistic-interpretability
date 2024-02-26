@@ -6,7 +6,7 @@ from jaxtyping import Float
 from transformer_lens import HookedTransformer
 import plotly.express as px
 
-from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
+from gbmi.exp_max_of_n.analysis import find_size_and_query_direction_no_figure
 
 
 @torch.no_grad()
@@ -208,7 +208,7 @@ def display_basic_interpretation(
             color_continuous_scale="Sunsetdark",
             labels={"x": QK["xaxis"], "y": QK["yaxis"]},
         ).show(renderer=renderer)
-        find_size_and_query_direction(
+        find_size_and_query_direction_no_figure(
             model, plot_heatmaps=True, renderer=renderer, colorscale="Picnic_r"
         )
 

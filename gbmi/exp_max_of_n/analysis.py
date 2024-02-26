@@ -28,7 +28,9 @@ from gbmi.verification_tools.decomp import factor_contribution
 @torch.no_grad()
 def find_size_and_query_direction(
     model: HookedTransformer, plot_heatmaps=False, renderer=None, **kwargs
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> Tuple[
+    Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Optional[dict[str, go.Figure]]
+]:
     """
     Approximates the size direction of the model.
     """
@@ -81,6 +83,8 @@ def find_size_and_query_direction(
         query_direction / query_direction.norm(),
     )
 
+    fig = None
+
     if plot_heatmaps:
         size_direction_resid, query_direction_resid = size_direction @ W_E + W_pos[
             -1
@@ -90,7 +94,7 @@ def find_size_and_query_direction(
             query_direction_resid @ W_K[0, 0, :, :],
         )
 
-        display_size_direction_stats(
+        fig = display_size_direction_stats(
             size_direction,
             query_direction,
             QK,
@@ -103,7 +107,17 @@ def find_size_and_query_direction(
             **kwargs,
         )
 
-    return size_direction, query_direction, size_query_singular_value.item()
+    return (size_direction, query_direction, size_query_singular_value.item()), fig
+
+
+@torch.no_grad()
+def find_size_and_query_direction_no_figure(
+    *args, **kwargs
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Approximates the size direction of the model.
+    """
+    return find_size_and_query_direction(*args, **kwargs)[0]
 
 
 @torch.no_grad()
@@ -111,7 +125,7 @@ def find_size_direction(model: HookedTransformer, **kwargs):
     """
     Approximates the size direction of the model.
     """
-    return find_size_and_query_direction(model, **kwargs)[0]
+    return find_size_and_query_direction_no_figure(model, **kwargs)[0]
 
 
 @torch.no_grad()
@@ -119,7 +133,7 @@ def find_query_direction(model: HookedTransformer, **kwargs):
     """
     Approximates the query direction of the model.
     """
-    return find_size_and_query_direction(model, **kwargs)[1]
+    return find_size_and_query_direction_no_figure(model, **kwargs)[1]
 
 
 @torch.no_grad()
@@ -195,7 +209,8 @@ def display_size_direction_stats(
     if scale_by_singular_value:
         U = U * S[None, :].sqrt()
         Vh = Vh * S[:, None].sqrt()
-    imshow(
+    results = {}
+    results["Attention"] = imshow(
         QK,
         title="Attention<br>(W_E + W_pos[-1]) @ W_Q @ W_K.T @ (W_E + W_pos.mean(dim=0)).T",
         xaxis="Key Token",
@@ -257,6 +272,7 @@ def display_size_direction_stats(
     fig.update_yaxes(range=[0, None], row=1, col=2)
     fig.update_yaxes(title_text="Key Token", row=1, col=3)
     fig.show(renderer)
+    results["Attention SVD"] = fig
 
     contribution_diff = None
     if include_contribution:
@@ -303,25 +319,34 @@ def display_size_direction_stats(
     )
     fig.update_layout(title="Directions in Token Space", showlegend=False)
     fig.show(renderer)
+    results["Directions in Token Space"] = fig
 
     # px.line({'size direction': training.to_numpy(size_direction)}, title="size direction in token space").show(renderer)
     # px.line({'query direction': training.to_numpy(query_direction)}, title="query direction in token space").show(renderer)
     if size_direction_resid is not None:
-        line(
+        fig = line(
             size_direction_resid,
             title="size direction in residual space",
             renderer=renderer,
         )
+        results["Size Direction in Residual Space"] = fig
     if query_direction_resid is not None:
-        line(
+        fig = line(
             query_direction_resid,
             title="query direction in residual space",
             renderer=renderer,
         )
+        results["Query Direction in Residual Space"] = fig
     if size_direction_QK is not None:
-        line(size_direction_QK, title="size direction in QK space", renderer=renderer)
+        fig = line(
+            size_direction_QK, title="size direction in QK space", renderer=renderer
+        )
+        results["Size Direction in QK Space"] = fig
     if query_direction_QK is not None:
-        line(query_direction_QK, title="query direction in QK space", renderer=renderer)
+        fig = line(
+            query_direction_QK, title="query direction in QK space", renderer=renderer
+        )
+        results["Query Direction in QK Space"] = fig
 
     reference_lines = []
     if contribution_diff is not None:
@@ -386,14 +411,16 @@ def display_size_direction_stats(
         ]
 
     size_direction_differences = size_direction[1:] - size_direction[:-1]
-    show_fits(
+    figs = show_fits(
         size_direction,
         name="Size Direction",
         fit_funcs=(fit_func for fit_func in fit_funcs if fit_func is not sigmoid_func),
         do_exclusions=do_exclusions,
         renderer=renderer,
     )
-    show_fits(
+    if figs is not None:
+        results.update(figs)
+    figs = show_fits(
         size_direction_differences,
         name="Size Direction Δ",
         reference_lines=reference_lines,
@@ -403,6 +430,8 @@ def display_size_direction_stats(
         do_exclusions=do_exclusions,
         renderer=renderer,
     )
+    if figs is not None:
+        results.update(figs)
 
     y_data = size_direction.detach().cpu().numpy()
     x_data = np.linspace(1, len(y_data), len(y_data))
@@ -469,6 +498,7 @@ def display_size_direction_stats(
                 rect=(0, 0.03, 1, 0.95)
             )  # To prevent overlap between suptitle and subplots
             plt.show()
+    return results
 
 
 @torch.no_grad()

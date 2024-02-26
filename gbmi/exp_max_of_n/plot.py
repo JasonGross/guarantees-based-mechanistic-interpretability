@@ -221,9 +221,11 @@ def display_basic_interpretation(
             labels={"x": QK["xaxis"], "y": QK["yaxis"]},
         )
         fig_qk.show(renderer=renderer)
-        find_size_and_query_direction(
+        _, figs = find_size_and_query_direction(
             model, plot_heatmaps=True, renderer=renderer, colorscale=QK_SVD_colorscale
         )
+        for k, fig in figs.items():
+            result[f"EQKE {k}"] = fig
     result["EQKE"] = fig_qk
 
     if include_uncentered:

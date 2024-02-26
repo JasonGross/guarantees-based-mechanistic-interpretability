@@ -8,7 +8,6 @@ import gbmi.exp_max_of_n.analysis
 import gbmi.analysis_tools.decomp
 import gbmi.verification_tools.decomp
 import gbmi.utils.lowrank
-import gbmi.exp_max_of_n.analysis
 import gbmi.exp_max_of_n.plot
 import gbmi.exp_max_of_n.train
 import gbmi.exp_max_of_n.verification
@@ -72,7 +71,7 @@ from gbmi.utils.memoshelve import memoshelve
 from gbmi.utils.latex_export import to_latex_defs
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
-    find_size_and_query_direction,
+    find_size_and_query_direction_no_figure,
 )
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
@@ -1145,10 +1144,17 @@ if DISPLAY_PLOTS:
     latex_figures["EVOU"] = figs["EVOU"]
     latex_figures["EVOU-centered"] = figs["EVOU-centered"]
     latex_figures["EQKP"] = figs["EQKP"]
+    latex_figures["EQKE-SVD"] = figs["EQKE Attention SVD"]
+    del figs["EQKE Attention SVD"]
     EUPU_keys = [k for k in figs.keys() if k.startswith("irrelevant_")]
     assert len(EUPU_keys) == 1, f"EUPU_keys: {EUPU_keys}"
     latex_figures["EUPU"] = figs[EUPU_keys[0]]
+    del figs[EUPU_keys[0]]
     latex_figures["PVOU"] = figs["irrelevant"]
+    del figs["irrelevant"]
+    unused_keys = [k for k in figs if k not in latex_figures]
+    if unused_keys:
+        print(f"Unused keys: {unused_keys}")
 
 
 # %%
@@ -1638,7 +1644,7 @@ def decompose_EQKE_error(
     size_direction,
     query_direction,
     size_query_singular_value,
-) = find_size_and_query_direction(model)
+) = find_size_and_query_direction_no_figure(model)
 (second_key_direction, second_key_singular_value), (
     second_query_direction,
     second_query_singular_value,

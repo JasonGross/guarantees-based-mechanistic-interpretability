@@ -16,13 +16,15 @@ from gbmi.verification_tools.l1h1 import all_EVOU
 
 
 def imshow(tensor, renderer=None, xaxis="", yaxis="", colorscale="RdBu", **kwargs):
-    px.imshow(
+    fig = px.imshow(
         utils.to_numpy(tensor),
         color_continuous_midpoint=0.0,
         color_continuous_scale=colorscale,
         labels={"x": xaxis, "y": yaxis},
         **kwargs,
-    ).show(renderer)
+    )
+    fig.show(renderer)
+    return fig
 
 
 def line(
@@ -46,20 +48,25 @@ def line(
     if hovertemplate is not None:
         fig.update_traces(hovertemplate=hovertemplate)
     fig.show(renderer)
+    return fig
 
 
 def scatter(x, y, xaxis="", yaxis="", caxis="", renderer=None, **kwargs):
     x = utils.to_numpy(x)
     y = utils.to_numpy(y)
-    px.scatter(
+    fig = px.scatter(
         y=y, x=x, labels={"x": xaxis, "y": yaxis, "color": caxis}, **kwargs
-    ).show(renderer)
+    )
+    fig.show(renderer)
+    return fig
 
 
 def hist(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
-    px.histogram(
+    fig = px.histogram(
         utils.to_numpy(tensor), labels={"x": xaxis, "y": yaxis}, **kwargs
-    ).show(renderer)
+    )
+    fig.show(renderer)
+    return fig
 
 
 def summarize(

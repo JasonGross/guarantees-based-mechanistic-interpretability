@@ -52,6 +52,7 @@ from typing import (
     ClassVar,
     Collection,
     Literal,
+    Sequence,
     Optional,
     Tuple,
     Union,
@@ -79,7 +80,7 @@ from gbmi.utils.memoshelve import memoshelve
 from gbmi.utils.latex_export import to_latex_defs
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
-    find_size_and_query_direction_no_figure,
+    find_size_and_query_direction,
 )
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
@@ -320,6 +321,9 @@ all_tokens_dataset = SequenceDataset(
 # %%
 batch_size = 4096  # 16_384 # 8182
 latex_values["BruteForceBatchSize"] = batch_size
+latex_values["BruteForceNumBatches"] = int(
+    math.ceil(len(all_tokens_dataset) / batch_size)
+)
 # Resetting the DataLoader without shuffle for consistent processing
 # data_loader = DataLoader(all_tokens_dataset, batch_size=batch_size, shuffle=False)
 
@@ -1049,19 +1053,22 @@ def count_unaccounted_for_by_cubic_convexity_sequences(
     largest_wrong_logit: Float[
         Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
     ],
-) -> int:
-    """Computes the number of sequences that we are leaving on the table by pessimizing over position"""
+) -> Tuple[int, Integer[Tensor, "num_wrong_toks"]]:  # noqa: F821
+    """Computes the number of sequences that we are leaving on the table by pessimizing over position, and returns the query tokens"""
     d_vocab_q, d_vocab_max, _, n_ctx = largest_wrong_logit.shape
     unaccounted_for = ein.array(
         lambda max_tok: largest_wrong_logit[max_tok, max_tok, max_tok, 0],
         sizes=[d_vocab_q],
     )
     assert not unaccounted_for.isnan().any(), f"unaccounted_for: {unaccounted_for}"
-    unaccounted_for_count = 0
-    for tok in range(d_vocab_q):
-        if unaccounted_for[tok] > 0:
-            unaccounted_for_count += (tok + 1) ** n_ctx - tok**n_ctx
-    return unaccounted_for_count
+    unaccounted_for_toks = torch.arange(d_vocab_q)[unaccounted_for > 0]
+    unaccounted_for_count = (
+        ((unaccounted_for_toks + 1) ** n_ctx - unaccounted_for_toks**n_ctx).sum().item()
+    )
+    assert isinstance(
+        unaccounted_for_count, int
+    ), f"unaccounted_for_count: {unaccounted_for_count} ({type(unaccounted_for_count)})"
+    return unaccounted_for_count, unaccounted_for_toks.long()
 
 
 # %%
@@ -1126,12 +1133,19 @@ print(
 )
 prooftime += time.time() - starttime
 print(f"Proof time: {prooftime}s")
-cubic_dropped_sequences = count_unaccounted_for_by_cubic_convexity_sequences(
-    largest_wrong_logit_cubic
+cubic_dropped_sequences, wrong_toks_full_attention = (
+    count_unaccounted_for_by_cubic_convexity_sequences(largest_wrong_logit_cubic)
 )
 cubic_dropped_sequences_frac = cubic_dropped_sequences / total_sequences
 print(
-    f"Note that we are leaving {cubic_dropped_sequences} sequences on the floor, which is {cubic_dropped_sequences_frac * 100}% of the total"
+    f"Note that we are leaving {cubic_dropped_sequences} sequences on the floor, which is {cubic_dropped_sequences_frac * 100}% of the total ({wrong_toks_full_attention.tolist()})"
+)
+assert (
+    cubic_dropped_sequences
+    == (wrong_toks_full_attention.max().item() + 1) ** model.cfg.n_ctx
+), f"LaTeX will be wrong in 4-results.tex: {cubic_dropped_sequences} != ({wrong_toks_full_attention.max().item()} + 1) ** {model.cfg.n_ctx}, {wrong_toks_full_attention.tolist()}"
+latex_values["CubicLargestWrongTokenFullAttention"] = (
+    wrong_toks_full_attention.max().item()
 )
 latex_values["CubicAccuracyFloat"] = accuracy_bound_cubic
 latex_values["CubicCorrectCount"] = correct_count_cubic
@@ -1394,9 +1408,14 @@ if DISPLAY_PLOTS:
 # # Back of the envelope math for sub-cubic
 # %%
 if DISPLAY_PLOTS:
-    hist_EVOU_max_logit_diff(model, renderer=RENDERER)
+    latex_figures["EVOU-hist-max-row-diff"] = hist_EVOU_max_logit_diff(
+        model, renderer=RENDERER
+    )
     for duplicate_by_sequence_count in [False, True]:
-        hist_EVOU_max_minus_diag_logit_diff(
+        key = "EVOU-hist-min-above-diag"
+        if duplicate_by_sequence_count:
+            key += "-dup-by-seq-count"
+        latex_figures[key] = hist_EVOU_max_minus_diag_logit_diff(
             model,
             duplicate_by_sequence_count=duplicate_by_sequence_count,
             renderer=RENDERER,
@@ -1695,7 +1714,7 @@ def decompose_EQKE_error(
     size_direction,
     query_direction,
     size_query_singular_value,
-) = find_size_and_query_direction_no_figure(model)
+), _ = find_size_and_query_direction(model)
 (second_key_direction, second_key_singular_value), (
     second_query_direction,
     second_query_singular_value,
@@ -1720,9 +1739,46 @@ def decompose_EQKE_error(
     W_K_U=W_K_U,
     sanity_check=True,
 )
+
+
 # %% [markdown]
 # # more plots
 # %%
+@torch.no_grad()
+def display_EQKE_SVD_analysis(
+    model: HookedTransformer, renderer: Optional[str] = None
+) -> dict[str, go.Figure]:
+    (
+        size_direction,
+        query_direction,
+        size_query_singular_value,
+    ), _ = find_size_and_query_direction(model)
+    (second_key_direction, second_key_singular_value), (
+        second_query_direction,
+        second_query_singular_value,
+    ) = find_second_singular_contributions(model, size_direction, query_direction)
+    (W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
+        model.W_Q[0, 0]
+    )
+    (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
+        model.W_K[0, 0]
+    )
+    (
+        (EQKE_query_key, err_accumulator),
+        EQKE_pos_err,
+        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
+    ) = decompose_EQKE_error(
+        model,
+        key_direction=size_direction,
+        query_direction=query_direction,
+        second_key_direction=second_key_direction,
+        second_query_direction=second_query_direction,
+        W_Q_U=W_Q_U,
+        W_K_U=W_K_U,
+        sanity_check=True,
+    )
+
+
 if DISPLAY_PLOTS:
     px.imshow(
         (
@@ -2986,16 +3042,35 @@ with torch.no_grad():
 def texify_title(fig: go.Figure, show: bool = False, renderer=None):
     orig_title = fig.layout.title.text  # type: ignore
     new_title = None
-    if orig_title is not None and ("𝔼" in orig_title or r"$\mathbb{E}$" in orig_title):
+    if orig_title is not None and (
+        any(ch in orig_title for ch in "𝔼x̄") or r"$\mathbb{E}$" in orig_title
+    ):
         print(f"Replacing 𝔼 in {orig_title}...")
-        new_title = orig_title.replace("𝔼", r"\mathbb{E}")
-        for word in ("None", "dim", "OV", "EQKE", ".diag"):
+        new_title = (
+            orig_title.replace("𝔼", r"\mathbb{E}")
+            .replace("x̄", r"\overline{x}")
+            .replace("±", r"\pm ")
+            .replace("σ", r"\sigma ")
+        )
+        for word in (
+            "None",
+            "dim",
+            "OV",
+            "EQKE",
+            "EVOU",
+            ".diag",
+            " (weighted by sequence count)",
+            " (excluding diagonal)",
+            "; range",
+            "max",
+            "min",
+        ):
             new_title = new_title.replace(word, r"\text{%s}" % word)
         new_title = re.sub(r"<sub>([^<]*)</sub>", r"_{\1}", new_title)
         new_title = re.sub(r"<sup>([^<]*)</sup>", r"^{\1}", new_title)
         new_title = new_title.replace("{pos}", r"{\text{pos}}")
         lines = new_title.split("<br>")
-        if len(lines) > 1:
+        if len(lines) > 1 and ":=" not in lines[0]:
             lines = [r"\text{%s}" % lines[0]] + lines[1:]
         elif ": " in lines[0]:
             lines = lines[0].split(": ")

@@ -11,7 +11,7 @@ from gbmi.analysis_tools.plot import weighted_histogram
 from gbmi.analysis_tools.utils import pm_round
 
 from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
-from gbmi.verification_tools.l1h1 import all_EQKE, all_EVOU
+from gbmi.verification_tools.l1h1 import all_EQKE, all_EVOU, all_PVOU
 
 
 @torch.no_grad()
@@ -311,7 +311,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
     duplicate_by_sequence_count: bool = True,
     renderer: Optional[str] = None,
     num_bins: Optional[int] = None,
-):
+) -> go.Figure:
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
     """
@@ -333,7 +333,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
     min, max = max_logit_minus_diag.min().item(), max_logit_minus_diag.max().item()
     mid, spread = (min + max) / 2, (max - min) / 2
     title = (
-        f"EVOU := W_E @ W_V @ W_O @ W_U"
+        f"EVOU := W<sub>E</sub>W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>"
         f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
         f"<br>(EVOU - EVOU.diag()[:,None]).max(dim=-1) (excluding diagonal)"
         f"<br>x̄±σ: {pm_round(mean, std)}; range: {pm_round(mid, spread)}"
@@ -346,9 +346,13 @@ def hist_EVOU_max_minus_diag_logit_diff(
         )
     else:
         fig = weighted_histogram(
-            max_logit_minus_diag.numpy(), duplication_factors.numpy()
+            max_logit_minus_diag.numpy(),
+            duplication_factors.numpy(),
+            title=title,
+            labels={"x": "logit - diag", "y": "count * # sequences with given max"},
         )
     fig.show(renderer=renderer)
+    return fig
 
 
 @torch.no_grad()

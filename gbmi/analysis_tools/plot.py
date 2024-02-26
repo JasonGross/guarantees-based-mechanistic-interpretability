@@ -12,7 +12,7 @@ from transformer_lens import HookedTransformer, utils as utils
 import gbmi.analysis_tools
 from gbmi.analysis_tools.fit import linear_func
 from gbmi.analysis_tools.utils import pm_range, pm_mean_std, pm_round
-from gbmi.verification_tools.l1h1 import all_EVOU
+from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 
 
 def imshow(tensor, renderer=None, xaxis="", yaxis="", colorscale="RdBu", **kwargs):
@@ -204,17 +204,25 @@ def summarize(
     return res
 
 
-def hist_EVOU_max_logit_diff(model: HookedTransformer, renderer: Optional[str] = None):
+def hist_EVOU_max_logit_diff(
+    model: HookedTransformer, mean_PVOU: bool = False, renderer: Optional[str] = None
+) -> go.Figure:
     EVOU = all_EVOU(model)
+    WE_str = "W<sub>E</sub>"
+    if mean_PVOU:
+        EVOU += all_PVOU(model).mean(dim=0)
+        WE_str = "(W<sub>E</sub> + 𝔼<sub>p</sub>W<sub>pos</sub>[p])"
     max_logit_diff = EVOU.max(dim=-1).values - EVOU.min(dim=-1).values
     mean, std = max_logit_diff.mean().item(), max_logit_diff.std().item()
     min, max = max_logit_diff.min().item(), max_logit_diff.max().item()
     mid, spread = (min + max) / 2, (max - min) / 2
-    px.histogram(
+    fig = px.histogram(
         {"": max_logit_diff},
-        title=f"EVOU := W_E @ W_V @ W_O @ W_U<br>EVOU.max(dim=-1) - EVOU.min(dim=-1)<br>x̄±σ: {pm_round(mean, std)}; range: {pm_round(mid, spread)}",
+        title=f"EVOU := {WE_str}W<sub>V</sub>W<sub>O</sub>W<sub>U</sub><br>max<sub>i</sub>EVOU[:,i] - min<sub>j</sub>EVOU[:,j]<br>x̄±σ: {pm_round(mean, std)}; range: {pm_round(mid, spread)}",
         labels={"value": "logit diff", "variable": ""},
-    ).show(renderer)
+    )
+    fig.show(renderer)
+    return fig
 
 
 def weighted_histogram(data, weights, num_bins: Optional[int] = None, **kwargs):

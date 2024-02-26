@@ -41,6 +41,7 @@ import dataclasses
 import math
 from scipy import stats
 from collections import defaultdict
+import tikzplotly
 from typing import (
     Callable,
     ClassVar,
@@ -129,6 +130,10 @@ RENDERER: Optional[str] = "png"  # @param ["png", None]
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
+LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
+LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
+LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "values.tex"
+LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 # %%
 latex_values: dict[str, Union[int, float]] = {}
 latex_figures: dict[str, go.Figure] = {}
@@ -2914,4 +2919,13 @@ with torch.no_grad():
                             type(value), value, tb, capture_locals=True
                         ).format():
                             print(line, file=sys.stderr)
+# %%
+# @title export LaTeX figures
+for k, fig in latex_figures.items():
+    p = LATEX_FIGURE_PATH / f"{k}.tex"
+    print(f"Saving {p}...")
+    tikzplotly.save(p, fig)
+# %%
+with open(LATEX_VALUES_PATH, "w") as f:
+    f.write(to_latex_defs(latex_values))
 # %%

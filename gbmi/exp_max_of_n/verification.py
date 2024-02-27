@@ -774,7 +774,7 @@ class LargestWrongLogitQuadraticConfig:
         )
         if self.EUPU_handling == "global_max_diff_exact":
             EUPU_per_query_max_logit_diff[:] = (
-                EUPU_per_query.max(dim=0).values - EUPU_per_query.min(dim=0).values
+                EUPU_per_query.max() - EUPU_per_query.min()
             )
         return EUPU_mean_query, EUPU_per_query_max_logit_diff
 

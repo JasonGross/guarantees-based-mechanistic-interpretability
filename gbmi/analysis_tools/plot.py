@@ -1,7 +1,9 @@
 from pathlib import Path
-from typing import Callable, Collection, Optional, Union
+from typing import Callable, Collection, Optional, Tuple, Union
 import imageio
 import numpy as np
+from torch import Tensor
+from jaxtyping import Float
 from matplotlib import pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
@@ -206,7 +208,7 @@ def summarize(
 
 def hist_EVOU_max_logit_diff(
     model: HookedTransformer, mean_PVOU: bool = False, renderer: Optional[str] = None
-) -> go.Figure:
+) -> Tuple[go.Figure, Float[Tensor, "d_vocab"]]:  # noqa: F821
     EVOU = all_EVOU(model)
     WE_str = "W<sub>E</sub>"
     if mean_PVOU:
@@ -222,7 +224,7 @@ def hist_EVOU_max_logit_diff(
         labels={"value": "logit diff", "variable": ""},
     )
     fig.show(renderer)
-    return fig
+    return fig, max_logit_diff
 
 
 def weighted_histogram(data, weights, num_bins: Optional[int] = None, **kwargs):

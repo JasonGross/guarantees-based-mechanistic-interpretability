@@ -1408,17 +1408,42 @@ if DISPLAY_PLOTS:
 # # Back of the envelope math for sub-cubic
 # %%
 if DISPLAY_PLOTS:
-    latex_figures["EVOU-hist-max-row-diff"] = hist_EVOU_max_logit_diff(
+    latex_figures["EVOU-hist-max-row-diff"], max_logit_diff = hist_EVOU_max_logit_diff(
         model, renderer=RENDERER
     )
+    latex_values["EVOUMeanMaxRowDiffFloat"] = max_logit_diff.mean().item()
     for duplicate_by_sequence_count in [False, True]:
         key = "EVOU-hist-min-above-diag"
         if duplicate_by_sequence_count:
             key += "-dup-by-seq-count"
-        latex_figures[key] = hist_EVOU_max_minus_diag_logit_diff(
-            model,
-            duplicate_by_sequence_count=duplicate_by_sequence_count,
-            renderer=RENDERER,
+        latex_figures[key], (max_logit_minus_diag, duplication_factors) = (
+            hist_EVOU_max_minus_diag_logit_diff(
+                model,
+                duplicate_by_sequence_count=duplicate_by_sequence_count,
+                renderer=RENDERER,
+            )
+        )
+        mean = np.average(
+            max_logit_minus_diag.numpy(), weights=duplication_factors.numpy()
+        )
+        std = np.average(
+            (max_logit_minus_diag - mean).numpy() ** 2,
+            weights=duplication_factors.numpy(),
+        )
+        num_std = 1
+        most_below_value = int(mean + num_std * std)
+        frac_below = (
+            duplication_factors[max_logit_minus_diag <= most_below_value].sum()
+            / duplication_factors.sum()
+        ).item()
+        value_key = "".join(
+            v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
+        )
+        latex_values[value_key + "MostBelowValue"] = most_below_value
+        latex_values[value_key + "MostBelowValueNumStd"] = num_std
+        latex_values[value_key + "MostBelowValueSequenceFracFloat"] = frac_below
+        print(
+            f"{key}: most ({frac_below*100}%) sequences are <= {most_below_value} (based on + {num_std} std)"
         )
 
 

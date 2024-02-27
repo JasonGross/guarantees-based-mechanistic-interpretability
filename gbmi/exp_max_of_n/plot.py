@@ -311,7 +311,9 @@ def hist_EVOU_max_minus_diag_logit_diff(
     duplicate_by_sequence_count: bool = True,
     renderer: Optional[str] = None,
     num_bins: Optional[int] = None,
-) -> go.Figure:
+) -> Tuple[
+    go.Figure, Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]]  # noqa: F821
+]:
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
     """
@@ -352,7 +354,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
             labels={"x": "logit - diag", "y": "count * # sequences with given max"},
         )
     fig.show(renderer=renderer)
-    return fig
+    return fig, (max_logit_minus_diag, duplication_factors)
 
 
 @torch.no_grad()

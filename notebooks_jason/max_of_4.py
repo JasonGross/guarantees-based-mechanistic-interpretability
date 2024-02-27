@@ -1884,6 +1884,9 @@ def display_EQKE_SVD_analysis(
         (EQKE_err.max(dim=-1).values - EQKE_err.min(dim=-1).values).max().item()
     )
     results_float["EQKEErrMaxAbsFloat"] = EQKE_err.abs().max().item()
+    results_float["EQKEErrMeanDimZeroNormFloat"] = EQKE_err.mean(dim=0).norm().item()
+    for k in ("EQKEErrMaxRowDiff", "EQKEErrMaxAbs", "EQKEErrMeanDimZeroNorm"):
+        print(f"{k}: {results_float[k]}")
     zmax = EQKE_err.abs().max().item()
     fig = px.imshow(
         EQKE_err.numpy(),

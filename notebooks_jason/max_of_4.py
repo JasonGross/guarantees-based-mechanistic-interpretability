@@ -2057,8 +2057,7 @@ if DISPLAY_PLOTS:
 # random resampling of EQKE_err
 @torch.no_grad()
 def resample_EQKE_err(
-    model: HookedTransformer,
-    *,
+    *ms: Tuple[torch.Tensor, Tuple[str, str]],
     QK_colorscale: str = "Plasma",
     QK_SVD_colorscale: str = "Picnic_r",
     seed: int = 1234,
@@ -2067,43 +2066,8 @@ def resample_EQKE_err(
 ) -> Tuple[dict[str, go.Figure], dict[str, float]]:
     results = {}
     results_float = {}
-    (
-        size_direction,
-        query_direction,
-        size_query_singular_value,
-    ), _ = find_size_and_query_direction(model)
-    (second_key_direction, second_key_singular_value), (
-        second_query_direction,
-        second_query_singular_value,
-    ) = find_second_singular_contributions(model, size_direction, query_direction)
-    (W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
-        model.W_Q[0, 0]
-    )
-    (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
-        model.W_K[0, 0]
-    )
-    (
-        (EQKE_query_key, err_accumulator),
-        EQKE_pos_err,
-        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-    ) = decompose_EQKE_error(
-        model,
-        key_direction=size_direction,
-        query_direction=query_direction,
-        second_key_direction=second_key_direction,
-        second_query_direction=second_query_direction,
-        W_Q_U=W_Q_U,
-        W_K_U=W_K_U,
-        sanity_check=True,
-    )
-
-    ms = (
-        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>"),
-        (W_Q_err, "Q<sup>⟂</sup>"),
-        (W_K_errT, "K<sup>⟂</sup>"),
-        (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>"),
-    )
-    for m, s in ms:
+    EQKE_err_exact = reduce(torch.matmul, [m for m, s in ms])
+    for m, (title, fig_key) in ms:
         m_numpy = m.flatten().numpy()
         edges = np.histogram_bin_edges(m_numpy, bins="auto")
         counts, _ = np.histogram(m_numpy, bins=edges)
@@ -2115,18 +2079,23 @@ def resample_EQKE_err(
         fig = px.histogram(
             {"": m_numpy},
             nbins=len(edges) - 1,
-            title=s,
+            title=title,
             labels={"variable": "", "value": "matrix element value"},
         )
+        # f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})"
         fig.add_scatter(
             x=bin_centers,
             y=pdf_scaled,
             mode="lines",
-            name=f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})",
+            name=r"$\mathcal{N}(%s)$"
+            % pm_round(m.mean().item(), m.std().item(), sep=", "),
         )
-        fig.show(RENDERER)
+        results[fig_key] = fig
+        fig.show(renderer)
     # what if we randomize the order of all matrices without replacement?
     torch.manual_seed(seed)
+    results_float["ResampleEQKEErrSeed"] = seed
+    results_float["ResampleEQKEErrNumSamples"] = nsamples
     row_diffs = []
     max_row_diffs = []
     for _ in range(nsamples):
@@ -2139,6 +2108,8 @@ def resample_EQKE_err(
     row_diffs = torch.stack(row_diffs)
     max_row_diffs = torch.tensor(max_row_diffs)
     print(f"max row diff (n = {nsamples}): {pm_mean_std(max_row_diffs)}")
+    results_float["ResampleEQKEErrMeanFloat"] = max_row_diffs.mean().item()
+    results_float["ResampleEQKEErrStdFloat"] = max_row_diffs.std().item()
     # print(f"row diff: {pm_mean_std(row_diffs)}")
     # sampling from normal
     row_diffs = []
@@ -2156,12 +2127,22 @@ def resample_EQKE_err(
         f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})" for m, s in ms
     )
     print(f"max row diff (n = {nsamples}, m ~ {m_descr}): {pm_mean_std(max_row_diffs)}")
+    results_float["ResampleNormalEQKEErrMeanFloat"] = max_row_diffs.mean().item()
+    results_float["ResampleNormalEQKEErrStdFloat"] = max_row_diffs.std().item()
     # print(f"row diff: {pm_mean_std(row_diffs)}")
     return results, results_float
 
 
 if DISPLAY_PLOTS:
-    figs, values = resample_EQKE_err(model, renderer=RENDERER)
+    figs, values = resample_EQKE_err(
+        (W_E_query_err2, ("E<sub>q,2</sub><sup>⟂</sup>", "WEqqPerp-hist")),
+        (W_Q_err, ("Q<sup>⟂</sup>", "WQqPerp-hist")),
+        (W_K_errT, ("K<sup>⟂</sup>", "WKkPerp-hist")),
+        (W_E_key_err2T, ("E<sub>k,2</sub><sup>⟂</sup>", "WEkkPerp-hist")),
+        renderer=RENDERER,
+    )
+    latex_figures.update(figs)
+    latex_values.update(values)
 
 
 # %%
@@ -2976,6 +2957,8 @@ with torch.no_grad():
     for use_exact_EQKE in (False, True):
         # for svd_EUPU in (False, True):
         descr = "exact-EQKE" if use_exact_EQKE else ""
+        filedescr = "--exact-EQKE" if use_exact_EQKE else ""
+        latexdescr = "ExactEQKE" if use_exact_EQKE else ""
         with memoshelve(
             (
                 lambda cfg: (
@@ -3013,6 +2996,7 @@ with torch.no_grad():
             ]
 
         for tricks, min_gaps in min_gaps_lists[use_exact_EQKE]:
+            postkey = tricks.short_description(latex=True) + latexdescr
             print(f"==========={descr}=============================\nTricks: {tricks}")
             starttime = time.time()
             prooftime = 0.0
@@ -3035,9 +3019,15 @@ with torch.no_grad():
             )
             try:
                 print(f"err_upper_bound: {err_upper_bound.item()}")
+                latex_values[f"SubcubicErrUpperBound{postkey}Float"] = (
+                    err_upper_bound.item()
+                )
             except Exception:
                 # print(f"err_upper_bound: {err_upper_bound}")
-                print(f"err_upper_bound.max(): {err_upper_bound.max()}")
+                print(f"err_upper_bound.max(): {err_upper_bound.max().item()}")
+                latex_values[f"SubcubicErrUpperBoundMax{postkey}Float"] = (
+                    err_upper_bound.max().item()
+                )
 
             if use_exact_EQKE:
                 print(f"Complexity of using exact EQKE: O(d_vocab^2 d_model)")
@@ -3127,11 +3117,17 @@ with torch.no_grad():
             print(
                 f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
             )
+            latex_values[f"SubcubicAccuracy{postkey}Float"] = accuracy_bound
             prooftime += time.time() - starttime
             print(f"Proof time: {prooftime}s")
+            latex_values[f"SubcubicProofTime{postkey}Float"] = prooftime
             left_behind = count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
             print(
                 f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%})"
+            )
+            latex_values[f"SubcubicDroppedSequences{postkey}"] = left_behind
+            latex_values[f"SubcubicDroppedSequencesFrac{postkey}Float"] = (
+                left_behind / total_sequences
             )
 
         if DISPLAY_PLOTS:
@@ -3162,18 +3158,21 @@ with torch.no_grad():
                         ) ** n_copies_nonmax * math.comb(
                             model.cfg.n_ctx - 1, n_copies_nonmax
                         )
-            for _, v in min_gaps_lists[use_exact_EQKE]:
+            for tricks, v in min_gaps_lists[use_exact_EQKE]:
+                postkey = tricks.short_description(latex=False) + filedescr
                 v = v.flatten().detach().cpu()
                 if v.max().item() == 1:
                     print(f"All gaps are: {set(v.numpy())}")
                     continue
                 try:
-                    weighted_histogram(
+                    fig = weighted_histogram(
                         v.numpy(),
                         weights.flatten().detach().numpy(),
                         labels={"x": "gap", "y": "count * # sequences"},
                         num_bins=v.max().item(),
-                    ).show(RENDERER)
+                    )
+                    latex_figures[f"SubcubicGapHistogram{postkey}"] = fig
+                    fig.show(RENDERER)
                 except Exception as e:
                     etype, value, tb = sys.exc_info()
                     if value is None:

@@ -171,6 +171,10 @@ checkpoints/
 *~
 /frames/*
 notebooks_jason/frames/*
+notebooks_jason/max_of_4/figures/*.pdf
+notebooks_jason/max_of_4/figures/*.svg
+notebooks_jason/max_of_4/figures/*.tex
+notebooks_jason/max_of_4/values.tex
 .DS_Store
 *.key
 

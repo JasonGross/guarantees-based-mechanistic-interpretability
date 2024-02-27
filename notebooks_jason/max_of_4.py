@@ -3004,7 +3004,7 @@ with torch.no_grad():
                 for cfg in tqdm(
                     all_configs,
                     position=0,
-                    desc="trick cfg",
+                    desc=f"trick cfg {descr}".strip(),
                 )
                 if cfg.attention_error_handling == "max_diff_exact"
                 or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway

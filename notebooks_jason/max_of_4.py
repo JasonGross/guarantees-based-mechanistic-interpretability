@@ -2763,6 +2763,7 @@ def find_min_gaps(
         0
     ].attn.attn_scale,
     position: Optional[int] = None,
+    leave: Optional[bool] = None,
     **compute_largest_wrong_logit_quadratic_kwargs,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     """
@@ -2777,7 +2778,9 @@ def find_min_gaps(
         EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
     if EQKE_err_upper_bound.ndim < 1:
         EQKE_err_upper_bound = EQKE_err_upper_bound[None]
-    for min_gap in tqdm(list(reversed(range(1, d_vocab_k))), position=position):
+    for min_gap in tqdm(
+        list(reversed(range(1, d_vocab_k))), position=position, leave=leave
+    ):
         min_right_attention: Float[
             Tensor, "d_vocab_q d_vocab_max n_ctx_copies_nonmax"  # noqa: F722
         ] = compute_min_right_attention_quadratic(EQKE, min_gap=min_gap)
@@ -2822,6 +2825,7 @@ def find_min_gaps_with_EQKE(
         0
     ].attn.attn_scale,
     position: Optional[int] = None,
+    leave: Optional[bool] = None,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     (
         (EQKE_query_key, err_accumulator),
@@ -2858,6 +2862,7 @@ def find_min_gaps_with_EQKE(
         tricks=tricks,
         attn_scale=attn_scale,
         position=position,
+        leave=leave,
         W_EP=W_EP,
         W_U=W_U,
         W_EP_direction=W_EP_direction,
@@ -2979,6 +2984,7 @@ with torch.no_grad():
                         use_exact_EQKE=use_exact_EQKE,
                         attn_scale=model.blocks[0].attn.attn_scale,
                         position=1,
+                        leave=(cfg is all_configs[-1]),
                     ),
                 )
             ),

@@ -1787,8 +1787,13 @@ def decompose_EQKE_error(
 # %%
 @torch.no_grad()
 def display_EQKE_SVD_analysis(
-    model: HookedTransformer, renderer: Optional[str] = None
-) -> dict[str, go.Figure]:
+    model: HookedTransformer,
+    QK_colorscale: str = "Plasma",
+    QK_SVD_colorscale: str = "Picnic_r",
+    renderer: Optional[str] = None,
+) -> Tuple[dict[str, go.Figure], dict[str, float]]:
+    results = {}
+    results_float = {}
     (
         size_direction,
         query_direction,
@@ -1818,107 +1823,158 @@ def display_EQKE_SVD_analysis(
         W_K_U=W_K_U,
         sanity_check=True,
     )
+    EQKE_exact = (
+        EQKE_query_key
+        + err_accumulator
+        + W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    )
+    U, S, Vh = torch.linalg.svd(EQKE_exact)
+    results_float["EQKEFirstSingularFloat"] = S[0].item()
+    results_float["EQKESecondSingularFloat"] = S[1].item()
+    results_float["EQKEThirdSingularFloat"] = S[2].item()
 
-
-if DISPLAY_PLOTS:
-    px.imshow(
+    fig = px.imshow(
         (
             EQKE_query_key
             + err_accumulator
             + W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
         ).numpy(),
-        color_continuous_scale="plasma",
+        color_continuous_scale=QK_colorscale,
         color_continuous_midpoint=0,
         title="EQKE",
         labels={"x": "key token", "y": "query token"},
-    ).show(RENDERER)
-    px.imshow(
+    )
+    results["EQKE"] = fig
+    fig.show(renderer)
+    fig = px.imshow(
         EQKE_query_key.numpy(),
         title="EQKE<sub>1</sub>",
-        color_continuous_scale="plasma",
+        color_continuous_scale=QK_colorscale,
         color_continuous_midpoint=0,
-    ).show(RENDERER)
-    px.imshow(
+    )
+    results["EQKE1"] = fig
+    fig.show(renderer)
+    fig = px.imshow(
         err_accumulator.numpy(),
         title="err_accumulator",
-        color_continuous_scale="plasma",
+        color_continuous_scale=QK_colorscale,
         color_continuous_midpoint=0,
-    ).show(RENDERER)
-    px.imshow(
+    )
+    results["err_accumulator"] = fig
+    fig.show(renderer)
+    fig = px.imshow(
         (EQKE_query_key + err_accumulator).numpy(),
         title="EQKE<sub>2</sub>",
-        color_continuous_scale="plasma",
+        color_continuous_scale=QK_colorscale,
         color_continuous_midpoint=0,
-    ).show(RENDERER)
-    px.imshow(
+    )
+    results["EQKE2"] = fig
+    fig.show(renderer)
+    fig = px.imshow(
         EQKE_pos_err.numpy(),
+        color_continuous_scale=QK_colorscale,
+        color_continuous_midpoint=0,
         title="(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub> - 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
-    ).show(RENDERER)
-    zmax = (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).abs().max().item()
-    px.imshow(
-        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).numpy(),
+    )
+    results["EQKE_pos_err"] = fig
+    fig.show(renderer)
+    EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    results_float["EQKEErrMaxRowDiffFloat"] = (
+        (EQKE_err.max(dim=-1).values - EQKE_err.min(dim=-1).values).max().item()
+    )
+    results_float["EQKEErrMaxAbsFloat"] = EQKE_err.abs().max().item()
+    zmax = EQKE_err.abs().max().item()
+    fig = px.imshow(
+        EQKE_err.numpy(),
         title="EQKE_err",
         labels={"x": "key token", "y": "query token"},
+        color_continuous_scale=QK_colorscale,
         color_continuous_midpoint=0,
         zmax=zmax,
         zmin=-zmax,
-    ).show(RENDERER)
-    analyze_svd(
-        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T),
-        descr="EQKE_err",
-        renderer=RENDERER,
     )
-    analyze_svd(
+    results["EQKE_err"] = fig
+    fig.show(renderer)
+    results["EQKE_err_svd"] = analyze_svd(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T),
         descr="EQKE_err",
-        colorscale="plasma",
-        renderer=RENDERER,
+        colorscale=QK_SVD_colorscale,
+        renderer=renderer,
     )
     s1 = torch.linalg.matrix_norm(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord=2
     )
+    results_float["EQKEErrFirstSingularFloat"] = s1.item()
+    results_float["EQKEErrFirstSingularFloatSqrtTwo"] = (s1 * np.sqrt(2)).item()
     print(f"σ₁(EQKE_err)√2 = {s1}√2 = {s1*np.sqrt(2)}")
     ss = [
         torch.linalg.matrix_norm(m, ord=2).item()
         for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
     ]
+    (
+        results_float["WEqqPerpFirstSingularFloat"],
+        results_float["WQqPerpFirstSingularFloat"],
+        results_float["WKkPerpFirstSingularFloat"],
+        results_float["WEkkPerpFirstSingularFloat"],
+    ) = ss
     print(f"singular values: {ss}")
     print(f"√2∏σ₁ = {np.prod(ss)}√2 = {np.prod(ss)*np.sqrt(2)}")
-    for m, s in (
-        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>"),
-        (W_Q_err, "Q<sup>⟂</sup>"),
-        (W_K_errT, "K<sup>⟂</sup>"),
-        (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>"),
+    results_float["EQKEErrProdFirstSingular"] = np.prod(ss)
+    results_float["EQKEErrProdFirstSingularSqrtTwo"] = np.prod(ss) * np.sqrt(2)
+    for m, s, key in (
+        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>", "EqqPerp"),
+        (W_Q_err, "Q<sup>⟂</sup>", "WQqPerp"),
+        (W_K_errT, "K<sup>⟂</sup>", "WKkPerp"),
+        (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>", "WEkkPerp"),
     ):
         fig = px.imshow(
             m.numpy(),
             title=s,
+            color_continuous_scale=QK_colorscale,
             color_continuous_midpoint=0,
             zmax=zmax,
             zmin=-zmax,
         )
         fig.update_xaxes(showticklabels=False)
         fig.update_yaxes(showticklabels=False)
-        fig.show(RENDERER)
-        analyze_svd(
+        fig.show(renderer)
+        results[key] = fig
+        fig = analyze_svd(
             m,
             scale_by_singular_value=False,
             descr=s,
-            colorscale="plasma",
-            renderer=RENDERER,
+            colorscale=QK_SVD_colorscale,
+            renderer=renderer,
         )
-    sf1 = torch.linalg.matrix_norm(
-        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord="fro"
-    )
+        results[key + "-svd"] = fig
+    sf1 = torch.linalg.matrix_norm(EQKE_err, ord="fro")
+    results_float["EQKEErrFroNormFloat"] = sf1.item()
+    results_float["EQKEErrFroNormFloatSqrtTwo"] = (sf1 * np.sqrt(2)).item()
     print(f"σf₁(EQKE_err)√2 = {sf1}√2 = {sf1*np.sqrt(2)}")
     sfs = [
         torch.linalg.matrix_norm(m, ord="fro").item()
         for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
     ]
+    (
+        results_float["WEqqPerpFroNormFloat"],
+        results_float["WQqPerpFroNormFloat"],
+        results_float["WKkPerpFroNormFloat"],
+        results_float["WEkkPerpFroNormFloat"],
+    ) = sfs
     print(f"singular fro values: {sfs}")
     print(f"√2∏σf₁ = {np.prod(sfs)}√2 = {np.prod(sfs)*np.sqrt(2)}")
-print(f"err_upper_bound: {err_upper_bound}")
+    results_float["EQKEErrProdFroNormFloat"] = np.prod(sfs)
+    results_float["EQKEErrProdFroNormFloatSqrtTwo"] = np.prod(sfs) * np.sqrt(2)
+    print(f"err_upper_bound: {err_upper_bound}")
 
+    return results, results_float
+
+
+if DISPLAY_PLOTS:
+    figs, values = display_EQKE_SVD_analysis(model, RENDERER)
+    # latex_figures.update(figs)
+    print(values)
+    latex_values.update(values)
 # %%
 if DISPLAY_PLOTS:
     zmax = (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).abs().max().item()

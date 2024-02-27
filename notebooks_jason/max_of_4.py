@@ -1449,13 +1449,29 @@ if DISPLAY_PLOTS:
 
 # %%
 if DISPLAY_PLOTS:
-    scatter_attention_difference_vs_gap(model, renderer="png")
+    latex_figures["EQKE-scatter-attention-difference-vs-gap"] = (
+        scatter_attention_difference_vs_gap(model, renderer="png")
+    )
     for duplicate_by_sequence_count in [False, True]:
-        hist_attention_difference_over_gap(
+        fig, (flat_diffs, duplication_factors) = hist_attention_difference_over_gap(
             model,
             duplicate_by_sequence_count=duplicate_by_sequence_count,
             renderer=RENDERER,
         )
+        key = "EQKE-hist-attention-difference-over-gap" + (
+            "-dup-by-seq-count" if duplicate_by_sequence_count else ""
+        )
+        latex_figures[key] = fig
+        mean = np.average(flat_diffs.numpy(), weights=duplication_factors.numpy())
+        std = np.average(
+            (flat_diffs - mean).numpy() ** 2,
+            weights=duplication_factors.numpy(),
+        )
+        value_key = "".join(
+            v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
+        )
+        latex_values[value_key + "MeanFloat"] = mean
+        latex_values[value_key + "StdFloat"] = std
 
 
 # %% [markdown]
@@ -3076,6 +3092,7 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
             .replace("x̄", r"\overline{x}")
             .replace("±", r"\pm ")
             .replace("σ", r"\sigma ")
+            # .replace("½", r"\sfrac{1}{2}")
         )
         for word in (
             "None",
@@ -3089,6 +3106,7 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
             "; range",
             "max",
             "min",
+            "head",
         ):
             new_title = new_title.replace(word, r"\text{%s}" % word)
         new_title = re.sub(r"<sub>([^<]*)</sub>", r"_{\1}", new_title)

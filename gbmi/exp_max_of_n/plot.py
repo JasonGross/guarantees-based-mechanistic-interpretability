@@ -390,13 +390,18 @@ def compute_attention_difference_vs_gap(
 
 def scatter_attention_difference_vs_gap(
     model: HookedTransformer, renderer: Optional[str] = None
-):
+) -> go.Figure:
     _, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
-    px.scatter(
+    fig = px.scatter(
         x=flat_idxs,
         y=flat_diffs,
-        labels={"x": "i - j", "y": "d_head<sup>-½</sup>((E+P)QKE[i] - (E+P)QKE[j])"},
-    ).show(renderer)
+        labels={
+            "x": "i - j",
+            "y": "d<sub>head</sub><sup>-½</sup>((E+P)QKE[i] - (E+P)QKE[j])",
+        },
+    )
+    fig.show(renderer)
+    return fig
 
 
 @torch.no_grad()
@@ -406,7 +411,9 @@ def hist_attention_difference_over_gap(
     duplicate_by_sequence_count: bool = True,
     renderer: Optional[str] = None,
     num_bins: Optional[int] = None,
-):
+) -> Tuple[
+    go.Figure, Tuple[Float[Tensor, "batch"], Float[Tensor, "batch"]]  # noqa: F821
+]:
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
     """
@@ -425,12 +432,12 @@ def hist_attention_difference_over_gap(
         (flat_diffs - mean).numpy() ** 2, weights=duplication_factors.numpy()
     )
     title = (
-        f"EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1]) @ W<sub>Q</sub> @ W<sub>K</sub><sup>T</sup> @ W<sub>E</sub><sup>T</sup>"
+        f"EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>W<sub>E</sub><sup>T</sup>"
         f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
-        f"<br>d_head<sup>-½</sup>(EQKE[i] - EQKE[j]) / (i - j)"
+        f"<br>d<sub>head</sub><sup>-½</sup>(EQKE[i] - EQKE[j]) / (i - j)"
         f"<br>x̄±σ: {pm_round(mean, std)}"
     )
-    xlabel = "d_head<sup>-½</sup>(EQKE[i]-EQKE[j])/(i-j)"
+    xlabel = "d<sub>head</sub><sup>-½</sup>(EQKE[i]-EQKE[j])/(i-j)"
     if not duplicate_by_sequence_count:
         fig = px.histogram(
             {"": flat_diffs},
@@ -449,3 +456,4 @@ def hist_attention_difference_over_gap(
             },
         )
     fig.show(renderer)
+    return fig, (flat_diffs, duplication_factors)

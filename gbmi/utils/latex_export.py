@@ -1,9 +1,6 @@
-# %%
 import re
 from typing import Any, Union, Tuple
-
-import re
-from typing import Tuple
+import numpy as np
 
 
 def key_to_command(key: str, prefix: str = "", postfix: str = "") -> Tuple[str, bool]:
@@ -73,7 +70,7 @@ def to_latex_defs(values: dict[str, SupportedLaTeXType], sort: bool = True) -> s
             expand = r"\expandafter" if expand else ""
             if isinstance(value, int) or isinstance(value, str):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")
-            elif isinstance(value, float):
+            elif isinstance(value, float) or isinstance(value, np.floating):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")
             else:
                 raise ValueError(f"Unsupported type {type(value)} for {key}")
@@ -84,5 +81,3 @@ if __name__ == "__main__":
     import doctest
 
     doctest.testmod()
-
-# %%

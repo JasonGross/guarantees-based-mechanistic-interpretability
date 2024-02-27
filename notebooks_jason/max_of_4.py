@@ -140,7 +140,7 @@ cache_dir.mkdir(exist_ok=True)
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
 LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
-LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "perf-numbers.tex"
+LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "values.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
@@ -2962,7 +2962,7 @@ with torch.no_grad():
     for use_exact_EQKE in (False, True):
         # for svd_EUPU in (False, True):
         descr = "exact-EQKE" if use_exact_EQKE else ""
-        filedescr = "--exact-EQKE" if use_exact_EQKE else ""
+        filedescr = "exact-EQKE--" if use_exact_EQKE else ""
         latexdescr = "ExactEQKE" if use_exact_EQKE else ""
         with memoshelve(
             (
@@ -3002,7 +3002,7 @@ with torch.no_grad():
             ]
 
         for tricks, min_gaps in min_gaps_lists[use_exact_EQKE]:
-            postkey = tricks.short_description(latex=True) + latexdescr
+            postkey = latexdescr + tricks.short_description(latex=True)
             print(f"==========={descr}=============================\nTricks: {tricks}")
             starttime = time.time()
             prooftime = 0.0
@@ -3165,7 +3165,7 @@ with torch.no_grad():
                             model.cfg.n_ctx - 1, n_copies_nonmax
                         )
             for tricks, v in min_gaps_lists[use_exact_EQKE]:
-                postkey = tricks.short_description(latex=False) + filedescr
+                postkey = filedescr + tricks.short_description(latex=False)
                 v = v.flatten().detach().cpu()
                 if v.max().item() == 1:
                     print(f"All gaps are: {set(v.numpy())}")
@@ -3188,6 +3188,10 @@ with torch.no_grad():
                             type(value), value, tb, capture_locals=True
                         ).format():
                             print(line, file=sys.stderr)
+
+# %%
+with open(LATEX_VALUES_PATH, "w") as f:
+    f.write(to_latex_defs(latex_values))
 
 
 # %%
@@ -3258,7 +3262,4 @@ for k, fig in latex_figures.items():
             print(f"Saving {p}...")
             tikzplotly.save(p, fig)
             print(fig.to_dict())
-# %%
-with open(LATEX_VALUES_PATH, "w") as f:
-    f.write(to_latex_defs(latex_values))
 # %%

@@ -2999,6 +2999,8 @@ with torch.no_grad():
                     position=0,
                     desc="trick cfg",
                 )
+                if cfg.attention_error_handling == "max_diff_exact"
+                or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway
             ]
 
         for tricks, min_gaps in min_gaps_lists[use_exact_EQKE]:
@@ -3024,16 +3026,24 @@ with torch.no_grad():
                 f"Complexity of decompose_EQKE_error: {complexity_of(decompose_EQKE_error)}"
             )
             try:
-                print(f"err_upper_bound: {err_upper_bound.item()}")
-                latex_values[f"SubcubicErrUpperBound{postkey}Float"] = (
-                    err_upper_bound.item()
-                )
+                err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling)}Float"
+                err_upper_bound_value = err_upper_bound.item()
+                print(f"err_upper_bound: {err_upper_bound_value}")
             except Exception:
                 # print(f"err_upper_bound: {err_upper_bound}")
-                print(f"err_upper_bound.max(): {err_upper_bound.max().item()}")
-                latex_values[f"SubcubicErrUpperBoundMax{postkey}Float"] = (
-                    err_upper_bound.max().item()
-                )
+                err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling)}Float"
+                err_upper_bound_value = err_upper_bound.max().item()
+                print(f"err_upper_bound.max(): {err_upper_bound_value}")
+
+            if not use_exact_EQKE:
+                if (
+                    err_upper_bound_key in latex_values
+                    and latex_values[err_upper_bound_key] != err_upper_bound_value
+                ):
+                    print(
+                        f"Warning: overwriting {err_upper_bound_key} from {latex_values[err_upper_bound_key]} to {err_upper_bound_value}"
+                    )
+                latex_values[err_upper_bound_key] = err_upper_bound_value
 
             if use_exact_EQKE:
                 print(f"Complexity of using exact EQKE: O(d_vocab^2 d_model)")
@@ -3166,7 +3176,25 @@ with torch.no_grad():
                         )
             for tricks, v in min_gaps_lists[use_exact_EQKE]:
                 postkey = filedescr + tricks.short_description(latex=False)
+                postlatexkey = latexdescr + tricks.short_description(latex=True)
                 v = v.flatten().detach().cpu()
+                mean = np.average(v.numpy(), weights=weights.flatten().numpy())
+                std = np.average(
+                    (v - mean).numpy() ** 2,
+                    weights=weights.flatten().numpy(),
+                )
+                num_std = 1
+                most_below_value = int(mean + num_std * std)
+                frac_below = (
+                    weights.flatten()[v <= most_below_value].sum() / weights.sum()
+                ).item()
+                latex_values[f"SubcubicGapMostBelowValue{postlatexkey}"] = (
+                    most_below_value
+                )
+                latex_values[f"SubcubicGapMostBelowValueNumStd{postlatexkey}"] = num_std
+                latex_values[
+                    f"SubcubicGapMostBelowValueSequenceFrac{postlatexkey}Float"
+                ] = frac_below
                 if v.max().item() == 1:
                     print(f"All gaps are: {set(v.numpy())}")
                     continue
@@ -3256,10 +3284,12 @@ for k, fig in latex_figures.items():
             for ext in (".pdf", ".svg"):
                 p = LATEX_FIGURE_PATH / f"{k}{ext}"
                 print(f"Saving {p}...")
+                p.parent.mkdir(parents=True, exist_ok=True)
                 fig.write_image(p)
         else:
             p = LATEX_FIGURE_PATH / f"{k}.tex"
             print(f"Saving {p}...")
+            p.parent.mkdir(parents=True, exist_ok=True)
             tikzplotly.save(p, fig)
             print(fig.to_dict())
 # %%

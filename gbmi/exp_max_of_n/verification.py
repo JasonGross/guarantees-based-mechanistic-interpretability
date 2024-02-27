@@ -819,16 +819,18 @@ class LargestWrongLogitQuadraticConfig:
         )
         return average_right_attention, right_attention_adjustment
 
-    def short_description(self, latex: bool = False) -> str:
+    @staticmethod
+    def transform_description(description: str, *, latex: bool = False) -> str:
         if latex:
+            return "".join(
+                v.capitalize() for v in description.replace("+", "_").split("_")
+            )
+        else:
+            return description.replace("_", "-")
 
-            def transform(s: str) -> str:
-                return "".join(v.capitalize() for v in s.replace("+", "_").split("_"))
-
+    def short_description(self, latex: bool = False) -> str:
+        transform = lambda s: self.transform_description(s, latex=latex)
+        if latex:
             return f"EUPU{transform(self.EUPU_handling)}Attn{transform(self.attention_handling)}AttnErr{transform(self.attention_error_handling)}"
         else:
-
-            def transform(s: str) -> str:
-                return s.replace("_", "-")
-
             return f"EUPU-{transform(self.EUPU_handling)}--attn-{transform(self.attention_handling)}--attn-err-{transform(self.attention_error_handling)}"

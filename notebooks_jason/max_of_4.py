@@ -1906,7 +1906,7 @@ def display_EQKE_SVD_analysis(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord=2
     )
     results_float["EQKEErrFirstSingularFloat"] = s1.item()
-    results_float["EQKEErrFirstSingularFloatSqrtTwo"] = (s1 * np.sqrt(2)).item()
+    results_float["EQKEErrFirstSingularSqrtTwoFloat"] = (s1 * np.sqrt(2)).item()
     print(f"σ₁(EQKE_err)√2 = {s1}√2 = {s1*np.sqrt(2)}")
     ss = [
         torch.linalg.matrix_norm(m, ord=2).item()
@@ -1920,10 +1920,10 @@ def display_EQKE_SVD_analysis(
     ) = ss
     print(f"singular values: {ss}")
     print(f"√2∏σ₁ = {np.prod(ss)}√2 = {np.prod(ss)*np.sqrt(2)}")
-    results_float["EQKEErrProdFirstSingular"] = np.prod(ss)
-    results_float["EQKEErrProdFirstSingularSqrtTwo"] = np.prod(ss) * np.sqrt(2)
+    results_float["EQKEErrProdFirstSingularFloat"] = np.prod(ss)
+    results_float["EQKEErrProdFirstSingularSqrtTwoFloat"] = np.prod(ss) * np.sqrt(2)
     for m, s, key in (
-        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>", "EqqPerp"),
+        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>", "WEqqPerp"),
         (W_Q_err, "Q<sup>⟂</sup>", "WQqPerp"),
         (W_K_errT, "K<sup>⟂</sup>", "WKkPerp"),
         (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>", "WEkkPerp"),
@@ -1950,7 +1950,7 @@ def display_EQKE_SVD_analysis(
         results[key + "-svd"] = fig
     sf1 = torch.linalg.matrix_norm(EQKE_err, ord="fro")
     results_float["EQKEErrFroNormFloat"] = sf1.item()
-    results_float["EQKEErrFroNormFloatSqrtTwo"] = (sf1 * np.sqrt(2)).item()
+    results_float["EQKEErrFroNormSqrtTwoFloat"] = (sf1 * np.sqrt(2)).item()
     print(f"σf₁(EQKE_err)√2 = {sf1}√2 = {sf1*np.sqrt(2)}")
     sfs = [
         torch.linalg.matrix_norm(m, ord="fro").item()
@@ -1965,7 +1965,7 @@ def display_EQKE_SVD_analysis(
     print(f"singular fro values: {sfs}")
     print(f"√2∏σf₁ = {np.prod(sfs)}√2 = {np.prod(sfs)*np.sqrt(2)}")
     results_float["EQKEErrProdFroNormFloat"] = np.prod(sfs)
-    results_float["EQKEErrProdFroNormFloatSqrtTwo"] = np.prod(sfs) * np.sqrt(2)
+    results_float["EQKEErrProdFroNormSqrtTwoFloat"] = np.prod(sfs) * np.sqrt(2)
     print(f"err_upper_bound: {err_upper_bound}")
 
     return results, results_float
@@ -1973,9 +1973,15 @@ def display_EQKE_SVD_analysis(
 
 if DISPLAY_PLOTS:
     figs, values = display_EQKE_SVD_analysis(model, renderer=RENDERER)
-    # latex_figures.update(figs)
-    print(values)
+    key_pairs = {
+        k: k for k in ("WKkPerp-svd", "WQqPerp-svd", "WEqqPerp-svd", "WEkkPerp-svd")
+    } | {"EQKE_err": "EQKE-err", "EQKE_err_svd": "EQKE-err-svd"}
+    for key, latex_key in key_pairs.items():
+        latex_figures[latex_key] = figs[key]
     latex_values.update(values)
+    print(
+        f"Unused figure keys: {[k for k in figs.keys() if k not in key_pairs and k not in latex_figures]}"
+    )
 # %%
 if DISPLAY_PLOTS:
     zmax = (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T).abs().max().item()
@@ -2046,41 +2052,81 @@ if DISPLAY_PLOTS:
 
 # %% [markdown]
 
+
 # %%
 # random resampling of EQKE_err
-with torch.no_grad():
+@torch.no_grad()
+def resample_EQKE_err(
+    model: HookedTransformer,
+    *,
+    QK_colorscale: str = "Plasma",
+    QK_SVD_colorscale: str = "Picnic_r",
+    seed: int = 1234,
+    nsamples: int = 100,
+    renderer: Optional[str] = None,
+) -> Tuple[dict[str, go.Figure], dict[str, float]]:
+    results = {}
+    results_float = {}
+    (
+        size_direction,
+        query_direction,
+        size_query_singular_value,
+    ), _ = find_size_and_query_direction(model)
+    (second_key_direction, second_key_singular_value), (
+        second_query_direction,
+        second_query_singular_value,
+    ) = find_second_singular_contributions(model, size_direction, query_direction)
+    (W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
+        model.W_Q[0, 0]
+    )
+    (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
+        model.W_K[0, 0]
+    )
+    (
+        (EQKE_query_key, err_accumulator),
+        EQKE_pos_err,
+        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
+    ) = decompose_EQKE_error(
+        model,
+        key_direction=size_direction,
+        query_direction=query_direction,
+        second_key_direction=second_key_direction,
+        second_query_direction=second_query_direction,
+        W_Q_U=W_Q_U,
+        W_K_U=W_K_U,
+        sanity_check=True,
+    )
+
     ms = (
         (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>"),
         (W_Q_err, "Q<sup>⟂</sup>"),
         (W_K_errT, "K<sup>⟂</sup>"),
         (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>"),
     )
-    if DISPLAY_PLOTS:
-        for m, s in ms:
-            m_numpy = m.flatten().numpy()
-            edges = np.histogram_bin_edges(m_numpy, bins="auto")
-            counts, _ = np.histogram(m_numpy, bins=edges)
-            bin_centers = (edges[:-1] + edges[1:]) / 2
-            pdf_values = stats.norm.pdf(
-                bin_centers, loc=m.mean().item(), scale=m.std().item()
-            )
-            pdf_scaled = pdf_values * m.numel() * np.diff(edges)
-            fig = px.histogram(
-                {"": m_numpy},
-                nbins=len(edges) - 1,
-                title=s,
-                labels={"variable": "", "value": "matrix element value"},
-            )
-            fig.add_scatter(
-                x=bin_centers,
-                y=pdf_scaled,
-                mode="lines",
-                name=f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})",
-            )
-            fig.show(RENDERER)
+    for m, s in ms:
+        m_numpy = m.flatten().numpy()
+        edges = np.histogram_bin_edges(m_numpy, bins="auto")
+        counts, _ = np.histogram(m_numpy, bins=edges)
+        bin_centers = (edges[:-1] + edges[1:]) / 2
+        pdf_values = stats.norm.pdf(
+            bin_centers, loc=m.mean().item(), scale=m.std().item()
+        )
+        pdf_scaled = pdf_values * m.numel() * np.diff(edges)
+        fig = px.histogram(
+            {"": m_numpy},
+            nbins=len(edges) - 1,
+            title=s,
+            labels={"variable": "", "value": "matrix element value"},
+        )
+        fig.add_scatter(
+            x=bin_centers,
+            y=pdf_scaled,
+            mode="lines",
+            name=f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})",
+        )
+        fig.show(RENDERER)
     # what if we randomize the order of all matrices without replacement?
-    torch.manual_seed(1234)
-    nsamples = 100
+    torch.manual_seed(seed)
     row_diffs = []
     max_row_diffs = []
     for _ in range(nsamples):
@@ -2111,6 +2157,11 @@ with torch.no_grad():
     )
     print(f"max row diff (n = {nsamples}, m ~ {m_descr}): {pm_mean_std(max_row_diffs)}")
     # print(f"row diff: {pm_mean_std(row_diffs)}")
+    return results, results_float
+
+
+if DISPLAY_PLOTS:
+    figs, values = resample_EQKE_err(model, renderer=RENDERER)
 
 
 # %%

@@ -3183,7 +3183,7 @@ with torch.no_grad():
                     (v - mean).numpy() ** 2,
                     weights=weights.flatten().numpy(),
                 )
-                num_std = 1
+                num_std = 1.5
                 most_below_value = int(mean + num_std * std)
                 frac_below = (
                     weights.flatten()[v <= most_below_value].sum() / weights.sum()
@@ -3191,10 +3191,15 @@ with torch.no_grad():
                 latex_values[f"SubcubicGapMostBelowValue{postlatexkey}"] = (
                     most_below_value
                 )
-                latex_values[f"SubcubicGapMostBelowValueNumStd{postlatexkey}"] = num_std
+                latex_values[f"SubcubicGapMostBelowValueNumStd{postlatexkey}Float"] = (
+                    num_std
+                )
                 latex_values[
                     f"SubcubicGapMostBelowValueSequenceFrac{postlatexkey}Float"
                 ] = frac_below
+                print(
+                    f"{postlatexkey}: most ({frac_below*100}%) sequences are <= {most_below_value} (based on + {num_std} std)"
+                )
                 if v.max().item() == 1:
                     print(f"All gaps are: {set(v.numpy())}")
                     continue

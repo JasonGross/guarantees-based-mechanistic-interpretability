@@ -2962,7 +2962,7 @@ with torch.no_grad():
     for use_exact_EQKE in (False, True):
         # for svd_EUPU in (False, True):
         descr = "exact-EQKE" if use_exact_EQKE else ""
-        filedescr = "exact-EQKE--" if use_exact_EQKE else ""
+        filedescr = "-exact-EQKE--" if use_exact_EQKE else ""
         latexdescr = "ExactEQKE" if use_exact_EQKE else ""
         with memoshelve(
             (
@@ -3184,7 +3184,7 @@ with torch.no_grad():
                     weights=weights.flatten().numpy(),
                 )
                 num_std = 1.5
-                most_below_value = int(mean + num_std * std)
+                most_below_value = int(math.ceil(mean + num_std * std))
                 frac_below = (
                     weights.flatten()[v <= most_below_value].sum() / weights.sum()
                 ).item()

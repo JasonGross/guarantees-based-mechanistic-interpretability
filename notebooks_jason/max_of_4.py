@@ -1788,6 +1788,7 @@ def decompose_EQKE_error(
 @torch.no_grad()
 def display_EQKE_SVD_analysis(
     model: HookedTransformer,
+    *,
     QK_colorscale: str = "Plasma",
     QK_SVD_colorscale: str = "Picnic_r",
     renderer: Optional[str] = None,
@@ -1971,7 +1972,7 @@ def display_EQKE_SVD_analysis(
 
 
 if DISPLAY_PLOTS:
-    figs, values = display_EQKE_SVD_analysis(model, RENDERER)
+    figs, values = display_EQKE_SVD_analysis(model, renderer=RENDERER)
     # latex_figures.update(figs)
     print(values)
     latex_values.update(values)

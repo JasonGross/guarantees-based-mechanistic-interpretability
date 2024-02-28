@@ -1,21 +1,16 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
-import dataclasses
 from functools import cache
 
 import sys
 from typing import (
     Any,
     Callable,
-    Dict,
     List,
-    Mapping,
     Optional,
-    Sequence,
     Tuple,
     Union,
-    cast,
     Literal,
 )
 from gbmi import utils
@@ -24,7 +19,7 @@ import numpy as np
 import torch
 from jaxtyping import Float, Integer, Bool
 from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
+from torch.utils.data import Dataset, TensorDataset, DataLoader
 import torch.nn.functional as F
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 import simple_parsing
@@ -32,19 +27,14 @@ from gbmi.model import (
     TrainingWrapper,
     Config,
     ExperimentConfig,
-    add_HookedTransformerConfig_arguments,
     train_or_load_model,
     DataModule,
     add_force_argument,
     add_no_save_argument,
-    update_HookedTransformerConfig_from_args,
 )
 from gbmi.utils import (
     shuffle_data,
-    default_device,
-    SingleTensorDataset,
     reseed,
-    set_params,
     zero_biases_of_HookedTransformer,
 )
 from gbmi.utils.dataclass import DataclassMapping
@@ -74,6 +64,7 @@ class ModularArithmetic(ExperimentConfig):
     use_end_of_sequence: bool = True
     use_log1p: bool = True
     use_float64_log: bool = True
+    num_workers: int = 0
     summary_slug_extra: str = ""
     zero_biases: list[
         Literal["Embed", "Unembed", "PosEmbed", "LayerNorm", "Attention", "MLP"]
@@ -111,7 +102,7 @@ class ModularArithmetic(ExperimentConfig):
         if not hasattr(self, "d_mlp"):
             self.d_mlp = self.n_heads * self.d_model
         self.zero_biases = sorted(set(self.zero_biases))
-        setattr(self, _EXCLUDE, ("validation_max_samples",))
+        setattr(self, _EXCLUDE, ("validation_max_samples", "num_workers"))
         assert (
             self.d_model % self.n_heads == 0
         ), f"d_model {self.d_model} must be divisible by n_heads {self.n_heads}"
@@ -294,7 +285,8 @@ class ModularArithmeticTrainingWrapper(TrainingWrapper[ModularArithmetic]):
         return loss, acc
 
     def training_step(self, batch, batch_idx):
-        return self.run_batch(batch, prefix="")
+        loss, acc = self.run_batch(batch, prefix="")
+        return loss
 
     def test_step(self, batch, batch_idx):
         self.run_batch(batch, prefix="test_")
@@ -325,6 +317,7 @@ class ModularArithmeticDataModule(DataModule):
         self.p = config.experiment.p
         self.seq_len = config.experiment.seq_len
         self.training_ratio = config.experiment.training_ratio
+        self.num_workers = config.experiment.num_workers
         self.dataset_seed = reseed(self.config.seed, "dataset_seed")
 
     @cache
@@ -364,15 +357,25 @@ class ModularArithmeticDataModule(DataModule):
         self.data_validate = self.build_dataset("validate")
 
     def train_dataloader(self):
-        return DataLoader(self.data_train, batch_size=self.config.batch_size)
+        return DataLoader(
+            self.data_train,
+            batch_size=self.config.batch_size,
+            num_workers=self.num_workers,
+        )
 
     def val_dataloader(self):
         return DataLoader(
-            self.data_validate, batch_size=self.config.validation_batch_size
+            self.data_validate,
+            batch_size=self.config.validation_batch_size,
+            num_workers=self.num_workers,
         )
 
     def test_dataloader(self):
-        return DataLoader(self.data_test, batch_size=self.config.batch_size)
+        return DataLoader(
+            self.data_test,
+            batch_size=self.config.batch_size,
+            num_workers=self.num_workers,
+        )
 
 
 def main(argv: List[str] = sys.argv):

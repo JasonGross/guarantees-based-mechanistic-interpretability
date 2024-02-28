@@ -1,7 +1,7 @@
 import math
 from typing import Callable, Generic, TypeVar, Union, overload
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Integer
 from torch import Tensor
 from torch.utils.data import Dataset
 
@@ -15,14 +15,14 @@ T = TypeVar("T")
 
 def generate_all_sequences(
     n_digits: int, sequence_length: int = 2
-) -> Float[Tensor, "n_seqs sequence_length"]:  # noqa: F722
+) -> Integer[Tensor, "n_seqs sequence_length"]:  # noqa: F722
     data = list(itertools.product(range(n_digits), repeat=sequence_length))
-    return torch.tensor(data)
+    return torch.tensor(data).long()
 
 
 def generate_all_sequences_for_model(
     model: HookedTransformer,
-) -> Float[Tensor, "n_seqs sequence_length"]:  # noqa: F722
+) -> Integer[Tensor, "n_seqs sequence_length"]:  # noqa: F722
     return generate_all_sequences(
         n_digits=model.cfg.d_vocab, sequence_length=model.cfg.n_ctx
     )

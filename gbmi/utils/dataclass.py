@@ -2,7 +2,18 @@
 # Written in part by ChatGPT 4
 # from __future__ import annotations
 from dataclasses import dataclass, fields
-from typing import Any, List, Union, Literal, get_args, get_origin
+import dataclasses
+from typing import (
+    Any,
+    List,
+    Union,
+    Literal,
+    get_args,
+    get_origin,
+    TypeVar,
+    Generic,
+    Mapping,
+)
 from beartype.door import TypeHint, LiteralTypeHint, UnionTypeHint
 import itertools
 
@@ -10,6 +21,19 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
+
+V = TypeVar("V")
+
+
+class DataclassMapping(Generic[V], Mapping[str, V]):
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def __iter__(self):
+        return iter(dataclasses.asdict(self))  # type: ignore
+
+    def __len__(self):
+        return len(dataclasses.asdict(self))  # type: ignore
 
 
 def get_values_of_type(ty: type) -> List[Any]:

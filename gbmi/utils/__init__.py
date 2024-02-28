@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Collection,
     Iterator,
+    Literal,
     Optional,
     Tuple,
     TypeVar,
@@ -30,7 +31,15 @@ import torch
 from lightning import Callback
 from numpy.random import Generator
 from torch import Tensor
-
+from transformer_lens import HookedTransformer
+from transformer_lens.components import (
+    RMSNorm,
+    RMSNormPre,
+    LayerNorm,
+    LayerNormPre,
+    Attention,
+    MLP,
+)
 from gbmi.utils import ein
 from gbmi.utils.hashing import get_hash
 
@@ -310,3 +319,40 @@ def shuffle_tensor(t: Tensor) -> Tensor:
 def shuffle_tensors(*ts: Tensor) -> Iterator[Tensor]:
     for t in ts:
         yield shuffle_tensor(t)
+
+
+def zero_biases_of_module(module: torch.nn.Module):
+    for name, param in module.named_parameters():
+        if "b_" in name:
+            param.requires_grad = False
+
+
+def zero_biases_of_HookedTransformer(
+    model: HookedTransformer,
+    biases_to_zero: Collection[
+        Literal["Embed", "Unembed", "PosEmbed", "LayerNorm", "Attention", "MLP"]
+    ],
+):
+    classes = {
+        "LayerNorm": (
+            torch.nn.LayerNorm,
+            RMSNorm,
+            RMSNormPre,
+            LayerNorm,
+            LayerNormPre,
+        ),
+        "Attention": (torch.nn.MultiheadAttention, Attention),
+        "MLP": (MLP,),
+    }
+    for name in biases_to_zero:
+        match name:
+            case "Embed":
+                zero_biases_of_module(model.embed)
+            case "Unembed":
+                zero_biases_of_module(model.unembed)
+            case "PosEmbed":
+                zero_biases_of_module(model.pos_embed)
+            case _:
+                for module in model.modules():
+                    if any(isinstance(module, cls) for cls in classes[name]):
+                        zero_biases_of_module(module)

@@ -144,11 +144,14 @@ class Config(Generic[ExpT]):
 
     @classmethod
     def add_arguments(
-        cls: Type[Config[ExpT]], parser: ArgumentParser
+        cls: Type[Config[ExpT]],
+        parser: ArgumentParser,
+        default: Optional[Config[ExpT]] = None,
     ) -> ArgumentParser:
         parser.add_argument(
             "--deterministic",
             action="store_true",
+            default=default.deterministic if default is not None else None,
             help="Force training on the CPU for avoiding non-deterministic floating point behavior",
         )
         parser.add_argument(
@@ -160,66 +163,98 @@ class Config(Generic[ExpT]):
         parser.add_argument(
             "--seed",
             type=int,
-            default=None,
+            default=default.seed if default is not None else None,
             help="Seed for random number generators",
         )
         parser.add_argument(
             "--batch-size",
             type=int,
-            default=None,
+            default=default.batch_size if default is not None else None,
             help="Batch size",
         )
         parser.add_argument(
             "--validation-batch-size",
             type=int,
-            default=None,
+            default=default.validation_batch_size if default is not None else None,
             help="Validation batch size",
         )
         parser.add_argument(
             "--train-for-steps",
             type=int,
-            default=None,
+            default=(
+                default.train_for[0]
+                if default is not None and default.train_for[1] == "steps"
+                else None
+            ),
             help="Number of steps to train for.",
         )
         parser.add_argument(
             "--train-for-epochs",
             type=int,
-            default=None,
+            default=(
+                default.train_for[0]
+                if default is not None and default.train_for[1] == "epochs"
+                else None
+            ),
             help="Number of epochs to train for.",
         )
         parser.add_argument(
             "--log-every-n-steps",
             type=int,
             metavar="N",
-            default=None,
+            default=default.log_every_n_steps if default is not None else None,
             help="Log every N steps",
         )
         parser.add_argument(
             "--validate-every-steps",
             type=int,
             metavar="N",
-            default=None,
+            default=(
+                default.validate_every[0]
+                if default is not None
+                and default.validate_every is not None
+                and default.validate_every[1] == "steps"
+                else None
+            ),
             help="Validate every N steps",
         )
         parser.add_argument(
             "--validate-every-epochs",
             type=int,
             metavar="N",
-            default=None,
+            default=(
+                default.validate_every[0]
+                if default is not None
+                and default.validate_every is not None
+                and default.validate_every[1] == "epochs"
+                else None
+            ),
             help="Validate every N epochs",
         )
         parser.add_argument(
             "--checkpoint-every-steps",
             type=int,
             metavar="N",
-            default=None,
+            default=(
+                default.checkpoint_every[0]
+                if default is not None
+                and default.checkpoint_every is not None
+                and default.checkpoint_every[1] == "steps"
+                else None
+            ),
             help="Checkpoint every N steps",
         )
         parser.add_argument(
             "--checkpoint-every-epochs",
             type=int,
             metavar="N",
-            default=None,
+            default=(
+                default.checkpoint_every[0]
+                if default is not None
+                and default.checkpoint_every is not None
+                and default.checkpoint_every[1] == "epochs"
+                else None
+            ),
             help="Checkpoint every N epochs",
         )
         return parser

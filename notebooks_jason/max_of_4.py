@@ -3291,17 +3291,18 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
 
 for k, fig in latex_figures.items():
     fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
+    unsupported_by_tikzplotly = any(isinstance(trace, go.Heatmap) for trace in fig.data)
+    if not unsupported_by_tikzplotly:
+        p = LATEX_FIGURE_PATH / f"{k}.tex"
+        print(f"Saving {p}...")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tikzplotly.save(p, fig)
     with texify_title(fig) as fig:
-        if True or any(isinstance(trace, go.Heatmap) for trace in fig.data):
+        if True or unsupported_by_tikzplotly:
             for ext in (".pdf", ".svg"):
                 p = LATEX_FIGURE_PATH / f"{k}{ext}"
                 print(f"Saving {p}...")
                 p.parent.mkdir(parents=True, exist_ok=True)
                 fig.write_image(p)
-        else:
-            p = LATEX_FIGURE_PATH / f"{k}.tex"
-            print(f"Saving {p}...")
-            p.parent.mkdir(parents=True, exist_ok=True)
-            tikzplotly.save(p, fig)
-            print(fig.to_dict())
+
 # %%

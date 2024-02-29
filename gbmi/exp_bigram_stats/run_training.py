@@ -1,6 +1,6 @@
 # %%
 import torch
-from gbmi.exp_bigram_stats.train import DEFAULT_BIGRAM
+from gbmi.exp_bigram_stats.train import DEFAULT_BIGRAM, BigramTrainingWrapper
 from gbmi.model import (
     TrainingWrapper,
     Config,
@@ -15,6 +15,7 @@ from gbmi.model import (
 
 # %%
 print(DEFAULT_BIGRAM)
+print(BigramTrainingWrapper.build_model(DEFAULT_BIGRAM).cfg)
 _, model = train_or_load_model(DEFAULT_BIGRAM, force="train")
 
 # %%

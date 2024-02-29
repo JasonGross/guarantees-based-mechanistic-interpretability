@@ -6,10 +6,12 @@ import logging
 import json
 import os
 import re
+from torch import Tensor
 from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
+from jaxtyping import Float, Integer
 import re
 from transformer_lens import HookedTransformerConfig
 from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS

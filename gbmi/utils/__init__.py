@@ -81,6 +81,13 @@ def add_eos(
     return ein.array(lambda i: torch.cat([x[i], torch.tensor([eos])]))
 
 
+def add_bos(
+    bos: int,
+    x: Float[Tensor, "b n"],  # noqa: F722
+) -> Float[Tensor, "b (n + 1)"]:  # noqa: F722, F821
+    return ein.array(lambda i: torch.cat([torch.tensor([bos]), x[i]]))
+
+
 class MetricsCallback(Callback):
     """PyTorch Lightning callback to save metrics in a Python object."""
 

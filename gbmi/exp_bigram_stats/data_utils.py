@@ -36,7 +36,9 @@ class ExactBigramTask:
             yield token
 
     @staticmethod
-    def generator(*, seed: int, num_tokens: int, seq_length: int, max_length: int):
+    def generator(
+        *, seed: int, num_tokens: int, seq_length: int, max_length: int
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
         g = torch.Generator(device=default_device)
         g.manual_seed(seed)

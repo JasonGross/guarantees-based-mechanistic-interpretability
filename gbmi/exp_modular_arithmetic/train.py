@@ -91,9 +91,11 @@ class ModularArithmetic(ExperimentConfig):
     def get_summary_slug(self, config: Config[ModularArithmetic]) -> str:
         return (
             f"Modular{config.experiment.fn_name.capitalize()}"
-            f"-{config.experiment.seq_len}"
+            f"-{config.experiment.p}"
+            f"{f'-{config.experiment.seq_len}' if config.experiment.seq_len != 2 else ''}"
             f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{f'-attention-rate-{config.experiment.attention_rate}' if config.experiment.attention_rate != 0 else ''}"
+            f"{'-no-eos' if not config.experiment.use_end_of_sequence else ''}"
             f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
@@ -166,17 +168,19 @@ CLOCK_CONFIG = Config(
     deterministic=False,
     train_for=(50000, "epochs"),
     log_every_n_steps=1,
-    validate_every=(1, "epochs"),
+    validate_every=(20, "epochs"),
     checkpoint_every=(500, "epochs"),
 )
 
 PIZZA_CONFIG = Config(
-    experiment=ModularArithmetic(p=113, training_ratio=0.8),
+    experiment=ModularArithmetic(
+        p=59, training_ratio=0.8, use_end_of_sequence=False, attention_rate=1
+    ),
     seed=0,
     deterministic=False,
     train_for=(10000, "epochs"),
     log_every_n_steps=1,
-    validate_every=(1, "epochs"),
+    validate_every=(20, "epochs"),
     checkpoint_every=(500, "epochs"),
 )
 

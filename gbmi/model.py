@@ -6,13 +6,14 @@ import logging
 import json
 import os
 import re
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
 import re
 from transformer_lens import HookedTransformerConfig
 from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
+from typing_extensions import override
 from typing import (
     Any,
     Callable,
@@ -38,7 +39,10 @@ import wandb.apis.public.artifacts
 from wandb.sdk.lib.paths import FilePathStr
 from lightning import LightningModule, LightningDataModule, Trainer, seed_everything
 from lightning.pytorch.callbacks import RichProgressBar, ModelCheckpoint
+import rich.progress
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning import Callback
+import lightning.pytorch as pl
 from transformer_lens import HookedTransformer
 from gbmi.utils.lazy import lazy
 from gbmi.utils import (
@@ -359,6 +363,52 @@ class RunData:
             )
 
 
+class EpochRichProgressBar(RichProgressBar):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.train_epoch_progress_bar_id: Optional[rich.progress.TaskID] = None
+
+    @property
+    def epoch_progress_bar(self) -> rich.progress.Task:
+        assert self.progress is not None
+        assert self.train_epoch_progress_bar_id is not None
+        return self.progress.tasks[self.train_epoch_progress_bar_id]
+
+    @override
+    def on_train_start(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule
+    ) -> None:
+        super().on_train_start(trainer, pl_module)
+        if self.is_disabled:
+            return
+        total_epochs = trainer.max_epochs
+        train_description = "Epochs"
+
+        if self.train_epoch_progress_bar_id is not None and self._leave:
+            self._stop_progress()
+            self._init_progress(trainer)
+        if self.progress is not None and total_epochs is not None:
+            if self.train_epoch_progress_bar_id is None:
+                self.train_epoch_progress_bar_id = self._add_task(
+                    total_epochs, train_description
+                )
+            else:
+                self.progress.reset(
+                    self.train_epoch_progress_bar_id,
+                    total=total_epochs,
+                    description=train_description,
+                    visible=True,
+                )
+        self.refresh()
+
+    @override
+    def on_train_epoch_end(
+        self, trainer: pl.Trainer, pl_module: pl.LightningModule
+    ) -> None:
+        self._update(self.train_epoch_progress_bar_id, trainer.current_epoch)
+        super().on_train_epoch_end(trainer, pl_module)
+
+
 # TODO(Euan or Jason): figure out why we need this for .ckpt state_dicts and write documentation or remove
 def _adjust_statedict_to_model(state_dict: Optional[dict]) -> Optional[dict]:
     """removes 'model.' prefixes from the keys of state_dict; I have no idea why this is necessary"""
@@ -585,7 +635,7 @@ def train_or_load_model(
 
     # Fit model
     train_metric_callback = MetricsCallback()
-    callbacks = [train_metric_callback, RichProgressBar()]
+    callbacks = [train_metric_callback, EpochRichProgressBar()]
     if checkpoint_callback is not None:
         callbacks.append(checkpoint_callback)
     trainer = Trainer(

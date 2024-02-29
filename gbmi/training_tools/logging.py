@@ -29,6 +29,12 @@ from wandb.sdk.wandb_run import Run
 from gbmi.utils import subscript
 
 
+def str_mean(s: str) -> str:
+    if len(s) == 1 or all(c.isalnum() for c in s):
+        return f"𝔼{s}"
+    return f"𝔼({s})"
+
+
 def plot_tensors(
     matrices: Iterable[Tuple[str, Tensor]],
     plot_1D_kind: Literal["line", "scatter"] = "line",
@@ -354,10 +360,10 @@ class ModelMatrixLoggingOptions:
                     W_pos_q = W_pos_q - W_pos_q_avg
                     W_E_k = W_E_k + W_pos_k_avg
                     W_pos_k = W_pos_k - W_pos_k_avg
-                    sEq = f"({sEq}+𝔼({sPq}))"
-                    sPq = f"({sPq}-𝔼({sPq}))"
-                    sEk = f"({sEk}+𝔼({sPk}))"
-                    sPk = f"({sPk}-𝔼({sPk}))"
+                    sEq = f"({sEq}+{str_mean(sPq)})"
+                    sPq = f"({sPq}-{str_mean(sPq)})"
+                    sEk = f"({sEk}+{str_mean(sPk)})"
+                    sPk = f"({sPk}-{str_mean(sPk)})"
             W_E_v: Float[Tensor, "d_vocab d_model"]  # noqa: F722
             W_pos_v: Float[Tensor, "n_ctx d_model"]  # noqa: F722
             W_E_v = W_E
@@ -367,8 +373,8 @@ class ModelMatrixLoggingOptions:
             if self.add_mean_pos_to_tok:
                 W_E_v = W_E_v + W_pos_v.mean(dim=0)
                 W_pos_v = W_pos_v - W_pos_v.mean(dim=0)
-                sEv = f"({sEv}+𝔼({sPv}))"
-                sPv = f"({sPv}-𝔼({sPv}))"
+                sEv = f"({sEv}+{str_mean(sPv)})"
+                sPv = f"({sPv}-{str_mean(sPv)})"
         sPk = f"{sPk}ᵀ"
         sEk = f"{sEk}ᵀ"
 
@@ -450,7 +456,7 @@ class ModelMatrixLoggingOptions:
                             ):
                                 if sq != "0" or self.log_zeros:
                                     yield (
-                                        f"{sq}QKᵀ{sk}.{lh_q}l{l}h{h}{lh_k}",
+                                        f"{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
                                         apply_Q(v_q, l, h) @ apply_KT(v_k, l, h),
                                     )
                 if self.EVOU:
@@ -464,7 +470,10 @@ class ModelMatrixLoggingOptions:
                         l=l,
                         reverse_strs=False,
                     ):
-                        yield (f"{sv}VOU.{lh_v}l{l}h{h}", apply_U(apply_VO(v, l, h)))
+                        yield (
+                            f"{sv}VOU<br>.{lh_v}l{l}h{h}",
+                            apply_U(apply_VO(v, l, h)),
+                        )
                 if self.PVOU:
                     for sv, lh_v, v in ModelMatrixLoggingOptions.compute_paths(
                         apply_VO,
@@ -477,7 +486,7 @@ class ModelMatrixLoggingOptions:
                         reverse_strs=False,
                     ):
                         yield (
-                            f"{sv}VOU.{lh_v}l{l}h{h}",
+                            f"{sv}VOU<br>.{lh_v}l{l}h{h}",
                             apply_U(apply_VO(v, l, h)),
                         )
 

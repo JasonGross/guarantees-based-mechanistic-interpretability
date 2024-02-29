@@ -284,13 +284,13 @@ class ModelMatrixLoggingOptions:
                 W_E_q = W_E[self.qtok]
                 W_E_k: Float[Tensor, "d_vocab-1 d_model"]  # noqa: F722
                 if self.qtok % d_vocab == -1 % d_vocab:
-                    sEk = f"(E[:-1] - E[-1])"
+                    sEk = f"(E[:-1]-E[-1])"
                     W_E_k = W_E[: self.qtok] - W_E_q
                 elif self.qtok == 0:
-                    sEk = f"(E[1:] - E[0])"
+                    sEk = f"(E[1:]-E[0])"
                     W_E_k = W_E[self.qtok + 1 :] - W_E_q
                 else:
-                    sEk = f"(E[:{self.qtok}] + E[{self.qtok+1}:] - E[{self.qtok}])"
+                    sEk = f"(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}])"
                     W_E_k = (
                         torch.cat([W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0)
                         - W_E_q
@@ -308,20 +308,20 @@ class ModelMatrixLoggingOptions:
                 W_pos_q = W_pos[self.qpos]
                 match self.qpos, self.add_mean_pos_to_tok:
                     case -1, False:
-                        sPk = f"(P[:-1] - P[-1])"
+                        sPk = f"(P[:-1]-P[-1])"
                     case 0, False:
-                        sPk = f"(P[1:] - P[0])"
+                        sPk = f"(P[1:]-P[0])"
                     case _, False:
-                        sPk = f"(P[:{self.qpos}] + P[{self.qpos+1}:] - P[{self.qpos}])"
+                        sPk = f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
                     case -1, True:
-                        sEk = f"({sEk} + mean(P[:-1] - P[-1]))"
-                        sPk = f"(P[:-1] - mean(P[:-1]))"
+                        sEk = f"({sEk}+𝔼(P[:-1]-P[-1]))"
+                        sPk = f"(P[:-1]-𝔼P[:-1])"
                     case 0, True:
-                        sEk = f"({sEk} + mean(P[1:] - P[0]))"
-                        sPk = f"(P[1:] - mean(P[1:]))"
+                        sEk = f"({sEk}+𝔼(P[1:]-P[0]))"
+                        sPk = f"(P[1:]-𝔼P[1:])"
                     case _, True:
-                        sEk = f"({sEk} + mean(P[:{self.qpos}] + P[{self.qpos+1}:] - P[{self.qpos}]))"
-                        sPk = f"(P[:{self.qpos}] + P[{self.qpos+1}:] - mean(P[:{self.qpos}] + P[{self.qpos+1}:]))"
+                        sEk = f"({sEk}+𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}]))"
+                        sPk = f"(P[:{self.qpos}]+P[{self.qpos+1}:]-𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]))"
                 W_pos_k: Float[Tensor, "n_ctx-1 d_model"]  # noqa: F722
                 if self.qpos % n_ctx == -1 % n_ctx:
                     W_pos_k = W_pos[: self.qpos] - W_pos_q
@@ -354,10 +354,10 @@ class ModelMatrixLoggingOptions:
                     W_pos_q = W_pos_q - W_pos_q_avg
                     W_E_k = W_E_k + W_pos_k_avg
                     W_pos_k = W_pos_k - W_pos_k_avg
-                    sEq = f"({sEq} + mean({sPq}))"
-                    sPq = f"({sPq} - mean({sPq}))"
-                    sEk = f"({sEk} + mean({sPk}))"
-                    sPk = f"({sPk} - mean({sPk}))"
+                    sEq = f"({sEq}+𝔼({sPq}))"
+                    sPq = f"({sPq}-𝔼({sPq}))"
+                    sEk = f"({sEk}+𝔼({sPk}))"
+                    sPk = f"({sPk}-𝔼({sPk}))"
             W_E_v: Float[Tensor, "d_vocab d_model"]  # noqa: F722
             W_pos_v: Float[Tensor, "n_ctx d_model"]  # noqa: F722
             W_E_v = W_E
@@ -367,8 +367,8 @@ class ModelMatrixLoggingOptions:
             if self.add_mean_pos_to_tok:
                 W_E_v = W_E_v + W_pos_v.mean(dim=0)
                 W_pos_v = W_pos_v - W_pos_v.mean(dim=0)
-                sEv = f"({sEv} + mean({sPv}))"
-                sPv = f"({sPv} - mean({sPv}))"
+                sEv = f"({sEv}+𝔼({sPv}))"
+                sPv = f"({sPv}-𝔼({sPv}))"
         sPk = f"{sPk}ᵀ"
         sEk = f"{sEk}ᵀ"
 

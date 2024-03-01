@@ -14,6 +14,8 @@ from gbmi.model import (
 )
 
 # %%
+torch.set_default_device("cuda")
+
 print(DEFAULT_BIGRAM)
 print(BigramTrainingWrapper.build_model(DEFAULT_BIGRAM).cfg)
 _, model = train_or_load_model(DEFAULT_BIGRAM, force="train")

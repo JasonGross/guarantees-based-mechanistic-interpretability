@@ -67,8 +67,6 @@ from gbmi.training_tools.logging import (
     ModelMatrixLoggingOptions,
 )
 
-torch.set_default_device("cuda")
-
 
 @dataclass
 class Bigram(ExperimentConfig):
@@ -78,6 +76,9 @@ class Bigram(ExperimentConfig):
     seq_length: int = 5
     num_tokens: int = 3
     d_model: int = 8
+    task: Literal["exact-bigram", "abcab"] = "exact-bigram"
+    only_last_tokens: Optional[int] = None
+    n_heads: int = 1
 
     n_train_samples: int = 4096
     n_test_samples: int = 1
@@ -105,6 +106,7 @@ class Bigram(ExperimentConfig):
             f"IndHead-Len{config.experiment.seq_length}"
             f"-d_model{config.experiment.d_model}"
             f"-ntok{config.experiment.num_tokens}"
+            f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
             f"-config{config.train_for[0]}-{config.train_for[1]}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
@@ -131,7 +133,27 @@ DEFAULT_BIGRAM = Config(
     seed=999,
     deterministic=False,
     batch_size=4096,
-    train_for=(1000, "epochs"),
+    train_for=(10000, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(10, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
+
+
+ABCAB_BIGRAM = Config(
+    experiment=Bigram(
+        seq_length=4,
+        num_tokens=26,
+        n_heads=4,
+        d_model=128,
+        n_train_samples=10240,
+        logging_options=ModelMatrixLoggingOptions.all(),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=512,
+    train_for=(5000, "epochs"),
     log_every_n_steps=1,
     validate_every=(10, "epochs"),
     validation_batch_size=1,  # we want validation right now only to log the plots
@@ -152,9 +174,9 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
             d_vocab_out=cfg.num_tokens,
             n_ctx=cfg.seq_length + cfg.bos,
             d_model=cfg.d_model,
-            d_head=cfg.d_model,
+            d_head=cfg.d_model // cfg.n_heads,
             n_layers=2,
-            n_heads=1,
+            n_heads=cfg.n_heads,
             init_weights=True,
             attn_only=True,
             normalization_type=None,
@@ -172,7 +194,10 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
         return ExactBigramTask.loss_fn(
-            logits, labels, use_bos=self.config.experiment.bos
+            logits,
+            labels,
+            use_bos=self.config.experiment.bos,
+            only_eos=self.config.experiment.only_last_tokens,
         )
 
     def run_batch(

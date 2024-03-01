@@ -71,7 +71,10 @@ class ABCBCBigramTask:
     def generator(
         *, seed: int, num_tokens: int, seq_length: int, max_length: int
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
-        assert seq_length == 5, f"Only implemented for seq_length=5, not {seq_length}"
+        assert seq_length in (
+            4,
+            5,
+        ), f"Only implemented for seq_length=4,5, not {seq_length}"
         default_device = torch.tensor([]).device
         g = torch.Generator(device=default_device)
         g.manual_seed(seed)
@@ -82,11 +85,15 @@ class ABCBCBigramTask:
             a, b, c = tokens[:3]
             if torch.rand(1) < 0.5:
                 yield torch.tensor(
-                    [a, b, c, b, c][:-1], dtype=torch.long, device=default_device
+                    [a, b, c, b, c][:seq_length],
+                    dtype=torch.long,
+                    device=default_device,
                 )
             else:
                 yield torch.tensor(
-                    [a, b, c, a, b][:-1], dtype=torch.long, device=default_device
+                    [a, b, c, a, b][:seq_length],
+                    dtype=torch.long,
+                    device=default_device,
                 )
             n_samples += 1
             if max_length is not None and n_samples >= max_length:

@@ -40,7 +40,12 @@ import wandb.apis.public.runs
 import wandb.apis.public.artifacts
 from wandb.sdk.lib.paths import FilePathStr
 from lightning import LightningModule, LightningDataModule, Trainer, seed_everything
-from lightning.pytorch.callbacks import RichProgressBar, ModelCheckpoint
+from lightning.pytorch.callbacks import (
+    RichProgressBar,
+    ModelCheckpoint,
+    LearningRateMonitor,
+    RichModelSummary,
+)
 import rich.progress
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning import Callback
@@ -637,7 +642,12 @@ def train_or_load_model(
 
     # Fit model
     train_metric_callback = MetricsCallback()
-    callbacks = [train_metric_callback, EpochRichProgressBar()]
+    callbacks = [
+        train_metric_callback,
+        RichModelSummary(),
+        LearningRateMonitor(),
+        EpochRichProgressBar(),
+    ]
     if checkpoint_callback is not None:
         callbacks.append(checkpoint_callback)
     trainer = Trainer(

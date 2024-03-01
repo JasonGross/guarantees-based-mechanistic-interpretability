@@ -38,15 +38,20 @@ def str_mean(s: str) -> str:
 
 def calculate_zmax_zmin_args(
     matrices: Iterable[Tuple[str, Tensor]],
-    groups: Optional[Collection[Collection[str]]] = None,
-) -> dict[str, dict[str, float]]:
+    groups: Optional[
+        Union[Collection[Collection[str]], dict[Collection[str], dict[str, Any]]]
+    ] = None,
+) -> dict[str, dict[str, Any]]:
     """Computes zmax and zmin by grouping matrices"""
     if groups is None:
         return {}
     groups_map: dict[str, int] = {}
+    groups_extra_args: dict[Optional[int], dict[str, Any]] = {}
     for i, group in enumerate(groups):
         for name in group:
             groups_map[name] = i
+        if isinstance(groups, dict):
+            groups_extra_args[i] = groups[group]
     group_to_matrix_map: dict[Optional[int], list[Tensor]] = defaultdict(list)
     matrices = list(matrices)
     for name, matrix in matrices:
@@ -56,6 +61,7 @@ def calculate_zmax_zmin_args(
         zmax_zmin_args_by_group[i] = {
             "zmax": max(m.max().item() for m in ms),
             "zmin": min(m.min().item() for m in ms),
+            **groups_extra_args.get(i, {}),
         }
     zmax_zmin_args = {}
     for name, _ in matrices:
@@ -537,16 +543,18 @@ class ModelMatrixLoggingOptions:
     ):
         matrices = dict(self.matrices_to_log(model, unsafe=unsafe))
         if self.use_subplots:
+            OVs = tuple(name for name, _ in matrices.items() if "U" in name)
+            QKs = tuple(name for name, _ in matrices.items() if "U" not in name)
             figs = {
                 self.superplot_title: plot_tensors(
                     matrices.items(),
                     title=self.superplot_title,
                     plot_1D_kind=self.plot_1D_kind,
                     groups=(
-                        [
-                            [name for name, _ in matrices.items() if "U" in name],
-                            [name for name, _ in matrices.items() if "U" not in name],
-                        ]
+                        {
+                            OVs: dict(colorscale="Picnic_r", zmid=0),
+                            QKs: dict(colorscale="Plasma"),
+                        }
                         if self.group_colorbars
                         else None
                     ),

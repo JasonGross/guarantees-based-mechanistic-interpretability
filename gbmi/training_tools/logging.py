@@ -1,6 +1,7 @@
 from __future__ import annotations
 from functools import partial
 from matplotlib import pyplot as plt
+from collections import defaultdict
 import plotly.express as px
 import torch
 import plotly.graph_objects as go
@@ -35,14 +36,44 @@ def str_mean(s: str) -> str:
     return f"𝔼({s})"
 
 
+def calculate_zmax_zmin_args(
+    matrices: Iterable[Tuple[str, Tensor]],
+    groups: Optional[Collection[Collection[str]]] = None,
+) -> dict[str, dict[str, float]]:
+    """Computes zmax and zmin by grouping matrices"""
+    if groups is None:
+        return {}
+    groups_map: dict[str, int] = {}
+    for i, group in enumerate(groups):
+        for name in group:
+            groups_map[name] = i
+    group_to_matrix_map: dict[Optional[int], list[Tensor]] = defaultdict(list)
+    matrices = list(matrices)
+    for name, matrix in matrices:
+        group_to_matrix_map[groups_map.get(name)].append(matrix)
+    zmax_zmin_args_by_group: dict[Optional[int], dict[str, float]] = {}
+    for i, ms in group_to_matrix_map.items():
+        zmax_zmin_args_by_group[i] = {
+            "zmax": max(m.max().item() for m in ms),
+            "zmin": min(m.min().item() for m in ms),
+        }
+    zmax_zmin_args = {}
+    for name, _ in matrices:
+        zmax_zmin_args[name] = zmax_zmin_args_by_group[groups_map.get(name)]
+    return zmax_zmin_args
+
+
 def plot_tensors(
     matrices: Iterable[Tuple[str, Tensor]],
+    *,
     plot_1D_kind: Literal["line", "scatter"] = "line",
     title="Subplots of Matrices",
+    groups: Optional[Collection[Collection[str]]] = None,
     **kwargs,
 ) -> go.Figure:
     # Calculate grid size based on the number of matrices
     matrices = list(matrices)
+    zmax_zmin_args = calculate_zmax_zmin_args(matrices, groups=groups)
     num_matrices = len(matrices)
     grid_size = int(np.ceil(np.sqrt(num_matrices)))
     subplot_titles = [name for name, _ in matrices] if len(matrices) else None
@@ -76,7 +107,11 @@ def plot_tensors(
             )
         elif len(matrix.shape) == 2:
             # 2D data - heatmap
-            fig.add_trace(go.Heatmap(z=matrix, name=name), row=row, col=col)
+            fig.add_trace(
+                go.Heatmap(z=matrix, name=name, **zmax_zmin_args[name]),
+                row=row,
+                col=col,
+            )
         else:
             raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
 
@@ -146,6 +181,7 @@ class ModelMatrixLoggingOptions:
     plot_1D_kind: Literal["line", "scatter"] = "line"
     use_subplots: bool = True
     superplot_title = "model matrices"
+    group_colorbars: bool = True
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -506,6 +542,14 @@ class ModelMatrixLoggingOptions:
                     matrices.items(),
                     title=self.superplot_title,
                     plot_1D_kind=self.plot_1D_kind,
+                    groups=(
+                        [
+                            [name for name, _ in matrices.items() if "U" in name],
+                            [name for name, _ in matrices.items() if "U" not in name],
+                        ]
+                        if self.group_colorbars
+                        else None
+                    ),
                 )
             }
         else:

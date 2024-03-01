@@ -6,6 +6,7 @@ from dataclasses import field
 from collections.abc import Callable
 from gbmi.exp_bigram_stats.data_utils import (
     ExactBigramTask,
+    ABCBCBigramTask,
     calculate_batch_probabilities,
     cat_bos_token,
     cat_bos_uniform_labels,
@@ -104,6 +105,7 @@ class Bigram(ExperimentConfig):
     def get_summary_slug(self, config: Config[Bigram]) -> str:
         return (
             f"IndHead-Len{config.experiment.seq_length}"
+            f"{f'-{config.experiment.task}' if config.experiment.task != 'exact-bigram' else ''}"
             f"-d_model{config.experiment.d_model}"
             f"-ntok{config.experiment.num_tokens}"
             f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
@@ -146,6 +148,9 @@ ABCAB_BIGRAM = Config(
         num_tokens=26,
         n_heads=4,
         d_model=128,
+        task="abcab",
+        bos=False,
+        only_last_tokens=1,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
@@ -267,6 +272,7 @@ class BigramDataModule(DataModule):
     n_train_samples: int
     n_test_samples: int
     n_validate_samples: int
+    task: Literal["exact-bigram", "abcab"]
     seq_length: int
     bos: Optional[int]
     dataset_seed: int
@@ -281,6 +287,7 @@ class BigramDataModule(DataModule):
         self.num_tokens = config.experiment.num_tokens
         self.seq_length = config.experiment.seq_length
         self.bos = config.experiment.num_tokens if config.experiment.bos else None
+        self.task = config.experiment.task
         self.dataset_seed = reseed(config.seed, "dataset_seed")
 
     def build_dataset(
@@ -290,9 +297,14 @@ class BigramDataModule(DataModule):
     ]:
         seed = reseed(self.dataset_seed, mode)
         n_samples = getattr(self, f"n_{mode}_samples")
+        match self.task:
+            case "exact-bigram":
+                generator = ExactBigramTask.generator
+            case "abcab":
+                generator = ABCBCBigramTask.generator
         data = torch.stack(
             tuple(
-                ExactBigramTask.generator(
+                generator(
                     seed=seed,
                     num_tokens=self.num_tokens,
                     seq_length=self.seq_length,

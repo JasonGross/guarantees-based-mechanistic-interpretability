@@ -114,7 +114,7 @@ def plot_tensors(
         elif len(matrix.shape) == 2:
             # 2D data - heatmap
             fig.add_trace(
-                go.Heatmap(z=matrix, name=name, **zmax_zmin_args[name]),
+                go.Heatmap(z=matrix, name=name, **zmax_zmin_args.get(name, {})),
                 row=row,
                 col=col,
             )

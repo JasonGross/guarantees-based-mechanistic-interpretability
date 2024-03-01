@@ -130,7 +130,7 @@ DEFAULT_BIGRAM = Config(
     experiment=Bigram(
         seq_length=6,
         n_train_samples=4096,
-        logging_options=ModelMatrixLoggingOptions.all(),
+        logging_options=ModelMatrixLoggingOptions.all(add_mean_pos_to_tok=False),
     ),
     seed=999,
     deterministic=False,
@@ -151,7 +151,9 @@ ABCAB_BIGRAM1H = Config(
         bos=False,
         only_last_tokens=1,
         n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(use_subplots=True),
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean_pos_to_tok=False
+        ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
     seed=999,
@@ -174,7 +176,9 @@ ABCAB_BIGRAM = Config(
         bos=False,
         only_last_tokens=1,
         n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(use_subplots=False),
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=False, add_mean_pos_to_tok=False
+        ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
     seed=999,

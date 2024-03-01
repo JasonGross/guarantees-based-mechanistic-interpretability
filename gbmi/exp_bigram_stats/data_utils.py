@@ -12,11 +12,15 @@ class ExactBigramTask:
         logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
         labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
         *,
-        use_bos: bool
+        use_bos: bool,
+        only_eos: Optional[int] = None,
     ) -> Float[Tensor, ""]:  # noqa: F722
         if use_bos:
             logits = logits[:, 1:, :]
             labels = labels[:, 1:, :]
+        if only_eos is not None:
+            logits = logits[:, -only_eos:, :]
+            labels = labels[:, -only_eos:, :]
         logits = einops.rearrange(logits, "b p v -> (b p) v")
         labels = einops.rearrange(labels, "b p v -> (b p) v")
         loss = torch.nn.functional.cross_entropy(logits, labels)
@@ -60,12 +64,45 @@ class ExactBigramTask:
                 return
 
 
+class ABCBCBigramTask:
+
+    # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
+    @staticmethod
+    def generator(
+        *, seed: int, num_tokens: int, seq_length: int, max_length: int
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        assert seq_length == 5, f"Only implemented for seq_length=5, not {seq_length}"
+        default_device = torch.tensor([]).device
+        g = torch.Generator(device=default_device)
+        g.manual_seed(seed)
+        n_samples = 0
+        while True:
+            # permute arange(num_tokens) randomly
+            tokens = torch.randperm(num_tokens, generator=g)
+            a, b, c = tokens[:3]
+            if torch.rand(1) < 0.5:
+                yield torch.tensor(
+                    [a, b, c, b, c][:-1], dtype=torch.long, device=default_device
+                )
+            else:
+                yield torch.tensor(
+                    [a, b, c, a, b][:-1], dtype=torch.long, device=default_device
+                )
+            n_samples += 1
+            if max_length is not None and n_samples >= max_length:
+                return
+
+
 def calculate_batch_probabilities(
     batch_input: Integer[Tensor, "... seq_length"], num_tokens: int  # noqa: F821, F722
 ) -> Float[Tensor, "... seq_length num_tokens"]:  # noqa: F821, F722
     # Convert batch input to a PyTorch tensor
     # Convert batch input to a PyTorch tensor
-    batch_tensor = torch.tensor(batch_input, dtype=torch.long)
+    batch_tensor = (
+        torch.tensor(batch_input, dtype=torch.long)
+        if not isinstance(batch_input, torch.Tensor)
+        else batch_input.long()
+    )
 
     # Get the shape of the batch tensor
     batch_dims, seq_length = batch_tensor.shape[:-1], batch_tensor.shape[-1]
@@ -84,7 +121,6 @@ def calculate_batch_probabilities(
         tokens = batch_tensor[..., i]
         token_occurrences = torch.zeros(batch_dims + (num_tokens,))
         for next_token in range(num_tokens):
-
             token_occurrences[..., next_token] = (
                 (
                     (
@@ -96,10 +132,13 @@ def calculate_batch_probabilities(
                 .float()
                 .sum(dim=-1)
             )
-            token_occurrences[..., next_token] += 1
-        probability_distributions[..., i, :] = (
-            token_occurrences / token_occurrences.sum(dim=-1, keepdim=True)
+        normalized_token_occurrences = token_occurrences / token_occurrences.sum(
+            dim=-1, keepdim=True
         )
+        normalized_token_occurrences[normalized_token_occurrences.isnan()] = (
+            1 / num_tokens
+        )
+        probability_distributions[..., i, :] = normalized_token_occurrences
 
         # Normalize to get probabilities for positions from the second onwards
 
@@ -128,7 +167,7 @@ def cat_bos_token(
 def cat_bos_uniform_labels(
     labels: Float[Tensor, "... seq_length num_tokens"],  # noqa: F722
     *,
-    bos: Optional[int]
+    bos: Optional[int],
 ) -> Float[Tensor, "... seq_length num_tokens"]:  # noqa: F722
     if bos is None:
         return labels

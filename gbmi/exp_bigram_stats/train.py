@@ -86,7 +86,7 @@ class Bigram(ExperimentConfig):
     optimizer_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
-    version_number: int = 1
+    version_number: int = 2
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )

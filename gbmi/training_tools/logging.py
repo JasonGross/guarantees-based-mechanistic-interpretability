@@ -63,6 +63,25 @@ def calculate_zmax_zmin_args(
             "zmin": min(m.min().item() for m in ms),
             **groups_extra_args.get(i, {}),
         }
+        if "zmid" in zmax_zmin_args_by_group[i]:
+            zhalfrange = np.max(
+                (
+                    np.abs(
+                        zmax_zmin_args_by_group[i]["zmax"]
+                        - zmax_zmin_args_by_group[i]["zmid"]
+                    ),
+                    np.abs(
+                        zmax_zmin_args_by_group[i]["zmin"]
+                        - zmax_zmin_args_by_group[i]["zmid"]
+                    ),
+                )
+            )
+            zmax_zmin_args_by_group[i]["zmax"] = (
+                zmax_zmin_args_by_group[i]["zmid"] + zhalfrange
+            )
+            zmax_zmin_args_by_group[i]["zmin"] = (
+                zmax_zmin_args_by_group[i]["zmid"] - zhalfrange
+            )
     zmax_zmin_args = {}
     for name, _ in matrices:
         zmax_zmin_args[name] = zmax_zmin_args_by_group[groups_map.get(name)]

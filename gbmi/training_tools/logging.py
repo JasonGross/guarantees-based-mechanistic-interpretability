@@ -242,8 +242,11 @@ class ModelMatrixLoggingOptions:
             f"Automatic logging for normalization type {model.cfg.normalization_type} is not yet implemented",
         )
         error_unless(
-            (model.cfg.attn_only),
-            "Automatic logging is only supported for attention-only models",
+            (
+                model.cfg.attn_only
+                or (not self.EVOU and not self.PVOU and model.cfg.n_layers == 1)
+            ),
+            "Automatic logging is only supported for attention-only models, or for 1L models with EVOU and PVOU logging turned off",
         )
 
     @staticmethod

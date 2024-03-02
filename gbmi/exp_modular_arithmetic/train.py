@@ -32,6 +32,7 @@ from gbmi.model import (
     add_force_argument,
     add_no_save_argument,
 )
+from gbmi.training_tools.logging import ModelMatrixLoggingOptions
 from gbmi.utils import (
     shuffle_data,
     reseed,
@@ -80,6 +81,9 @@ class ModularArithmetic(ExperimentConfig):
     training_ratio: float = 0.3  # fraction of dataset to use for training
     validation_max_samples: Optional[int] = None
     optimizer_kwargs: OptimizerConfig = field(default_factory=OptimizerConfig)
+    logging_options: ModelMatrixLoggingOptions = field(
+        default_factory=ModelMatrixLoggingOptions
+    )
     version_number: int = 1
 
     def get_training_wrapper(self):
@@ -104,7 +108,9 @@ class ModularArithmetic(ExperimentConfig):
         if not hasattr(self, "d_mlp"):
             self.d_mlp = self.n_heads * self.d_model
         self.zero_biases = sorted(set(self.zero_biases))
-        setattr(self, _EXCLUDE, ("validation_max_samples", "num_workers"))
+        setattr(
+            self, _EXCLUDE, ("validation_max_samples", "num_workers", "logging_options")
+        )
         assert (
             self.d_model % self.n_heads == 0
         ), f"d_model {self.d_model} must be divisible by n_heads {self.n_heads}"
@@ -163,24 +169,38 @@ class ModularArithmetic(ExperimentConfig):
 
 
 CLOCK_CONFIG = Config(
-    experiment=ModularArithmetic(p=113, training_ratio=0.3),
+    experiment=ModularArithmetic(
+        p=113,
+        training_ratio=0.3,
+        logging_options=ModelMatrixLoggingOptions.all(
+            EVOU=False,
+            PVOU=False,
+        ),
+    ),
     seed=0,
     deterministic=False,
     train_for=(50000, "epochs"),
     log_every_n_steps=1,
-    validate_every=(20, "epochs"),
+    validate_every=(100, "epochs"),
     checkpoint_every=(500, "epochs"),
 )
 
 PIZZA_CONFIG = Config(
     experiment=ModularArithmetic(
-        p=59, training_ratio=0.8, use_end_of_sequence=False, attention_rate=1
+        p=59,
+        training_ratio=0.8,
+        use_end_of_sequence=False,
+        attention_rate=1,
+        logging_options=ModelMatrixLoggingOptions.all(
+            EVOU=False,
+            PVOU=False,
+        ),
     ),
     seed=0,
     deterministic=False,
     train_for=(10000, "epochs"),
     log_every_n_steps=1,
-    validate_every=(20, "epochs"),
+    validate_every=(100, "epochs"),
     checkpoint_every=(500, "epochs"),
 )
 
@@ -286,6 +306,14 @@ class ModularArithmeticTrainingWrapper(TrainingWrapper[ModularArithmetic]):
         if log_output:
             self.log(f"{prefix}loss", loss, prog_bar=True)
             self.log(f"{prefix}acc", acc, prog_bar=True)
+
+        if log_output and prefix is not None and prefix != "":
+            assert self.logger is not None
+            self.config.experiment.logging_options.log_matrices(
+                self.logger.experiment,  # type: ignore
+                self.model,
+            )
+
         return loss, acc
 
     def training_step(self, batch, batch_idx):

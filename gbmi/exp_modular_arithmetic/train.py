@@ -81,6 +81,7 @@ class ModularArithmetic(ExperimentConfig):
     training_ratio: float = 0.3  # fraction of dataset to use for training
     validation_max_samples: Optional[int] = None
     optimizer_kwargs: OptimizerConfig = field(default_factory=OptimizerConfig)
+    use_scheduler: bool = True
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
@@ -327,9 +328,24 @@ class ModularArithmeticTrainingWrapper(TrainingWrapper[ModularArithmetic]):
         self.run_batch(batch, prefix="periodic_test_")
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(
+        optimizer = torch.optim.AdamW(
             self.parameters(), **self.config.experiment.optimizer_kwargs
         )
+        if self.config.experiment.use_scheduler:
+            scheduler = torch.optim.lr_scheduler.LambdaLR(
+                optimizer, lambda epoch: min(epoch / 10, 1)
+            )
+
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "frequency": 1,
+                    "interval": "epoch",
+                },
+            }
+        else:
+            return optimizer
 
 
 class ModularArithmeticDataModule(DataModule):

@@ -211,15 +211,19 @@ class ModelMatrixLoggingOptions:
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
         return ModelMatrixLoggingOptions(
-            EQKE=True,
-            EQKP=True,
-            EU=True,
-            PU=True,
-            EVOU=True,
-            PVOU=True,
-            PQKP=True,
-            PQKE=True,
-            **kwargs,
+            **(
+                dict(
+                    EQKE=True,
+                    EQKP=True,
+                    EU=True,
+                    PU=True,
+                    EVOU=True,
+                    PVOU=True,
+                    PQKP=True,
+                    PQKE=True,
+                )
+                | kwargs
+            ),  # type: ignore
         )
 
     def __post_init__(self):

@@ -12,34 +12,27 @@ import torch
 import einops
 from torch import tensor
 from math import *
-import tqdm
+from tqdm.auto import tqdm
 import plotly.express as px
 from gbmi.utils.sequences import generate_all_sequences
 import pandas as pd
+from torch.autograd.anomaly_mode import set_detect_anomaly
 
 device = "cuda"
 
-# functions=[("max","min"),("is_sorted","exactly_2_of_3_even"),("add","minus")]
+torch.autograd.anomaly_mode.set_detect_anomaly(True)
 
-# add_sub_1_head_CONFIG = f_g_config(fun=add_sub(53, 2), n_head=1, elements=2)
-# add_sub_2_head_CONFIG = f_g_config(fun=add_sub(53, 2), n_head=2, elements=2)
-max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2)
-# add_sub_4_head_CONFIG = f_g_config(fun=add_sub(23, 2), n_head=4, elements=2)
-
-
-# max_min_2_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2)
-
-# max_min_4_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=4, elements=2)
-
-# runtime_add_sub_1, model_add_sub_1 = train_or_load_model(add_sub_1_head_CONFIG)
-# runtime_add_sub_2, model_add_sub_2 = train_or_load_model(add_sub_2_head_CONFIG)
+max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=8, elements=2)
 runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
-# runtime_add_sub_4, model_add_sub_4 = train_or_load_model(add_sub_4_head_CONFIG)
 
-# runtime_max_min_2, model_max_min_2 = train_or_load_model(max_min_2_head_CONFIG)
+"""
+for i in range(0, 1000, 100):
+    print(i)
+    max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=i)
+    runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
 
+"""
 
-# runtime_max_min_4, model_max_min_4 = train_or_load_model(max_min_4_head_CONFIG)
 
 """
 with torch.no_grad():
@@ -102,14 +95,15 @@ for i in range(53):
 
 def elemental_loss(mod, i):
     logits = mod(i)[:, -1, :].to(torch.float64)
-    log_probs = utils.log_softmax(logits, dim=-1).to(device)
+    log_probs = utils.log_softmax(logits, dim=-1)
     correct_log_probs = log_probs.gather(
-        -1, torch.min(i[:2]).unsqueeze(-1).unsqueeze(-1)
-    )[:, 0].to(device)
+        -1, i[..., :2].min(dim=-1).values.unsqueeze(-1)
+    )[:, 0]
 
-    return -correct_log_probs.mean()
+    return -correct_log_probs
 
 
+"""
 def loss_scatter(mod, cond, max_is_min):
     pairs = generate_all_sequences(53, 4).to(device)
     data = (
@@ -120,6 +114,8 @@ def loss_scatter(mod, cond, max_is_min):
 
     loss_values = {}
 
+
+
     for i in data:
         if not (max_is_min and not (torch.max(i[2:4]) == torch.min(i[:2]))):
             if cond(i) in loss_values:
@@ -129,8 +125,8 @@ def loss_scatter(mod, cond, max_is_min):
             else:
                 loss_values[cond(i)] = torch.tensor([elemental_loss(mod, i)])
     print(loss_values[(torch.tensor(5), torch.tensor(50))])
-    x_values = [key[0].item() for key in loss_values.keys()]
-    y_values = [key[1].item() for key in loss_values.keys()]
+    x_values = [key[0] for key in loss_values.keys()]
+    y_values = [key[1] for key in loss_values.keys()]
     color_values = [value.mean().item() for value in loss_values.values()]
 
     # Create a DataFrame
@@ -139,13 +135,89 @@ def loss_scatter(mod, cond, max_is_min):
     # Plot scatter diagram using Plotly Express
     fig = px.scatter(df, x="X", y="Y", color="Color", title="Scatter Diagram")
     fig.show()
+"""
+
+
+@torch.no_grad()
+def loss_scatter(mod, cond, res):
+
+    def cond_index(data):
+        out = cond(data)
+        return out[0] * 53 + out[1]
+
+    pairs = generate_all_sequences(53, 4).to(device)
+    data = torch.cat(
+        [
+            pairs,
+            53 * (torch.ones((len(pairs), 1), device=pairs.device, dtype=torch.long)),
+        ],
+        dim=1,
+    )
+
+    loss_values = torch.zeros((53**2,), device=pairs.device, dtype=torch.float64)
+
+    loss_values = []
+
+    for sub_data in tqdm(torch.split(data, 53**2)):
+        losses = elemental_loss(mod, sub_data)
+        loss_values.append(losses)
+
+    loss_values = torch.cat(loss_values)
+
+    losses = torch.zeros((53**2,), device=loss_values.device, dtype=loss_values.dtype)
+    cond_indices = cond_index(data)
+    if res is not None:
+        res_mask = res(data)
+        cond_indices = cond_indices[res_mask]
+        loss_values = loss_values[res_mask]
+    losses.scatter_reduce_(
+        dim=0,
+        index=cond_indices,
+        src=loss_values,
+        reduce="mean",
+        include_self=False,
+    )
+
+    x_coords = torch.arange(53).repeat(53, 1).transpose(0, 1).flatten()
+    y_coords = torch.arange(53).repeat(53, 1).flatten()
+
+    fig = px.scatter(
+        x=x_coords.numpy(),
+        y=y_coords.numpy(),
+        color=losses.cpu().numpy(),
+        color_continuous_scale="Picnic",
+        title="loss",
+        labels={"color": "average loss"},
+        width=800,
+        height=600,
+        color_continuous_midpoint=0,
+    )
+
+    fig.update_layout(
+        xaxis_title="cond_1",
+        yaxis_title="cond_2",
+    )
+
+    fig.show()
 
 
 def min_max(i):
-    return (torch.min(i[:2]), torch.max(i[2:4]))
+    return ((i[..., :2].min(dim=-1).values), (i[..., 2:4].max(dim=-1)).values)
 
 
-loss_scatter(model_max_min_1, min_max, True)
+def min_min(i):
+    return ((i[..., :2].min(dim=-1).values), (i[..., 2:4].min(dim=-1)).values)
+
+
+def res_min_max(i):
+    return i[..., :2].min(dim=-1).values == i[..., 2:4].max(dim=-1).values
+
+
+def res_min_min(i):
+    return i[..., :2].min(dim=-1).values == i[..., 2:4].min(dim=-1).values
+
+
+loss_scatter(model_max_min_1, min_max, res_min_max)
 
 # print(torch.argmax(model_max_min_4(torch.tensor([0, 0, 17, 20, 53]))[:, -1, :]))
 
@@ -153,3 +225,8 @@ loss_scatter(model_max_min_1, min_max, True)
 # model_add_sub_2.to(device)
 # model_max_min_4.to(device)
 # model_max_min_2.to(device)
+
+# %%
+print(model_max_min_1(torch.tensor([51, 50, 10, 11, 53]))[:, -1, :].argmax(dim=-1))
+
+# %%

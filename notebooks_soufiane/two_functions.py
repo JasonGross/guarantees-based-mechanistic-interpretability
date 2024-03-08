@@ -16,23 +16,8 @@ from tqdm.auto import tqdm
 import plotly.express as px
 from gbmi.utils.sequences import generate_all_sequences
 import pandas as pd
-from torch.autograd.anomaly_mode import set_detect_anomaly
 
 device = "cuda"
-
-torch.autograd.anomaly_mode.set_detect_anomaly(True)
-
-max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=8, elements=2)
-runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
-
-"""
-for i in range(0, 1000, 100):
-    print(i)
-    max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=i)
-    runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
-
-"""
-
 
 """
 with torch.no_grad():
@@ -93,12 +78,10 @@ for i in range(53):
 """
 
 
-def elemental_loss(mod, i):
+def elemental_loss(mod, i, fun):
     logits = mod(i)[:, -1, :].to(torch.float64)
     log_probs = utils.log_softmax(logits, dim=-1)
-    correct_log_probs = log_probs.gather(
-        -1, i[..., :2].min(dim=-1).values.unsqueeze(-1)
-    )[:, 0]
+    correct_log_probs = log_probs.gather(-1, fun(i).unsqueeze(-1))[:, 0]
 
     return -correct_log_probs
 
@@ -139,7 +122,7 @@ def loss_scatter(mod, cond, max_is_min):
 
 
 @torch.no_grad()
-def loss_scatter(mod, cond, res):
+def loss_scatter(mod, cond, res, fun):
 
     def cond_index(data):
         out = cond(data)
@@ -159,7 +142,7 @@ def loss_scatter(mod, cond, res):
     loss_values = []
 
     for sub_data in tqdm(torch.split(data, 53**2)):
-        losses = elemental_loss(mod, sub_data)
+        losses = elemental_loss(mod, sub_data, fun)
         loss_values.append(losses)
 
     loss_values = torch.cat(loss_values)
@@ -202,22 +185,34 @@ def loss_scatter(mod, cond, res):
 
 
 def min_max(i):
-    return ((i[..., :2].min(dim=-1).values), (i[..., 2:4].max(dim=-1)).values)
-
-
-def min_min(i):
-    return ((i[..., :2].min(dim=-1).values), (i[..., 2:4].min(dim=-1)).values)
+    return ((i[..., 2:].min(dim=-1).values), (i[..., :2].max(dim=-1)).values)
 
 
 def res_min_max(i):
-    return i[..., :2].min(dim=-1).values == i[..., 2:4].max(dim=-1).values
+    return i[..., 2:].min(dim=-1).values == i[..., :2].max(dim=-1).values
 
 
-def res_min_min(i):
-    return i[..., :2].min(dim=-1).values == i[..., 2:4].min(dim=-1).values
+def max_1(i):
+    return i[..., :2].max(dim=-1).values
 
 
-loss_scatter(model_max_min_1, min_max, res_min_max)
+def min_2(i):
+    return i[..., 2:].max(dim=-1).values
+
+
+for i in range(0, 1000, 100):
+    print(i)
+    max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=i)
+    runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
+    loss_scatter(model_max_min_1, min_max, None, min_2)
+    loss_scatter(model_max_min_1, min_max, None, max_1)
+
+# %%
+max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=999)
+runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
+loss_scatter(model_max_min_1, min_max, None, True)
+loss_scatter(model_max_min_1, min_max, None, False)
+
 
 # print(torch.argmax(model_max_min_4(torch.tensor([0, 0, 17, 20, 53]))[:, -1, :]))
 

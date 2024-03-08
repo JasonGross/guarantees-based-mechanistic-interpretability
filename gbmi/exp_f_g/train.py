@@ -78,7 +78,7 @@ class f_g(ExperimentConfig):
         )
 
 
-def f_g_config(fun: Fun, n_head: int, elements: int):
+def f_g_config(fun: Fun, n_head: int, elements: int, seed: int):
     return Config(
         experiment=f_g(
             model_config=HookedTransformerConfig(
@@ -105,7 +105,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int):
             # attention_rate=attn_rate,
             optimizer_kwargs={"lr": 1e-4, "weight_decay": 0.1, "betas": (0.1, 0.11)},
         ),
-        seed=999,
+        seed=seed,
         deterministic=False,
         batch_size=39707,
         train_for=(25000, "epochs"),
@@ -263,6 +263,8 @@ class f_g_DataModule(DataModule):
         )
 
         print(len(agree_indices))
+
+        print(data[agree_indices[10000]])
 
         random_subset = torch.randperm(len(agree_indices))
 

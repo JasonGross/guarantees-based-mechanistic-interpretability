@@ -88,7 +88,7 @@ class ABCBCBigramTask:
         g = torch.Generator(device=default_device)
         g.manual_seed(seed)
         n_samples = 0
-        n_cs = num_tokens - 2
+        n_cs = seq_length - 2
         while True:
             tokens = torch.randperm(num_tokens, generator=g)
             (a, b), cs = tokens[:2], tokens[2:]

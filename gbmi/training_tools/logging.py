@@ -137,6 +137,7 @@ def plot_tensors(
                 row=row,
                 col=col,
             )
+            fig.update_yaxes(autorange="reversed", row=row, col=col)
         else:
             raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
 

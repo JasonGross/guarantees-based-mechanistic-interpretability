@@ -79,6 +79,7 @@ class Bigram(ExperimentConfig):
     d_model: int = 8
     task: Literal["exact-bigram", "abcab"] = "exact-bigram"
     only_last_tokens: Optional[int] = None
+    only_strong_signal: bool = True
     n_heads: int = 1
 
     n_train_samples: int = 4096
@@ -130,6 +131,7 @@ DEFAULT_BIGRAM = Config(
     experiment=Bigram(
         seq_length=6,
         n_train_samples=4096,
+        only_strong_signal=False,
         logging_options=ModelMatrixLoggingOptions.all(add_mean_pos_to_tok=False),
     ),
     seed=999,
@@ -149,7 +151,55 @@ ABCAB_BIGRAM1H = Config(
         d_model=128,
         task="abcab",
         bos=False,
-        only_last_tokens=1,
+        only_strong_signal=True,
+        n_train_samples=10240,
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean_pos_to_tok=False
+        ),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=512,
+    train_for=(5000, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(10, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
+
+ABCAB5_BIGRAM1H = Config(
+    experiment=Bigram(
+        seq_length=5,
+        num_tokens=26,
+        n_heads=1,
+        d_model=128,
+        task="abcab",
+        bos=False,
+        only_strong_signal=True,
+        n_train_samples=10240,
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean_pos_to_tok=False
+        ),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=512,
+    train_for=(5000, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(10, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
+
+ABCAB6_BIGRAM1H = Config(
+    experiment=Bigram(
+        seq_length=6,
+        num_tokens=26,
+        n_heads=1,
+        d_model=128,
+        task="abcab",
+        bos=False,
+        only_strong_signal=True,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=True, add_mean_pos_to_tok=False
@@ -174,7 +224,7 @@ ABCAB_BIGRAM = Config(
         d_model=128,
         task="abcab",
         bos=False,
-        only_last_tokens=1,
+        only_strong_signal=True,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=False, add_mean_pos_to_tok=False

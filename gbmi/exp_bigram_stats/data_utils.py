@@ -10,10 +10,11 @@ class ExactBigramTask:
     @staticmethod
     def loss_fn(
         logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
-        labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
+        labels: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
         *,
         use_bos: bool,
         only_eos: Optional[int] = None,
+        only_strong_signal: bool = False,
     ) -> Float[Tensor, ""]:  # noqa: F722
         if use_bos:
             logits = logits[:, 1:, :]
@@ -21,6 +22,13 @@ class ExactBigramTask:
         if only_eos is not None:
             logits = logits[:, -only_eos:, :]
             labels = labels[:, -only_eos:, :]
+        if only_strong_signal:
+            mask = (labels != 0).sum(dim=-1) == 1
+            assert mask.any(
+                dim=-1
+            ).all(), f"All sequences must have at least one location with exactly one possibility, but got {mask.any(dim=-1)} on\nlogits={logits}\nlabels={labels}\nmask={mask}"
+            logits = logits[mask, :]
+            labels = labels[mask, :]
         logits = einops.rearrange(logits, "b p v -> (b p) v")
         labels = einops.rearrange(labels, "b p v -> (b p) v")
         loss = torch.nn.functional.cross_entropy(logits, labels)
@@ -69,32 +77,37 @@ class ABCBCBigramTask:
     # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
     @staticmethod
     def generator(
-        *, seed: int, num_tokens: int, seq_length: int, max_length: int
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        max_length: int,
+        skip_end: bool = False,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
-        assert seq_length in (
-            4,
-            5,
-        ), f"Only implemented for seq_length=4,5, not {seq_length}"
         default_device = torch.tensor([]).device
         g = torch.Generator(device=default_device)
         g.manual_seed(seed)
         n_samples = 0
+        n_cs = num_tokens - 2
         while True:
-            # permute arange(num_tokens) randomly
             tokens = torch.randperm(num_tokens, generator=g)
-            a, b, c = tokens[:3]
-            if torch.rand(1) < 0.5:
-                yield torch.tensor(
-                    [a, b, c, b, c][:seq_length],
-                    dtype=torch.long,
-                    device=default_device,
-                )
-            else:
-                yield torch.tensor(
-                    [a, b, c, a, b][:seq_length],
-                    dtype=torch.long,
-                    device=default_device,
-                )
+            (a, b), cs = tokens[:2], tokens[2:]
+            cs = cs[torch.randint(0, cs.size(0), (n_cs,), generator=g)]
+            split_index1, split_index2 = (
+                torch.randint(1, cs.size(0) + 1, (2,), generator=g).sort().values
+            )
+            cs1, cs2, cs3 = (
+                cs[:split_index1],
+                cs[split_index1:split_index2],
+                cs[split_index2:],
+            )
+            if skip_end:
+                cs2, cs3 = cs2 + cs3, []
+            yield torch.tensor(
+                [*cs1, a, b, *cs2, a, b, *cs3][:-1],
+                dtype=torch.long,
+                device=default_device,
+            )
             n_samples += 1
             if max_length is not None and n_samples >= max_length:
                 return

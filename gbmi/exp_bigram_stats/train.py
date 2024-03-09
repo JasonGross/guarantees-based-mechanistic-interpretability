@@ -114,7 +114,7 @@ class Bigram(ExperimentConfig):
             f"{f'-pos-{config.experiment.positional_embedding_type}' if config.experiment.positional_embedding_type != 'standard' else ''}"
             f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
             f"-{config.train_for[0]}-{config.train_for[1]}"
-            f"{'-random-at-end' if config.experiment.random_tokens_at_end else ''}"
+            f"{'-randend' if config.experiment.random_tokens_at_end else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 

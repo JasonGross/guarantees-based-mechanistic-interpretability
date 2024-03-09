@@ -102,7 +102,7 @@ class ABCBCBigramTask:
                 cs[split_index2:],
             )
             if skip_end:
-                cs2, cs3 = cs2 + cs3, []
+                cs2, cs3 = torch.cat([cs2, cs3], dim=0), []
             yield torch.tensor(
                 [*cs1, a, b, *cs2, a, b, *cs3][:-1],
                 dtype=torch.long,

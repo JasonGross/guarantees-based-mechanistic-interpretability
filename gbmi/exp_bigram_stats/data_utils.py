@@ -29,8 +29,10 @@ class ExactBigramTask:
             ).all(), f"All sequences must have at least one location with exactly one possibility, but got {mask.any(dim=-1)} on\nlogits={logits}\nlabels={labels}\nmask={mask}"
             logits = logits[mask, :]
             labels = labels[mask, :]
-        logits = einops.rearrange(logits, "b p v -> (b p) v")
-        labels = einops.rearrange(labels, "b p v -> (b p) v")
+        else:
+            # Note that this rearrangement is already taken care of by boolean indexing above
+            logits = einops.rearrange(logits, "b p v -> (b p) v")
+            labels = einops.rearrange(labels, "b p v -> (b p) v")
         loss = torch.nn.functional.cross_entropy(logits, labels)
         return loss
 

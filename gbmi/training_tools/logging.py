@@ -574,7 +574,6 @@ class ModelMatrixLoggingOptions:
             OVs = tuple(name for name, _ in matrices.items() if "U" in name)
             QKs = tuple(name for name, _ in matrices.items() if "U" not in name)
             lh_s = set(val for name in QKs for val in re.findall(r"l\d+h\d+", name))
-            input(lh_s)
             QKs_by_layer = tuple(
                 tuple(name for name in QKs if lh in name) for lh in lh_s
             )

@@ -98,6 +98,9 @@ class Bigram(ExperimentConfig):
 
     def __post_init__(self):
         setattr(self, _EXCLUDE, ("logging_options",))
+        self.logging_options.shortformer = (
+            self.positional_embedding_type == "shortformer"
+        )
 
     def get_training_wrapper(self):
         return BigramTrainingWrapper

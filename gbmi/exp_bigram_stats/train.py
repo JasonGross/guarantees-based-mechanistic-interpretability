@@ -80,6 +80,7 @@ class Bigram(ExperimentConfig):
     task: Literal["exact-bigram", "abcab"] = "exact-bigram"
     only_last_tokens: Optional[int] = None
     only_strong_signal: bool = True
+    random_tokens_at_end: bool = False
     n_heads: int = 1
 
     n_train_samples: int = 4096
@@ -110,7 +111,8 @@ class Bigram(ExperimentConfig):
             f"-d_model{config.experiment.d_model}"
             f"-ntok{config.experiment.num_tokens}"
             f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
-            f"-config{config.train_for[0]}-{config.train_for[1]}"
+            f"-{config.train_for[0]}-{config.train_for[1]}"
+            f"{'-random-at-end' if config.experiment.random_tokens_at_end else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
@@ -132,6 +134,7 @@ DEFAULT_BIGRAM = Config(
         seq_length=6,
         n_train_samples=4096,
         only_strong_signal=False,
+        random_tokens_at_end=False,
         logging_options=ModelMatrixLoggingOptions.all(add_mean_pos_to_tok=False),
     ),
     seed=999,
@@ -152,6 +155,7 @@ ABCAB_BIGRAM1H = Config(
         task="abcab",
         bos=False,
         only_strong_signal=True,
+        random_tokens_at_end=False,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=True, add_mean_pos_to_tok=False
@@ -176,6 +180,7 @@ ABCAB5_BIGRAM1H = Config(
         task="abcab",
         bos=False,
         only_strong_signal=True,
+        random_tokens_at_end=False,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=True, add_mean_pos_to_tok=False
@@ -200,6 +205,7 @@ ABCAB6_BIGRAM1H = Config(
         task="abcab",
         bos=False,
         only_strong_signal=True,
+        random_tokens_at_end=True,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=True, add_mean_pos_to_tok=False
@@ -225,6 +231,7 @@ ABCAB_BIGRAM = Config(
         task="abcab",
         bos=False,
         only_strong_signal=True,
+        random_tokens_at_end=False,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=False, add_mean_pos_to_tok=False
@@ -364,6 +371,7 @@ class BigramDataModule(DataModule):
         self.seq_length = config.experiment.seq_length
         self.bos = config.experiment.num_tokens if config.experiment.bos else None
         self.task = config.experiment.task
+        self.random_tokens_at_end = config.experiment.random_tokens_at_end
         self.dataset_seed = reseed(config.seed, "dataset_seed")
 
     def build_dataset(
@@ -377,7 +385,9 @@ class BigramDataModule(DataModule):
             case "exact-bigram":
                 generator = ExactBigramTask.generator
             case "abcab":
-                generator = ABCBCBigramTask.generator
+                generator = partial(
+                    ABCBCBigramTask.generator, skip_end=self.random_tokens_at_end
+                )
         data = torch.stack(
             tuple(
                 generator(

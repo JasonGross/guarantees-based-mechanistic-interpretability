@@ -33,6 +33,8 @@ class ExactBigramTask:
             # Note that this rearrangement is already taken care of by boolean indexing above
             logits = einops.rearrange(logits, "b p v -> (b p) v")
             labels = einops.rearrange(labels, "b p v -> (b p) v")
+        assert len(logits.shape) == 2, logits.shape
+        assert len(labels.shape) == 2, labels.shape
         loss = torch.nn.functional.cross_entropy(logits, labels)
         return loss
 

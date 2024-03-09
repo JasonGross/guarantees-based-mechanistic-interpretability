@@ -386,7 +386,7 @@ class BigramDataModule(DataModule):
                 generator = ExactBigramTask.generator
             case "abcab":
                 generator = partial(
-                    ABCBCBigramTask.generator, skip_end=self.random_tokens_at_end
+                    ABCBCBigramTask.generator, skip_end=not self.random_tokens_at_end
                 )
         data = torch.stack(
             tuple(

@@ -11,7 +11,7 @@ for seed in torch.randint(0, 2**32 - 1, (20,)):
         ABCAB6_BIGRAM1H,
         {
             "seed": seed.item(),
-            "train_for": (10000, "epochs"),
+            "train_for": (20000, "epochs"),
             "validate_every": (100, "epochs"),
             ("experiment", "summary_slug_extra"): "manseed",
         },

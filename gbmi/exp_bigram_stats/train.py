@@ -286,6 +286,7 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
             labels,
             use_bos=self.config.experiment.bos,
             only_eos=self.config.experiment.only_last_tokens,
+            only_strong_signal=self.config.experiment.only_strong_signal,
         )
 
     def run_batch(

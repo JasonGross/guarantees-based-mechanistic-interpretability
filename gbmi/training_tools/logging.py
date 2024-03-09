@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from functools import partial
 from matplotlib import pyplot as plt
 from collections import defaultdict
@@ -572,16 +573,23 @@ class ModelMatrixLoggingOptions:
         if self.use_subplots:
             OVs = tuple(name for name, _ in matrices.items() if "U" in name)
             QKs = tuple(name for name, _ in matrices.items() if "U" not in name)
+            lh_s = set(val for name, _ in QKs for val in re.findall(r"l\d+h\d+", name))
+            input(lh_s)
+            QKs_by_layer = tuple(
+                tuple(name for name in QKs if lh in name) for lh in lh_s
+            )
             figs = {
                 self.superplot_title: plot_tensors(
                     matrices.items(),
                     title=self.superplot_title,
                     plot_1D_kind=self.plot_1D_kind,
                     groups=(
-                        {
-                            OVs: dict(colorscale="Picnic_r", zmid=0),
-                            QKs: dict(colorscale="Plasma"),
-                        }
+                        (
+                            {
+                                OVs: dict(colorscale="Picnic_r", zmid=0),
+                            }
+                            | {QKss: dict(colorscale="Plasma") for QKss in QKs_by_layer}
+                        )
                         if self.group_colorbars
                         else None
                     ),

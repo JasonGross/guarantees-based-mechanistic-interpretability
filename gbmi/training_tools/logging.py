@@ -230,7 +230,9 @@ class ModelMatrixLoggingOptions:
         )
 
     def __post_init__(self):
-        pass
+        if self.shortformer:
+            self.PVOU = False
+            self.PU = False
 
     def assert_model_supported(self, model: HookedTransformer, unsafe: bool = False):
         def error_unless(test: bool, message: str):

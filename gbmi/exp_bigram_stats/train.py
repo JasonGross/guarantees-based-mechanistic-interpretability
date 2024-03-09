@@ -91,6 +91,7 @@ class Bigram(ExperimentConfig):
     optimizer_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
+    summary_slug_extra: str = ""
     version_number: int = 2
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
@@ -101,6 +102,7 @@ class Bigram(ExperimentConfig):
         self.logging_options.shortformer = (
             self.positional_embedding_type == "shortformer"
         )
+        self.logging_options.__post_init__()
 
     def get_training_wrapper(self):
         return BigramTrainingWrapper
@@ -118,7 +120,8 @@ class Bigram(ExperimentConfig):
             f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
             f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{'-randend' if config.experiment.random_tokens_at_end else ''}"
-            f"{'-nondeterministic' if not config.deterministic else ''}"
+            f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
+            f"{'-nondet' if not config.deterministic else ''}"
         )
 
     @property

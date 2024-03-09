@@ -209,6 +209,7 @@ class ModelMatrixLoggingOptions:
     use_subplots: bool = True
     superplot_title = "model matrices"
     group_colorbars: bool = True
+    shortformer: bool = False
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -298,12 +299,15 @@ class ModelMatrixLoggingOptions:
         sx_direct: str,
         l: int,  # layer that we're computing input paths to
         reverse_strs: bool = False,
+        *,
+        skip_composition: bool = False,
     ) -> Iterable[Tuple[str, str, Float[Tensor, "... a d_model"]]]:  # noqa: F722
         """Returns an iterable of ("VO"*, "lₙ{l}hₙ{h}"*, value) tuples of what x transforms to under repeated applications of apply_VO to layers strictly before l"""
         yield sx_direct, "", x_direct
-        yield from ModelMatrixLoggingOptions._compute_paths(
-            apply_VO, n_heads, x, sx, l - 1, reverse_strs=reverse_strs
-        )
+        if not skip_composition:
+            yield from ModelMatrixLoggingOptions._compute_paths(
+                apply_VO, n_heads, x, sx, l - 1, reverse_strs=reverse_strs
+            )
 
     @torch.no_grad()
     def matrices_to_log(
@@ -478,24 +482,28 @@ class ModelMatrixLoggingOptions:
         for l in range(W_Q.shape[0]):
             for h in range(W_Q.shape[1]):
                 for (
-                    (qx, qx_direct, qsx, qsx_direct),
-                    (kx, kx_direct, ksx, ksx_direct),
+                    (qx, qx_direct, qsx, qsx_direct, qskip_composition),
+                    (kx, kx_direct, ksx, ksx_direct, kskip_composition),
                     test,
                 ) in (
-                    ((W_E_v, W_E_q, sEv, sEq), (W_E_v, W_E_k, sEv, sEk), self.EQKE),
                     (
-                        (W_E_v, W_E_q, sEv, sEq),
-                        (W_pos_v, W_pos_k, sPv, sPk),
+                        (W_E_v, W_E_q, sEv, sEq, False),
+                        (W_E_v, W_E_k, sEv, sEk, False),
+                        self.EQKE,
+                    ),
+                    (
+                        (W_E_v, W_E_q, sEv, sEq, False),
+                        (W_pos_v, W_pos_k, sPv, sPk, self.shortformer),
                         self.EQKP,
                     ),
                     (
-                        (W_pos_v, W_pos_q, sPv, sPq),
-                        (W_E_v, W_E_k, sEv, sEk),
+                        (W_pos_v, W_pos_q, sPv, sPq, self.shortformer),
+                        (W_E_v, W_E_k, sEv, sEk, False),
                         self.PQKE,
                     ),
                     (
-                        (W_pos_v, W_pos_q, sPv, sPq),
-                        (W_pos_v, W_pos_k, sPv, sPk),
+                        (W_pos_v, W_pos_q, sPv, sPq, self.shortformer),
+                        (W_pos_v, W_pos_k, sPv, sPk, self.shortformer),
                         self.PQKP,
                     ),
                 ):
@@ -509,6 +517,7 @@ class ModelMatrixLoggingOptions:
                             sx_direct=qsx_direct,
                             l=l,
                             reverse_strs=False,
+                            skip_composition=qskip_composition,
                         ):
                             for (
                                 sk,
@@ -523,6 +532,7 @@ class ModelMatrixLoggingOptions:
                                 sx_direct=ksx_direct,
                                 l=l,
                                 reverse_strs=True,
+                                skip_composition=kskip_composition,
                             ):
                                 if sq != "0" or self.log_zeros:
                                     yield (
@@ -554,6 +564,7 @@ class ModelMatrixLoggingOptions:
                         sx_direct=sPv,
                         l=l,
                         reverse_strs=False,
+                        skip_composition=self.shortformer,
                     ):
                         yield (
                             f"{sv}VOU<br>.{lh_v}l{l}h{h}",

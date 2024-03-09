@@ -305,6 +305,9 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         self,
         logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
         labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
+        *,
+        # xs only for logging purposes
+        _xs: Optional[Integer[Tensor, "batch pos"]] = None,  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
         return ExactBigramTask.loss_fn(
             logits,
@@ -312,6 +315,7 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
             use_bos=self.config.experiment.bos,
             only_eos=self.config.experiment.only_last_tokens,
             only_strong_signal=self.config.experiment.only_strong_signal,
+            _xs=_xs,
         )
 
     def run_batch(
@@ -332,7 +336,7 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         ys = ys.to(xs.device)
         self.model.to(xs.device, print_details=False)
         y_preds = self.model(xs)
-        loss = self.loss_fn(y_preds, ys)
+        loss = self.loss_fn(y_preds, ys, _xs=xs)
         if log_output:
             self.log(f"{prefix}loss", loss, prog_bar=True)
 

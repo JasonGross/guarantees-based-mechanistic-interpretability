@@ -15,6 +15,8 @@ class ExactBigramTask:
         use_bos: bool,
         only_eos: Optional[int] = None,
         only_strong_signal: bool = False,
+        # _xs only for logging purposes
+        _xs: Optional[Integer[Tensor, "batch pos"]] = None,  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
         if use_bos:
             logits = logits[:, 1:, :]
@@ -27,6 +29,8 @@ class ExactBigramTask:
             assert mask.any(
                 dim=-1
             ).all(), f"All sequences must have at least one location with exactly one possibility, but got {mask.any(dim=-1)} on\nlogits={logits}\nlabels={labels}\nmask={mask}"
+            # for _xsi, labelsi, logitsi, maski in zip(_xs, labels, logits, mask):
+            #     input((_xsi, labelsi[maski].argmax(dim=-1), maski.nonzero()))
             logits = logits[mask, :]
             labels = labels[mask, :]
         else:

@@ -483,7 +483,7 @@ class ModelMatrixLoggingOptions:
                 ) in (
                     ((W_E_v, W_E_q, sEv, sEq), (W_E_v, W_E_k, sEv, sEk), self.EQKE),
                     (
-                        (W_E_v, W_pos_q, sEv, sPq),
+                        (W_E_v, W_E_q, sEv, sEq),
                         (W_pos_v, W_pos_k, sPv, sPk),
                         self.EQKP,
                     ),

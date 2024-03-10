@@ -60,8 +60,8 @@ def calculate_zmax_zmin_args(
     zmax_zmin_args_by_group: dict[Optional[int], dict[str, float]] = {}
     for i, ms in group_to_matrix_map.items():
         zmax_zmin_args_by_group[i] = {
-            "zmax": max(m.max().item() for m in ms),
-            "zmin": min(m.min().item() for m in ms),
+            "zmax": max(m[~m.isnan()].max().item() for m in ms),
+            "zmin": min(m[~m.isnan()].min().item() for m in ms),
             **groups_extra_args.get(i, {}),
         }
         if "zmid" in zmax_zmin_args_by_group[i]:

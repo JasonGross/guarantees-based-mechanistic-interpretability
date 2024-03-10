@@ -63,7 +63,7 @@ class Bigram(ExperimentConfig):
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
     summary_slug_extra: str = ""
-    version_number: int = 2
+    version_number: int = 3
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
@@ -350,6 +350,7 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
             init_weights=True,
             attn_only=True,
             normalization_type=None,
+            seed=reseed(config.seed, "model"),
         )
         model = HookedTransformer(model_config)
         if config.experiment.zero_biases:

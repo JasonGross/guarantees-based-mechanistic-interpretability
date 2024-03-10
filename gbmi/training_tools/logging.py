@@ -554,10 +554,13 @@ class ModelMatrixLoggingOptions:
                                     if (
                                         nanify_above_diagonal_if_query_direct
                                         and is_direct_q
+                                        and len(matrix.shape) >= 2
                                     ):
                                         # set everything above the main diagonal to NaN
                                         matrix[
-                                            torch.triu_indices(*matrix.shape, offset=1)
+                                            torch.triu_indices(
+                                                *matrix.shape[-2:], offset=1
+                                            )
                                         ] = float("nan")
                                     yield (
                                         f"{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",

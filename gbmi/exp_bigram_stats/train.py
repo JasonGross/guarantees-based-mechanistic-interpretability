@@ -53,6 +53,7 @@ class Bigram(ExperimentConfig):
     random_tokens_at_end: bool = False
     n_heads: int = 1
     positional_embedding_type: Literal["standard", "rotary", "shortformer"] = "standard"
+    other_tokens_distinct_from_predicted_token: bool = False
 
     n_train_samples: int = 4096
     n_test_samples: int = 1
@@ -458,6 +459,9 @@ class BigramDataModule(DataModule):
         self.bos = config.experiment.num_tokens if config.experiment.bos else None
         self.task = config.experiment.task
         self.random_tokens_at_end = config.experiment.random_tokens_at_end
+        self.other_tokens_distinct_from_predicted_token = (
+            config.experiment.other_tokens_distinct_from_predicted_token
+        )
         self.dataset_seed = reseed(config.seed, "dataset_seed")
 
     def build_dataset(
@@ -472,7 +476,9 @@ class BigramDataModule(DataModule):
                 generator = ExactBigramTask.generator
             case "abcab":
                 generator = partial(
-                    ABCBCBigramTask.generator, skip_end=not self.random_tokens_at_end
+                    ABCBCBigramTask.generator,
+                    skip_end=not self.random_tokens_at_end,
+                    b_unique=self.other_tokens_distinct_from_predicted_token,
                 )
         data = torch.stack(
             tuple(

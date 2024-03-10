@@ -91,6 +91,7 @@ class ABCBCBigramTask:
         seq_length: int,
         max_length: int,
         skip_end: bool = False,
+        b_unique: bool = False,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
         g = torch.Generator(device=default_device)
@@ -99,7 +100,7 @@ class ABCBCBigramTask:
         n_cs = seq_length - 3
         while True:
             tokens = torch.randperm(num_tokens, generator=g)
-            (a, b), cs = tokens[:2], tokens[2:]
+            (a, b), cs = tokens[:2], tokens[(2 if b_unique else 1) :]
             cs = cs[torch.randint(0, cs.size(0), (n_cs,), generator=g)]
             split_index1, split_index2 = (
                 torch.randint(1, cs.size(0) + 1, (2,), generator=g).sort().values

@@ -557,12 +557,10 @@ class ModelMatrixLoggingOptions:
                                         and len(matrix.shape) >= 2
                                     ):
                                         # set everything above the main diagonal to NaN
-                                        matrix[
-                                            ...,
-                                            torch.triu_indices(
-                                                *matrix.shape[-2:], offset=1
-                                            ),
-                                        ] = float("nan")
+                                        rows, cols = torch.triu_indices(
+                                            *matrix.shape[-2:], offset=1
+                                        )
+                                        matrix[..., rows, cols] = float("nan")
                                     yield (
                                         f"{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
                                         matrix,

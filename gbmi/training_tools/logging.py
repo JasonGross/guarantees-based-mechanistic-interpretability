@@ -1,15 +1,7 @@
 from __future__ import annotations
 import re
 from functools import partial
-from matplotlib import pyplot as plt
 from collections import defaultdict
-import plotly.express as px
-import torch
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import numpy as np
-from torch import Tensor
-from transformer_lens import HookedTransformer
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -22,9 +14,17 @@ from typing import (
     Tuple,
     Union,
 )
+import logging
+from matplotlib import pyplot as plt
+import plotly.express as px
+import torch
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
+from torch import Tensor
+from transformer_lens import HookedTransformer
 from jaxtyping import Float
 from lightning.pytorch.loggers.wandb import WandbLogger
-import logging
 
 from wandb.sdk.wandb_run import Run
 
@@ -210,6 +210,7 @@ class ModelMatrixLoggingOptions:
     superplot_title = "model matrices"
     group_colorbars: bool = True
     shortformer: bool = False
+    nanify_causal_attn: bool = True
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -303,13 +304,14 @@ class ModelMatrixLoggingOptions:
         reverse_strs: bool = False,
         *,
         skip_composition: bool = False,
-    ) -> Iterable[Tuple[str, str, Float[Tensor, "... a d_model"]]]:  # noqa: F722
-        """Returns an iterable of ("VO"*, "lₙ{l}hₙ{h}"*, value) tuples of what x transforms to under repeated applications of apply_VO to layers strictly before l"""
-        yield sx_direct, "", x_direct
+    ) -> Iterable[Tuple[str, str, Float[Tensor, "... a d_model"], bool]]:  # noqa: F722
+        """Returns an iterable of ("VO"*, "lₙ{l}hₙ{h}"*, value, is_direct) tuples of what x transforms to under repeated applications of apply_VO to layers strictly before l"""
+        yield sx_direct, "", x_direct, True
         if not skip_composition:
-            yield from ModelMatrixLoggingOptions._compute_paths(
+            for svo, lh, val in ModelMatrixLoggingOptions._compute_paths(
                 apply_VO, n_heads, x, sx, l - 1, reverse_strs=reverse_strs
-            )
+            ):
+                yield svo, lh, val, False
 
     @torch.no_grad()
     def matrices_to_log(
@@ -487,30 +489,40 @@ class ModelMatrixLoggingOptions:
                     (qx, qx_direct, qsx, qsx_direct, qskip_composition),
                     (kx, kx_direct, ksx, ksx_direct, kskip_composition),
                     test,
+                    nanify_above_diagonal_if_query_direct,
                 ) in (
                     (
                         (W_E_v, W_E_q, sEv, sEq, False),
                         (W_E_v, W_E_k, sEv, sEk, False),
                         self.EQKE,
+                        False,
                     ),
                     (
                         (W_E_v, W_E_q, sEv, sEq, False),
                         (W_pos_v, W_pos_k, sPv, sPk, self.shortformer),
                         self.EQKP,
+                        False,
                     ),
                     (
                         (W_pos_v, W_pos_q, sPv, sPq, self.shortformer),
                         (W_E_v, W_E_k, sEv, sEk, False),
                         self.PQKE,
+                        False,
                     ),
                     (
                         (W_pos_v, W_pos_q, sPv, sPq, self.shortformer),
                         (W_pos_v, W_pos_k, sPv, sPk, self.shortformer),
                         self.PQKP,
+                        self.nanify_causal_attn and model.cfg.attention_dir == "causal",
                     ),
                 ):
                     if test:
-                        for sq, lh_q, v_q in ModelMatrixLoggingOptions.compute_paths(
+                        for (
+                            sq,
+                            lh_q,
+                            v_q,
+                            is_direct_q,
+                        ) in ModelMatrixLoggingOptions.compute_paths(
                             apply_VO,
                             model.cfg.n_heads,
                             x=qx,
@@ -525,6 +537,7 @@ class ModelMatrixLoggingOptions:
                                 sk,
                                 lh_k,
                                 v_k,
+                                is_direct_k,
                             ) in ModelMatrixLoggingOptions.compute_paths(
                                 apply_VO,
                                 model.cfg.n_heads,
@@ -537,12 +550,21 @@ class ModelMatrixLoggingOptions:
                                 skip_composition=kskip_composition,
                             ):
                                 if sq != "0" or self.log_zeros:
+                                    matrix = apply_Q(v_q, l, h) @ apply_KT(v_k, l, h)
+                                    if (
+                                        nanify_above_diagonal_if_query_direct
+                                        and is_direct_q
+                                    ):
+                                        # set everything above the main diagonal to NaN
+                                        matrix[
+                                            torch.triu_indices(*matrix.shape, offset=1)
+                                        ] = float("nan")
                                     yield (
                                         f"{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
-                                        apply_Q(v_q, l, h) @ apply_KT(v_k, l, h),
+                                        matrix,
                                     )
                 if self.EVOU:
-                    for sv, lh_v, v in ModelMatrixLoggingOptions.compute_paths(
+                    for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
                         apply_VO,
                         model.cfg.n_heads,
                         x=W_E_v,
@@ -557,7 +579,7 @@ class ModelMatrixLoggingOptions:
                             apply_U(apply_VO(v, l, h)),
                         )
                 if self.PVOU:
-                    for sv, lh_v, v in ModelMatrixLoggingOptions.compute_paths(
+                    for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
                         apply_VO,
                         model.cfg.n_heads,
                         x=W_pos_v,

@@ -557,7 +557,6 @@ class ModelMatrixLoggingOptions:
                                         and len(matrix.shape) >= 2
                                     ):
                                         # set everything above the main diagonal to NaN
-                                        print(matrix.shape)
                                         matrix[
                                             ...,
                                             torch.triu_indices(

@@ -1,9 +1,21 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
 from functools import partial
 from dataclasses import dataclass
 from dataclasses import field
-from collections.abc import Callable
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Union,
+    Literal,
+    Tuple,
+)
+
+import torch
+from jaxtyping import Float, Integer
+from torch import Tensor
+from torch.utils.data import Dataset, TensorDataset, DataLoader
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 from gbmi.exp_bigram_stats.data_utils import (
     ExactBigramTask,
     ABCBCBigramTask,
@@ -11,57 +23,15 @@ from gbmi.exp_bigram_stats.data_utils import (
     cat_bos_token,
     cat_bos_uniform_labels,
 )
-
-from gbmi.exp_group_finetuning.groups import (
-    Group,
-    GroupDict,
-    CyclicGroup,
-    DihedralGroup,
-    GLN_p,
-)
-import sys
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Union,
-    cast,
-    Literal,
-    Generic,
-    TypeVar,
-    Type,
-    Tuple,
-)
-from gbmi import utils
-
-import numpy as np
-import torch
-from jaxtyping import Float, Integer
-from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
-from transformer_lens import HookedTransformer, HookedTransformerConfig
-import argparse
-import einops
 from gbmi.model import (
     TrainingWrapper,
     Config,
     ExperimentConfig,
-    add_HookedTransformerConfig_arguments,
-    train_or_load_model,
     DataModule,
-    add_force_argument,
-    add_no_save_argument,
-    update_HookedTransformerConfig_from_args,
 )
 from gbmi.utils import (
-    shuffle_data,
-    default_device,
-    SingleTensorDataset,
     reseed,
-    set_params,
 )
-from gbmi.utils.sequences import generate_all_sequences
 
 from gbmi.utils.hashing import _EXCLUDE
 from gbmi.training_tools.logging import (

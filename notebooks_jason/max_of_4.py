@@ -3436,6 +3436,7 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
             fig.update_layout(title_text=orig_title)
 
 
+errs = []
 for k, fig in latex_figures.items():
     if isinstance(fig, go.Figure):
         fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
@@ -3454,7 +3455,14 @@ for k, fig in latex_figures.items():
                     print(f"Saving {p}...")
                     p.parent.mkdir(parents=True, exist_ok=True)
                     fig.write_image(p)
-                    subprocess.run(["pdfcrop", p, p], check=True)
+                    try:
+                        subprocess.run(["pdfcrop", p, p], check=True)
+                    except FileNotFoundError as e:
+                        print(f"Warning: {e}")
+                        errs.append(e)
     else:
         raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
+
+for e in errs:
+    raise e
 # %%

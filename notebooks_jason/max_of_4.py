@@ -1212,9 +1212,7 @@ def display_basic_interpretation_matplotlib(
         fig_qk.show()
     else:
         fig_qk, ax = plt.subplots()
-        cax = ax.imshow(
-            QK["data"], cmap=QK_colorscale
-        )  # Use cmap equivalent to QK_colorscale
+        cax = ax.imshow(QK["data"], cmap=QK_colorscale)
         fig_qk.colorbar(cax)
         ax.set_title(QK["title"])
         ax.set_xlabel(QK["xaxis"])

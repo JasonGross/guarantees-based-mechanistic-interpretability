@@ -2639,12 +2639,12 @@ def compute_largest_wrong_logit_quadratic(
         right_attention_logits_tmp = right_attention_logits.detach().clone()
         right_attention_logits_tmp[max_tok] = float("-inf")
         # maximum added to the wrong logit from paying attention to the right thing
-        right_attention_logits: Float[Tensor, ""] = (  # noqa: F722
+        right_attention_logits_max: Float[Tensor, ""] = (  # noqa: F722
             right_attention_logits_tmp.max()
         )
         # if the maximum non-max logit is negative, we do worst by attending as little as possible to the max token
         # but if it's positive, we do poorly if we attend as much as possible to the max token
-        min_max_index = 0 if right_attention_logits.item() < 0 else 1
+        min_max_index = 0 if right_attention_logits_max.item() < 0 else 1
         for n_copies_nonmax in range(1, n_ctx):
             cur_min_gap = (
                 min_gap
@@ -2704,7 +2704,7 @@ def compute_largest_wrong_logit_quadratic(
                 )
                 # add attention correction factor on right attention
                 results[q_tok, max_tok, n_copies_nonmax] += (
-                    cur_extra_right_attention * right_attention_logits
+                    cur_extra_right_attention * right_attention_logits_max
                 )
                 # add attention correction factor on right attention, using += - instead of -= to make the negation more obvious
                 results[q_tok, max_tok, n_copies_nonmax] += (

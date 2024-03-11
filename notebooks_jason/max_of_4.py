@@ -3455,11 +3455,12 @@ for k, fig in latex_figures.items():
                     print(f"Saving {p}...")
                     p.parent.mkdir(parents=True, exist_ok=True)
                     fig.write_image(p)
-                    try:
-                        subprocess.run(["pdfcrop", p, p], check=True)
-                    except FileNotFoundError as e:
-                        print(f"Warning: {e}")
-                        errs.append(e)
+                    if ext == ".pdf":
+                        try:
+                            subprocess.run(["pdfcrop", p, p], check=True)
+                        except FileNotFoundError as e:
+                            print(f"Warning: {e}")
+                            errs.append(e)
     else:
         raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
 

@@ -2417,7 +2417,7 @@ def compute_extreme_softmaxed_right_attention_quadratic(
                     result[:, q_tok, max_tok, n_copies_nonmax] = float("nan")
                     continue
                 tmp[0, :-1] = EQKE_pos_err[q_tok]
-                tmp[1, :-1] = EQKE_pos_err[q_tok, ::-1]
+                tmp[1, :-1] = EQKE_pos_err[q_tok].flip(dims=[0])
                 tmp[:, -1] = 0
                 if n_copies_nonmax == n_ctx - 1 and max_tok == q_tok:
                     # max tok in the query position, so we handle this case specially

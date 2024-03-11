@@ -587,6 +587,7 @@ print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model *
 # TODO COMPUTATION
 # START HERE
 # %%
+# TODO FIX COMPUTATION HERE so that the write-up is simpler
 @torch.no_grad()
 def compute_min_softmaxed_right_attention_cubic_simple(
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722

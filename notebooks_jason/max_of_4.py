@@ -1181,20 +1181,25 @@ if DISPLAY_PLOTS:
         print(f"Unused keys: {unused_keys}")
 
 # %%
-with torch.no_grad():
-    import matplotlib.pyplot as plt
+import matplotlib.figure
+import matplotlib.pyplot as plt
+from gbmi.exp_max_of_n.plot import compute_QK
 
-    include_uncentered: bool = False
-    legend_at_bottom: bool = False
-    include_equals_OV: bool = False
-    includes_eos: Optional[bool] = None
-    OV_colorscale: str = "Picnic_r"
-    QK_colorscale: str = "plasma"  # "Sunsetdark_r"
-    QK_SVD_colorscale: str = "Picnic_r"
-    renderer: Optional[str] = RENDERER
+
+@torch.no_grad()
+def display_basic_interpretation_matplotlib(
+    model: HookedTransformer,
+    include_uncentered: bool = False,
+    legend_at_bottom: bool = False,
+    include_equals_OV: bool = False,
+    includes_eos: Optional[bool] = None,
+    OV_colorscale: str = "Picnic_r",
+    QK_colorscale: str = "plasma",  # "Sunsetdark_r"
+    QK_SVD_colorscale: str = "Picnic_r",
+    renderer: Optional[str] = None,
+) -> dict[str, matplotlib.figure.Figure]:
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
-    from gbmi.exp_max_of_n.plot import compute_QK
 
     QK = compute_QK(model, includes_eos=includes_eos)
     result = {}
@@ -1222,80 +1227,84 @@ with torch.no_grad():
     #         result[f"EQKE {k}"] = fig
     # result["EQKE"] = fig_qk
 
-#     if include_uncentered:
-#         OV = compute_OV(model, centered=False, includes_eos=includes_eos)
-#         fig_ov = px.imshow(
-#             OV["data"],
-#             title=OV["title"],
-#             color_continuous_scale=OV_colorscale,
-#             color_continuous_midpoint=0,
-#             labels={"x": OV["xaxis"], "y": OV["yaxis"]},
-#         )
-#         result["EVOU"] = fig_ov
-#         fig_ov.show(renderer=renderer)
-#     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
-#     fig_ov = px.imshow(
-#         OV["data"],
-#         title=OV["title"],
-#         color_continuous_scale=OV_colorscale,
-#         labels={"x": OV["xaxis"], "y": OV["yaxis"]},
-#     )
-#     result["EVOU-centered"] = fig_ov
-#     fig_ov.show(renderer=renderer)
+    #     if include_uncentered:
+    #         OV = compute_OV(model, centered=False, includes_eos=includes_eos)
+    #         fig_ov = px.imshow(
+    #             OV["data"],
+    #             title=OV["title"],
+    #             color_continuous_scale=OV_colorscale,
+    #             color_continuous_midpoint=0,
+    #             labels={"x": OV["xaxis"], "y": OV["yaxis"]},
+    #         )
+    #         result["EVOU"] = fig_ov
+    #         fig_ov.show(renderer=renderer)
+    #     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
+    #     fig_ov = px.imshow(
+    #         OV["data"],
+    #         title=OV["title"],
+    #         color_continuous_scale=OV_colorscale,
+    #         labels={"x": OV["xaxis"], "y": OV["yaxis"]},
+    #     )
+    #     result["EVOU-centered"] = fig_ov
+    #     fig_ov.show(renderer=renderer)
 
-#     pos_QK = compute_QK_by_position(model, includes_eos=includes_eos)
-#     if includes_eos:
-#         fig_qk = px.scatter(
-#             pos_QK["data"],
-#             title=pos_QK["title"],
-#             labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
-#         )
-#         fig_qk.show(renderer=renderer)
-#     else:
-#         fig_qk = px.imshow(
-#             pos_QK["data"]["QK"],
-#             title=pos_QK["title"],
-#             color_continuous_scale=QK_colorscale,
-#             labels={"x": pos_QK["xaxis"], "y": pos_QK["yaxis"]},
-#         )
-#         fig_qk.show(renderer=renderer)
-#     result["EQKP"] = fig_qk
+    #     pos_QK = compute_QK_by_position(model, includes_eos=includes_eos)
+    #     if includes_eos:
+    #         fig_qk = px.scatter(
+    #             pos_QK["data"],
+    #             title=pos_QK["title"],
+    #             labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
+    #         )
+    #         fig_qk.show(renderer=renderer)
+    #     else:
+    #         fig_qk = px.imshow(
+    #             pos_QK["data"]["QK"],
+    #             title=pos_QK["title"],
+    #             color_continuous_scale=QK_colorscale,
+    #             labels={"x": pos_QK["xaxis"], "y": pos_QK["yaxis"]},
+    #         )
+    #         fig_qk.show(renderer=renderer)
+    #     result["EQKP"] = fig_qk
 
-#     irrelevant = compute_irrelevant(
-#         model, include_equals_OV=include_equals_OV, includes_eos=includes_eos
-#     )
-#     for key, data in irrelevant["data"].items():
-#         if len(data.shape) == 2:
-#             fig = px.imshow(
-#                 data,
-#                 title=key,
-#                 color_continuous_scale=OV_colorscale,
-#                 labels={"x": irrelevant["xaxis"], "y": irrelevant["yaxis"]},
-#             )
-#             result[f"irrelevant_{key}"] = fig
-#             fig.show(renderer=renderer)
-#     fig = px.scatter(
-#         {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
-#         title=irrelevant["title"],
-#         labels={
-#             "index": irrelevant["xaxis"],
-#             "variable": "",
-#             "value": irrelevant["yaxis"],
-#         },
-#     )
-#     if legend_at_bottom:
-#         fig.update_layout(
-#             legend=dict(
-#                 orientation="h",
-#                 yanchor="bottom",
-#                 y=-0.5,
-#                 xanchor="center",
-#                 x=0.5,
-#             )
-#         )
-#     result["irrelevant"] = fig
-# fig.show(renderer=renderer)
-# return result
+    #     irrelevant = compute_irrelevant(
+    #         model, include_equals_OV=include_equals_OV, includes_eos=includes_eos
+    #     )
+    #     for key, data in irrelevant["data"].items():
+    #         if len(data.shape) == 2:
+    #             fig = px.imshow(
+    #                 data,
+    #                 title=key,
+    #                 color_continuous_scale=OV_colorscale,
+    #                 labels={"x": irrelevant["xaxis"], "y": irrelevant["yaxis"]},
+    #             )
+    #             result[f"irrelevant_{key}"] = fig
+    #             fig.show(renderer=renderer)
+    #     fig = px.scatter(
+    #         {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
+    #         title=irrelevant["title"],
+    #         labels={
+    #             "index": irrelevant["xaxis"],
+    #             "variable": "",
+    #             "value": irrelevant["yaxis"],
+    #         },
+    #     )
+    #     if legend_at_bottom:
+    #         fig.update_layout(
+    #             legend=dict(
+    #                 orientation="h",
+    #                 yanchor="bottom",
+    #                 y=-0.5,
+    #                 xanchor="center",
+    #                 x=0.5,
+    #             )
+    #         )
+    #     result["irrelevant"] = fig
+    # fig.show(renderer=renderer)
+    return result
+
+
+if DISPLAY_PLOTS:
+    figs = display_basic_interpretation_matplotlib(model, include_uncentered=True)
 
 
 # %%

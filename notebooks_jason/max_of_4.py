@@ -126,6 +126,7 @@ from gbmi.verification_tools.l1h1 import (
 )
 from gbmi.verification_tools.utils import complexity_of
 from gbmi.utils.hashing import get_hash_ascii
+import gbmi.utils.git as git
 
 try:
     import google.colab
@@ -3382,10 +3383,15 @@ with torch.no_grad():
                             type(value), value, tb, capture_locals=True
                         ).format():
                             print(line, file=sys.stderr)
-
+# %%
+latex_values["HEADSHA"] = git.get_head_sha(short=False)
+latex_values["HEADSHASHORT"] = git.get_head_sha(short=True)
 # %%
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))
+
+with open(LATEX_VALUES_PATH.with_suffix("-info.diff"), "w") as f:
+    f.write(git.get_diff())
 
 
 # %%

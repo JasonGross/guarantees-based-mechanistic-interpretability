@@ -144,6 +144,8 @@ LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
 LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "values.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_GIT_DIFF_PATH = Path(__file__).with_suffix("") / "git-diff-info.diff"
+LATEX_GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
 latex_figures: dict[str, go.Figure] = {}
@@ -3386,11 +3388,11 @@ with torch.no_grad():
 # %%
 latex_values["HEADSHA"] = git.get_head_sha(short=False)
 latex_values["HEADSHASHORT"] = git.get_head_sha(short=True)
-# %%
+
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))
 
-with open(LATEX_VALUES_PATH.with_suffix("-info.diff"), "w") as f:
+with open(LATEX_GIT_DIFF_PATH, "w") as f:
     f.write(git.get_diff())
 
 

@@ -180,6 +180,10 @@ notebooks_jason/max_of_4/values.tex
 
 # Some files from Jason
 max_of_*.gif
+notebooks_jason/max_of_4/figures/*.pdf
+notebooks_jason/max_of_4/figures/*.svg
+notebooks_jason/max_of_4/values.tex
+notebooks_jason/max_of_4/git-diff-info.diff
 
 # python shelve
 *.dir

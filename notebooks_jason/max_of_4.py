@@ -1071,7 +1071,7 @@ def compute_accuracy_lower_bound_from_cubic(
 
 # %%
 @torch.no_grad()
-def count_unaccounted_for_by_cubic_convexity_sequences(
+def count_unaccounted_for_by_old_cubic_convexity_sequences(
     largest_wrong_logit: Float[
         Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
     ],
@@ -1155,25 +1155,25 @@ print(
 )
 prooftime += time.time() - starttime
 print(f"Proof time: {prooftime}s")
-cubic_dropped_sequences, wrong_toks_full_attention = (
-    count_unaccounted_for_by_cubic_convexity_sequences(largest_wrong_logit_cubic)
+cubic_old_dropped_sequences, wrong_toks_full_attention = (
+    count_unaccounted_for_by_old_cubic_convexity_sequences(largest_wrong_logit_cubic)
 )
-cubic_dropped_sequences_frac = cubic_dropped_sequences / total_sequences
+cubic_old_dropped_sequences_frac = cubic_old_dropped_sequences / total_sequences
 print(
-    f"Note that we are leaving {cubic_dropped_sequences} sequences on the floor, which is {cubic_dropped_sequences_frac * 100}% of the total ({wrong_toks_full_attention.tolist()})"
+    f"Note that we would be (but are not) leaving {cubic_old_dropped_sequences} sequences on the floor, which is {cubic_old_dropped_sequences_frac * 100}% of the total ({wrong_toks_full_attention.tolist()})"
 )
 assert (
-    cubic_dropped_sequences
+    cubic_old_dropped_sequences
     == (wrong_toks_full_attention.max().item() + 1) ** model.cfg.n_ctx
-), f"LaTeX will be wrong in 4-results.tex: {cubic_dropped_sequences} != ({wrong_toks_full_attention.max().item()} + 1) ** {model.cfg.n_ctx}, {wrong_toks_full_attention.tolist()}"
+), f"LaTeX will be wrong in 4-results.tex: {cubic_old_dropped_sequences} != ({wrong_toks_full_attention.max().item()} + 1) ** {model.cfg.n_ctx}, {wrong_toks_full_attention.tolist()}"
 latex_values["CubicLargestWrongTokenFullAttention"] = (
     wrong_toks_full_attention.max().item()
 )
 latex_values["CubicAccuracyFloat"] = accuracy_bound_cubic
 latex_values["CubicCorrectCount"] = correct_count_cubic
 latex_values["CubicProofTimeFloat"] = prooftime
-latex_values["CubicDroppedSequences"] = cubic_dropped_sequences
-latex_values["CubicDroppedSequencesFracFloat"] = cubic_dropped_sequences_frac
+latex_values["CubicOldDroppedSequences"] = cubic_old_dropped_sequences
+latex_values["CubicOldDroppedSequencesFracFloat"] = cubic_old_dropped_sequences_frac
 
 # # %%
 

@@ -308,6 +308,7 @@ cfg_hash_for_filename = cfg_hashes_for_filename[seed]
 runtime, model = runtime_models[seed]
 training_wrapper = training_wrappers[seed]
 latex_values["seed"] = seed
+assert cfg.experiment.model_config.seed is not None
 latex_values["ModelSeed"] = cfg.experiment.model_config.seed
 latex_values["TrainAccuracyFloat"] = train_average_accuracy[seed]
 latex_values["TrainLossFloat"] = train_average_accuracy[seed]

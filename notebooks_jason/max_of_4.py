@@ -678,14 +678,12 @@ def compute_extreme_softmaxed_right_attention_cubic_simple(
                     n_copies_max_nonquery = n_ctx - n_copies_nonmax - 1
                     if q_tok != max_tok and n_copies_nonmax >= n_ctx - 1:
                         continue
-                    tmp[:, :-1] = EQKP[q_tok]
+                    tmp[0, :-1] = EQKP[q_tok]
+                    tmp[1, :-1] = EQKP[q_tok].flip(dims=[0])
 
-                    tmp[0, :n_copies_max_nonquery] += EQKE[q_tok, max_tok]
+                    tmp[:, :n_copies_max_nonquery] += EQKE[q_tok, max_tok]
                     # attention paid to non-max tokens other than in the query position
-                    tmp[0, n_copies_max_nonquery:-1] += EQKE[q_tok, k_tok]
-                    # attention paid to non-max tokens other than in the query position
-                    tmp[1, :n_copies_nonmax] += EQKE[q_tok, k_tok]
-                    tmp[1, n_copies_nonmax:-1] += EQKE[q_tok, max_tok]
+                    tmp[:, n_copies_max_nonquery:-1] += EQKE[q_tok, k_tok]
                     tmp_sm = (tmp / attn_scale).softmax(dim=-1)
                     result[:, w_max, q_tok, max_tok, k_tok, n_copies_nonmax] = tmp_sm[
                         :, :n_copies_max_nonquery
@@ -738,7 +736,6 @@ def compute_extreme_softmaxed_right_attention_cubic_simple(
 
 # %%
 # min_gap = 1
-# FIXME TODO HERE
 extreme_right_attention_softmaxed_cubic: Float[
     Tensor,
     "minmax=2 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
@@ -756,6 +753,18 @@ print(
 # min_right_attention_softmaxed = compute_extreme_softmaxed_right_attention(
 #     min_right_attention - err_upper_bound, EQKE_pos_err, min_gap=1
 # )
+# %%
+# sanity check
+sanity_check_diff = (
+    extreme_right_attention_softmaxed_cubic[1, 0]
+    - extreme_right_attention_softmaxed_cubic[0, 0]
+)
+sanity_check_diff_indices = [
+    tuple(i.item() for i in j) for j in zip(*torch.where(sanity_check_diff > 1e-6))
+]
+assert (
+    len(sanity_check_diff_indices) == 0
+), f"Sanity check failed: {sanity_check_diff_indices}, {extreme_right_attention_softmaxed_cubic[:, :, sanity_check_diff_indices[0]]}"
 
 
 # %%

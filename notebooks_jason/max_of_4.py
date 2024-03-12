@@ -587,9 +587,8 @@ print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model *
 # TODO COMPUTATION
 # START HERE
 # %%
-# TODO FIX COMPUTATION HERE so that the write-up is simpler
 @torch.no_grad()
-def compute_min_softmaxed_right_attention_cubic_simple(
+def compute_extreme_softmaxed_right_attention_cubic_simple(
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
     EQKP: Float[Tensor, "d_vocab_q n_ctx_k"],  # noqa: F722
     attn_scale: Union[Float[Tensor, ""], float] = model.blocks[  # noqa F722
@@ -598,11 +597,11 @@ def compute_min_softmaxed_right_attention_cubic_simple(
     position: Optional[int] = None,
 ) -> Float[
     Tensor,
-    "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+    "minmax=2 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
 ]:
     r"""
-    Computes the min post-softmax attention (pessimized over sequence orderings) paid to the maximum token (attn=0) and
-    the min paid to the query token (attn=1) and the max paid to the query token (attn=2):
+    Computes the extreme (min-attn-to-max is minmax=0, max-attn-to-max is minmax=1) post-softmax attention (extremized over sequence orderings) paid to the maximum token (attn=0) and
+    to the non-maximum token (attn=1) and to the query token (attn=2):
         - by each possible value of the query token,
         - for each possible value of the max token,
         - for each possible value of the nonmax token,
@@ -622,65 +621,77 @@ def compute_min_softmaxed_right_attention_cubic_simple(
         . EQKP[q, p] is the attention paid from query q to key position p
     Postconditions:
         \forall w \in {0,1,2}, q, m, k, n_copies_nonmax: ("w" for which)
-          if q > m or k > m: return[w, q, m, k, n_copies_nonmax] = nan
+          if q > m or k > m: return[:, w, q, m, k, n_copies_nonmax] = nan
                 (That is, the answer is undefined if the query token is greater than the max token, or if the non-max
                 token is greater than the max token)
-          elif m = k and n_copies_nonmax != 0: return[w, q, m, k, n_copies_nonmax] = nan
+          elif m = k and n_copies_nonmax != 0: return[:, w, q, m, k, n_copies_nonmax] = nan
                 (That is, the answer is undefined if the non-max token is equal to the max token and there are non-zero
                 copies of non-max tokens)
-          elif q != m and n_copies_nonmax >= n_ctx - 1: return[w, q, m, k, n_copies_nonmax] = nan
+          elif q != m and n_copies_nonmax >= n_ctx - 1: return[:, w, q, m, k, n_copies_nonmax] = nan
                 (That is, the answer is undefined if the query token is not equal to the max token and there are n_ctx
                 - 1 or more copies of the non-max token, because then the max token would be missing)
           else: amongst all permutations of [the non-query-tokens in] the sequence with query q, n_copies_nonmax copies
                 of k, and all other tokens equal to m:
-                return[0, q, m, k, n_copies_nonmax] <= post-softmax attention paid to max token m
-                return[1, q, m, k, n_copies_nonmax] <= post-softmax attention paid to query token q <= return[2, q, m, k, n_copies_nonmax]
+                return[0, 0, q, m, k, n_copies_nonmax] <= post-softmax attention paid to max token m     <= return[1, 0, q, m, k, n_copies_nonmax]
+                return[0, 1, q, m, k, n_copies_nonmax] <= post-softmax attention paid to non-max token k <= return[1, 1, q, m, k, n_copies_nonmax]
+                return[0, 2, q, m, k, n_copies_nonmax] <= post-softmax attention paid to query token q   <= return[1, 2, q, m, k, n_copies_nonmax]
 
     """
     d_vocab, n_ctx = EQKE.shape[-1], EQKP.shape[-1]
-    result = torch.zeros((3, d_vocab, d_vocab, d_vocab, n_ctx)).to(EQKE) + float("nan")
-    tmp = torch.zeros((n_ctx,)).to(EQKE)
+    result = torch.zeros((2, 3, d_vocab, d_vocab, d_vocab, n_ctx)).to(EQKE) + float(
+        "nan"
+    )
+    tmp = torch.zeros(
+        (
+            2,
+            n_ctx,
+        )
+    ).to(EQKE)
     # constants for indices so we don't have 0 and 1 floating around
     w_max = 0
-    w_qry_min = 1
-    w_qry_max = 2
+    w_nmx = 1
+    w_qry = 2
     # we sort EQKP so that higher-attention positions are at the back, so we can put the max token at the front.
     EQKP, EQKPm1 = EQKP[:, :-1].sort(dim=-1).values, EQKP[:, -1]
 
     for max_tok in tqdm(range(d_vocab), desc="max_tok", position=position):
         for q_tok in range(max_tok + 1):
-            tmp[-1] = EQKE[q_tok, q_tok] + EQKPm1[q_tok]
+            tmp[:, -1] = EQKE[q_tok, q_tok] + EQKPm1[q_tok]
             for k_tok in range(max_tok + 1):
                 if k_tok == max_tok:
                     if q_tok == max_tok:
                         # only max tok, so we pay 100% attention to it
-                        result[w_max, q_tok, max_tok, k_tok, 0] = 1
-                        result[w_qry_min, q_tok, max_tok, k_tok, 0] = 0
-                        result[w_qry_max, q_tok, max_tok, k_tok, 0] = 0
+                        result[:, w_max, q_tok, max_tok, k_tok, 0] = 1
+                        result[:, w_nmx, q_tok, max_tok, k_tok, 0] = 0
+                        result[:, w_qry, q_tok, max_tok, k_tok, 0] = 0
                         continue
-                    tmp[:-1] = EQKP[q_tok] + EQKE[q_tok, k_tok]
+                    tmp[:, :-1] = EQKP[q_tok] + EQKE[q_tok, k_tok]
                     tmp_sm = (tmp / attn_scale).softmax(dim=-1)
-                    result[w_max, q_tok, max_tok, k_tok, 0] = tmp_sm[:-1].sum()
-                    result[w_qry_min, q_tok, max_tok, k_tok, 0] = tmp_sm[-1]
-                    result[w_qry_max, q_tok, max_tok, k_tok, 0] = tmp_sm[-1]
+                    result[:, w_max, q_tok, max_tok, k_tok, 0] = tmp_sm[:, :-1].sum(
+                        dim=-1
+                    )
+                    result[:, w_nmx, q_tok, max_tok, k_tok, 0] = 0
+                    result[:, w_qry, q_tok, max_tok, k_tok, 0] = tmp_sm[:, -1]
                     continue
                 for n_copies_nonmax in range(n_ctx):
                     n_copies_max_nonquery = n_ctx - n_copies_nonmax - 1
                     if q_tok != max_tok and n_copies_nonmax >= n_ctx - 1:
                         continue
-                    tmp[:-1] = EQKP[q_tok]
+                    tmp[:, :-1] = EQKP[q_tok]
 
-                    tmp[:n_copies_max_nonquery] += EQKE[q_tok, max_tok]
-                    tmp[n_copies_max_nonquery:-1] += EQKE[
-                        q_tok, k_tok
-                    ]  # attention paid to non-max tokens other than in the query position
+                    tmp[0, :n_copies_max_nonquery] += EQKE[q_tok, max_tok]
+                    # attention paid to non-max tokens other than in the query position
+                    tmp[0, n_copies_max_nonquery:-1] += EQKE[q_tok, k_tok]
+                    # attention paid to non-max tokens other than in the query position
+                    tmp[1, :n_copies_nonmax] += EQKE[q_tok, k_tok]
+                    tmp[1, n_copies_nonmax:-1] += EQKE[q_tok, max_tok]
                     tmp_sm = (tmp / attn_scale).softmax(dim=-1)
-                    result[w_max, q_tok, max_tok, k_tok, n_copies_nonmax] = tmp_sm[
-                        :n_copies_max_nonquery
-                    ].sum() + (tmp_sm[-1] if q_tok == max_tok else 0)
-                    result[w_qry_min, q_tok, max_tok, k_tok, n_copies_nonmax] = result[
-                        w_qry_max, q_tok, max_tok, k_tok, n_copies_nonmax
-                    ] = (tmp_sm[-1] if q_tok != max_tok else 0)
+                    result[:, w_max, q_tok, max_tok, k_tok, n_copies_nonmax] = tmp_sm[
+                        :, :n_copies_max_nonquery
+                    ].sum(dim=-1) + (tmp_sm[:, -1] if q_tok == max_tok else 0)
+                    result[:, w_nmx, q_tok, max_tok, k_tok, n_copies_nonmax] = result[
+                        :, w_qry, q_tok, max_tok, k_tok, n_copies_nonmax
+                    ] = (tmp_sm[:, -1] if q_tok != max_tok else 0)
     return result
 
 
@@ -726,16 +737,17 @@ def compute_min_softmaxed_right_attention_cubic_simple(
 
 # %%
 # min_gap = 1
+# FIXME TODO HERE
 min_right_attention_softmaxed_cubic: Float[
     Tensor,
     "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
-] = compute_min_softmaxed_right_attention_cubic_simple(
+] = compute_extreme_softmaxed_right_attention_cubic_simple(
     EQKE=EQKE,
     EQKP=EQKP,
     attn_scale=model.blocks[0].attn.attn_scale,
 )
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_min_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 # print(
 #     (min_right_attention[~min_right_attention.isnan()] > err_upper_bound).sum().item()
@@ -923,7 +935,7 @@ def compute_largest_wrong_logit_cubic(
 # )
 
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_min_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
 print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
@@ -1092,7 +1104,7 @@ print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model *
 #     attn_scale=model.blocks[0].attn.attn_scale,
 # )
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_min_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
 print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
@@ -1102,7 +1114,7 @@ PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
 print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d_model)
 
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_min_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
 print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)

@@ -738,21 +738,21 @@ def compute_extreme_softmaxed_right_attention_cubic_simple(
 # %%
 # min_gap = 1
 # FIXME TODO HERE
-min_right_attention_softmaxed_cubic: Float[
+extreme_right_attention_softmaxed_cubic: Float[
     Tensor,
-    "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+    "minmax=2 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
 ] = compute_extreme_softmaxed_right_attention_cubic_simple(
     EQKE=EQKE,
     EQKP=EQKP,
     attn_scale=model.blocks[0].attn.attn_scale,
 )
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 # print(
 #     (min_right_attention[~min_right_attention.isnan()] > err_upper_bound).sum().item()
 # )
-# min_right_attention_softmaxed = compute_min_softmaxed_right_attention(
+# min_right_attention_softmaxed = compute_extreme_softmaxed_right_attention(
 #     min_right_attention - err_upper_bound, EQKE_pos_err, min_gap=1
 # )
 
@@ -760,9 +760,9 @@ print(
 # %%
 @torch.no_grad()
 def compute_largest_wrong_logit_cubic(
-    min_softmaxed_right_attention: Float[
+    extreme_softmaxed_right_attention: Float[
         Tensor,
-        "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+        "minmax=2 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
     ],
     *,
     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"],  # noqa: F722
@@ -781,7 +781,7 @@ def compute_largest_wrong_logit_cubic(
         Complexity: O(d_vocab^3 * n_ctx^2)
 
         Preconditions:
-            min_softmaxed_right_attention satisfies the postcondition of compute_min_softmaxed_right_attention_cubic_simple
+            extreme_softmaxed_right_attention satisfies the postcondition of compute_extreme_softmaxed_right_attention_cubic_simple
                 (a lower bound on the post-softmax attention paid to the max token and the query token,
                 by each possible value of the query token,
                 for each possible value of the max token,
@@ -809,13 +809,13 @@ def compute_largest_wrong_logit_cubic(
     """
     # if permitted_nonmax_tokens is None:
     #     permitted_nonmax_tokens = torch.ones_like(min_softmaxed_right_attention[0], dtype=torch.bool)
-    results = torch.zeros_like(min_softmaxed_right_attention[0, :, :, :, :]) + float(
-        "nan"
-    )
-    _, d_vocab, _, _, n_ctx = min_softmaxed_right_attention.shape
+    results = torch.zeros_like(
+        extreme_softmaxed_right_attention[0, 0, :, :, :, :]
+    ) + float("nan")
+    _, _, d_vocab, _, _, n_ctx = extreme_softmaxed_right_attention.shape
     w_max = 0
-    w_qry_min = 1
-    w_qry_max = 2
+    w_nmx = 1
+    w_qry = 2
     for max_tok in range(d_vocab):
         # center PVOU according to max token, O(d_vocab * n_ctx)
         PVOU = PVOU - PVOU[:, max_tok].unsqueeze(-1)
@@ -842,18 +842,20 @@ def compute_largest_wrong_logit_cubic(
 
         # now handle the cases with only the query token and n_ctx - 1 copies of the max token
         for q_tok in range(max_tok):
-            cur_min_right_attention = min_softmaxed_right_attention[
-                :, q_tok, max_tok, max_tok, 0
+            cur_extreme_right_attention = extreme_softmaxed_right_attention[
+                :, :, q_tok, max_tok, max_tok, 0
             ]
             # N.B. because EVOU[q_tok, max_tok] == 0 by centering above, we just take the maximum attention paid to the query
-            logits_only_q_and_max: Float[Tensor, "d_vocab_out"] = (  # noqa: F821
+            logits_only_q_and_max: Float[
+                Tensor, "minmax=2 d_vocab_out"  # noqa: F722
+            ] = (
                 EUPU[q_tok, :]
                 + PVOU_pessimized
-                + EVOU[max_tok, :] * cur_min_right_attention[w_max]
-                + EVOU[q_tok, :] * cur_min_right_attention[w_qry_max]
+                + EVOU[max_tok, :] * cur_extreme_right_attention[:, w_max].unsqueeze(-1)
+                + EVOU[q_tok, :] * cur_extreme_right_attention[:, w_qry].unsqueeze(-1)
             )
-            logits_only_q_and_max -= logits_only_q_and_max[max_tok].item()
-            logits_only_q_and_max[max_tok] = float("-inf")
+            logits_only_q_and_max -= logits_only_q_and_max[:, max_tok].unsqueeze(-1)
+            logits_only_q_and_max[:, max_tok] = float("-inf")
             results[q_tok, max_tok, max_tok, 0] = logits_only_q_and_max.max().item()
 
         # precompose pessimization for EUPU over output logit, so we have enough compute budget
@@ -898,44 +900,38 @@ def compute_largest_wrong_logit_cubic(
                     query_wrong_logits: Float[Tensor, ""] = (  # noqa: F722
                         EPVOU_per_key_pessimized[q_tok]
                     )
-                    right_attn = min_softmaxed_right_attention[
-                        w_max, q_tok, max_tok, nonmax_tok, n_copies_nonmax
+                    right_attn = extreme_softmaxed_right_attention[
+                        :, w_max, q_tok, max_tok, nonmax_tok, n_copies_nonmax
                     ]
-                    q_attn_min, q_attn_max = (
-                        min_softmaxed_right_attention[
-                            w_qry_min, q_tok, max_tok, nonmax_tok, n_copies_nonmax
-                        ],
-                        min_softmaxed_right_attention[
-                            w_qry_max, q_tok, max_tok, nonmax_tok, n_copies_nonmax
-                        ],
-                    )
-                    wrong_attn_minquery = 1 - right_attn - q_attn_min
-                    wrong_attn_maxquery = 1 - right_attn - q_attn_max
+                    q_attn = extreme_softmaxed_right_attention[
+                        :, w_qry, q_tok, max_tok, nonmax_tok, n_copies_nonmax
+                    ]
+                    wrong_attn = extreme_softmaxed_right_attention[
+                        :, w_nmx, q_tok, max_tok, nonmax_tok, n_copies_nonmax
+                    ]
                     results[q_tok, max_tok, nonmax_tok, n_copies_nonmax] = (
                         EUPU_per_query_pessimized[q_tok]
-                        + right_attn * right_attention_wrong_logits
-                        + torch.max(
-                            q_attn_min * query_wrong_logits
-                            + wrong_attn_minquery * wrong_attention_logits,
-                            q_attn_max * query_wrong_logits
-                            + wrong_attn_maxquery * wrong_attention_logits,
-                        )
+                        + (
+                            right_attn * right_attention_wrong_logits
+                            + q_attn * query_wrong_logits
+                            + wrong_attn * wrong_attention_logits
+                        ).max()
                     ).item()
     return results
 
 
 # %%
-# min_right_attention_softmaxed_cubic: Float[
+# extreme_right_attention_softmaxed_cubic: Float[
 #     Tensor,
-#     "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
-# ] = compute_min_softmaxed_right_attention_cubic_simple(
+#     "minmax=2 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
+# ] = compute_extreme_softmaxed_right_attention_cubic_simple(
 #     EQKE=EQKE,
 #     EQKP=EQKP,
 #     attn_scale=model.blocks[0].attn.attn_scale,
 # )
 
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
 print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
@@ -946,7 +942,7 @@ print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d
 largest_wrong_logit_cubic: Float[
     Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
 ] = compute_largest_wrong_logit_cubic(
-    min_right_attention_softmaxed_cubic,
+    extreme_right_attention_softmaxed_cubic,
     EUPU=EUPU,
     EVOU=EVOU,
     PVOU=PVOU,
@@ -1008,19 +1004,6 @@ def count_correct_sequences_cubic(
     correct_count = 0
     for q_tok in range(d_vocab_q):
         for max_tok in range(d_vocab_max):
-            # if the largest wrong logit is positive when the sequence is all max tokens, then pessimizing over position is not adequate for the convexity argument, so we skip these sequences.
-            # in practice, we lose 6**4 == 1296 sequences this way, which is 0.0077% of the total
-            largest_wrong_logit_in_only_max_sequences = largest_wrong_logit[
-                max_tok, max_tok, max_tok, :
-            ]
-            largest_wrong_logit_in_only_max_sequences = (
-                largest_wrong_logit_in_only_max_sequences[
-                    ~largest_wrong_logit_in_only_max_sequences.isnan()
-                ]
-            )
-            if largest_wrong_logit_in_only_max_sequences.item() > 0:
-                # we did not account for these sequences in convexity
-                continue
             for n_copies_nonmax in range(n_ctx):
                 if q_tok > max_tok or (
                     q_tok != max_tok and n_copies_nonmax >= n_ctx - 1
@@ -1098,13 +1081,13 @@ print(f"Complexity of EQKP: {complexity_of(all_EQKP)}")  # O(d_vocab * d_model *
 # min_right_attention_softmaxed_cubic: Float[
 #     Tensor,
 #     "attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
-# ] = compute_min_softmaxed_right_attention_cubic_simple(
+# ] = compute_extreme_softmaxed_right_attention_cubic_simple(
 #     EQKE=EQKE,
 #     EQKP=EQKP,
 #     attn_scale=model.blocks[0].attn.attn_scale,
 # )
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
 print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
@@ -1114,7 +1097,7 @@ PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
 print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d_model)
 
 print(
-    f"Complexity of compute_min_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
+    f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
 )  # O(d_vocab^3 * n_ctx^2)
 EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
 print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
@@ -1125,7 +1108,7 @@ print(f"Complexity of PVOU: {complexity_of(all_PVOU)}")  # O(n_ctx * d_vocab * d
 largest_wrong_logit_cubic: Float[
     Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
 ] = compute_largest_wrong_logit_cubic(
-    min_right_attention_softmaxed_cubic,
+    extreme_right_attention_softmaxed_cubic,
     EUPU=EUPU,
     EVOU=EVOU,
     PVOU=PVOU,
@@ -2807,7 +2790,7 @@ def compute_largest_wrong_logit_quadratic(
             (
                 average_right_attention,
                 right_attention_adjustment,
-            ) = tricks.split_min_softmaxed_right_attention(
+            ) = tricks.split_extreme_softmaxed_right_attention(
                 extreme_softmaxed_right_attention[
                     min_max_index, :, max_tok, n_copies_nonmax
                 ],

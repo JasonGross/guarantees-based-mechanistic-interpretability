@@ -796,9 +796,9 @@ class LargestWrongLogitQuadraticConfig:
                 m = reduce(torch.matmul, matrices)
                 return m.max(dim=-1).values - m.min(dim=-1).values
 
-    def split_min_softmaxed_right_attention(
+    def split_extreme_softmaxed_right_attention(
         self,
-        min_softmaxed_right_attention: Float[Tensor, "d_vocab_q"],  # noqa F821
+        extreme_softmaxed_right_attention: Float[Tensor, "d_vocab_q"],  # noqa F821
         *,
         max_tok: int,
     ) -> Tuple[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]]:  # noqa F821
@@ -810,12 +810,12 @@ class LargestWrongLogitQuadraticConfig:
             average_right_attention + right_attention_adjustment = min_softmaxed_right_attention
         """
         average_right_attention = (
-            dropnan(min_softmaxed_right_attention).mean()
+            dropnan(extreme_softmaxed_right_attention).mean()
             if self.attention_handling == "mean_query+diff"
-            else torch.tensor(0.0).to(min_softmaxed_right_attention)
+            else torch.tensor(0.0).to(extreme_softmaxed_right_attention)
         )
         right_attention_adjustment = (
-            min_softmaxed_right_attention - average_right_attention
+            extreme_softmaxed_right_attention - average_right_attention
         )
         return average_right_attention, right_attention_adjustment
 

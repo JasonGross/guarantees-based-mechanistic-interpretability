@@ -759,12 +759,12 @@ sanity_check_diff = (
     extreme_right_attention_softmaxed_cubic[1, 0]
     - extreme_right_attention_softmaxed_cubic[0, 0]
 )
-sanity_check_diff_indices = [
-    tuple(i.item() for i in j) for j in zip(*torch.where(sanity_check_diff > 1e-6))
+sanity_check_diff_failed_indices = [
+    tuple(i.item() for i in j) for j in zip(*torch.where(sanity_check_diff < -1e-6))
 ]
 assert (
-    len(sanity_check_diff_indices) == 0
-), f"Sanity check failed: {sanity_check_diff_indices}, {extreme_right_attention_softmaxed_cubic[:, :, sanity_check_diff_indices[0]]}"
+    len(sanity_check_diff_failed_indices) == 0
+), f"Sanity check failed: {sanity_check_diff_failed_indices}, {extreme_right_attention_softmaxed_cubic[(slice(None), slice(None)) + sanity_check_diff_failed_indices[0]]}"
 
 
 # %%

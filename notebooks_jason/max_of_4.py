@@ -1028,11 +1028,28 @@ def count_correct_sequences_cubic(
                     num_nonmax_tok_choices = cur_largest_wrong_logit[
                         ~cur_largest_wrong_logit.isnan() & (cur_largest_wrong_logit < 0)
                     ].size(0)
-                    # cur_largest_wrong_logit < 0 -> the model gets it right (and the non-nan just ensures its valid)
-                    # N.B. Here, n_copies_nonmax does NOT include the query token
-                    correct_count += count_sequences(
+                    print(
+                        q_tok,
+                        max_tok,
+                        n_copies_nonmax,
+                        num_nonmax_tok_choices,
+                        count_sequences(
+                            n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
+                        ),
+                    )
+                    cur_count = count_sequences(
                         n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
                     )
+                    if n_copies_nonmax > 0 and max_tok == 0:
+                        assert (
+                            cur_count == 0
+                        ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices})"
+                    assert cur_count <= (max_tok - 1) ** n_copies_nonmax * math.comb(
+                        n_ctx - 1, n_copies_nonmax
+                    ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices})"
+                    # cur_largest_wrong_logit < 0 -> the model gets it right (and the non-nan just ensures its valid)
+                    # N.B. Here, n_copies_nonmax does NOT include the query token
+                    correct_count += cur_count
                     # consider the space where there's one dimension for each input token that controls "do we use this or not"
                     # we consider a subspace where "did the model get it right" is convex in this space
                     # i.e. if you get it for non-max token = x and non-max token = y, you get it for all sequences

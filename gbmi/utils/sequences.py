@@ -77,13 +77,27 @@ def count_sequences(
     sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
 ) -> int:
     """
-    Count the number of sequences of length sequence_length with nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    Count the number of sequences of length sequence_length with exactly nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    """
+    combinations = math.comb(sequence_length, nonmax_count)
+    token_variations = (
+        num_nonmax_tok_choices**nonmax_count if num_nonmax_tok_choices > 0 else 0
+    )
+    return combinations * token_variations
+
+
+def count_sequences_relaxed(
+    sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
+) -> int:
+    """
+    Count the number of sequences of length sequence_length with at most nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
     """
     total_count = 0
-
     for i in range(nonmax_count + 1):
-        combinations = math.comb(sequence_length, i)
-        token_variations = num_nonmax_tok_choices**i
-        total_count += combinations * token_variations
+        total_count += count_sequences(
+            sequence_length=sequence_length,
+            nonmax_count=i,
+            num_nonmax_tok_choices=num_nonmax_tok_choices,
+        )
 
     return total_count

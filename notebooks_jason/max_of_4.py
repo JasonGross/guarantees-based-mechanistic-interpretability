@@ -1028,15 +1028,6 @@ def count_correct_sequences_cubic(
                     num_nonmax_tok_choices = cur_largest_wrong_logit[
                         ~cur_largest_wrong_logit.isnan() & (cur_largest_wrong_logit < 0)
                     ].size(0)
-                    print(
-                        q_tok,
-                        max_tok,
-                        n_copies_nonmax,
-                        num_nonmax_tok_choices,
-                        count_sequences(
-                            n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
-                        ),
-                    )
                     cur_count = count_sequences(
                         n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
                     )

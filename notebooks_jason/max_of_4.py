@@ -1035,9 +1035,13 @@ def count_correct_sequences_cubic(
                         assert (
                             cur_count == 0
                         ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices})"
-                    assert cur_count <= (max_tok - 1) ** n_copies_nonmax * math.comb(
-                        n_ctx - 1, n_copies_nonmax
-                    ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices})"
+                    else:
+                        max_possible_count = max_tok**n_copies_nonmax * math.comb(
+                            n_ctx - 1, n_copies_nonmax
+                        )
+                        assert (
+                            cur_count <= max_possible_count
+                        ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices}) > {max_possible_count}"
                     # cur_largest_wrong_logit < 0 -> the model gets it right (and the non-nan just ensures its valid)
                     # N.B. Here, n_copies_nonmax does NOT include the query token
                     correct_count += cur_count

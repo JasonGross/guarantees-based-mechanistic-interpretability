@@ -1,6 +1,7 @@
 # Guarantees-Based Mechanistic Interpretability
 
 This is the codebase for the [_Guarantees-Based Mechanistic Interpretability_](https://www.cambridgeaisafety.org/mars/jason-gross) MARS stream.
+Successor to https://github.com/JasonGross/neural-net-coq-interp.
 
 ## Setup
 

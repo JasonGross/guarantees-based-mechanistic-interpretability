@@ -18,8 +18,8 @@ RED:=\033[0;31m
 # No Color
 NC:=\033[0m
 GREEN:=\033[0;32m
-BOLD:=$(shell tput bold)
-NORMAL:=$(shell tput sgr0)
+BOLD:=$(shell tput bold 2>/dev/null || tput -Txterm-256color bold)
+NORMAL:=$(shell tput sgr0 2>/dev/null || tput -Txterm-256color sgr0)
 
 define add_target
 # $(1) main target

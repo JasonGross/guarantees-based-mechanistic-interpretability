@@ -99,7 +99,7 @@ jobs:
       if: always()
     - run: poetry run wandb login --anonymously
       if: always()
-    - run: make test-load-experiments
+    - run: make test-load-experiments-report
       if: always()
 
   black-lint:

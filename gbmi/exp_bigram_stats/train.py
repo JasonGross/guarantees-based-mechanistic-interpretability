@@ -120,7 +120,7 @@ DEFAULT_BIGRAM = Config(
         n_train_samples=4096,
         only_strong_signal=False,
         random_tokens_at_end=False,
-        logging_options=ModelMatrixLoggingOptions.all(add_mean_pos_to_tok=False),
+        logging_options=ModelMatrixLoggingOptions.all(add_mean_pos_to_tok=None),
     ),
     seed=999,
     deterministic=False,
@@ -144,7 +144,7 @@ ABCAB_BIGRAM1H = Config(
         random_tokens_at_end=False,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -170,7 +170,7 @@ ABCAB5_BIGRAM1H = Config(
         random_tokens_at_end=False,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -196,7 +196,7 @@ ABCAB6_BIGRAM1H = Config(
         random_tokens_at_end=True,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -222,7 +222,7 @@ ABCAB8_BIGRAM1H = Config(
         random_tokens_at_end=True,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -249,7 +249,7 @@ ABCAB7_BIGRAM1H = Config(
         random_tokens_at_end=True,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -277,7 +277,7 @@ ABCAB6_SHORTFORMER_BIGRAM1H = Config(
         n_train_samples=10240,
         positional_embedding_type="shortformer",
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -304,7 +304,7 @@ ABCAB8_SHORTFORMER_BIGRAM1H = Config(
         n_train_samples=10240,
         positional_embedding_type="shortformer",
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -331,7 +331,7 @@ ABCAB6_SMALL_HIDDEN_BIGRAM1H = Config(
         random_tokens_at_end=True,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean_pos_to_tok=False
+            use_subplots=True, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),
@@ -357,7 +357,7 @@ ABCAB_BIGRAM = Config(
         random_tokens_at_end=False,
         n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=False, add_mean_pos_to_tok=False
+            use_subplots=False, add_mean_pos_to_tok=None
         ),
         optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
     ),

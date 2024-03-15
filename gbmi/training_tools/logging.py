@@ -204,7 +204,10 @@ class ModelMatrixLoggingOptions:
     log_zeros: bool = False
     qpos: Optional[int] = None
     qtok: Optional[int] = None
-    add_mean_pos_to_tok: Union[bool, dict[int, bool]] = True
+    add_mean: Union[
+        Optional[Literal["pos_to_tok", "tok_to_pos"]],
+        dict[int, Optional[Literal["pos_to_tok", "tok_to_pos"]]],
+    ] = "pos_to_tok"
     plot_1D_kind: Literal["line", "scatter"] = "line"
     use_subplots: bool = True
     superplot_title = "model matrices"
@@ -393,11 +396,12 @@ class ModelMatrixLoggingOptions:
             W_E_v: dict[int, Float[Tensor, "d_vocab d_model"]] = {}  # noqa: F722
             W_pos_v: dict[int, Float[Tensor, "n_ctx d_model"]] = {}  # noqa: F722
             for l in range(-1, W_Q.shape[0]):
-                add_mean_pos_to_tok: bool = (
-                    self.add_mean_pos_to_tok
-                    if isinstance(self.add_mean_pos_to_tok, bool)
-                    else self.add_mean_pos_to_tok.get(l, self.add_mean_pos_to_tok[0])
+                add_mean: Optional[Literal["pos_to_tok", "tok_to_pos"]] = (
+                    self.add_mean
+                    if not isinstance(self.add_mean, dict)
+                    else self.add_mean.get(l, self.add_mean[0])
                 )
+                assert add_mean != "tok_to_pos", "tok_to_pos not yet implemented"
                 if self.qtok is not None:
                     sEq[l] = f"E[{self.qtok}]"
                     W_E_q[l] = W_E[self.qtok]
@@ -421,22 +425,22 @@ class ModelMatrixLoggingOptions:
                 if self.qpos is not None:
                     sPq[l] = f"P[{self.qpos}]"
                     W_pos_q[l] = W_pos[self.qpos]
-                    match self.qpos, add_mean_pos_to_tok:
-                        case -1, False:
+                    match self.qpos, add_mean:
+                        case -1, None:
                             sPk[l] = f"(P[:-1]-P[-1])"
-                        case 0, False:
+                        case 0, None:
                             sPk[l] = f"(P[1:]-P[0])"
-                        case _, False:
+                        case _, None:
                             sPk[l] = (
                                 f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
                             )
-                        case -1, True:
+                        case -1, "pos_to_tok":
                             sEk[l] = f"({sEk[l]}+𝔼(P[:-1]-P[-1]))"
                             sPk[l] = f"(P[:-1]-𝔼P[:-1])"
-                        case 0, True:
+                        case 0, "pos_to_tok":
                             sEk[l] = f"({sEk[l]}+𝔼(P[1:]-P[0]))"
                             sPk[l] = f"(P[1:]-𝔼P[1:])"
-                        case _, True:
+                        case _, "pos_to_tok":
                             sEk[l] = (
                                 f"({sEk[l]}+𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}]))"
                             )
@@ -454,7 +458,7 @@ class ModelMatrixLoggingOptions:
                             )
                             - W_pos_q[l]
                         )
-                    if add_mean_pos_to_tok:
+                    if add_mean == "pos_to_tok":
                         W_E_q[l] = W_E_q[l] + W_pos_q[l]
                         W_pos_q[l] = W_pos_q[l] - W_pos_q[l]
                         W_pos_k_avg = W_pos_k[l].mean(dim=0)
@@ -467,7 +471,7 @@ class ModelMatrixLoggingOptions:
                     sPq[l] = f"P"
                     W_pos_k[l] = W_pos
                     sPk[l] = f"P"
-                    if add_mean_pos_to_tok:
+                    if add_mean == "pos_to_tok":
                         W_pos_k_avg = W_pos_k[l].mean(dim=0)
                         W_pos_q_avg = W_pos_q[l].mean(dim=0)
                         W_E_q[l] = W_E_q[l] + W_pos_q_avg
@@ -478,15 +482,24 @@ class ModelMatrixLoggingOptions:
                         sPq[l] = f"({sPq[l]}-{str_mean(sPq[l])})"
                         sEk[l] = f"({sEk[l]}+{str_mean(sPk[l])})"
                         sPk[l] = f"({sPk[l]}-{str_mean(sPk[l])})"
+
                 W_E_v[l] = W_E
                 W_pos_v[l] = W_pos
                 sEv[l] = f"E"
                 sPv[l] = f"P"
-                if add_mean_pos_to_tok:
-                    W_E_v[l] = W_E_v[l] + W_pos_v[l].mean(dim=0)
-                    W_pos_v[l] = W_pos_v[l] - W_pos_v[l].mean(dim=0)
-                    sEv[l] = f"({sEv[l]}+{str_mean(sPv[l])})"
-                    sPv[l] = f"({sPv[l]}-{str_mean(sPv[l])})"
+                match add_mean:
+                    case "pos_to_tok":
+                        W_E_v[l] = W_E_v[l] + W_pos_v[l].mean(dim=0)
+                        W_pos_v[l] = W_pos_v[l] - W_pos_v[l].mean(dim=0)
+                        sEv[l] = f"({sEv[l]}+{str_mean(sPv[l])})"
+                        sPv[l] = f"({sPv[l]}-{str_mean(sPv[l])})"
+                    case "tok_to_pos":
+                        W_pos_v[l] = W_pos_v[l] + W_E_v[l].mean(dim=0)
+                        W_E_v[l] = W_E_v[l] - W_E_v[l].mean(dim=0)
+                        sPv[l] = f"({sPv[l]}+{str_mean(sEv[l])})"
+                        sEv[l] = f"({sEv[l]}-{str_mean(sEv[l])})"
+                    case None:
+                        pass
             sPk[l] = f"{sPk[l]}ᵀ"
             sEk[l] = f"{sEk[l]}ᵀ"
 

@@ -264,8 +264,6 @@ class f_g_DataModule(DataModule):
 
         print(len(agree_indices))
 
-        print(data[agree_indices[10000]])
-
         random_subset = torch.randperm(len(agree_indices))
 
         train_size = int(self.config.experiment.training_ratio * len(agree_indices))

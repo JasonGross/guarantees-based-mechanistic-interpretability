@@ -81,6 +81,8 @@ for i in range(53):
 def elemental_loss(mod, i, fun):
     logits = mod(i)[:, -1, :].to(torch.float64)
     log_probs = utils.log_softmax(logits, dim=-1)
+    print(i)
+    print(fun(i))
     correct_log_probs = log_probs.gather(-1, fun(i).unsqueeze(-1))[:, 0]
 
     return -correct_log_probs
@@ -123,6 +125,8 @@ def loss_scatter(mod, cond, max_is_min):
 
 @torch.no_grad()
 def loss_scatter(mod, cond, res, fun):
+
+    mod.to(device)
 
     def cond_index(data):
         out = cond(data)
@@ -185,11 +189,11 @@ def loss_scatter(mod, cond, res, fun):
 
 
 def min_max(i):
-    return ((i[..., 2:].min(dim=-1).values), (i[..., :2].max(dim=-1)).values)
+    return ((i[..., 2:4].min(dim=-1).values), (i[..., :2].max(dim=-1)).values)
 
 
 def res_min_max(i):
-    return i[..., 2:].min(dim=-1).values == i[..., :2].max(dim=-1).values
+    return i[..., 2:4].min(dim=-1).values == i[..., :2].max(dim=-1).values
 
 
 def max_1(i):
@@ -197,10 +201,10 @@ def max_1(i):
 
 
 def min_2(i):
-    return i[..., 2:].max(dim=-1).values
+    return i[..., 2:4].min(dim=-1).values
 
 
-for i in range(0, 1000, 100):
+for i in range(0, 2000, 100):
     print(i)
     max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=i)
     runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)

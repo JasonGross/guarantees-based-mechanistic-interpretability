@@ -204,7 +204,7 @@ class ModelMatrixLoggingOptions:
     log_zeros: bool = False
     qpos: Optional[int] = None
     qtok: Optional[int] = None
-    add_mean_pos_to_tok: bool = True
+    add_mean_pos_to_tok: Union[bool, dict[int, bool]] = True
     plot_1D_kind: Literal["line", "scatter"] = "line"
     use_subplots: bool = True
     superplot_title = "model matrices"
@@ -362,99 +362,133 @@ class ModelMatrixLoggingOptions:
 
             d_vocab = W_E.shape[0]
             n_ctx = W_pos.shape[0]
-            if self.qtok is not None:
-                sEq = f"E[{self.qtok}]"
-                W_E_q: Float[Tensor, "d_model"]  # noqa: F821
-                W_E_q = W_E[self.qtok]
-                W_E_k: Float[Tensor, "d_vocab-1 d_model"]  # noqa: F722
-                if self.qtok % d_vocab == -1 % d_vocab:
-                    sEk = f"(E[:-1]-E[-1])"
-                    W_E_k = W_E[: self.qtok] - W_E_q
-                elif self.qtok == 0:
-                    sEk = f"(E[1:]-E[0])"
-                    W_E_k = W_E[self.qtok + 1 :] - W_E_q
+            sEq: dict[int, str] = {}
+            sEk: dict[int, str] = {}
+            sPq: dict[int, str] = {}
+            sPk: dict[int, str] = {}
+            sEv: dict[int, str] = {}
+            sPv: dict[int, str] = {}
+            W_E_q: Union[
+                dict[int, Float[Tensor, "d_model"]],  # noqa: F821
+                dict[int, Float[Tensor, "d_vocab d_model"]],  # noqa: F722
+            ] = {}
+            W_E_k: Union[
+                dict[int, Float[Tensor, "d_vocab-1 d_model"]],  # noqa: F722
+                dict[int, Float[Tensor, "d_vocab d_model"]],  # noqa: F722
+            ] = {}
+            W_pos_q: dict[
+                int,
+                Union[
+                    Float[Tensor, "d_model"],  # noqa: F821
+                    Float[Tensor, "n_ctx d_model"],  # noqa: F722
+                ],
+            ] = {}
+            W_pos_k: dict[
+                int,
+                Union[
+                    Float[Tensor, "n_ctx-1 d_model"],  # noqa: F722
+                    Float[Tensor, "n_ctx d_model"],  # noqa: F722
+                ],
+            ] = {}
+            W_E_v: dict[int, Float[Tensor, "d_vocab d_model"]] = {}  # noqa: F722
+            W_pos_v: dict[int, Float[Tensor, "n_ctx d_model"]] = {}  # noqa: F722
+            for l in range(-1, W_Q.shape[0]):
+                add_mean_pos_to_tok: bool = (
+                    self.add_mean_pos_to_tok
+                    if isinstance(self.add_mean_pos_to_tok, bool)
+                    else self.add_mean_pos_to_tok.get(l, self.add_mean_pos_to_tok[0])
+                )
+                if self.qtok is not None:
+                    sEq[l] = f"E[{self.qtok}]"
+                    W_E_q[l] = W_E[self.qtok]
+                    if self.qtok % d_vocab == -1 % d_vocab:
+                        sEk[l] = f"(E[:-1]-E[-1])"
+                        W_E_k[l] = W_E[: self.qtok] - W_E_q[l]
+                    elif self.qtok == 0:
+                        sEk[l] = f"(E[1:]-E[0])"
+                        W_E_k[l] = W_E[self.qtok + 1 :] - W_E_q[l]
+                    else:
+                        sEk[l] = f"(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}])"
+                        W_E_k[l] = (
+                            torch.cat([W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0)
+                            - W_E_q[l]
+                        )
                 else:
-                    sEk = f"(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}])"
-                    W_E_k = (
-                        torch.cat([W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0)
-                        - W_E_q
-                    )
-            else:
-                sEq = f"E"
-                W_E_q: Float[Tensor, "d_vocab d_model"]  # noqa: F722
-                W_E_q = W_E
-                sEk = f"E"
-                W_E_k: Float[Tensor, "d_vocab d_model"]  # noqa: F722
-                W_E_k = W_E
-            if self.qpos is not None:
-                sPq = f"P[{self.qpos}]"
-                W_pos_q: Float[Tensor, "d_model"]  # noqa: F821
-                W_pos_q = W_pos[self.qpos]
-                match self.qpos, self.add_mean_pos_to_tok:
-                    case -1, False:
-                        sPk = f"(P[:-1]-P[-1])"
-                    case 0, False:
-                        sPk = f"(P[1:]-P[0])"
-                    case _, False:
-                        sPk = f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
-                    case -1, True:
-                        sEk = f"({sEk}+𝔼(P[:-1]-P[-1]))"
-                        sPk = f"(P[:-1]-𝔼P[:-1])"
-                    case 0, True:
-                        sEk = f"({sEk}+𝔼(P[1:]-P[0]))"
-                        sPk = f"(P[1:]-𝔼P[1:])"
-                    case _, True:
-                        sEk = f"({sEk}+𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}]))"
-                        sPk = f"(P[:{self.qpos}]+P[{self.qpos+1}:]-𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]))"
-                W_pos_k: Float[Tensor, "n_ctx-1 d_model"]  # noqa: F722
-                if self.qpos % n_ctx == -1 % n_ctx:
-                    W_pos_k = W_pos[: self.qpos] - W_pos_q
-                elif self.qpos == 0:
-                    W_pos_k = W_pos[self.qpos + 1 :] - W_pos_q
+                    sEq[l] = f"E"
+                    W_E_q[l] = W_E
+                    sEk[l] = f"E"
+                    W_E_k[l] = W_E
+                if self.qpos is not None:
+                    sPq[l] = f"P[{self.qpos}]"
+                    W_pos_q[l] = W_pos[self.qpos]
+                    match self.qpos, add_mean_pos_to_tok:
+                        case -1, False:
+                            sPk[l] = f"(P[:-1]-P[-1])"
+                        case 0, False:
+                            sPk[l] = f"(P[1:]-P[0])"
+                        case _, False:
+                            sPk[l] = (
+                                f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
+                            )
+                        case -1, True:
+                            sEk[l] = f"({sEk[l]}+𝔼(P[:-1]-P[-1]))"
+                            sPk[l] = f"(P[:-1]-𝔼P[:-1])"
+                        case 0, True:
+                            sEk[l] = f"({sEk[l]}+𝔼(P[1:]-P[0]))"
+                            sPk[l] = f"(P[1:]-𝔼P[1:])"
+                        case _, True:
+                            sEk[l] = (
+                                f"({sEk[l]}+𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}]))"
+                            )
+                            sPk[l] = (
+                                f"(P[:{self.qpos}]+P[{self.qpos+1}:]-𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]))"
+                            )
+                    if self.qpos % n_ctx == -1 % n_ctx:
+                        W_pos_k[l] = W_pos[: self.qpos] - W_pos_q[l]
+                    elif self.qpos == 0:
+                        W_pos_k[l] = W_pos[self.qpos + 1 :] - W_pos_q[l]
+                    else:
+                        W_pos_k[l] = (
+                            torch.cat(
+                                [W_pos[: self.qpos], W_pos[self.qpos + 1 :]], dim=0
+                            )
+                            - W_pos_q[l]
+                        )
+                    if add_mean_pos_to_tok:
+                        W_E_q[l] = W_E_q[l] + W_pos_q[l]
+                        W_pos_q[l] = W_pos_q[l] - W_pos_q[l]
+                        W_pos_k_avg = W_pos_k[l].mean(dim=0)
+                        W_E_k[l] = W_E_k[l] + W_pos_k_avg
+                        W_pos_k[l] = W_pos_k[l] - W_pos_k_avg
+                        sEq[l] = f"({sEq[l]} + {sPq[l]})"
+                        sPq[l] = f"0"
                 else:
-                    W_pos_k = (
-                        torch.cat([W_pos[: self.qpos], W_pos[self.qpos + 1 :]], dim=0)
-                        - W_pos_q
-                    )
-                if self.add_mean_pos_to_tok:
-                    W_E_q = W_E_q + W_pos_q
-                    W_pos_q = W_pos_q - W_pos_q
-                    W_pos_k_avg = W_pos_k.mean(dim=0)
-                    W_E_k = W_E_k + W_pos_k_avg
-                    W_pos_k = W_pos_k - W_pos_k_avg
-                    sEq = f"({sEq} + {sPq})"
-                    sPq = f"0"
-            else:
-                W_pos_q: Float[Tensor, "n_ctx d_model"]  # noqa: F722
-                W_pos_q = W_pos
-                sPq = f"P"
-                W_pos_k: Float[Tensor, "n_ctx d_model"]  # noqa: F722
-                W_pos_k = W_pos
-                sPk = f"P"
-                if self.add_mean_pos_to_tok:
-                    W_pos_k_avg = W_pos_k.mean(dim=0)
-                    W_pos_q_avg = W_pos_q.mean(dim=0)
-                    W_E_q = W_E_q + W_pos_q_avg
-                    W_pos_q = W_pos_q - W_pos_q_avg
-                    W_E_k = W_E_k + W_pos_k_avg
-                    W_pos_k = W_pos_k - W_pos_k_avg
-                    sEq = f"({sEq}+{str_mean(sPq)})"
-                    sPq = f"({sPq}-{str_mean(sPq)})"
-                    sEk = f"({sEk}+{str_mean(sPk)})"
-                    sPk = f"({sPk}-{str_mean(sPk)})"
-            W_E_v: Float[Tensor, "d_vocab d_model"]  # noqa: F722
-            W_pos_v: Float[Tensor, "n_ctx d_model"]  # noqa: F722
-            W_E_v = W_E
-            W_pos_v = W_pos
-            sEv = f"E"
-            sPv = f"P"
-            if self.add_mean_pos_to_tok:
-                W_E_v = W_E_v + W_pos_v.mean(dim=0)
-                W_pos_v = W_pos_v - W_pos_v.mean(dim=0)
-                sEv = f"({sEv}+{str_mean(sPv)})"
-                sPv = f"({sPv}-{str_mean(sPv)})"
-        sPk = f"{sPk}ᵀ"
-        sEk = f"{sEk}ᵀ"
+                    W_pos_q[l] = W_pos
+                    sPq[l] = f"P"
+                    W_pos_k[l] = W_pos
+                    sPk[l] = f"P"
+                    if add_mean_pos_to_tok:
+                        W_pos_k_avg = W_pos_k[l].mean(dim=0)
+                        W_pos_q_avg = W_pos_q[l].mean(dim=0)
+                        W_E_q[l] = W_E_q[l] + W_pos_q_avg
+                        W_pos_q[l] = W_pos_q[l] - W_pos_q_avg
+                        W_E_k[l] = W_E_k[l] + W_pos_k_avg
+                        W_pos_k[l] = W_pos_k[l] - W_pos_k_avg
+                        sEq[l] = f"({sEq[l]}+{str_mean(sPq[l])})"
+                        sPq[l] = f"({sPq[l]}-{str_mean(sPq[l])})"
+                        sEk[l] = f"({sEk[l]}+{str_mean(sPk[l])})"
+                        sPk[l] = f"({sPk[l]}-{str_mean(sPk[l])})"
+                W_E_v[l] = W_E
+                W_pos_v[l] = W_pos
+                sEv[l] = f"E"
+                sPv[l] = f"P"
+                if add_mean_pos_to_tok:
+                    W_E_v[l] = W_E_v[l] + W_pos_v[l].mean(dim=0)
+                    W_pos_v[l] = W_pos_v[l] - W_pos_v[l].mean(dim=0)
+                    sEv[l] = f"({sEv[l]}+{str_mean(sPv[l])})"
+                    sPv[l] = f"({sPv[l]}-{str_mean(sPv[l])})"
+            sPk[l] = f"{sPk[l]}ᵀ"
+            sEk[l] = f"{sEk[l]}ᵀ"
 
         def apply_U(
             x: Float[Tensor, "... d_model"]  # noqa: F722
@@ -479,9 +513,9 @@ class ModelMatrixLoggingOptions:
             return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
 
         if self.EU:
-            yield f"{sEq}U", apply_U(W_E_q)
-        if self.PU and (sPq != "0" or self.log_zeros):
-            yield f"{sPq}U", apply_U(W_pos_q)
+            yield f"{sEq[-1]}U", apply_U(W_E_q[-1])
+        if self.PU and (sPq[-1] != "0" or self.log_zeros):
+            yield f"{sPq[-1]}U", apply_U(W_pos_q[-1])
 
         for l in range(W_Q.shape[0]):
             for h in range(W_Q.shape[1]):
@@ -492,26 +526,26 @@ class ModelMatrixLoggingOptions:
                     nanify_above_diagonal_if_query_direct,
                 ) in (
                     (
-                        (W_E_v, W_E_q, sEv, sEq, False),
-                        (W_E_v, W_E_k, sEv, sEk, False),
+                        (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
+                        (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
                         self.EQKE,
                         False,
                     ),
                     (
-                        (W_E_v, W_E_q, sEv, sEq, False),
-                        (W_pos_v, W_pos_k, sPv, sPk, self.shortformer),
+                        (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
+                        (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
                         self.EQKP,
                         False,
                     ),
                     (
-                        (W_pos_v, W_pos_q, sPv, sPq, self.shortformer),
-                        (W_E_v, W_E_k, sEv, sEk, False),
+                        (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
+                        (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
                         self.PQKE,
                         False,
                     ),
                     (
-                        (W_pos_v, W_pos_q, sPv, sPq, self.shortformer),
-                        (W_pos_v, W_pos_k, sPv, sPk, self.shortformer),
+                        (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
+                        (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
                         self.PQKP,
                         self.nanify_causal_attn and model.cfg.attention_dir == "causal",
                     ),
@@ -569,10 +603,10 @@ class ModelMatrixLoggingOptions:
                     for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
                         apply_VO,
                         model.cfg.n_heads,
-                        x=W_E_v,
-                        x_direct=W_E_v,
-                        sx=sEv,
-                        sx_direct=sEv,
+                        x=W_E_v[l],
+                        x_direct=W_E_v[l],
+                        sx=sEv[l],
+                        sx_direct=sEv[l],
                         l=l,
                         reverse_strs=False,
                     ):
@@ -584,10 +618,10 @@ class ModelMatrixLoggingOptions:
                     for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
                         apply_VO,
                         model.cfg.n_heads,
-                        x=W_pos_v,
-                        x_direct=W_pos_v,
-                        sx=sPv,
-                        sx_direct=sPv,
+                        x=W_pos_v[l],
+                        x_direct=W_pos_v[l],
+                        sx=sPv[l],
+                        sx_direct=sPv[l],
                         l=l,
                         reverse_strs=False,
                         skip_composition=self.shortformer,

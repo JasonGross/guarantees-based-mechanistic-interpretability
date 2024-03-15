@@ -19,6 +19,7 @@ from transformer_lens import HookedTransformer, HookedTransformerConfig
 from gbmi.exp_bigram_stats.data_utils import (
     ExactBigramTask,
     ABCBCBigramTask,
+    ABCBCEnglishBigramTask,
     calculate_batch_probabilities,
     cat_bos_token,
     cat_bos_uniform_labels,
@@ -48,6 +49,7 @@ class Bigram(ExperimentConfig):
     num_tokens: int = 3
     d_model: int = 8
     task: Literal["exact-bigram", "abcab"] = "exact-bigram"
+    corpus: Optional[str] = None
     only_last_tokens: Optional[int] = None
     only_strong_signal: bool = True
     random_tokens_at_end: bool = False
@@ -69,7 +71,10 @@ class Bigram(ExperimentConfig):
     )
 
     def __post_init__(self):
-        setattr(self, _EXCLUDE, ("logging_options",))
+        exclude = getattr(self, _EXCLUDE, ())
+        exclude += ("logging_options",)
+        exclude += ("corpus",) if self.task == "exact-bigram" else ()
+        setattr(self, _EXCLUDE, exclude)
         self.logging_options.shortformer = (
             self.positional_embedding_type == "shortformer"
         )
@@ -91,6 +96,7 @@ class Bigram(ExperimentConfig):
             f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
             f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{'-randend' if config.experiment.random_tokens_at_end else ''}"
+            f"{f'-{config.experiment.corpus}' if config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
             f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
             f"{'-nondet' if not config.deterministic else ''}"
         )
@@ -132,6 +138,7 @@ ABCAB_BIGRAM1H = Config(
         n_heads=1,
         d_model=128,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=False,
@@ -157,6 +164,7 @@ ABCAB5_BIGRAM1H = Config(
         n_heads=1,
         d_model=128,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=False,
@@ -182,6 +190,7 @@ ABCAB6_BIGRAM1H = Config(
         n_heads=1,
         d_model=128,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=True,
@@ -207,6 +216,7 @@ ABCAB8_BIGRAM1H = Config(
         n_heads=1,
         d_model=128,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=True,
@@ -233,6 +243,7 @@ ABCAB6_SHORTFORMER_BIGRAM1H = Config(
         n_heads=1,
         d_model=128,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=True,
@@ -259,6 +270,7 @@ ABCAB8_SHORTFORMER_BIGRAM1H = Config(
         n_heads=1,
         d_model=128,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=True,
@@ -286,6 +298,7 @@ ABCAB6_SMALL_HIDDEN_BIGRAM1H = Config(
         n_heads=1,
         d_model=16,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=True,
@@ -311,6 +324,7 @@ ABCAB_BIGRAM = Config(
         n_heads=4,
         d_model=128,
         task="abcab",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=False,
@@ -444,6 +458,7 @@ class BigramDataModule(DataModule):
     n_test_samples: int
     n_validate_samples: int
     task: Literal["exact-bigram", "abcab"]
+    corpus: Optional[str] = None
     seq_length: int
     bos: Optional[int]
     dataset_seed: int
@@ -459,6 +474,7 @@ class BigramDataModule(DataModule):
         self.seq_length = config.experiment.seq_length
         self.bos = config.experiment.num_tokens if config.experiment.bos else None
         self.task = config.experiment.task
+        self.corpus = config.experiment.corpus
         self.random_tokens_at_end = config.experiment.random_tokens_at_end
         self.other_tokens_distinct_from_predicted_token = (
             config.experiment.other_tokens_distinct_from_predicted_token
@@ -476,8 +492,13 @@ class BigramDataModule(DataModule):
             case "exact-bigram":
                 generator = ExactBigramTask.generator
             case "abcab":
+                generator = (
+                    ABCBCBigramTask.generator
+                    if self.corpus is None
+                    else partial(ABCBCEnglishBigramTask.generator, corpus=self.corpus)
+                )
                 generator = partial(
-                    ABCBCBigramTask.generator,
+                    generator,
                     skip_end=not self.random_tokens_at_end,
                     b_unique=self.other_tokens_distinct_from_predicted_token,
                 )

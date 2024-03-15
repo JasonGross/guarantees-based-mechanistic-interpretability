@@ -1,8 +1,9 @@
-from typing import Iterable, Optional, Tuple
+from typing import Collection, Iterable, Optional, Sequence, Tuple
 import einops
 from jaxtyping import Float, Integer
 import torch
 from torch import Tensor
+from gbmi.utils.english_ngram import ngram_count_table, DEFAULT_CORPUS
 
 
 class ExactBigramTask:
@@ -102,6 +103,105 @@ class ABCBCBigramTask:
             tokens = torch.randperm(num_tokens, generator=g)
             (a, b), cs = tokens[:2], tokens[(2 if b_unique else 1) :]
             cs = cs[torch.randint(0, cs.size(0), (n_cs,), generator=g)]
+            split_index1, split_index2 = (
+                torch.randint(1, cs.size(0) + 1, (2,), generator=g).sort().values
+            )
+            cs1, cs2, cs3 = (
+                cs[:split_index1],
+                cs[split_index1:split_index2],
+                cs[split_index2:],
+            )
+            if skip_end:
+                cs2, cs3 = torch.cat([cs2, cs3], dim=0), []
+            yield torch.tensor(
+                [*cs1, a, b, *cs2, a, b, *cs3][:-1],
+                dtype=torch.long,
+                device=default_device,
+            )
+            n_samples += 1
+            if max_length is not None and n_samples >= max_length:
+                return
+
+
+class ABCBCEnglishBigramTask:
+
+    @staticmethod
+    def sample_trigrams(
+        a: int,
+        b: int,
+        num: int,
+        trigram_counts_table: Float[
+            Tensor, "num_tokens num_tokens num_tokens"  # noqa: F722
+        ],
+        *,
+        avoid_a: bool = True,
+        avoid_b: bool = True,
+        g: torch.Generator,
+    ) -> Iterable[int]:
+        trigram_table = trigram_counts_table.clone()
+        if avoid_a:
+            trigram_table[:, :, a] = 0
+        if avoid_b:
+            trigram_table[:, :, b] = 0
+        trigram_table /= trigram_table.sum(dim=-1, keepdim=True)
+        for _ in range(num):
+            a, b = b, int(torch.multinomial(trigram_table[a, b], 1, generator=g).item())
+            yield b
+
+    # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
+    @staticmethod
+    def generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        max_length: int,
+        skip_end: bool = False,
+        b_unique: bool = False,
+        corpus: str = DEFAULT_CORPUS,
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        default_device = torch.tensor([]).device
+        monogram_table = torch.tensor(
+            ngram_count_table(n=1, corpus=corpus), device=default_device
+        )
+        bigram_table = torch.tensor(
+            ngram_count_table(n=2, corpus=corpus), device=default_device
+        )
+        trigram_counts_table = torch.tensor(
+            ngram_count_table(n=3, corpus=corpus), device=default_device
+        )
+        monogram_table /= monogram_table.sum(dim=-1, keepdim=True)
+        # zero the diagonal of the bigram table, since we want bigrams to always be distinct
+        bigram_table[torch.arange(num_tokens), torch.arange(num_tokens)] = 0
+        bigram_table /= bigram_table.sum(dim=-1, keepdim=True)
+        assert monogram_table.shape == (
+            num_tokens,
+        ), f"monogram_table.shape={monogram_table.shape} != (num_tokens,) = ({num_tokens},)"
+        assert bigram_table.shape == (
+            num_tokens,
+            num_tokens,
+        ), f"bigram_table.shape={bigram_table.shape} != (num_tokens, num_tokens) = ({num_tokens}, {num_tokens})"
+        assert trigram_counts_table.shape == (
+            num_tokens,
+            num_tokens,
+            num_tokens,
+        ), f"trigram_table.shape={trigram_counts_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
+        g = torch.Generator(device=default_device)
+        g.manual_seed(seed)
+        n_samples = 0
+        n_cs = seq_length - 3
+        while True:
+            a = int(torch.multinomial(monogram_table, 1, generator=g).item())
+            b = int(torch.multinomial(bigram_table[a], 1, generator=g).item())
+            cs = torch.tensor(
+                list(
+                    ABCBCEnglishBigramTask.sample_trigrams(
+                        a, b, n_cs, trigram_counts_table, avoid_b=b_unique, g=g
+                    )
+                ),
+                dtype=torch.long,
+                device=default_device,
+            )
             split_index1, split_index2 = (
                 torch.randint(1, cs.size(0) + 1, (2,), generator=g).sort().values
             )

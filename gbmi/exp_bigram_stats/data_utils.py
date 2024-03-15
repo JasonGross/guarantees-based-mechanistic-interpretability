@@ -143,6 +143,7 @@ class ABCBCEnglishBigramTask:
             trigram_table[:, :, a] = 0
         if avoid_b:
             trigram_table[:, :, b] = 0
+        trigram_table[trigram_table.sum(dim=-1) == 0, :] = trigram_table.sum(dim=0)
         trigram_table /= trigram_table.sum(dim=-1, keepdim=True)
         for _ in range(num):
             a, b = b, int(torch.multinomial(trigram_table[a, b], 1, generator=g).item())

@@ -144,10 +144,12 @@ class ABCBCEnglishBigramTask:
         if avoid_b:
             trigram_table[:, :, b] = 0
         trigram_table = torch.where(
-            trigram_table.sum(dim=-1) != 0, trigram_table, trigram_table.sum(dim=0)
+            trigram_table.sum(dim=-1, keepdim=True) != 0,
+            trigram_table,
+            trigram_table.sum(dim=0),
         )
         trigram_table = torch.where(
-            trigram_table.sum(dim=-1) != 0,
+            trigram_table.sum(dim=-1, keepdim=True) != 0,
             trigram_table,
             trigram_table.sum(dim=0).sum(dim=0),
         )

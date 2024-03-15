@@ -146,6 +146,11 @@ class ABCBCEnglishBigramTask:
         trigram_table = torch.where(
             trigram_table.sum(dim=-1) != 0, trigram_table, trigram_table.sum(dim=0)
         )
+        trigram_table = torch.where(
+            trigram_table.sum(dim=-1) != 0,
+            trigram_table,
+            trigram_table.sum(dim=0).sum(dim=0),
+        )
         assert (
             trigram_table.sum(dim=-1) != 0
         ).all(), f"a: {a}, b: {b}, indices: {(trigram_table.sum(dim=-1) == 0).nonzero()}, values: {trigram_table.sum(dim=-1)[trigram_table.sum(dim=-1) == 0]}"

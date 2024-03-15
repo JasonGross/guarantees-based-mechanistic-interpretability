@@ -236,6 +236,33 @@ ABCAB8_BIGRAM1H = Config(
 )
 
 
+ABCAB7_BIGRAM1H = Config(
+    experiment=Bigram(
+        seq_length=7,
+        num_tokens=26,
+        n_heads=1,
+        d_model=128,
+        task="abcab",
+        corpus="webtext",
+        bos=False,
+        only_strong_signal=True,
+        random_tokens_at_end=True,
+        n_train_samples=10240,
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean_pos_to_tok=False
+        ),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=512,
+    train_for=(10000, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(10, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
+
+
 ABCAB6_SHORTFORMER_BIGRAM1H = Config(
     experiment=Bigram(
         seq_length=6,

@@ -146,6 +146,9 @@ class ABCBCEnglishBigramTask:
         trigram_table = torch.where(
             trigram_table.sum(dim=-1) != 0, trigram_table, trigram_table.sum(dim=0)
         )
+        assert (
+            trigram_table.sum(dim=-1) != 0
+        ).all(), f"indices: {(trigram_table.sum(dim=-1) == 0).nonzero()}, values: {trigram_table.sum(dim=-1)[trigram_table.sum(dim=-1) == 0]}"
         trigram_table /= trigram_table.sum(dim=-1, keepdim=True)
         for _ in range(num):
             a, b = b, int(torch.multinomial(trigram_table[a, b], 1, generator=g).item())

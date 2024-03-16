@@ -138,7 +138,7 @@ class EnglishExactTrigramTask:
                 # resample the last character to speed things up
                 final_token_dist_ref = trigram_dist[trigram[-2], trigram[-1]]
                 final_token_dist = torch.zeros_like(final_token_dist_ref)
-                idxs = list(set(trigram[:-1]))
+                idxs = torch.tensor(list(set(trigram[:-1])))
                 final_token_dist[idxs] = final_token_dist_ref[idxs]
                 final_token_dist /= final_token_dist.sum()
                 trigram[-1] = int(

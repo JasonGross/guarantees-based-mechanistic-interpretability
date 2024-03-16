@@ -140,6 +140,14 @@ class EnglishExactTrigramTask:
                 final_token_dist = torch.zeros_like(final_token_dist_ref)
                 idxs = torch.tensor(list(set(trigram[:-1])))
                 final_token_dist[idxs] = final_token_dist_ref[idxs]
+                if final_token_dist.sum() == 0:
+                    final_token_dist[idxs] = trigram_dist[:, trigram[-1], idxs].sum(
+                        dim=0
+                    )
+                if final_token_dist.sum() == 0:
+                    final_token_dist[idxs] = (
+                        trigram_dist[:, :, idxs].sum(dim=0).sum(dim=0)
+                    )
                 final_token_dist /= final_token_dist.sum()
                 trigram[-1] = int(
                     torch.multinomial(final_token_dist, 1, generator=g).item()

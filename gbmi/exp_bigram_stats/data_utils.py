@@ -81,6 +81,148 @@ class ExactBigramTask:
                 return
 
 
+class EnglishExactTrigramTask:
+    @staticmethod
+    def sample_trigram_iter(
+        seq_length: int,
+        monogram_dist: Float[Tensor, "num_tokens"],  # noqa: F821
+        bigram_dist: Float[Tensor, "num_tokens num_tokens"],  # noqa: F722
+        trigram_dist: Float[Tensor, "num_tokens num_tokens num_tokens"],  # noqa: F722
+        g: torch.Generator,
+    ) -> Iterable[int]:
+        prevtoken = int(torch.multinomial(monogram_dist, 1, generator=g).item())
+        yield prevtoken
+        if seq_length == 1:
+            return
+        token = int(torch.multinomial(bigram_dist[prevtoken], 1, generator=g).item())
+        yield token
+        for _ in range(seq_length - 2):
+            prevtoken, token = token, int(
+                torch.multinomial(trigram_dist[prevtoken, token], 1, generator=g).item()
+            )
+            yield token
+
+    @staticmethod
+    def sample_trigram(
+        seq_length: int,
+        monogram_dist: Float[Tensor, "num_tokens"],  # noqa: F821
+        bigram_dist: Float[Tensor, "num_tokens num_tokens"],  # noqa: F722
+        trigram_dist: Float[Tensor, "num_tokens num_tokens num_tokens"],  # noqa: F722
+        g: torch.Generator,
+        device: torch.device,
+    ) -> Integer[Tensor, "seq_length"]:  # noqa: F821
+        return torch.tensor(
+            list(
+                EnglishExactTrigramTask.sample_trigram_iter(
+                    seq_length, monogram_dist, bigram_dist, trigram_dist, g
+                )
+            ),
+            dtype=torch.long,
+            device=device,
+        )
+
+    @staticmethod
+    def sample_trigram_with_at_least_one_unique(
+        seq_length: int,
+        monogram_dist: Float[Tensor, "num_tokens"],  # noqa: F821
+        bigram_dist: Float[Tensor, "num_tokens num_tokens"],  # noqa: F722
+        trigram_dist: Float[Tensor, "num_tokens num_tokens num_tokens"],  # noqa: F722
+        g: torch.Generator,
+        device: torch.device,
+    ) -> Integer[Tensor, "seq_length"]:  # noqa: F821
+        while True:
+            trigram = EnglishExactTrigramTask.sample_trigram(
+                seq_length, monogram_dist, bigram_dist, trigram_dist, g, device=device
+            )
+            if seq_length >= 2 and len(set(trigram.tolist())) == len(trigram):
+                # resample the last character to speed things up
+                final_token_dist_ref = trigram_dist[trigram[-2], trigram[-1]]
+                final_token_dist = torch.zeros_like(final_token_dist_ref)
+                idxs = list(set(trigram[:-1]))
+                final_token_dist[idxs] = final_token_dist_ref[idxs]
+                final_token_dist /= final_token_dist.sum()
+                trigram[-1] = int(
+                    torch.multinomial(final_token_dist, 1, generator=g).item()
+                )
+            if (
+                calculate_batch_probabilities(trigram, monogram_dist.shape[0]) == 1
+            ).any():
+                return trigram
+
+    @staticmethod
+    def generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        max_length: int,
+        force_strong_signal: bool = True,
+        corpus: str = DEFAULT_CORPUS,
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        default_device = torch.tensor([]).device
+        monogram_table = torch.tensor(
+            ngram_count_table(n=1, corpus=corpus), device=default_device
+        )
+        bigram_table = torch.tensor(
+            ngram_count_table(n=2, corpus=corpus), device=default_device
+        )
+        trigram_table = torch.tensor(
+            ngram_count_table(n=3, corpus=corpus), device=default_device
+        )
+        assert monogram_table.shape == (
+            num_tokens,
+        ), f"monogram_table.shape={monogram_table.shape} != (num_tokens,) = ({num_tokens},)"
+        assert bigram_table.shape == (
+            num_tokens,
+            num_tokens,
+        ), f"bigram_table.shape={bigram_table.shape} != (num_tokens, num_tokens) = ({num_tokens}, {num_tokens})"
+        assert trigram_table.shape == (
+            num_tokens,
+            num_tokens,
+            num_tokens,
+        ), f"trigram_table.shape={trigram_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
+
+        monogram_table /= monogram_table.sum(dim=-1, keepdim=True)
+        bigram_table = torch.where(
+            bigram_table.sum(dim=-1, keepdim=True) != 0,
+            bigram_table,
+            bigram_table.sum(dim=0),
+        )
+        bigram_table /= bigram_table.sum(dim=-1, keepdim=True)
+        trigram_table = torch.where(
+            trigram_table.sum(dim=-1, keepdim=True) != 0,
+            trigram_table,
+            trigram_table.sum(dim=0),
+        )
+        trigram_table = torch.where(
+            trigram_table.sum(dim=-1, keepdim=True) != 0,
+            trigram_table,
+            trigram_table.sum(dim=0).sum(dim=0),
+        )
+        trigram_table /= trigram_table.sum(dim=-1, keepdim=True)
+
+        g = torch.Generator(device=default_device)
+        g.manual_seed(seed)
+        n_samples = 0
+        while True:
+            sample = (
+                EnglishExactTrigramTask.sample_trigram_with_at_least_one_unique
+                if force_strong_signal
+                else EnglishExactTrigramTask.sample_trigram
+            )
+            yield sample(
+                seq_length,
+                monogram_table,
+                bigram_table,
+                trigram_table,
+                g,
+                default_device,
+            )
+            n_samples += 1
+            if max_length is not None and n_samples >= max_length:
+                return
+
+
 class ABCBCBigramTask:
 
     # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py

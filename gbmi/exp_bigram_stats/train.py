@@ -19,6 +19,7 @@ from transformer_lens import HookedTransformer, HookedTransformerConfig
 from gbmi.exp_bigram_stats.data_utils import (
     ExactBigramTask,
     ABCBCBigramTask,
+    EnglishExactTrigramTask,
     ABCBCEnglishBigramTask,
     calculate_batch_probabilities,
     cat_bos_token,
@@ -48,7 +49,7 @@ class Bigram(ExperimentConfig):
     seq_length: int = 5
     num_tokens: int = 3
     d_model: int = 8
-    task: Literal["exact-bigram", "abcab"] = "exact-bigram"
+    task: Literal["exact-bigram", "exact-trigram", "abcab"] = "exact-bigram"
     corpus: Optional[str] = None
     only_last_tokens: Optional[int] = None
     only_strong_signal: bool = True
@@ -371,6 +372,30 @@ ABCAB_BIGRAM = Config(
     validate_every=(100, "epochs"),
     validation_batch_size=1,  # we want validation right now only to log the plots
 )
+TRIGRAM4 = Config(
+    experiment=Bigram(
+        seq_length=4,
+        num_tokens=26,
+        n_heads=1,
+        d_model=128,
+        task="exact-trigram",
+        corpus="webtext",
+        bos=False,
+        only_strong_signal=True,
+        n_train_samples=10240,
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
+        ),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=512,
+    train_for=(5000, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(10, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
 
 
 class BigramTrainingWrapper(TrainingWrapper[Bigram]):
@@ -486,7 +511,7 @@ class BigramDataModule(DataModule):
     n_train_samples: int
     n_test_samples: int
     n_validate_samples: int
-    task: Literal["exact-bigram", "abcab"]
+    task: Literal["exact-bigram", "exact-trigram", "abcab"]
     corpus: Optional[str] = None
     seq_length: int
     bos: Optional[int]
@@ -505,6 +530,7 @@ class BigramDataModule(DataModule):
         self.task = config.experiment.task
         self.corpus = config.experiment.corpus
         self.random_tokens_at_end = config.experiment.random_tokens_at_end
+        self.force_strong_signal = config.experiment.only_strong_signal
         self.other_tokens_distinct_from_predicted_token = (
             config.experiment.other_tokens_distinct_from_predicted_token
         )
@@ -520,6 +546,14 @@ class BigramDataModule(DataModule):
         match self.task:
             case "exact-bigram":
                 generator = ExactBigramTask.generator
+            case "exact-trigram":
+                if self.corpus is None:
+                    raise ValueError("Corpus must be provided for exact trigram task")
+                generator = partial(
+                    EnglishExactTrigramTask.generator,
+                    force_strong_signal=self.force_strong_signal,
+                    corpus=self.corpus,
+                )
             case "abcab":
                 generator = (
                     ABCBCBigramTask.generator

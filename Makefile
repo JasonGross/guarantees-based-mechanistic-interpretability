@@ -22,6 +22,12 @@ BOLD:=$(shell tput bold 2>/dev/null || tput -Txterm-256color bold)
 NORMAL:=$(shell tput sgr0 2>/dev/null || tput -Txterm-256color sgr0)
 comma=,
 
+ifeq ($(strip $(FORCE_LOAD)),--force load)
+PIPE_TEE=2>&1 | tee $(1)
+else
+PIPE_TEE=
+endif
+
 define add_target
 # $(1) main target
 # $(2) intermediate target
@@ -33,7 +39,7 @@ $(1)-print-report-failure: $(1)-$(2)-print-report-failure
 $(1)-check: $(1)-$(2)-check
 
 $(1)-$(2).retcode $(1)-$(2):
-	{ $(3) 2>&1; RV=$$$$?; echo $$$$RV > $(1)-$(2).retcode; exit $$$$RV; } | tee $(1)-$(2).log
+	{ $(3); RV=$$$$?; echo $$$$RV > $(1)-$(2).retcode; exit $$$$RV; } $(call PIPE_TEE,$(1)-$(2).log)
 
 .PHONY: $(1)-$(2)-print-report $(1)-$(2)-print-report-success $(1)-$(2)-print-report-failure
 

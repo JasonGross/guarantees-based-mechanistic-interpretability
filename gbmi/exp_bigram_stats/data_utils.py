@@ -3,6 +3,7 @@ import einops
 from jaxtyping import Float, Integer
 import torch
 from torch import Tensor
+from tqdm.auto import tqdm
 from gbmi.utils.english_ngram import ngram_count_table, DEFAULT_CORPUS
 
 

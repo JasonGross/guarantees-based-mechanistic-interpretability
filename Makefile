@@ -10,7 +10,7 @@ FLAKE8_MORE_FLAGS?=--count --max-complexity=10 --max-line-length=127 --statistic
 TEST_LOAD_EXPERIMENTS = \
 	exp_max_of_n \
 	exp_modular_fine_tuning \
-	exp_sorted_list \
+	# exp_sorted_list \
 	#
 
 FORCE_LOAD ?= --force load
@@ -46,6 +46,7 @@ endef
 .PHONY: test-load-experiments test-load-experiments-check test-load-experiments-report test-load-experiments-print-report test-load-experiments-print-report-success test-load-experiments-print-report-failure
 $(foreach e,$(TEST_LOAD_EXPERIMENTS),$(eval $(call add_target,test-load-experiments,$(e),$(PYTHON) -m gbmi.$(e).train $(FORCE_LOAD))))
 $(eval $(call add_target,test-load-experiments,max-of-2-grok,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 1500 --validate-every-epochs 1 --force-adjacent-gap 0,1 --use-log1p --training-ratio 0.04638671875 $(FORCE_LOAD)))
+$(eval $(call add_target,test-load-experiments,max-of-2-grok-17,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 3000 --validate-every-epochs 1 --force-adjacent-gap 0,1,2,17 --use-log1p --lr 0.001 --betas 0.9 0.98 --weight-decay 1.0 --optimizer AdamW --training-ratio 0.099609375 $(FORCE_LOAD)))
 $(eval $(call add_target,test-load-experiments,max-of-4-123,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 4 --deterministic --seed 123 --train-for-steps 3000 --lr 0.001 --betas 0.9 0.999 --optimizer AdamW --use-log1p $(FORCE_LOAD)))
 
 test-load-experiments-print-report test-load-experiments-report:

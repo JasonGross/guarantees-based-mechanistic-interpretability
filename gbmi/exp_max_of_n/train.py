@@ -159,6 +159,8 @@ class MaxOfN(ExperimentConfig):
     def get_ground_truth(
         self, x: Integer[Tensor, "... n"]  # noqa: F722
     ) -> Integer[Tensor, "..."]:  # noqa: F722
+        if self.use_end_of_sequence:
+            x = x[..., :-1]
         if self.nth_max == 1:
             return x.max(dim=-1).values
         else:
@@ -375,7 +377,6 @@ class MaxOfNDataModule(DataModule):
     ]
     batch_size: Optional[int]
     seq_len: int
-    eos: Optional[int]
     dataset_seed: int
 
     def __init__(self, config: Config[MaxOfN]):

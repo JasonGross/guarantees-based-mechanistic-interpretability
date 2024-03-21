@@ -312,6 +312,28 @@ class ABCBCEnglishBigramTask:
             a, b = b, int(torch.multinomial(trigram_table[a, b], 1, generator=g).item())
             yield b
 
+    @staticmethod
+    def sample_ngrams_from_start(
+        num: int,
+        ngram_counts_table: Tensor,
+        *,
+        g: torch.Generator,
+    ) -> Iterable[int]:
+        if (ngram_counts_table == 0).any():
+            ngram_counts_table = ngram_counts_table + 1 / (
+                1 + ngram_counts_table.max() * ngram_counts_table.numel()
+            )
+        prev = []
+        for _ in range(num):
+            cur_table = ngram_counts_table[tuple(prev)]
+            if len(cur_table.shape) > 1:
+                cur_table = cur_table.sum(dim=tuple(range(1, len(cur_table.shape))))
+            cur_table = cur_table / cur_table.sum()
+            next_token = int(torch.multinomial(cur_table, 1, generator=g).item())
+            yield next_token
+            prev.append(next_token)
+            prev = prev[: len(ngram_counts_table.shape) - 1]
+
     # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
     @staticmethod
     def generator(
@@ -321,30 +343,14 @@ class ABCBCEnglishBigramTask:
         seq_length: int,
         max_length: int,
         skip_end: bool = False,
+        a_unique: bool = True,
         b_unique: bool = False,
         corpus: str = DEFAULT_CORPUS,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
-        monogram_table = torch.tensor(
-            ngram_count_table(n=1, corpus=corpus), device=default_device
-        )
-        bigram_table = torch.tensor(
-            ngram_count_table(n=2, corpus=corpus), device=default_device
-        )
         trigram_counts_table = torch.tensor(
             ngram_count_table(n=3, corpus=corpus), device=default_device
         )
-        monogram_table /= monogram_table.sum(dim=-1, keepdim=True)
-        # zero the diagonal of the bigram table, since we want bigrams to always be distinct
-        bigram_table[torch.arange(num_tokens), torch.arange(num_tokens)] = 0
-        bigram_table /= bigram_table.sum(dim=-1, keepdim=True)
-        assert monogram_table.shape == (
-            num_tokens,
-        ), f"monogram_table.shape={monogram_table.shape} != (num_tokens,) = ({num_tokens},)"
-        assert bigram_table.shape == (
-            num_tokens,
-            num_tokens,
-        ), f"bigram_table.shape={bigram_table.shape} != (num_tokens, num_tokens) = ({num_tokens}, {num_tokens})"
         assert trigram_counts_table.shape == (
             num_tokens,
             num_tokens,
@@ -355,27 +361,68 @@ class ABCBCEnglishBigramTask:
         n_samples = 0
         n_cs = seq_length - 3
         while True:
-            a = int(torch.multinomial(monogram_table, 1, generator=g).item())
-            b = int(torch.multinomial(bigram_table[a], 1, generator=g).item())
-            cs = torch.tensor(
+            n_cs1 = int(torch.randint(0, n_cs + 1, (1,), generator=g).item())
+            n_cs2 = int(torch.randint(0, n_cs - n_cs1 + 1, (1,), generator=g).item())
+            if torch.rand(1, generator=g) < 0.5:
+                n_cs1, n_cs2 = n_cs2, n_cs1
+            n_cs3 = n_cs - n_cs1 - n_cs2
+            assert (
+                n_cs1 + n_cs2 + n_cs3 == n_cs
+            ), f"{n_cs1} + {n_cs2} + {n_cs3} != {n_cs}"
+            assert n_cs1 >= 0, n_cs1
+            assert n_cs2 >= 0, n_cs2
+            assert n_cs3 >= 0, n_cs3
+            cs1 = torch.tensor(
                 list(
-                    ABCBCEnglishBigramTask.sample_trigrams(
-                        a, b, n_cs, trigram_counts_table, avoid_b=b_unique, g=g
+                    ABCBCEnglishBigramTask.sample_ngrams_from_start(
+                        int(n_cs1) + 2, trigram_counts_table, g=g
                     )
                 ),
                 dtype=torch.long,
                 device=default_device,
             )
-            split_index1, split_index2 = (
-                torch.randint(1, cs.size(0) + 1, (2,), generator=g).sort().values
+
+            cs1, a, b = cs1[:-2], int(cs1[-2]), int(cs1[-1])
+            if a == b and (a_unique or b_unique):
+                continue
+            if (a_unique and a in cs1) or (b_unique and b in cs1):
+                continue
+            cs2 = torch.tensor(
+                list(
+                    ABCBCEnglishBigramTask.sample_trigrams(
+                        a,
+                        b,
+                        int(n_cs2),
+                        trigram_counts_table,
+                        g=g,
+                        avoid_a=a_unique,
+                        avoid_b=b_unique,
+                    )
+                ),
+                dtype=torch.long,
+                device=default_device,
             )
-            cs1, cs2, cs3 = (
-                cs[:split_index1],
-                cs[split_index1:split_index2],
-                cs[split_index2:],
+
+            cs3 = torch.tensor(
+                list(
+                    ABCBCEnglishBigramTask.sample_trigrams(
+                        a,
+                        b,
+                        int(n_cs3),
+                        trigram_counts_table,
+                        g=g,
+                        avoid_a=a_unique,
+                        avoid_b=b_unique,
+                    )
+                ),
+                dtype=torch.long,
+                device=default_device,
             )
             if skip_end:
                 cs2, cs3 = torch.cat([cs2, cs3], dim=0), []
+            assert (
+                len(cs1) + len(cs2) + len(cs3) + 4 == seq_length + 1
+            ), f"{len(cs1)} + {len(cs2)} + {len(cs3)} + 4 != {seq_length + 1}"
             yield torch.tensor(
                 [*cs1, a, b, *cs2, a, b, *cs3][:-1],
                 dtype=torch.long,

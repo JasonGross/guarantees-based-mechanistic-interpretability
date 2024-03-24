@@ -344,7 +344,7 @@ class ABCBCEnglishTask:
 
     # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
     @staticmethod
-    def generator(
+    def dist_generator(
         *,
         seed: int,
         num_tokens: int,
@@ -353,31 +353,16 @@ class ABCBCEnglishTask:
         skip_end: bool = False,
         a_unique: bool = True,
         b_unique: bool = False,
-        corpus: str = DEFAULT_CORPUS,
-        alpha_mix_uniform: Optional[float] = None,
+        trigram_counts_table: Float[
+            Tensor, "num_tokens num_tokens num_tokens"  # noqa F722
+        ],
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
-        trigram_counts_table = torch.tensor(
-            ngram_count_table(n=3, corpus=corpus), device=default_device
-        )
-        trigram_counts_table = ABCBCEnglishTask.increment_zero_counts(
-            trigram_counts_table
-        )
         assert trigram_counts_table.shape == (
             num_tokens,
             num_tokens,
             num_tokens,
         ), f"trigram_table.shape={trigram_counts_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
-        if alpha_mix_uniform is not None:
-            trigram_counts_table = trigram_counts_table / trigram_counts_table.sum(
-                dim=-1, keepdim=True
-            )
-            uniform_counts_table = torch.ones_like(trigram_counts_table)
-            uniform_counts_table /= uniform_counts_table.sum(dim=-1, keepdim=True)
-            trigram_counts_table = (
-                trigram_counts_table * (1 - alpha_mix_uniform)
-                + uniform_counts_table * alpha_mix_uniform
-            )
         g = torch.Generator(device=default_device)
         g.manual_seed(seed)
         n_samples = 0
@@ -453,6 +438,49 @@ class ABCBCEnglishTask:
             n_samples += 1
             if max_length is not None and n_samples >= max_length:
                 return
+
+    # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
+    @staticmethod
+    def generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        max_length: int,
+        skip_end: bool = False,
+        a_unique: bool = True,
+        b_unique: bool = False,
+        corpus: str = DEFAULT_CORPUS,
+        alpha_mix_uniform: Optional[float] = None,
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        trigram_counts_table = ABCBCEnglishTask.increment_zero_counts(
+            torch.tensor(ngram_count_table(n=3, corpus=corpus))
+        )
+        assert trigram_counts_table.shape == (
+            num_tokens,
+            num_tokens,
+            num_tokens,
+        ), f"trigram_table.shape={trigram_counts_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
+        if alpha_mix_uniform is not None:
+            trigram_counts_table = trigram_counts_table / trigram_counts_table.sum(
+                dim=-1, keepdim=True
+            )
+            uniform_counts_table = torch.ones_like(trigram_counts_table)
+            uniform_counts_table /= uniform_counts_table.sum(dim=-1, keepdim=True)
+            trigram_counts_table = (
+                trigram_counts_table * (1 - alpha_mix_uniform)
+                + uniform_counts_table * alpha_mix_uniform
+            )
+        yield from ABCBCEnglishTask.dist_generator(
+            seed=seed,
+            num_tokens=num_tokens,
+            seq_length=seq_length,
+            max_length=max_length,
+            skip_end=skip_end,
+            a_unique=a_unique,
+            b_unique=b_unique,
+            trigram_counts_table=trigram_counts_table,
+        )
 
 
 def calculate_batch_probabilities(

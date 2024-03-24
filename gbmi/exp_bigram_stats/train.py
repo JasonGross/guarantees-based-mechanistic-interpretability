@@ -33,6 +33,7 @@ from gbmi.model import (
 )
 from gbmi.utils import (
     reseed,
+    set_params,
 )
 
 from gbmi.utils.hashing import _EXCLUDE
@@ -57,6 +58,7 @@ class Bigram(ExperimentConfig):
     n_heads: int = 1
     positional_embedding_type: Literal["standard", "rotary", "shortformer"] = "standard"
     other_tokens_distinct_from_predicted_token: bool = False
+    alpha_mix_uniform: Optional[float] = None
 
     n_train_samples: int = 4096
     n_test_samples: int = 1
@@ -72,10 +74,14 @@ class Bigram(ExperimentConfig):
     )
 
     def __post_init__(self):
-        exclude = getattr(self, _EXCLUDE, ())
-        exclude += ("logging_options",)
-        exclude += ("corpus",) if self.task == "exact-bigram" else ()
-        setattr(self, _EXCLUDE, exclude)
+        exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
+        exclude.add("logging_options")
+        if self.task == "exact-bigram":
+            exclude.update("corpus", "alpha_mix_uniform")
+        else:
+            exclude.discard("corpus")
+            exclude.discard("alpha_mix_uniform")
+        setattr(self, _EXCLUDE, tuple(sorted(exclude)))
         self.logging_options.shortformer = (
             self.positional_embedding_type == "shortformer"
         )
@@ -98,6 +104,7 @@ class Bigram(ExperimentConfig):
             f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{'-randend' if config.experiment.random_tokens_at_end else ''}"
             f"{f'-{config.experiment.corpus}' if config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
+            f"{f'-{config.experiment.alpha_mix_uniform}U' if config.experiment.alpha_mix_uniform and config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
             f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
             f"{'-nondet' if not config.deterministic else ''}"
         )
@@ -137,6 +144,7 @@ DEFAULT_BIGRAM = Config(
 ABCAB_BIGRAM1H = Config(
     experiment=Bigram(
         seq_length=4,
+        alpha_mix_uniform=None,
         num_tokens=26,
         n_heads=1,
         d_model=128,
@@ -160,218 +168,75 @@ ABCAB_BIGRAM1H = Config(
     validation_batch_size=1,  # we want validation right now only to log the plots
 )
 
-ABCAB5_BIGRAM1H = Config(
-    experiment=Bigram(
-        seq_length=5,
-        num_tokens=26,
-        n_heads=1,
-        d_model=128,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=False,
-        n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(5000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(10, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB5_BIGRAM1H = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 5,
+    },
+    post_init=True,
 )
 
-ABCAB6_BIGRAM1H = Config(
-    experiment=Bigram(
-        seq_length=6,
-        num_tokens=26,
-        n_heads=1,
-        d_model=128,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=True,
-        n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(20000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(10, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB6_BIGRAM1H = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 6,
+    },
+    post_init=True,
 )
 
-ABCAB8_BIGRAM1H = Config(
-    experiment=Bigram(
-        seq_length=8,
-        num_tokens=26,
-        n_heads=1,
-        d_model=128,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=True,
-        n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(10000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(10, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB6_BIGRAM1H = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 7,
+    },
+    post_init=True,
 )
 
 
-ABCAB7_BIGRAM1H = Config(
-    experiment=Bigram(
-        seq_length=7,
-        num_tokens=26,
-        n_heads=1,
-        d_model=128,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=True,
-        n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(10000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(10, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB6_BIGRAM1H = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 8,
+    },
+    post_init=True,
 )
 
-
-ABCAB6_SHORTFORMER_BIGRAM1H = Config(
-    experiment=Bigram(
-        seq_length=6,
-        num_tokens=26,
-        n_heads=1,
-        d_model=128,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=True,
-        n_train_samples=10240,
-        positional_embedding_type="shortformer",
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(10000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(10, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB6_SHORTFORMER_BIGRAM1H = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 6,
+        ("experiment", "positional_embedding_type"): "shortformer",
+    },
+    post_init=True,
 )
 
-ABCAB8_SHORTFORMER_BIGRAM1H = Config(
-    experiment=Bigram(
-        seq_length=8,
-        num_tokens=26,
-        n_heads=1,
-        d_model=128,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=True,
-        n_train_samples=10240,
-        positional_embedding_type="shortformer",
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(10000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(10, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB8_SHORTFORMER_BIGRAM1H = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 8,
+        ("experiment", "positional_embedding_type"): "shortformer",
+    },
+    post_init=True,
 )
 
-
-ABCAB6_SMALL_HIDDEN_BIGRAM1H = Config(
-    experiment=Bigram(
-        seq_length=6,
-        num_tokens=26,
-        n_heads=1,
-        d_model=16,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=True,
-        n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(5000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(10, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB6_SMALL_HIDDEN_BIGRAM1H = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 6,
+        ("experiment", "d_model"): 16,
+    },
+    post_init=True,
 )
 
-ABCAB_BIGRAM = Config(
-    experiment=Bigram(
-        seq_length=4,
-        num_tokens=26,
-        n_heads=4,
-        d_model=128,
-        task="abcab",
-        corpus="webtext",
-        bos=False,
-        only_strong_signal=True,
-        random_tokens_at_end=False,
-        n_train_samples=10240,
-        logging_options=ModelMatrixLoggingOptions.all(
-            use_subplots=False, add_mean={-1: None, 0: "tok_to_pos", 1: None}
-        ),
-        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
-    ),
-    seed=999,
-    deterministic=False,
-    batch_size=512,
-    train_for=(5000, "epochs"),
-    log_every_n_steps=1,
-    validate_every=(100, "epochs"),
-    validation_batch_size=1,  # we want validation right now only to log the plots
+ABCAB_BIGRAM = set_params(
+    ABCAB_BIGRAM1H,
+    {
+        ("experiment", "seq_length"): 4,
+        ("experiment", "n_heads"): 4,
+    },
+    post_init=True,
 )
+
 TRIGRAM4 = Config(
     experiment=Bigram(
         seq_length=4,

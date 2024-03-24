@@ -313,12 +313,22 @@ class ABCBCEnglishBigramTask:
             yield b
 
     @staticmethod
+    def increment_zero_counts(table: Tensor) -> Tensor:
+        if (table == 0).any():
+            return table + 1 / (1 + table.max() * table.numel())
+        else:
+            return table
+
+    @staticmethod
     def sample_ngrams_from_start(
         num: int,
         ngram_counts_table: Tensor,
         *,
         g: torch.Generator,
     ) -> Iterable[int]:
+        ngram_counts_table = ABCBCEnglishBigramTask.increment_zero_counts(
+            ngram_counts_table
+        )
         if (ngram_counts_table == 0).any():
             ngram_counts_table = ngram_counts_table + 1 / (
                 1 + ngram_counts_table.max() * ngram_counts_table.numel()
@@ -346,16 +356,30 @@ class ABCBCEnglishBigramTask:
         a_unique: bool = True,
         b_unique: bool = False,
         corpus: str = DEFAULT_CORPUS,
+        alpha_mix_uniform: Optional[float] = None,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
         trigram_counts_table = torch.tensor(
             ngram_count_table(n=3, corpus=corpus), device=default_device
+        )
+        trigram_counts_table = ABCBCEnglishBigramTask.increment_zero_counts(
+            trigram_counts_table
         )
         assert trigram_counts_table.shape == (
             num_tokens,
             num_tokens,
             num_tokens,
         ), f"trigram_table.shape={trigram_counts_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
+        if alpha_mix_uniform is not None:
+            trigram_counts_table = trigram_counts_table / trigram_counts_table.sum(
+                dim=-1, keepdim=True
+            )
+            uniform_counts_table = torch.ones_like(trigram_counts_table)
+            uniform_counts_table /= uniform_counts_table.sum(dim=-1, keepdim=True)
+            trigram_counts_table = (
+                trigram_counts_table * (1 - alpha_mix_uniform)
+                + uniform_counts_table * alpha_mix_uniform
+            )
         g = torch.Generator(device=default_device)
         g.manual_seed(seed)
         n_samples = 0

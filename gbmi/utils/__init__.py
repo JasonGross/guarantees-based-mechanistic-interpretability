@@ -256,13 +256,17 @@ def getattr_or_item(obj: Any, key: str) -> Any:
 def set_params(
     cfg: T,
     params: Dict[Union[str, Sequence[str]], Any],
+    *,
     warn_if_not_default: bool = False,
+    post_init: bool = False,
 ) -> T:
     # TODO: warn if not default
     cfg = copy.deepcopy(cfg)
     assert not warn_if_not_default, "Not implemented"
     for k, v in params.items():
         deep_setattr_or_item(cfg, k, v)
+    if hasattr(cfg, "__post_init__") and post_init:
+        cfg.__post_init__()
     return cfg
 
     #         if (

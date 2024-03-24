@@ -1,6 +1,6 @@
 # %%
 import torch
-from gbmi.exp_bigram_stats.train import DEFAULT_BIGRAM, BigramTrainingWrapper
+from gbmi.exp_indhead.train import DEFAULT_INDHEAD, IndHeadTrainingWrapper
 from gbmi.model import (
     TrainingWrapper,
     Config,
@@ -16,9 +16,9 @@ from gbmi.model import (
 # %%
 torch.set_default_device("cuda")
 
-print(DEFAULT_BIGRAM)
-print(BigramTrainingWrapper.build_model(DEFAULT_BIGRAM).cfg)
-_, model = train_or_load_model(DEFAULT_BIGRAM, force="train")
+print(DEFAULT_INDHEAD)
+print(IndHeadTrainingWrapper.build_model(DEFAULT_INDHEAD).cfg)
+_, model = train_or_load_model(DEFAULT_INDHEAD, force="train")
 
 # %%
 import plotly.express as px

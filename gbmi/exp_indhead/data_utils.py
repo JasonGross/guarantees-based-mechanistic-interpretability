@@ -232,7 +232,7 @@ class EnglishExactTrigramTask:
                 return
 
 
-class ABCBCBigramTask:
+class ABCBCTask:
 
     # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
     @staticmethod
@@ -274,7 +274,7 @@ class ABCBCBigramTask:
                 return
 
 
-class ABCBCEnglishBigramTask:
+class ABCBCEnglishTask:
 
     @staticmethod
     def sample_trigrams(
@@ -326,9 +326,7 @@ class ABCBCEnglishBigramTask:
         *,
         g: torch.Generator,
     ) -> Iterable[int]:
-        ngram_counts_table = ABCBCEnglishBigramTask.increment_zero_counts(
-            ngram_counts_table
-        )
+        ngram_counts_table = ABCBCEnglishTask.increment_zero_counts(ngram_counts_table)
         if (ngram_counts_table == 0).any():
             ngram_counts_table = ngram_counts_table + 1 / (
                 1 + ngram_counts_table.max() * ngram_counts_table.numel()
@@ -362,7 +360,7 @@ class ABCBCEnglishBigramTask:
         trigram_counts_table = torch.tensor(
             ngram_count_table(n=3, corpus=corpus), device=default_device
         )
-        trigram_counts_table = ABCBCEnglishBigramTask.increment_zero_counts(
+        trigram_counts_table = ABCBCEnglishTask.increment_zero_counts(
             trigram_counts_table
         )
         assert trigram_counts_table.shape == (
@@ -398,7 +396,7 @@ class ABCBCEnglishBigramTask:
             assert n_cs3 >= 0, n_cs3
             cs1 = torch.tensor(
                 list(
-                    ABCBCEnglishBigramTask.sample_ngrams_from_start(
+                    ABCBCEnglishTask.sample_ngrams_from_start(
                         int(n_cs1) + 2, trigram_counts_table, g=g
                     )
                 ),
@@ -413,7 +411,7 @@ class ABCBCEnglishBigramTask:
                 continue
             cs2 = torch.tensor(
                 list(
-                    ABCBCEnglishBigramTask.sample_trigrams(
+                    ABCBCEnglishTask.sample_trigrams(
                         a,
                         b,
                         int(n_cs2),
@@ -429,7 +427,7 @@ class ABCBCEnglishBigramTask:
 
             cs3 = torch.tensor(
                 list(
-                    ABCBCEnglishBigramTask.sample_trigrams(
+                    ABCBCEnglishTask.sample_trigrams(
                         a,
                         b,
                         int(n_cs3),

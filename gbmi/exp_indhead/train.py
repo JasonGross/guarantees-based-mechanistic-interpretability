@@ -16,11 +16,11 @@ from jaxtyping import Float, Integer
 from torch import Tensor
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from gbmi.exp_bigram_stats.data_utils import (
+from gbmi.exp_indhead.data_utils import (
     ExactBigramTask,
-    ABCBCBigramTask,
+    ABCBCTask,
     EnglishExactTrigramTask,
-    ABCBCEnglishBigramTask,
+    ABCBCEnglishTask,
     calculate_batch_probabilities,
     cat_bos_token,
     cat_bos_uniform_labels,
@@ -43,7 +43,7 @@ from gbmi.training_tools.logging import (
 
 
 @dataclass
-class Bigram(ExperimentConfig):
+class IndHead(ExperimentConfig):
     # using int instead of abstract class because i'm clueless what's going on with typing
     zero_biases: bool = False
     bos: bool = True
@@ -88,12 +88,12 @@ class Bigram(ExperimentConfig):
         self.logging_options.__post_init__()
 
     def get_training_wrapper(self):
-        return BigramTrainingWrapper
+        return IndHeadTrainingWrapper
 
     def get_datamodule(self):
-        return BigramDataModule
+        return IndHeadDataModule
 
-    def get_summary_slug(self, config: Config[Bigram]) -> str:
+    def get_summary_slug(self, config: Config[IndHead]) -> str:
         return (
             f"IndHead-Len{config.experiment.seq_length}"
             f"{f'-{config.experiment.task}' if config.experiment.task != 'exact-bigram' else ''}"
@@ -122,8 +122,8 @@ class Bigram(ExperimentConfig):
         )
 
 
-DEFAULT_BIGRAM = Config(
-    experiment=Bigram(
+DEFAULT_INDHEAD = Config(
+    experiment=IndHead(
         seq_length=6,
         n_train_samples=4096,
         only_strong_signal=False,
@@ -141,8 +141,8 @@ DEFAULT_BIGRAM = Config(
     validation_batch_size=1,  # we want validation right now only to log the plots
 )
 
-ABCAB_BIGRAM1H = Config(
-    experiment=Bigram(
+ABCAB_1H = Config(
+    experiment=IndHead(
         seq_length=4,
         alpha_mix_uniform=None,
         num_tokens=26,
@@ -168,24 +168,24 @@ ABCAB_BIGRAM1H = Config(
     validation_batch_size=1,  # we want validation right now only to log the plots
 )
 
-ABCAB5_BIGRAM1H = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB5_1H = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 5,
     },
     post_init=True,
 )
 
-ABCAB6_BIGRAM1H = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB6_1H = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 6,
     },
     post_init=True,
 )
 
-ABCAB6_BIGRAM1H = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB7_1H = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 7,
     },
@@ -193,16 +193,16 @@ ABCAB6_BIGRAM1H = set_params(
 )
 
 
-ABCAB6_BIGRAM1H = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB8_1H = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 8,
     },
     post_init=True,
 )
 
-ABCAB6_SHORTFORMER_BIGRAM1H = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB6_SHORTFORMER_1H = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 6,
         ("experiment", "positional_embedding_type"): "shortformer",
@@ -210,8 +210,8 @@ ABCAB6_SHORTFORMER_BIGRAM1H = set_params(
     post_init=True,
 )
 
-ABCAB8_SHORTFORMER_BIGRAM1H = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB8_SHORTFORMER_1H = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 8,
         ("experiment", "positional_embedding_type"): "shortformer",
@@ -219,8 +219,8 @@ ABCAB8_SHORTFORMER_BIGRAM1H = set_params(
     post_init=True,
 )
 
-ABCAB6_SMALL_HIDDEN_BIGRAM1H = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB6_SMALL_HIDDEN_1H = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 6,
         ("experiment", "d_model"): 16,
@@ -228,8 +228,8 @@ ABCAB6_SMALL_HIDDEN_BIGRAM1H = set_params(
     post_init=True,
 )
 
-ABCAB_BIGRAM = set_params(
-    ABCAB_BIGRAM1H,
+ABCAB = set_params(
+    ABCAB_1H,
     {
         ("experiment", "seq_length"): 4,
         ("experiment", "n_heads"): 4,
@@ -238,7 +238,7 @@ ABCAB_BIGRAM = set_params(
 )
 
 TRIGRAM4 = Config(
-    experiment=Bigram(
+    experiment=IndHead(
         seq_length=4,
         num_tokens=26,
         n_heads=1,
@@ -263,14 +263,14 @@ TRIGRAM4 = Config(
 )
 
 
-class BigramTrainingWrapper(TrainingWrapper[Bigram]):
-    def __init__(self, config: Config[Bigram], model: HookedTransformer):
+class IndHeadTrainingWrapper(TrainingWrapper[IndHead]):
+    def __init__(self, config: Config[IndHead], model: HookedTransformer):
         super().__init__(config, model)
         self.model = model
         self.config = config
 
     @staticmethod
-    def build_model(config: Config[Bigram]) -> HookedTransformer:
+    def build_model(config: Config[IndHead]) -> HookedTransformer:
         cfg = config.experiment
         model_config = HookedTransformerConfig(
             d_vocab=cfg.num_tokens + cfg.bos,
@@ -354,7 +354,7 @@ class BigramTrainingWrapper(TrainingWrapper[Bigram]):
         )
 
 
-class BigramDataModule(DataModule):
+class IndHeadDataModule(DataModule):
     data_train: Dataset[
         Tuple[
             Integer[Tensor, "n_ctx"],  # noqa: F821
@@ -383,7 +383,7 @@ class BigramDataModule(DataModule):
     dataset_seed: int
     num_tokens: int
 
-    def __init__(self, config: Config[Bigram]):
+    def __init__(self, config: Config[IndHead]):
         super().__init__(config)
         self.config = config
         self.n_train_samples = config.experiment.n_train_samples
@@ -421,9 +421,9 @@ class BigramDataModule(DataModule):
                 )
             case "abcab":
                 generator = (
-                    ABCBCBigramTask.generator
+                    ABCBCTask.generator
                     if self.corpus is None
-                    else partial(ABCBCEnglishBigramTask.generator, corpus=self.corpus)
+                    else partial(ABCBCEnglishTask.generator, corpus=self.corpus)
                 )
                 generator = partial(
                     generator,

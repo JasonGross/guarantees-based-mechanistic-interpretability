@@ -75,12 +75,15 @@ class IndHead(ExperimentConfig):
 
     def __post_init__(self):
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
-        exclude.add("logging_options")
-        if self.task == "exact-bigram":
-            exclude.update("corpus", "alpha_mix_uniform")
-        else:
-            exclude.discard("corpus")
-            exclude.discard("alpha_mix_uniform")
+        for field, should_ignore in [
+            ("logging_options", True),
+            ("alpha_mix_uniform", self.task != "abcab"),
+            ("corpus", self.task == "exact-bigram"),
+        ]:
+            if should_ignore:
+                exclude.add(field)
+            else:
+                exclude.discard(field)
         setattr(self, _EXCLUDE, tuple(sorted(exclude)))
         self.logging_options.shortformer = (
             self.positional_embedding_type == "shortformer"
@@ -378,6 +381,7 @@ class IndHeadDataModule(DataModule):
     n_validate_samples: int
     task: Literal["exact-bigram", "exact-trigram", "abcab"]
     corpus: Optional[str] = None
+    alpha_mix_uniform: Optional[float] = None
     seq_length: int
     bos: Optional[int]
     dataset_seed: int
@@ -394,6 +398,7 @@ class IndHeadDataModule(DataModule):
         self.bos = config.experiment.num_tokens if config.experiment.bos else None
         self.task = config.experiment.task
         self.corpus = config.experiment.corpus
+        self.alpha_mix_uniform = config.experiment.alpha_mix_uniform
         self.random_tokens_at_end = config.experiment.random_tokens_at_end
         self.force_strong_signal = config.experiment.only_strong_signal
         self.other_tokens_distinct_from_predicted_token = (
@@ -423,7 +428,11 @@ class IndHeadDataModule(DataModule):
                 generator = (
                     ABCBCTask.generator
                     if self.corpus is None
-                    else partial(ABCBCEnglishTask.generator, corpus=self.corpus)
+                    else partial(
+                        ABCBCEnglishTask.generator,
+                        corpus=self.corpus,
+                        alpha_mix_uniform=self.alpha_mix_uniform,
+                    )
                 )
                 generator = partial(
                     generator,

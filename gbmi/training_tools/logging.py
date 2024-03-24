@@ -614,8 +614,8 @@ class ModelMatrixLoggingOptions:
                         sEv[l] = f"({sEv[l]}-{str_mean(sEv[l])})"
                     case None:
                         pass
-            sPk[l] = f"{sPk[l]}ᵀ"
-            sEk[l] = f"{sEk[l]}ᵀ"
+                sPk[l] = f"{sPk[l]}ᵀ"
+                sEk[l] = f"{sEk[l]}ᵀ"
 
         def apply_U(
             x: Float[Tensor, "... d_model"]  # noqa: F722

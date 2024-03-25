@@ -2,37 +2,14 @@
 from __future__ import annotations
 
 # %%
-import importlib
-import gbmi.analysis_tools.plot
-import gbmi.exp_max_of_n.analysis
-import gbmi.analysis_tools.decomp
-import gbmi.verification_tools.decomp
-import gbmi.utils.lowrank
-import gbmi.exp_max_of_n.plot
-import gbmi.exp_max_of_n.train
-import gbmi.exp_max_of_n.verification
-import gbmi.utils
-import gbmi.utils.memoshelve
-import gbmi.utils.sequences
-import gbmi.analysis_tools.utils
-import gbmi.utils.latex_export
-import gbmi.utils.images
+from IPython import get_ipython
 
-importlib.reload(gbmi.analysis_tools.plot)
-importlib.reload(gbmi.exp_max_of_n.plot)
-importlib.reload(gbmi.exp_max_of_n.analysis)
-importlib.reload(gbmi.analysis_tools.decomp)
-importlib.reload(gbmi.verification_tools.decomp)
-importlib.reload(gbmi.utils.lowrank)
-importlib.reload(gbmi.analysis_tools.utils)
-importlib.reload(gbmi.exp_max_of_n.analysis)
-importlib.reload(gbmi.exp_max_of_n.train)
-importlib.reload(gbmi.utils)
-importlib.reload(gbmi.exp_max_of_n.verification)
-importlib.reload(gbmi.utils.memoshelve)
-importlib.reload(gbmi.utils.sequences)
-importlib.reload(gbmi.utils.latex_export)
-importlib.reload(gbmi.utils.images)
+ipython = get_ipython()
+if ipython is not None:
+    ipython.run_line_magic("load_ext", "autoreload")
+    ipython.run_line_magic("autoreload", "2")
+else:
+    print("Not in IPython, not loading autoreload")
 # %%
 import traceback
 import sys
@@ -135,7 +112,7 @@ try:
 except:
     IN_COLAB = False
 # %%
-DISPLAY_PLOTS: bool = not IN_COLAB  # @param {type:"boolean"}
+DISPLAY_PLOTS: bool = True  # @param {type:"boolean"}
 RENDERER: Optional[str] = "png"  # @param ["png", None]
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
@@ -1214,28 +1191,30 @@ def display_basic_interpretation_matplotlib(
     legend_at_bottom: bool = False,
     include_equals_OV: bool = False,
     includes_eos: Optional[bool] = None,
-    OV_colorscale: str = "Picnic_r",
-    QK_colorscale: str = "plasma",  # "Sunsetdark_r"
-    QK_SVD_colorscale: str = "Picnic_r",
+    OV_colorscale: str = "bwr_r",  # "Picnic_r",
+    QK_colorscale: str = "PiYG",  # plasma",  # "Sunsetdark_r"
+    QK_SVD_colorscale: str = "PiYG",  # "Picnic_r",
     renderer: Optional[str] = None,
 ) -> dict[str, matplotlib.figure.Figure]:
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
 
-    QK = compute_QK(model, includes_eos=includes_eos)
+    QK = compute_QK(model, includes_eos=includes_eos, with_attn_scale=True)
     result = {}
+    print(QK["title"]["latex"])
     if includes_eos:
         fig_qk, ax = plt.subplots()
         ax.plot(QK["data"])
-        ax.set_title(QK["title"])
+        ax.set_title(QK["title"]["latex"])
         ax.set_xlabel(QK["xaxis"])
         ax.set_ylabel(QK["yaxis"])
         fig_qk.show()
     else:
         fig_qk, ax = plt.subplots()
-        cax = ax.imshow(QK["data"], cmap=QK_colorscale)
+        vmax = np.max(np.abs(QK["data"]))
+        cax = ax.imshow(QK["data"], cmap=QK_colorscale, vmin=-vmax, vmax=vmax)
         fig_qk.colorbar(cax)
-        ax.set_title(QK["title"])
+        ax.set_title(QK["title"]["latex"])
         ax.set_xlabel(QK["xaxis"])
         ax.set_ylabel(QK["yaxis"])
         fig_qk.show()
@@ -1549,6 +1528,184 @@ if DISPLAY_PLOTS:
     figs = make_better_slides_plots_00(model, renderer=RENDERER)
     for k, fig in figs.items():
         latex_figures[f"Decomposition-{k}"] = fig
+
+
+# %%
+# for slides
+Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
+
+
+@torch.no_grad()
+def make_better_slides_plots_2024_03_26(
+    model: HookedTransformer,
+    OV_colorscale: Colorscale = "Picnic_r",
+    # [
+    #     [0, "#FF8247"],  # Start of the scale
+    #     [0.5, "white"],  # Middle of the scale
+    #     [1, "#beb2d5"],  # End of the scale
+    # ],  # "Picnic_r",
+    QK_colorscale: Colorscale = [
+        [0, "#ff0000"],
+        [0.25, "#ff8247"],
+        [0.5, "white"],
+        [0.75, "#ffc100"],
+        [1, "#ff9c05"],
+        # End of the scale
+    ],
+    # [
+    #     [0, '#6bd2db'],  # Start of the scale
+    #     [0.5, 'white'],  # Middle of the scale
+    #     [1, '#ff4e50']  # End of the scale
+    # ],
+    #  Union[str, list[Tuple[float, str]]] = "PiYG",
+    #     [
+    #     (0, 'pink'),  # Start of the scale
+    #     (0.5, 'white'),  # Middle of the scale
+    #     (1, 'blue')  # End of the scale
+    # ],#"PiYG",
+    renderer: Optional[str] = None,
+) -> dict[str, go.Figure]:
+    W_E, W_pos, W_U, W_V, W_O, W_Q, W_K = (
+        model.W_E.cpu(),
+        model.W_pos.cpu(),
+        model.W_U.cpu(),
+        model.W_V[0, 0].cpu(),
+        model.W_O[0, 0].cpu(),
+        model.W_Q[0, 0].cpu(),
+        model.W_K[0, 0].cpu(),
+    )
+    attn_scale = model.blocks[0].attn.attn_scale
+    EPq = W_E + W_pos[-1]
+    EPk = W_E + W_pos.mean(dim=0)
+    Pk = W_pos - W_pos.mean(dim=0)
+    EPU = EPq @ W_U
+    EVOU = EPk @ W_V @ W_O @ W_U
+    EVOU_centered = EVOU - EVOU.diag()[:, None]
+    PVOU = Pk @ W_V @ W_O @ W_U
+    EQKE = EPq @ W_Q @ W_K.T @ EPk.T / attn_scale
+    EQKP = EPq @ W_Q @ W_K.T @ Pk.T / attn_scale
+    OV_zmax = np.max(
+        [EVOU.abs().max().item(), PVOU.abs().max().item(), EPU.abs().max().item()]
+    )
+    OV_centered_zmax = np.max(
+        [
+            EVOU_centered.abs().max().item(),
+            PVOU.abs().max().item(),
+            EPU.abs().max().item(),
+        ]
+    )
+    QK_zmax = np.max([EQKE.abs().max().item(), EQKP.abs().max().item()])
+    results = {}
+    for key, zmax, colorscale in (
+        ("OV", OV_zmax, OV_colorscale),
+        ("QK", QK_zmax, QK_colorscale),
+    ):
+        results[f"{key}-colorbar"] = fig = go.Figure(
+            data=go.Heatmap(
+                z=[[0]],
+                colorscale=colorscale,
+                showscale=True,
+                zmin=-zmax,
+                zmax=zmax,
+                zmid=0,
+                colorbar=dict(x=0),
+            )
+        )
+        fig.add_trace(
+            go.Heatmap(
+                z=[[0]],
+                colorscale="Picnic_r",
+                showscale=False,
+                zmin=-zmax,
+                zmax=zmax,
+                zmid=0,
+            )
+        )
+        fig.update_layout(
+            width=75,
+            xaxis_showgrid=False,
+            yaxis_showgrid=False,
+            xaxis_zeroline=False,
+            yaxis_zeroline=False,
+            xaxis_visible=False,
+            yaxis_visible=False,
+            margin=dict(l=0, r=0, b=0, t=0),
+        )
+        fig.show(renderer)
+    for m, title, colorscale, zmax, labels in (
+        (
+            EPU,
+            "EPU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "query token t<sub>i</sub>"},
+        ),
+        (
+            EVOU,
+            "EVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "key token t<sub>j</sub>"},
+        ),
+        (
+            EVOU_centered,
+            "EVOU centered",
+            OV_colorscale,
+            None,
+            {"x": "output logit", "y": "key token t<sub>j</sub>"},
+        ),
+        (
+            PVOU,
+            "PVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "position j"},
+        ),
+        (
+            EQKE,
+            "EQKE",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key token t<sub>k</sub>", "y": "query token t<sub>q</sub>"},
+        ),
+        (
+            EQKP,
+            "EQKP",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key position k", "y": "query token t<sub>q</sub>"},
+        ),
+    ):
+        key = title
+        results[key] = fig = px.imshow(
+            m,
+            title=title,
+            color_continuous_scale=colorscale,
+            color_continuous_midpoint=0,
+            labels=labels,
+            **(dict(zmin=-zmax, zmax=zmax) if zmax is not None else {}),
+        )
+        fig.show(renderer)
+        # remove title
+        fig.update_layout(title_text="")
+        fig.update(layout_coloraxis_showscale=False)
+        # crop whitespace
+        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+        trim_plotly_figure(fig)
+        fig.show(renderer)
+    _, figs = find_size_and_query_direction(
+        model, plot_heatmaps=True, renderer=renderer, colorscale=QK_colorscale
+    )
+    for k, fig in figs.items():
+        results[f"EQKE {k}"] = fig
+    return results
+
+
+## %%
+if DISPLAY_PLOTS:
+    figs = make_better_slides_plots_2024_03_26(model, renderer=RENDERER)
+    # for k, fig in figs.items():
+    #     latex_figures[f"Decomposition-{k}"] = fig
 
 # %% [markdown]
 # # Back of the envelope math for sub-cubic

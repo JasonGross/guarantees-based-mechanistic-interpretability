@@ -15,7 +15,11 @@ from gbmi.verification_tools.l1h1 import all_EQKE, all_EVOU, all_PVOU
 
 
 @torch.no_grad()
-def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) -> dict:
+def compute_QK(
+    model: HookedTransformer,
+    includes_eos: Optional[bool] = None,
+    with_attn_scale: bool = True,
+) -> dict:
     W_E, W_pos, W_Q, W_K = (
         model.W_E.to("cpu"),
         model.W_pos.to("cpu"),
@@ -24,6 +28,47 @@ def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) ->
     )
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
+
+    attn_scale = 1.0
+    sattn_scale = {"html": "", "latex": ""}
+    if with_attn_scale and model.cfg.use_attn_scale:
+        attn_scale = model.blocks[0].attn.attn_scale
+        assert attn_scale == np.sqrt(
+            model.cfg.d_head
+        ), f"attn_scale: {attn_scale}, d_head: {model.cfg.d_head}"
+        sattn_scale = {
+            "html": "√d<sub>head</sub>",  # <sup>-1</sup>",
+            "latex": r"\sqrt{d_{\mathrm{head}}}",  # ^{-1}}",
+        }
+
+    strings = {
+        "html": (
+            "<br>",
+            "",
+            "W<sub>E</sub>",
+            "W<sub>pos</sub>",
+            "W<sub>Q</sub>",
+            "W<sub>K</sub>",
+            "<sup>T</sup>",
+            "𝔼",
+            "<sub>dim=0</sub>",
+            "<sub>p</sub>",
+            "QK",
+        ),
+        "latex": (
+            "\n",
+            "$",
+            "W_E",
+            r"W_{\mathrm{pos}}",
+            "W_Q",
+            "W_K",
+            "^T",
+            r"\mathbb{E}",
+            r"_{\mathrm{dim}=0}",
+            "_p",
+            r"\mathrm{QK}",
+        ),
+    }
 
     if includes_eos:
         QK = (
@@ -36,16 +81,46 @@ def compute_QK(model: HookedTransformer, includes_eos: Optional[bool] = None) ->
             (W_E[-1] + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E[-1] + W_pos[-1])
         )
         return {
-            "data": (QK - QK_last).numpy(),
-            "title": "Attention Score<br>QK[p] := (W<sub>E</sub>[-1] + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>E</sub> + W<sub>pos</sub>[p])<sup>T</sup><br>𝔼<sub>dim=0</sub>(QK[:-1,:-1]) - QK[-1, -1]",
+            "data": (QK - QK_last).numpy() / attn_scale,
+            "title": {
+                key: f"Attention Score{nl}QK[p] := {smath}({sWe}[-1] + {sWpos}[-1]){sWq}{sWk}{sT}({sWe} + {sWpos}[p]){sT} / {sattn_scale[key]}{smath}{nl}{smath}{sE}{s_dim0}({sQK}[:-1,:-1]) - {sQK}[-1, -1]{smath}"
+                for key, (
+                    nl,
+                    smath,
+                    sWe,
+                    sWpos,
+                    sWq,
+                    sWk,
+                    sT,
+                    sE,
+                    s_dim0,
+                    s_p,
+                    sQK,
+                ) in strings.items()
+            },
             "xaxis": "input token",
             "yaxis": "attention score pre-softmax",
         }
     else:
         QK = (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0)).T
         return {
-            "data": QK.numpy(),
-            "title": "Attention Score<br>EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>E</sub> + 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
+            "data": QK.numpy() / attn_scale,
+            "title": {
+                key: f"Attention Score{nl}EQKE := {smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWe} + {sE}{s_p}{sWpos}[p]){sT} / {sattn_scale[key]}{smath}"
+                for key, (
+                    nl,
+                    smath,
+                    sWe,
+                    sWpos,
+                    sWq,
+                    sWk,
+                    sT,
+                    sE,
+                    s_dim0,
+                    s_p,
+                    sQK,
+                ) in strings.items()
+            },
             "xaxis": "key token",
             "yaxis": "query token",
         }
@@ -205,7 +280,7 @@ def display_basic_interpretation(
     if includes_eos:
         fig_qk = px.line(
             {"QK": QK["data"]},
-            title=QK["title"],
+            title=QK["title"]["html"],
             labels={
                 "index": QK["xaxis"],
                 "variable": "",
@@ -216,7 +291,7 @@ def display_basic_interpretation(
     else:
         fig_qk = px.imshow(
             QK["data"],
-            title=QK["title"],
+            title=QK["title"]["html"],
             color_continuous_scale=QK_colorscale,
             labels={"x": QK["xaxis"], "y": QK["yaxis"]},
         )

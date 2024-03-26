@@ -1533,6 +1533,14 @@ if DISPLAY_PLOTS:
 # %%
 # for slides
 Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
+default_QK_colorscale_2024_03_26 = [
+    [0, "#ff0000"],
+    [0.25, "#ff8247"],
+    [0.5, "white"],
+    [0.75, "#ffc100"],
+    [1, "#ff9c05"],
+    # End of the scale
+]
 
 
 @torch.no_grad()
@@ -1544,14 +1552,7 @@ def make_better_slides_plots_2024_03_26(
     #     [0.5, "white"],  # Middle of the scale
     #     [1, "#beb2d5"],  # End of the scale
     # ],  # "Picnic_r",
-    QK_colorscale: Colorscale = [
-        [0, "#ff0000"],
-        [0.25, "#ff8247"],
-        [0.5, "white"],
-        [0.75, "#ffc100"],
-        [1, "#ff9c05"],
-        # End of the scale
-    ],
+    QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26,
     # [
     #     [0, '#6bd2db'],  # Start of the scale
     #     [0.5, 'white'],  # Middle of the scale
@@ -2206,6 +2207,19 @@ def display_EQKE_SVD_analysis(
     )
     results["EQKE_err"] = fig
     fig.show(renderer)
+    fig = px.imshow(
+        EQKE_err.numpy(),
+        title="EQKE_err",
+        labels={"x": "", "y": ""},
+        color_continuous_scale=QK_colorscale,
+        color_continuous_midpoint=0,
+        zmax=zmax,
+        zmin=-zmax,
+    )
+    fig.update_xaxes(showticklabels=False)
+    fig.update_yaxes(showticklabels=False)
+    results["EQKE_err_noticks"] = fig
+    fig.show(renderer)
     results["EQKE_err_svd"] = analyze_svd(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T),
         descr="EQKE_err",
@@ -2289,6 +2303,12 @@ if DISPLAY_PLOTS:
     for key, latex_key in key_pairs.items():
         latex_figures[latex_key] = figs[key]
     latex_values.update(values)
+    display_EQKE_SVD_analysis(
+        model,
+        renderer=RENDERER,
+        QK_colorscale=default_QK_colorscale_2024_03_26,
+        QK_SVD_colorscale=default_QK_colorscale_2024_03_26,
+    )
     print(
         f"Unused figure keys: {[k for k in figs.keys() if k not in key_pairs and k not in latex_figures]}"
     )
@@ -2311,21 +2331,29 @@ if DISPLAY_PLOTS:
         ss.append((S, s))
     pre_uvs = uvs[:]
     num_subplots = len(pre_uvs)
-    fig = make_subplots(rows=1, cols=num_subplots, horizontal_spacing=0.02)
-    for i, (mv, us) in enumerate(pre_uvs, start=1):
-        fig.add_trace(
-            go.Heatmap(z=mv, zmin=-zmax, zmax=zmax, colorbar=None, showscale=False),
-            row=1,
-            col=i,
-        )
-    fig.update_xaxes(showticklabels=False)
-    fig.update_yaxes(showticklabels=False)
-    for axis in fig.layout:
-        if axis.startswith("xaxis") or axis.startswith("yaxis"):
-            fig.layout[axis].scaleanchor = "x1"  # type: ignore
-            fig.layout[axis].scaleratio = 1  # type: ignore
-    fig.update_layout(height=600, width=300 * num_subplots, plot_bgcolor="white")
-    fig.show(RENDERER)
+    for colorscale in (None, default_QK_colorscale_2024_03_26):
+        fig = make_subplots(rows=1, cols=num_subplots, horizontal_spacing=0.02)
+        for i, (mv, us) in enumerate(pre_uvs, start=1):
+            fig.add_trace(
+                go.Heatmap(
+                    z=mv,
+                    zmin=-zmax,
+                    zmax=zmax,
+                    colorscale=colorscale,
+                    colorbar=None,
+                    showscale=False,
+                ),
+                row=1,
+                col=i,
+            )
+        fig.update_xaxes(showticklabels=False)
+        fig.update_yaxes(showticklabels=False)
+        for axis in fig.layout:
+            if axis.startswith("xaxis") or axis.startswith("yaxis"):
+                fig.layout[axis].scaleanchor = "x1"  # type: ignore
+                fig.layout[axis].scaleratio = 1  # type: ignore
+        fig.update_layout(height=600, width=300 * num_subplots, plot_bgcolor="white")
+        fig.show(RENDERER)
     # for mv, us in uvs:
     #     fig = px.imshow(
     #         mv.numpy(),

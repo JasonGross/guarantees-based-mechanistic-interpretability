@@ -210,7 +210,8 @@ class ModelMatrixLoggingOptions:
     ] = "pos_to_tok"
     plot_1D_kind: Literal["line", "scatter"] = "line"
     use_subplots: bool = True
-    superplot_title = "model matrices"
+    superplot_title: str = "model matrices"
+    _superplot_title_extra: str = ""
     group_colorbars: bool = True
     shortformer: bool = False
     nanify_causal_attn: bool = True
@@ -239,24 +240,27 @@ class ModelMatrixLoggingOptions:
             self.PU = False
 
     def assert_model_supported(self, model: HookedTransformer, unsafe: bool = False):
-        def error_unless(test: bool, message: str):
-            if unsafe:
+        def error_unless(test: bool, message: str, warn_only: bool = False):
+            if unsafe or warn_only:
                 if not test:
                     logging.warning(message)
             else:
                 assert test, message
 
+        self._superplot_title_extra = ""
+
         error_unless(
             (model.cfg.normalization_type is None),
             f"Automatic logging for normalization type {model.cfg.normalization_type} is not yet implemented",
         )
-        error_unless(
-            (
-                model.cfg.attn_only
-                or (not self.EVOU and not self.PVOU and model.cfg.n_layers == 1)
-            ),
-            "Automatic logging is only supported for attention-only models, or for 1L models with EVOU and PVOU logging turned off",
-        )
+        if not (
+            model.cfg.attn_only
+            or (not self.EVOU and not self.PVOU and model.cfg.n_layers == 1)
+        ):
+            logging.warning(
+                "Automatic logging is only complete for attention-only models, or for 1L models with EVOU and PVOU logging turned off"
+            )
+            self._superplot_title_extra += " (missing MLPs)"
 
     @staticmethod
     @torch.no_grad()
@@ -778,7 +782,7 @@ class ModelMatrixLoggingOptions:
             figs = {
                 self.superplot_title: plot_tensors(
                     matrices.items(),
-                    title=self.superplot_title,
+                    title=self.superplot_title + self._superplot_title_extra,
                     plot_1D_kind=self.plot_1D_kind,
                     groups=(
                         (
@@ -795,7 +799,9 @@ class ModelMatrixLoggingOptions:
         else:
             figs = {
                 name: plot_tensors(
-                    [(name, matrix)], plot_1D_kind=self.plot_1D_kind, title=name
+                    [(name, matrix)],
+                    plot_1D_kind=self.plot_1D_kind,
+                    title=name + self._superplot_title_extra,
                 )
                 for name, matrix in matrices.items()
             }

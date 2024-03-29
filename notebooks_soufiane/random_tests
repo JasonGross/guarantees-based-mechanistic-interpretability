@@ -1,6 +1,23 @@
-from gbmi.utils import log_softmax
+from gbmi.exp_f_g.train import f_g_TrainingWrapper
+from gbmi.exp_f_g.functions import add_sub, max_min
+from gbmi import utils
+
+from gbmi.exp_f_g.train import f_g_config
+
+from gbmi.model import train_or_load_model
+
 import torch
+import einops
+from torch import tensor
+from math import *
+from tqdm.auto import tqdm
+import plotly.express as px
+from gbmi.utils.sequences import generate_all_sequences
+import pandas as pd
 
-t = torch.tensor([1.0, 2.0, 3.0])
+device = "cuda"
 
-print(log_softmax(t))
+max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=600)
+runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
+
+print(model_max_min_1(torch.tensor([[1,2,3,4,53],[4,3,2,1,53]]))[:,-1,:].argmax(dim=-1))

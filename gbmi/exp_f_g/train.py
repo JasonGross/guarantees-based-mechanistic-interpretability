@@ -42,6 +42,10 @@ from gbmi.utils import (
     set_params,
 )
 from gbmi.utils.sequences import generate_all_sequences
+from gbmi.utils.hashing import _EXCLUDE
+from gbmi.training_tools.logging import (
+    ModelMatrixLoggingOptions,
+)
 
 
 @dataclass
@@ -63,6 +67,15 @@ class f_g(ExperimentConfig):
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
     )
     version_number: int = 1
+    logging_options: ModelMatrixLoggingOptions = field(
+        default_factory=ModelMatrixLoggingOptions
+    )
+
+    def __post_init__(self):
+        setattr(self, _EXCLUDE, ("logging_options",))
+        self.logging_options.qpos = -1
+        self.logging_options.qtok = -1
+        self.logging_options.__post_init__()
 
     def get_training_wrapper(self):
         return f_g_TrainingWrapper
@@ -104,13 +117,16 @@ def f_g_config(fun: Fun, n_head: int, elements: int, seed: int):
             zero_biases=True,
             # attention_rate=attn_rate,
             optimizer_kwargs={"lr": 1e-4, "weight_decay": 0.1, "betas": (0.1, 0.11)},
+            logging_options=ModelMatrixLoggingOptions.all(
+                use_subplots=True, add_mean_pos_to_tok=True
+            ),
         ),
         seed=seed,
         deterministic=False,
         batch_size=39707,
-        train_for=(25000, "epochs"),
+        train_for=(2000, "epochs"),
         log_every_n_steps=1,
-        validate_every=(10, "epochs"),
+        validate_every=(100, "epochs"),
     )
 
 
@@ -172,7 +188,10 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
     """
 
     def run_batch(
-        self, x: Float[Tensor, "batch pos"], prefix: str  # noqa: F722
+        self,
+        x: Float[Tensor, "batch pos"],  # noqa: F722
+        prefix: str,
+        log_output: bool = True,
     ) -> Float[Tensor, ""]:  # noqa: F722
         self.model.to(x.device, print_details=False)
 
@@ -197,6 +216,12 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
         self.log(f"{prefix}loss", loss, prog_bar=True)
         acc = self.acc_fn(y_preds, labels)
         self.log(f"{prefix}acc", acc, prog_bar=True)
+        if log_output and prefix is not None and prefix != "":
+            assert self.logger is not None
+            self.config.experiment.logging_options.log_matrices(
+                self.logger.experiment,  # type: ignore
+                self.model,
+            )
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -253,19 +278,21 @@ class f_g_DataModule(DataModule):
         # data_train = data[:split_idx]
         # data_test = data[split_idx:]
 
-        agree_indices = (
-            FunDict[self.config.experiment.fun_name](
-                self.config.experiment.fun_index,
-                self.config.experiment.fun_elements,
-            )
-            .agree_indices()
-            .to(torch.int)
+        function = FunDict[self.config.experiment.fun_name](
+            self.config.experiment.fun_index,
+            self.config.experiment.fun_elements,
         )
+
+        agree_indices = function.agree_indices().to(torch.int)
 
         print(len(agree_indices))
 
-        random_subset = torch.randperm(len(agree_indices))
+        g = torch.Generator()
+        g.manual_seed(self.dataset_seed)
+        random_subset = torch.randperm(len(agree_indices), generator=g)
 
+        agree_indices = agree_indices[random_subset]
+        print(data[agree_indices[torch.tensor([0, 1, 2, 3, 4, 5, 10000])]])
         train_size = int(self.config.experiment.training_ratio * len(agree_indices))
 
         # train_size = 10000

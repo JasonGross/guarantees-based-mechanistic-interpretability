@@ -1,7 +1,8 @@
 # %%
 
+
 from gbmi.exp_f_g.train import f_g_TrainingWrapper
-from gbmi.exp_f_g.functions import add_sub, max_min
+from gbmi.exp_f_g.functions import add_sub, max_min, min_max
 from gbmi import utils
 
 from gbmi.exp_f_g.train import f_g_config
@@ -19,28 +20,9 @@ import pandas as pd
 
 device = "cuda"
 
-"""
-with torch.no_grad():
-    Eeq = model_max_min_4.W_E[-1] + model_max_min_4.W_pos[-1]
-    for layer in range(model_max_min_4.W_Q.shape[0]):
-        for head in range(model_max_min_4.W_Q.shape[1]):
-            EQKE = (
-                Eeq
-                @ model_max_min_4.W_Q[layer, head]
-                @ model_max_min_4.W_K[layer, head].T
-                @ (model_max_min_4.W_E[:-1] - model_max_min_4.W_E[-1]).T
-            )
-            EQKP = (
-                Eeq
-                @ model_max_min_4.W_Q[layer, head]
-                @ model_max_min_4.W_K[layer, head].T
-                @ (model_max_min_4.W_pos[:-1] - model_max_min_4.W_pos[-1]).T
-            )
-            px.line(EQKE.cpu(), title=f"l{layer}h{head} EQKE").show()
-            px.scatter(EQKP.cpu(), title=f"l{layer}h{head} EQKP").show()
-"""
 
 # %%
+
 
 """
 
@@ -81,50 +63,13 @@ for i in range(53):
 def elemental_loss(mod, i, fun):
     logits = mod(i)[:, -1, :].to(torch.float64)
     log_probs = utils.log_softmax(logits, dim=-1)
-    print(i)
-    print(fun(i))
     correct_log_probs = log_probs.gather(-1, fun(i).unsqueeze(-1))[:, 0]
 
     return -correct_log_probs
 
 
-"""
-def loss_scatter(mod, cond, max_is_min):
-    pairs = generate_all_sequences(53, 4).to(device)
-    data = (
-        torch.cat([pairs, 53 * (torch.ones((len(pairs), 1)).to(device))], dim=1)
-        .long()
-        .to(device)
-    )
-
-    loss_values = {}
-
-
-
-    for i in data:
-        if not (max_is_min and not (torch.max(i[2:4]) == torch.min(i[:2]))):
-            if cond(i) in loss_values:
-                loss_values[cond(i)] = torch.cat(
-                    [loss_values[cond(i)], elemental_loss(mod, i)]
-                )
-            else:
-                loss_values[cond(i)] = torch.tensor([elemental_loss(mod, i)])
-    print(loss_values[(torch.tensor(5), torch.tensor(50))])
-    x_values = [key[0] for key in loss_values.keys()]
-    y_values = [key[1] for key in loss_values.keys()]
-    color_values = [value.mean().item() for value in loss_values.values()]
-
-    # Create a DataFrame
-    df = pd.DataFrame({"X": x_values, "Y": y_values, "Color": color_values})
-
-    # Plot scatter diagram using Plotly Express
-    fig = px.scatter(df, x="X", y="Y", color="Color", title="Scatter Diagram")
-    fig.show()
-"""
-
-
 @torch.no_grad()
-def loss_scatter(mod, cond, res, fun):
+def loss_scatter(mod, cond, res, fun, avg, lab, fun_lab):
 
     mod.to(device)
 
@@ -141,22 +86,33 @@ def loss_scatter(mod, cond, res, fun):
         dim=1,
     )
 
-    loss_values = torch.zeros((53**2,), device=pairs.device, dtype=torch.float64)
-
     loss_values = []
+    if avg:
+        out = []
 
     for sub_data in tqdm(torch.split(data, 53**2)):
         losses = elemental_loss(mod, sub_data, fun)
         loss_values.append(losses)
+        if avg:
+            value = mod(sub_data)[:, -1, :].argmax(dim=-1).to(torch.float64)
+            out.append(value)
 
     loss_values = torch.cat(loss_values)
+    if avg:
+        out = torch.cat(out)
 
     losses = torch.zeros((53**2,), device=loss_values.device, dtype=loss_values.dtype)
+    if avg:
+        values = torch.zeros(
+            (53**2,), device=loss_values.device, dtype=loss_values.dtype
+        )
     cond_indices = cond_index(data)
     if res is not None:
         res_mask = res(data)
         cond_indices = cond_indices[res_mask]
         loss_values = loss_values[res_mask]
+        if avg:
+            out = out[res_mask]
     losses.scatter_reduce_(
         dim=0,
         index=cond_indices,
@@ -164,6 +120,14 @@ def loss_scatter(mod, cond, res, fun):
         reduce="mean",
         include_self=False,
     )
+    if avg:
+        values.scatter_reduce_(
+            dim=0,
+            index=cond_indices,
+            src=out,
+            reduce="mean",
+            include_self=False,
+        )
 
     x_coords = torch.arange(53).repeat(53, 1).transpose(0, 1).flatten()
     y_coords = torch.arange(53).repeat(53, 1).flatten()
@@ -173,7 +137,7 @@ def loss_scatter(mod, cond, res, fun):
         y=y_coords.numpy(),
         color=losses.cpu().numpy(),
         color_continuous_scale="Picnic",
-        title="loss",
+        title="loss" + str(lab) + fun_lab,
         labels={"color": "average loss"},
         width=800,
         height=600,
@@ -187,9 +151,30 @@ def loss_scatter(mod, cond, res, fun):
 
     fig.show()
 
+    if avg:
 
-def min_max(i):
-    return ((i[..., 2:4].min(dim=-1).values), (i[..., :2].max(dim=-1)).values)
+        fig_2 = px.scatter(
+            x=x_coords.numpy(),
+            y=y_coords.numpy(),
+            color=values.cpu().numpy(),
+            color_continuous_scale="Picnic",
+            title="average output" + str(lab),
+            labels={"color": "average output"},
+            width=800,
+            height=600,
+            color_continuous_midpoint=0,
+        )
+
+        fig_2.update_layout(
+            xaxis_title="cond_1",
+            yaxis_title="cond_2",
+        )
+
+        fig_2.show()
+
+
+def split_min_max(i):
+    return ((i[..., :2].min(dim=-1)).values, (i[..., 2:4].max(dim=-1).values))
 
 
 def res_min_max(i):
@@ -200,32 +185,93 @@ def max_1(i):
     return i[..., :2].max(dim=-1).values
 
 
+def min_1(i):
+    return i[..., :2].min(dim=-1).values
+
+
 def min_2(i):
     return i[..., 2:4].min(dim=-1).values
 
 
-for i in range(0, 2000, 100):
-    print(i)
+def max_2(i):
+    return i[..., 2:4].max(dim=-1).values
+
+
+def min_1_2(i):
+    return i[..., :4].min(dim=-1).values
+
+
+def max_1_2(i):
+    return i[..., :4].max(dim=-1).values
+
+
+def const_23(i):
+    return 23 * torch.ones(len(i)).long().cuda()
+
+
+add_sub_1_head_CONFIG = f_g_config(fun=add_sub(53, 2), n_head=1, elements=2, seed=600)
+runtime_add_sub_1, model_add_sub_1 = train_or_load_model(
+    add_sub_1_head_CONFIG, force="train"
+)
+# loss_scatter(model_min_max_1, split_min_max, None, max_2, True,600,"max_2")
+# loss_scatter(model_min_max_1, split_min_max, None, min_1, False,600,"min_1")
+
+"""
+for i in range(700,2000,100):
+
+    min_max_1_head_CONFIG = f_g_config(fun=min_max(53, 2), n_head=1, elements=2, seed=i)
+    runtime_min_max_1, model_min_max_1 = train_or_load_model(
+        min_max_1_head_CONFIG, force="train"
+    )
+    loss_scatter(model_min_max_1, split_min_max, None, max_2, True,i,"max_2")
+    loss_scatter(model_min_max_1, split_min_max, None, min_1, False,i,"min_1")
+
+"""
+
+"""
+
+def average(mod,max,min):
+    set=torch.tensor([])
+    for i in range(max+1):
+        for j in range(min-1,53):
+            a=torch.tensor([[max,i,min,j]])
+            b=torch.tensor([[i,max,min,j]])
+            c=torch.tensor([[max,i,j,min]])
+            d=torch.tensor([[i,max,j,min]])
+            if len(set)==0:
+                set=torch.cat((a,b,c,d),dim=0)
+            else:
+                set=torch.cat((set,a,b,c,d),dim=0)
+"""
+"""
+for i in [0,200,500,700,800,1100,1300,1600,1900]:
     max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=i)
     runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
-    loss_scatter(model_max_min_1, min_max, None, min_2)
-    loss_scatter(model_max_min_1, min_max, None, max_1)
+    loss_scatter(model_max_min_1, min_max, None, min_2, True,i)
+    loss_scatter(model_max_min_1, min_max, None, max_1, False,i)
+"""
 
-# %%
-max_min_1_head_CONFIG = f_g_config(fun=max_min(53, 2), n_head=1, elements=2, seed=999)
-runtime_max_min_1, model_max_min_1 = train_or_load_model(max_min_1_head_CONFIG)
-loss_scatter(model_max_min_1, min_max, None, True)
-loss_scatter(model_max_min_1, min_max, None, False)
+# loss_scatter(model_min_max_1, split_min_max, None, min_2, True, 300)
 
 
-# print(torch.argmax(model_max_min_4(torch.tensor([0, 0, 17, 20, 53]))[:, -1, :]))
+"""
 
-# model_add_sub_1.to(device)
-# model_add_sub_2.to(device)
-# model_max_min_4.to(device)
-# model_max_min_2.to(device)
-
-# %%
-print(model_max_min_1(torch.tensor([51, 50, 10, 11, 53]))[:, -1, :].argmax(dim=-1))
-
-# %%
+with torch.no_grad():
+    Eeq = model_max_min_1.W_E[-1] + model_max_min_1.W_pos[-1]
+    for layer in range(model_max_min_1.W_Q.shape[0]):
+        for head in range(model_max_min_1.W_Q.shape[1]):
+            EQKE = (
+                Eeq
+                @ model_max_min_1.W_Q[layer, head]
+                @ model_max_min_1.W_K[layer, head].T
+                @ (model_max_min_1.W_E[:-1] - model_max_min_1.W_E[-1]).T
+            )
+            EQKP = (
+                Eeq
+                @ model_max_min_1.W_Q[layer, head]
+                @ model_max_min_1.W_K[layer, head].T
+                @ (model_max_min_1.W_pos[:-1] - model_max_min_1.W_pos[-1]).T
+            )
+            px.line(EQKE.cpu(), title=f"l{layer}h{head} EQKE").show()
+            px.scatter(EQKP.cpu(), title=f"l{layer}h{head} EQKP").show()
+"""

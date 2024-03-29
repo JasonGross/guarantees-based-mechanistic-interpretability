@@ -327,10 +327,6 @@ class ABCBCEnglishTask:
         g: torch.Generator,
     ) -> Iterable[int]:
         ngram_counts_table = ABCBCEnglishTask.increment_zero_counts(ngram_counts_table)
-        if (ngram_counts_table == 0).any():
-            ngram_counts_table = ngram_counts_table + 1 / (
-                1 + ngram_counts_table.max() * ngram_counts_table.numel()
-            )
         prev = []
         for _ in range(num):
             cur_table = ngram_counts_table[tuple(prev)]

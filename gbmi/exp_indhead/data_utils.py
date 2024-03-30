@@ -406,11 +406,17 @@ class ABCBCEnglishTask:
                 device=default_device,
             )
 
+            if skip_end:
+                before_cs3_0, before_cs3_1 = torch.tensor(
+                    [a, b, *cs2], dtype=torch.long
+                )[-2:]
+            else:
+                before_cs3_0, before_cs3_1 = a, b
             cs3 = torch.tensor(
                 list(
                     ABCBCEnglishTask.sample_trigrams(
-                        a,
-                        b,
+                        int(before_cs3_0),
+                        int(before_cs3_1),
                         int(n_cs3),
                         trigram_counts_table,
                         g=g,

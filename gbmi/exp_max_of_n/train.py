@@ -119,7 +119,10 @@ class MaxOfN(ExperimentConfig):
             self.model_config.n_ctx = self.seq_len + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
             self.logging_options.qtok = -1
-        setattr(self, _EXCLUDE, ("logging_options", "log_matrix_on_run_batch_prefixes"))
+        exclude = ("logging_options", "log_matrix_on_run_batch_prefixes")
+        if not self.use_kaiming_init:
+            exclude += ("use_kaiming_init",)
+        setattr(self, _EXCLUDE, exclude)
         self.model_config.__post_init__()
         self.logging_options.__post_init__()
 

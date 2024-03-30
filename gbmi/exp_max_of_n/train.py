@@ -91,6 +91,7 @@ class MaxOfN(ExperimentConfig):
     use_end_of_sequence: bool = False  # if set, is final token
     seq_len: int = 64
     nth_max: int = 1
+    use_kaiming_init: bool = False
     summary_slug_extra: str = ""
     log_matrix_on_run_batch_prefixes: set[
         Optional[Literal["", "periodic_test_", "test_"]]
@@ -113,6 +114,7 @@ class MaxOfN(ExperimentConfig):
     def __post_init__(self):
         self.model_config.n_ctx = self.seq_len
         self.logging_options.qpos = -1
+        self.model_config.init_weights = not self.use_kaiming_init
         if self.use_end_of_sequence:
             self.model_config.n_ctx = self.seq_len + 1
             self.model_config.d_vocab = self.model_config.d_vocab_out + 1
@@ -203,6 +205,14 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     @staticmethod
     def build_model(config: Config[MaxOfN]) -> HookedTransformer:
         model = HookedTransformer(config.experiment.model_config)
+        if config.experiment.use_kaiming_init:
+            if model.cfg.seed is not None:
+                torch.manual_seed(model.cfg.seed)
+
+            for name, param in model.named_parameters():
+                if "W_" in name:
+                    torch.nn.init.kaiming_uniform_(param)
+
         if config.experiment.zero_biases:
             for name, param in model.named_parameters():
                 if "b_" in name:
@@ -524,6 +534,12 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Pick the maximum value first, then fill in the rest of the sequence. Only meaningful for --max-of N > 2.",
+    )
+    parser.add_argument(
+        "--use-kaiming-init",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use torch.nn.init.kaiming_uniform_, rather than HookedTransformer's init.",
     )
     parser.add_argument(
         "--log-matrix-interp",

@@ -294,15 +294,16 @@ def display_size_direction_stats(
             fig.update_yaxes(title_text="Key Token", row=1, col=3)
             fig.show(renderer)
         case "matplotlib":
-            fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+            fig, axs = plt.subplots(1, 3, figsize=(20, 5))
             # Plot 1: Query-Side SVD Heatmap
             cax1 = axs[0].matshow(
-                U, cmap="viridis", vmin=-uzmax, vmax=uzmax
+                U, cmap=cmap, vmin=-uzmax, vmax=uzmax
             )  # Adjust cmap to match your colorscale
             fig.colorbar(cax1, ax=axs[0])  # Optional: Add a colorbar
             axs[0].set_title("Query-Side SVD")
             axs[0].set_xlabel("Singular Index")
             axs[0].set_ylabel("Query Token")
+            axs[0].invert_yaxis()
 
             # Plot 2: Singular Values Line Plot
             axs[1].plot(np.arange(S.shape[0]), S, marker="o", color="blue")
@@ -313,12 +314,13 @@ def display_size_direction_stats(
 
             # Plot 3: Key-Side SVD Heatmap
             cax3 = axs[2].matshow(
-                Vh.T, cmap="viridis", vmin=-vzmax, vmax=vzmax
+                Vh.T, cmap=cmap, vmin=-vzmax, vmax=vzmax
             )  # Adjust cmap to match your colorscale
             fig.colorbar(cax3, ax=axs[2])  # Optional: Add a colorbar
             axs[2].set_title("Key-Side SVD")
             axs[2].set_xlabel("Singular Index")
             axs[2].set_ylabel("Key Token")
+            axs[2].invert_yaxis()
 
             # Adjust layout
             plt.tight_layout()

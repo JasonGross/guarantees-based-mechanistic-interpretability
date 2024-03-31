@@ -1,7 +1,8 @@
+# %%
 from pathlib import Path
 from typing import Callable, Collection, Literal, Optional, Tuple, Union
 import imageio
-from matplotlib.colors import Colormap
+from matplotlib.colors import Colormap, to_hex, is_color_like
 import numpy as np
 from torch import Tensor
 from jaxtyping import Float
@@ -22,6 +23,26 @@ from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
 
 
+def normalize_rgba(rgba):
+    """Normalize RGBA values to the 0-1 range."""
+    return tuple(v / 255 if i < 3 else v for i, v in enumerate(rgba))
+
+
+def color_to_hex(color: str) -> str:
+    """Convert an RGB(A) or hex color string to a hex color string."""
+    if color.startswith("rgb"):  # Handle 'rgb' or 'rgba'
+        # Extract numerical values and convert to RGBA tuple
+        rgba = tuple(
+            int(x)
+            for x in color.replace("rgb", "").replace("a", "").strip("()").split(",")
+        )
+        return to_hex(normalize_rgba(rgba))  # type: ignore
+    elif color.startswith("#") or is_color_like(color):
+        return to_hex(color)
+    else:
+        raise ValueError(f"Unrecognized color format: {color}")
+
+
 def colorscale_to_cmap(colorscale: Colorscale, *, name: str = "custom") -> Colormap:
     if isinstance(colorscale, str):
         try:
@@ -29,7 +50,8 @@ def colorscale_to_cmap(colorscale: Colorscale, *, name: str = "custom") -> Color
         except ValueError:
             pass
         return colorscale_to_cmap(px.colors.get_colorscale(colorscale), name=colorscale)
-    return LinearSegmentedColormap.from_list(name, colorscale)
+    colorscale_hex = [(pos, color_to_hex(color)) for pos, color in colorscale]
+    return LinearSegmentedColormap.from_list(name, colorscale_hex)
 
 
 def imshow_plotly(

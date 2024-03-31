@@ -1,8 +1,9 @@
-from typing import Tuple, Optional, Iterable
+from typing import Literal, Tuple, Optional, Iterable
 
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+import seaborn as sns
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
@@ -21,7 +22,7 @@ from gbmi.analysis_tools.fit import (
     sigmoid_func,
     inv_sigmoid_func,
 )
-from gbmi.analysis_tools.plot import imshow, line
+from gbmi.analysis_tools.plot import Colorscale, colorscale_to_cmap, imshow, line
 from gbmi.verification_tools.decomp import factor_contribution
 
 
@@ -186,6 +187,7 @@ def find_second_singular_contributions(
     )
 
 
+@torch.no_grad()
 def display_size_direction_stats(
     size_direction: torch.Tensor,
     query_direction: torch.Tensor,
@@ -197,81 +199,131 @@ def display_size_direction_stats(
     size_direction_QK: Optional[torch.Tensor] = None,
     query_direction_resid: Optional[torch.Tensor] = None,
     query_direction_QK: Optional[torch.Tensor] = None,
+    *,
     do_exclusions: bool = True,
     include_contribution: bool = True,
     scale_by_singular_value: bool = True,
-    renderer=None,
+    renderer: Optional[str] = None,
     fit_funcs: Iterable = (cubic_func, quintic_func),
     delta_fit_funcs: Iterable = (quadratic_func, quartic_func),
-    colorscale="Plasma_r",
+    colorscale: Colorscale = "Plasma_r",
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
     **kwargs,
 ):
+    cmap = colorscale_to_cmap(colorscale)
     if scale_by_singular_value:
         U = U * S[None, :].sqrt()
         Vh = Vh * S[:, None].sqrt()
     results = {}
-    results["Attention"] = imshow(
-        QK,
-        title="Attention<br>(W_E + W_pos[-1]) @ W_Q @ W_K.T @ (W_E + W_pos.mean(dim=0)).T",
-        xaxis="Key Token",
-        yaxis="Query Token",
-        renderer=renderer,
-        colorscale=colorscale,
-        **kwargs,
-    )
-    fig = make_subplots(
-        rows=1,
-        cols=3,
-        subplot_titles=["Query-Side SVD", "Singular Values", "Key-Side SVD"],
-    )
+
+    match plot_with:
+        case "plotly":
+            fig = imshow(
+                QK,
+                title="Attention<br>(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>E</sub> + 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
+                xaxis="Key Token",
+                yaxis="Query Token",
+                renderer=renderer,
+                colorscale=colorscale,
+                **kwargs,
+            )
+        case "matplotlib":
+            fig, ax = plt.subplots()
+            sns.heatmap(QK, cmap=cmap, ax=ax)
+            ax.set_title(
+                "Attention\n$(W_E + W_{\\mathrm{pos}}[-1])W_Q W_K^T (W_E + \\mathbb{E}_p W_{\\mathrm{pos}}[p])^T$"
+            )
+            ax.set_xlabel("Key Token")
+            ax.set_ylabel("Query Token")
+            plt.show()
+    results["Attention"] = fig
+
     uzmax, vzmax = U.abs().max().item(), Vh.abs().max().item()
-    fig.add_trace(
-        go.Heatmap(
-            z=utils.to_numpy(U),
-            colorscale=colorscale,
-            zmin=-uzmax,
-            zmax=uzmax,
-            showscale=False,
-            #  colorbar=dict(x=-0.15, # https://community.plotly.com/t/colorbar-ticks-left-aligned/60473/4
-            #             ticklabelposition='inside',
-            #             ticksuffix='     ',
-            #             ticklabeloverflow='allow',
-            #             tickfont_color='darkslategrey',),
-            hovertemplate="Query: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=np.arange(S.shape[0]),
-            y=utils.to_numpy(S),
-            mode="lines+markers",
-            marker=dict(color="blue"),
-            line=dict(color="blue"),
-            hovertemplate="Singular Value: %{y}<br>Singular Index: %{x}<extra></extra>",
-        ),
-        row=1,
-        col=2,
-    )
-    fig.add_trace(
-        go.Heatmap(
-            z=utils.to_numpy(Vh.T),
-            colorscale=colorscale,
-            zmin=-vzmax,
-            zmax=vzmax,
-            showscale=False,
-            #  colorbar=dict(x=1.15),
-            hovertemplate="Key: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
-        ),
-        row=1,
-        col=3,
-    )
-    fig.update_layout(title="Attention SVD")  # , margin=dict(l=150, r=150))
-    fig.update_yaxes(title_text="Query Token", row=1, col=1)
-    fig.update_yaxes(range=[0, None], row=1, col=2)
-    fig.update_yaxes(title_text="Key Token", row=1, col=3)
-    fig.show(renderer)
+    match plot_with:
+        case "plotly":
+            fig = make_subplots(
+                rows=1,
+                cols=3,
+                subplot_titles=["Query-Side SVD", "Singular Values", "Key-Side SVD"],
+            )
+            fig.add_trace(
+                go.Heatmap(
+                    z=utils.to_numpy(U),
+                    colorscale=colorscale,
+                    zmin=-uzmax,
+                    zmax=uzmax,
+                    showscale=False,
+                    #  colorbar=dict(x=-0.15, # https://community.plotly.com/t/colorbar-ticks-left-aligned/60473/4
+                    #             ticklabelposition='inside',
+                    #             ticksuffix='     ',
+                    #             ticklabeloverflow='allow',
+                    #             tickfont_color='darkslategrey',),
+                    hovertemplate="Query: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
+                ),
+                row=1,
+                col=1,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=np.arange(S.shape[0]),
+                    y=utils.to_numpy(S),
+                    mode="lines+markers",
+                    marker=dict(color="blue"),
+                    line=dict(color="blue"),
+                    hovertemplate="Singular Value: %{y}<br>Singular Index: %{x}<extra></extra>",
+                ),
+                row=1,
+                col=2,
+            )
+            fig.add_trace(
+                go.Heatmap(
+                    z=utils.to_numpy(Vh.T),
+                    colorscale=colorscale,
+                    zmin=-vzmax,
+                    zmax=vzmax,
+                    showscale=False,
+                    #  colorbar=dict(x=1.15),
+                    hovertemplate="Key: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
+                ),
+                row=1,
+                col=3,
+            )
+            fig.update_layout(title="Attention SVD")  # , margin=dict(l=150, r=150))
+            fig.update_yaxes(title_text="Query Token", row=1, col=1)
+            fig.update_yaxes(range=[0, None], row=1, col=2)
+            fig.update_yaxes(title_text="Key Token", row=1, col=3)
+            fig.show(renderer)
+        case "matplotlib":
+            fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+            # Plot 1: Query-Side SVD Heatmap
+            cax1 = axs[0].matshow(
+                U, cmap="viridis", vmin=-uzmax, vmax=uzmax
+            )  # Adjust cmap to match your colorscale
+            fig.colorbar(cax1, ax=axs[0])  # Optional: Add a colorbar
+            axs[0].set_title("Query-Side SVD")
+            axs[0].set_xlabel("Singular Index")
+            axs[0].set_ylabel("Query Token")
+
+            # Plot 2: Singular Values Line Plot
+            axs[1].plot(np.arange(S.shape[0]), S, marker="o", color="blue")
+            axs[1].set_title("Singular Values")
+            axs[1].set_xlabel("Singular Index")
+            axs[1].set_ylabel("Value")
+            axs[1].set_ylim(bottom=0)  # Ensure y-axis starts at 0
+
+            # Plot 3: Key-Side SVD Heatmap
+            cax3 = axs[2].matshow(
+                Vh.T, cmap="viridis", vmin=-vzmax, vmax=vzmax
+            )  # Adjust cmap to match your colorscale
+            fig.colorbar(cax3, ax=axs[2])  # Optional: Add a colorbar
+            axs[2].set_title("Key-Side SVD")
+            axs[2].set_xlabel("Singular Index")
+            axs[2].set_ylabel("Key Token")
+
+            # Adjust layout
+            plt.tight_layout()
+            plt.suptitle("Attention SVD")
+            plt.show()
     results["Attention SVD"] = fig
 
     contribution_diff = None
@@ -292,33 +344,71 @@ def display_size_direction_stats(
     # imshow(Vh.T, title="Key-Side SVD", yaxis="Key Token", renderer=renderer, **kwargs)
     # px.line({'singular values': training.to_numpy(S)}, title="Singular Values of QK Attention").show(renderer)
 
-    fig = make_subplots(rows=1, cols=2, subplot_titles=["Size", "Query"])
-    fig.add_trace(
-        go.Scatter(
-            x=np.arange(size_direction.shape[0]),
-            y=utils.to_numpy(size_direction),
-            mode="lines+markers",
-            marker=dict(color="blue"),
-            line=dict(color="blue"),
-            hovertemplate="Token: %{x}<br>Size: %{y}<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=np.arange(query_direction.shape[0]),
-            y=utils.to_numpy(query_direction),
-            mode="lines+markers",
-            marker=dict(color="blue"),
-            line=dict(color="blue"),
-            hovertemplate="Token: %{x}<br>Query Value: %{y}<extra></extra>",
-        ),
-        row=1,
-        col=2,
-    )
-    fig.update_layout(title="Directions in Token Space", showlegend=False)
-    fig.show(renderer)
+    match plot_with:
+        case "plotly":
+            fig = make_subplots(rows=1, cols=2, subplot_titles=["Size", "Query"])
+            fig.add_trace(
+                go.Scatter(
+                    x=np.arange(size_direction.shape[0]),
+                    y=utils.to_numpy(size_direction),
+                    mode="lines+markers",
+                    marker=dict(color="blue"),
+                    line=dict(color="blue"),
+                    hovertemplate="Token: %{x}<br>Size: %{y}<extra></extra>",
+                ),
+                row=1,
+                col=1,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=np.arange(query_direction.shape[0]),
+                    y=utils.to_numpy(query_direction),
+                    mode="lines+markers",
+                    marker=dict(color="blue"),
+                    line=dict(color="blue"),
+                    hovertemplate="Token: %{x}<br>Query Value: %{y}<extra></extra>",
+                ),
+                row=1,
+                col=2,
+            )
+            fig.update_layout(title="Directions in Token Space", showlegend=False)
+            fig.show(renderer)
+        case "matplotlib":
+            fig, axs = plt.subplots(
+                1, 2, figsize=(12, 6)
+            )  # Adjust the figure size as needed
+
+            # Plot 1: Size
+            axs[0].plot(
+                np.arange(size_direction.shape[0]),
+                size_direction,
+                marker="o",
+                linestyle="-",
+                color="blue",
+            )
+            axs[0].set_title("Size")
+            axs[0].set_xlabel("Token")
+            axs[0].set_ylabel("Size")
+
+            # Plot 2: Query
+            axs[1].plot(
+                np.arange(query_direction.shape[0]),
+                query_direction,
+                marker="o",
+                linestyle="-",
+                color="blue",
+            )
+            axs[1].set_title("Query")
+            axs[1].set_xlabel("Token")
+            axs[1].set_ylabel("Query Value")
+
+            # Set the main title for all subplots
+            fig.suptitle("Directions in Token Space", fontsize=16)
+            plt.tight_layout(
+                rect=[0, 0, 1, 0.95]
+            )  # Adjust layout to make room for the main title
+            # Show plot
+            plt.show()
     results["Directions in Token Space"] = fig
 
     # px.line({'size direction': training.to_numpy(size_direction)}, title="size direction in token space").show(renderer)

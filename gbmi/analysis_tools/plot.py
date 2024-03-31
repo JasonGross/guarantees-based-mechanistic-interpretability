@@ -1,10 +1,13 @@
 from pathlib import Path
-from typing import Callable, Collection, Optional, Tuple, Union
+from typing import Callable, Collection, Literal, Optional, Tuple, Union
 import imageio
+from matplotlib.colors import Colormap
 import numpy as np
 from torch import Tensor
 from jaxtyping import Float
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
 from tqdm import tqdm
@@ -16,8 +19,28 @@ from gbmi.analysis_tools.fit import linear_func
 from gbmi.analysis_tools.utils import pm_range, pm_mean_std, pm_round
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 
+Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
 
-def imshow(tensor, renderer=None, xaxis="", yaxis="", colorscale="RdBu", **kwargs):
+
+def colorscale_to_cmap(colorscale: Colorscale, *, name: str = "custom") -> Colormap:
+    if isinstance(colorscale, str):
+        try:
+            return plt.get_cmap(colorscale)
+        except ValueError:
+            pass
+        return colorscale_to_cmap(px.colors.get_colorscale(colorscale), name=colorscale)
+    return LinearSegmentedColormap.from_list(name, colorscale)
+
+
+def imshow_plotly(
+    tensor,
+    *,
+    renderer=None,
+    xaxis="",
+    yaxis="",
+    colorscale: Colorscale = "RdBu",
+    **kwargs,
+):
     fig = px.imshow(
         utils.to_numpy(tensor),
         color_continuous_midpoint=0.0,
@@ -29,8 +52,67 @@ def imshow(tensor, renderer=None, xaxis="", yaxis="", colorscale="RdBu", **kwarg
     return fig
 
 
-def line(
+def imshow_matplotlib(
     tensor,
+    *,
+    renderer=None,
+    xaxis="",
+    yaxis="",
+    colorscale: Colorscale = "RdBu",
+    title: Optional[str] = None,
+    **kwargs,
+):
+    cmap = colorscale_to_cmap(colorscale)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(
+        utils.to_numpy(tensor),
+        ax=ax,
+        center=0.0,
+        cmap=cmap,
+        cbar_kws={"label": "Scale"},
+    )
+    ax.set_xlabel(xaxis)
+    ax.set_ylabel(yaxis)
+    if title is not None:
+        ax.set_title(title)
+    plt.show()
+    return fig
+
+
+def imshow(
+    tensor,
+    *,
+    renderer=None,
+    xaxis="",
+    yaxis="",
+    colorscale: Colorscale = "RdBu",
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    **kwargs,
+):
+    match plot_with:
+        case "plotly":
+            return imshow_plotly(
+                tensor,
+                renderer=renderer,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                colorscale=colorscale,
+                **kwargs,
+            )
+        case "matplotlib":
+            return imshow_matplotlib(
+                tensor,
+                renderer=renderer,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                colorscale=colorscale,
+                **kwargs,
+            )
+
+
+def line_plotly(
+    tensor,
+    *,
     renderer=None,
     xaxis="",
     yaxis="",
@@ -51,6 +133,68 @@ def line(
         fig.update_traces(hovertemplate=hovertemplate)
     fig.show(renderer)
     return fig
+
+
+def line_matplotlib(
+    tensor,
+    *,
+    renderer=None,
+    xaxis="",
+    yaxis="",
+    line_labels=None,
+    showlegend=None,
+    hovertemplate=None,
+    **kwargs,
+):
+    fig = px.line(
+        utils.to_numpy(tensor),
+        labels={"index": xaxis, "value": yaxis},
+        y=line_labels,
+        **kwargs,
+    )
+    if showlegend is not None:
+        fig.update_layout(showlegend=showlegend)
+    if hovertemplate is not None:
+        fig.update_traces(hovertemplate=hovertemplate)
+    fig.show(renderer)
+    return fig
+
+
+def line(
+    tensor,
+    *,
+    renderer=None,
+    xaxis="",
+    yaxis="",
+    line_labels=None,
+    showlegend=None,
+    hovertemplate=None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    **kwargs,
+):
+    match plot_with:
+        case "plotly":
+            return line_plotly(
+                tensor,
+                renderer=renderer,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                line_labels=line_labels,
+                showlegend=showlegend,
+                hovertemplate=hovertemplate,
+                **kwargs,
+            )
+        case "matplotlib":
+            return line_matplotlib(
+                tensor,
+                renderer=renderer,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                line_labels=line_labels,
+                showlegend=showlegend,
+                hovertemplate=hovertemplate,
+                **kwargs,
+            )
 
 
 def scatter(x, y, xaxis="", yaxis="", caxis="", renderer=None, **kwargs):

@@ -4,6 +4,8 @@ from __future__ import annotations
 # %%
 from IPython import get_ipython
 
+from gbmi.analysis_tools.plot import Colorscale, colorscale_to_cmap
+
 ipython = get_ipython()
 if ipython is not None:
     ipython.run_line_magic("load_ext", "autoreload")
@@ -29,7 +31,6 @@ import tikzplotly
 from typing import (
     Callable,
     ClassVar,
-    Collection,
     Literal,
     Sequence,
     Optional,
@@ -125,9 +126,7 @@ LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_GIT_DIFF_PATH = Path(__file__).with_suffix("") / "git-diff-info.diff"
 LATEX_GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = 2
-# %%
-Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
-default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Plasma_r")
+default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Picnic_r")
 # default_OV_matplotlib_colorscale_2024_03_26: Colorscale = 'bwr_r'
 default_QK_colorscale_2024_03_26: Colorscale = [
     [0, "#ff0000"],
@@ -138,6 +137,7 @@ default_QK_colorscale_2024_03_26: Colorscale = [
 ]
 default_OV_colorscale: Colorscale = default_OV_colorscale_2024_03_26
 default_QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26
+default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
 latex_figures: dict[str, go.Figure] = {}
@@ -1181,7 +1181,12 @@ latex_values["CubicOldDroppedSequencesFracFloat"] = cubic_old_dropped_sequences_
 # %%
 if DISPLAY_PLOTS:
     figs = display_basic_interpretation(
-        model, include_uncentered=True, renderer=RENDERER
+        model,
+        include_uncentered=True,
+        OV_colorscale=default_OV_colorscale,
+        QK_colorscale=default_QK_colorscale,
+        QK_SVD_colorscale=default_QK_SVD_colorscale,
+        renderer=RENDERER,
     )
     latex_figures["EQKE"] = figs["EQKE"]
     latex_figures["EVOU"] = figs["EVOU"]
@@ -1212,11 +1217,14 @@ def display_basic_interpretation_matplotlib(
     legend_at_bottom: bool = False,
     include_equals_OV: bool = False,
     includes_eos: Optional[bool] = None,
-    OV_colorscale: str = "bwr_r",  # "Picnic_r",
+    OV_colorscale: Colorscale = "bwr_r",  # "Picnic_r",
     QK_colorscale: str = "PiYG",  # plasma",  # "Sunsetdark_r"
     QK_SVD_colorscale: str = "PiYG",  # "Picnic_r",
     renderer: Optional[str] = None,
 ) -> dict[str, matplotlib.figure.Figure]:
+    QK_cmap = colorscale_to_cmap(QK_colorscale)
+    QK_SVD_cmap = colorscale_to_cmap(QK_SVD_colorscale)
+    OV_cmap = colorscale_to_cmap(OV_colorscale)
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
 
@@ -1233,18 +1241,18 @@ def display_basic_interpretation_matplotlib(
     else:
         fig_qk, ax = plt.subplots()
         vmax = np.max(np.abs(QK["data"]))
-        cax = ax.imshow(QK["data"], cmap=QK_colorscale, vmin=-vmax, vmax=vmax)
+        cax = ax.imshow(QK["data"], cmap=QK_cmap, vmin=-vmax, vmax=vmax)
         fig_qk.colorbar(cax)
         ax.set_title(QK["title"]["latex"])
         ax.set_xlabel(QK["xaxis"])
         ax.set_ylabel(QK["yaxis"])
         fig_qk.show()
-    #     _, figs = find_size_and_query_direction(
-    #         model, plot_heatmaps=True, renderer=renderer, colorscale=QK_SVD_colorscale
-    #     )
-    #     for k, fig in figs.items():
-    #         result[f"EQKE {k}"] = fig
-    # result["EQKE"] = fig_qk
+        _, figs = find_size_and_query_direction(
+            model, plot_heatmaps=True, renderer=renderer, colorscale=QK_SVD_colorscale
+        )
+        for k, fig in figs.items():
+            result[f"EQKE {k}"] = fig
+    result["EQKE"] = fig_qk
 
     #     if include_uncentered:
     #         OV = compute_OV(model, centered=False, includes_eos=includes_eos)

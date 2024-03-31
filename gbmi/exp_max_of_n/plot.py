@@ -7,7 +7,7 @@ from jaxtyping import Float, Integer
 from transformer_lens import HookedTransformer
 import plotly.express as px
 import plotly.graph_objects as go
-from gbmi.analysis_tools.plot import weighted_histogram
+from gbmi.analysis_tools.plot import Colorscale, weighted_histogram
 from gbmi.analysis_tools.utils import pm_round
 
 from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
@@ -264,13 +264,14 @@ def compute_irrelevant(
 @torch.no_grad()
 def display_basic_interpretation(
     model: HookedTransformer,
+    *,
     include_uncentered: bool = False,
     legend_at_bottom: bool = False,
     include_equals_OV: bool = False,
     includes_eos: Optional[bool] = None,
-    OV_colorscale: str = "Picnic_r",
-    QK_colorscale: str = "Plasma",  # "Sunsetdark_r"
-    QK_SVD_colorscale: str = "Picnic_r",
+    OV_colorscale: Colorscale = "Picnic_r",
+    QK_colorscale: Colorscale = "Plasma",  # "Sunsetdark_r"
+    QK_SVD_colorscale: Colorscale = "Picnic_r",
     renderer: Optional[str] = None,
 ) -> dict[str, go.Figure]:
     if includes_eos is None:

@@ -41,6 +41,7 @@ tikzplotly = "^0.1.2"
 simple-parsing = "^0.1.5"
 nltk = "^3.8.1"
 tikzplotlib = "^0.10.1"
+seaborn = "^0.13.2"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"

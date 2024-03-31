@@ -118,7 +118,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int, seed: int):
             # attention_rate=attn_rate,
             optimizer_kwargs={"lr": 1e-4, "weight_decay": 0.1, "betas": (0.1, 0.11)},
             logging_options=ModelMatrixLoggingOptions.all(
-                use_subplots=True, add_mean_pos_to_tok=True
+                use_subplots=True, add_mean="pos_to_tok"
             ),
         ),
         seed=seed,

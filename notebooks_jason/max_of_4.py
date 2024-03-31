@@ -16,7 +16,8 @@ import sys
 import re
 import time
 import subprocess
-from functools import reduce
+from functools import reduce, partial
+from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 import io
 import dataclasses
@@ -123,6 +124,7 @@ LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "values.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_GIT_DIFF_PATH = Path(__file__).with_suffix("") / "git-diff-info.diff"
 LATEX_GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
+N_THREADS: Optional[int] = 2
 # %%
 Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
 default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Plasma_r")
@@ -199,11 +201,17 @@ with memoshelve(
     get_hash=get_hash_ascii,
 )() as memo_train_or_load_model:
     runtime_models = {}
-    for seed, cfg in tqdm(cfgs.items()):
+
+    def _handle_memo_train_or_load_model(arg):
+        seed, cfg = arg
         try:
             runtime_models[seed] = memo_train_or_load_model(cfg, force="load")
         except Exception as e:
             print(f"Error loading model for seed {seed}: {e}")
+
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
+
 # %%
 training_wrappers = {
     seed: MaxOfNTrainingWrapper(cfgs[seed], model)
@@ -259,7 +267,7 @@ for seedi, seed in enumerate(tqdm(runtime_models.keys(), desc="seed", position=0
             position=1,
             leave=leave,
         ):
-            loss, accuracy, size = run_batch_loss_accuracy(seed, i, cfg.batch_size)  # type: ignore
+            loss, accuracy, size = run_batch_loss_accuracy(seed, i, cfgs[seed].batch_size)  # type: ignore
             # Accumulate loss and accuracy
             train_total_loss[seed] += loss * size
             train_total_accuracy[seed] += accuracy * size

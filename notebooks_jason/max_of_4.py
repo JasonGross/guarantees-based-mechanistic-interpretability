@@ -28,6 +28,7 @@ from scipy import stats
 from contextlib import contextmanager
 from collections import defaultdict
 import tikzplotly
+import tikzplotlib
 from typing import (
     Callable,
     ClassVar,
@@ -140,7 +141,7 @@ default_QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26
 default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
-latex_figures: dict[str, go.Figure] = {}
+latex_figures: dict[str, Union[go.Figure, matplotlib.figure.Figure]] = {}
 # %%
 # hack around newlines of black formatting
 seeds = (
@@ -1230,7 +1231,6 @@ def display_basic_interpretation_matplotlib(
 
     QK = compute_QK(model, includes_eos=includes_eos, with_attn_scale=True)
     result = {}
-    print(QK["title"]["latex"])
     if includes_eos:
         fig_qk, ax = plt.subplots()
         ax.plot(QK["data"])
@@ -1248,7 +1248,11 @@ def display_basic_interpretation_matplotlib(
         ax.set_ylabel(QK["yaxis"])
         fig_qk.show()
         _, figs = find_size_and_query_direction(
-            model, plot_heatmaps=True, renderer=renderer, colorscale=QK_SVD_colorscale
+            model,
+            plot_heatmaps=True,
+            renderer=renderer,
+            colorscale=QK_SVD_colorscale,
+            plot_with="matplotlib",
         )
         for k, fig in figs.items():
             result[f"EQKE {k}"] = fig
@@ -1332,6 +1336,21 @@ def display_basic_interpretation_matplotlib(
 
 if DISPLAY_PLOTS:
     figs = display_basic_interpretation_matplotlib(model, include_uncentered=True)
+    latex_figures["EQKE"] = figs["EQKE"]
+    # latex_figures["EVOU"] = figs["EVOU"]
+    # latex_figures["EVOU-centered"] = figs["EVOU-centered"]
+    # latex_figures["EQKP"] = figs["EQKP"]
+    # latex_figures["EQKE-SVD"] = figs["EQKE Attention SVD"]
+    # del figs["EQKE Attention SVD"]
+    # EUPU_keys = [k for k in figs.keys() if k.startswith("irrelevant_")]
+    # assert len(EUPU_keys) == 1, f"EUPU_keys: {EUPU_keys}"
+    # latex_figures["EUPU"] = figs[EUPU_keys[0]]
+    # del figs[EUPU_keys[0]]
+    # latex_figures["PVOU"] = figs["irrelevant"]
+    # del figs["irrelevant"]
+    # unused_keys = [k for k in figs if k not in latex_figures]
+    # if unused_keys:
+    #     print(f"Unused keys: {unused_keys}")
 
 
 # %%
@@ -3697,6 +3716,22 @@ for k, fig in latex_figures.items():
                         except FileNotFoundError as e:
                             print(f"Warning: {e}")
                             errs.append(e)
+    elif isinstance(fig, matplotlib.figure.Figure):
+        p = LATEX_FIGURE_PATH / f"{k}.tex"
+        print(f"Saving {p}...")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tikzplotlib.save(p, fig)
+        for ext in (".pdf", ".svg"):
+            p = LATEX_FIGURE_PATH / f"{k}{ext}"
+            print(f"Saving {p}...")
+            p.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(p)
+            if ext == ".pdf":
+                try:
+                    subprocess.run(["pdfcrop", p, p], check=True)
+                except FileNotFoundError as e:
+                    print(f"Warning: {e}")
+                    errs.append(e)
     else:
         raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
 

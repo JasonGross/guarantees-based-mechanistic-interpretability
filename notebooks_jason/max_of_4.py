@@ -124,6 +124,19 @@ LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_GIT_DIFF_PATH = Path(__file__).with_suffix("") / "git-diff-info.diff"
 LATEX_GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
 # %%
+Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
+default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Plasma_r")
+# default_OV_matplotlib_colorscale_2024_03_26: Colorscale = 'bwr_r'
+default_QK_colorscale_2024_03_26: Colorscale = [
+    [0, "#ff0000"],
+    [0.25, "#ff8247"],
+    [0.5, "white"],
+    [0.75, "#ffc100"],
+    [1, "#ff9c05"],
+]
+default_OV_colorscale: Colorscale = default_OV_colorscale_2024_03_26
+default_QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26
+# %%
 latex_values: dict[str, Union[int, float, str]] = {}
 latex_figures: dict[str, go.Figure] = {}
 # %%
@@ -1532,17 +1545,6 @@ if DISPLAY_PLOTS:
 
 # %%
 # for slides
-Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
-default_QK_colorscale_2024_03_26 = [
-    [0, "#ff0000"],
-    [0.25, "#ff8247"],
-    [0.5, "white"],
-    [0.75, "#ffc100"],
-    [1, "#ff9c05"],
-    # End of the scale
-]
-
-
 @torch.no_grad()
 def make_better_slides_plots_2024_03_26(
     model: HookedTransformer,

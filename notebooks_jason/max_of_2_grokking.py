@@ -6,7 +6,7 @@
 #
 ### Setup
 # %%
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import math
 import os
 import imageio

@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from jaxtyping import Float, Integer
 import re
 from transformer_lens import HookedTransformerConfig
@@ -334,9 +335,11 @@ class RunData:
     def model_versions(
         self,
         config: Config,
+        *,
         max_count: Optional[int] = None,
         step: int = 1,
         tqdm: Optional[Callable] = tqdm,
+        parallelize: bool = True,
         types: Collection[str] = ("model",),
     ) -> Optional[
         Iterable[
@@ -353,7 +356,13 @@ class RunData:
                 (artifact, lazy(artifact.download)) for artifact in logged_artifacts
             )
         relevant_model_versions = [
-            (artifact, download)
+            lazy(
+                lambda: (
+                    artifact.version,
+                    try_load_model_from_wandb_download(config, download.force()),
+                    artifact,
+                )
+            )
             for artifact, download in self._lazy_model_versions
             if artifact.type in types
         ]
@@ -362,12 +371,11 @@ class RunData:
         relevant_model_versions = relevant_model_versions[:max_count:step]
         if tqdm is not None:
             relevant_model_versions = tqdm(relevant_model_versions)
-        for artifact, download in relevant_model_versions:
-            yield (
-                artifact.version,
-                try_load_model_from_wandb_download(config, download.force()),
-                artifact,
-            )
+        if parallelize:
+            with ThreadPoolExecutor() as executor:
+                return executor.map(lazy.force, relevant_model_versions)
+        else:
+            return map(lazy.force, relevant_model_versions)
 
 
 class EpochRichProgressBar(RichProgressBar):

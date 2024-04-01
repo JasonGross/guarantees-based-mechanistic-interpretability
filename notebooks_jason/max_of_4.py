@@ -1455,7 +1455,7 @@ if DISPLAY_PLOTS:
 
 # %%
 @torch.no_grad()
-def decompose_EQKE_error(
+def decompose_EQKE_error_quadratic(
     model: HookedTransformer,
     *,
     key_direction: Tensor,
@@ -1466,7 +1466,6 @@ def decompose_EQKE_error(
     W_K_U: Tensor,
     sanity_check: bool = True,
     atol: float = 1e-4,
-    tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
 ) -> Tuple[
     Tuple[
         Float[LowRankTensor, "d_vocab_q d_vocab_k"],  # noqa: F722
@@ -1494,9 +1493,7 @@ def decompose_EQKE_error(
 
     Note that EQKE is actually computed as (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0, keepdim=True)).T
 
-    Complexity: O(d_vocab * (d_vocab + d_model * n_ctx) + d_vocab * d_model^2)
-
-    The d_model^2 term comes from having to do SVD to compute remaining_error_upper_bound
+    Complexity: O(d_vocab * (d_vocab + d_model * n_ctx))
 
     Preconditions:
         (none)
@@ -1547,22 +1544,13 @@ def decompose_EQKE_error(
     Note that the first component is returned as EQKE_query_key, the middle components are accumulated in err_accumulator.
 
     Except for the last line, all of these components are rank 1 matrices, and we can compute them efficiently.
-    In the default case, we use the svd method for the final component:
+
+    The final value we compute by attempting to bound the largest singular value of the remaining error term.
     We compute an upper bound on what the final component can contribute to differences in elements in the same row:
     Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt{2} \sigma_1(M)$.
     This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
 
-    If tricks.attention_error_handling is "max_diff", then we instead compute the maximum difference in a more clever way.
-    $$\begin{align*}
-    &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
-    &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
-    &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
-    &\le \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
-    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ \min_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
-    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ -\max_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
-    &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
-    &= \max_r \sum_k \left|A_{r,k}\right|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right) \\
-    \end{align*}$$
+    However, we don't have the compute budget for computing $\sigma_1$ exactly, so we approximate it as the product of the frobenius norms.
     """
     W_E, W_pos, W_Q, W_K = (
         model.W_E,
@@ -1658,10 +1646,116 @@ def decompose_EQKE_error(
         (EQKE_query_key, err_accumulator),
         EQKE_pos_err,
         (
-            tricks.bound_attention_error(
-                W_E_query_err2, W_Q_err, W_K_err.T, W_E_key_err2.T
+            np.sqrt(2)
+            * np.prod(
+                [
+                    torch.linalg.matrix_norm(m, ord="fro")
+                    for m in (W_E_query_err2, W_Q_err, W_K_err.T, W_E_key_err2.T)
+                ]
             ),
             (W_E_query_err2, W_Q_err, W_K_err.T, W_E_key_err2.T),
+        ),
+    )
+
+
+# %%
+@torch.no_grad()
+def decompose_EQKE_error(
+    model: HookedTransformer,
+    *,
+    sanity_check: bool = True,
+    atol: float = 1e-4,
+    approximation_rank: int = 1,
+    tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
+) -> Tuple[
+    Float[LowRankTensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+    Float[Tensor, "d_vocab_q n_ctx_k"],  # noqa: F722
+    Tuple[
+        Union[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]],  # noqa: F722
+        Tuple[
+            Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+            Float[Tensor, "d_model d_vocab_k"],  # noqa: F722
+        ],
+    ],
+]:
+    r"""
+    Returns:
+        (EQKE_query_key, EQKE_pos_err, (remaining_error_upper_bound, two matrices whose product is the exact remaining error))
+    where
+        EQKE_query_key is the rank approximation_rank approximation of the query-key contribution to the EQKE matrix
+        EQKE_pos_err is the contribution of the position embeddings to the error
+        remaining_error_upper_bound is a bound on the maximum difference between two elements in the same row of the remaining error of EQKE, and may be either a float or a tensor indexed by query token, depending on the configuration of tricks
+
+    Note that EQKE is actually computed as (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_E + W_pos.mean(dim=0, keepdim=True)).T
+
+    Complexity: O(d_vocab * (d_vocab + d_model * n_ctx) + d_vocab * d_model^2)
+
+    The d_model^2 term comes from having to do low-rank SVD
+
+    Preconditions:
+        (none)
+    Postconditions:
+        Define err := EQKE - EQKE_query_key
+        Then we guarantee:
+        . max_{i,j} err_{r, i} - err_{r, j} <= remaining_error_upper_bound
+        . EQKE_pos_err[p] := (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_pos[p] - W_pos.mean(dim=0, keepdim=True)).T
+
+    We compute as follows:
+    $$
+    \begin{align*}
+    \widetilde{E_q} & := W_E + W_\text{pos}[-1] \\
+    \widetilde{E_k} & := W_E + \mathbb{E}_p W_\text{pos}[p] \\
+    \text{EQKE}_p
+    & := \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \widetilde{E_q}W_QW_K^T(W_{\text{pos}}[p] - \mathbb{E}_{p'} W_\text{pos}[p'])^T \\
+    & = \widetilde{E_q}W_QW_K^T \widetilde{E_k}^T + \text{EQKE\_pos\_err}
+    \end{align*}
+    $$
+
+    TODO add description of low-rank SVD
+
+    In the default case, we use the svd method for the final component:
+    We compute an upper bound on what the final component can contribute to differences in elements in the same row:
+    Since $\sigma_1(M) = \sup_x \| M x \| / \|x\|$, considering vectors with one 1, one -1, and zero elsewhere, the maximum difference between elements in a row is $\sqrt{2} \sigma_1(M)$.
+    This is the value we return, computing an upper bound on the first singular value by multiplying the first singular values of each matrix.
+
+    If tricks.attention_error_handling is "max_diff", then we instead compute the maximum difference in a more clever way.
+    $$\begin{align*}
+    &\max_{r,i,j} (AB)_{r,i} - (AB)_{r,j} \\
+    &= \max_{r,i,j} \sum_k \left(A_{r,k} B_{k,i} - A_{r,k} B_{k,j}\right) \\
+    &= \max_{r,i,j} \sum_k A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+    &\le \max_r \sum_k \max_{i,j} A_{r,k} \left(B_{k,i} - B_{k,j}\right) \\
+    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ \min_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
+    &= \max_r \sum_k A_{r,k}\begin{cases} \max_{i,j}  \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} \ge 0 \\ -\max_{i,j} \left(B_{k,i} - B_{k,j}\right) & \text{if }A_{r,j} <0 \end{cases} \\
+    &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
+    &= \max_r \sum_k \left|A_{r,k}\right|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right) \\
+    \end{align*}$$
+    """
+    W_E, W_pos, W_Q, W_K = (
+        model.W_E,
+        model.W_pos,
+        model.W_Q,
+        model.W_K,
+    )
+
+    W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
+    W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
+    W_E_pos_q = W_E + W_pos[-1][None, :]
+    EQKE_pos_err = W_E_pos_q @ (W_Q[0, 0] @ (W_K[0, 0].T @ W_pos_err.T))
+    EQKE_query_key, EQKE_err = split_SVD(
+        W_E_pos_q,
+        W_Q[0, 0],
+        W_K[0, 0].T,
+        W_E_pos_k.T,
+        n_principle_components=approximation_rank,
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
+    )
+    return (
+        EQKE_query_key,
+        EQKE_pos_err,
+        (
+            tricks.bound_attention_error(EQKE_err.A, EQKE_err.B),
+            (EQKE_err.A, EQKE_err.B),
         ),
     )
 
@@ -1686,7 +1780,7 @@ def decompose_EQKE_error(
     (EQKE_query_key, err_accumulator),
     EQKE_pos_err,
     (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-) = decompose_EQKE_error(
+) = decompose_EQKE_error_quadratic(
     model,
     key_direction=size_direction,
     query_direction=query_direction,
@@ -1705,8 +1799,8 @@ def decompose_EQKE_error(
 def display_EQKE_SVD_analysis(
     model: HookedTransformer,
     *,
-    QK_colorscale: str = "Plasma",
-    QK_SVD_colorscale: str = "Picnic_r",
+    QK_colorscale: Colorscale = "Plasma",
+    QK_SVD_colorscale: Colorscale = "Picnic_r",
     renderer: Optional[str] = None,
 ) -> Tuple[dict[str, go.Figure], dict[str, float]]:
     results = {}
@@ -1730,7 +1824,7 @@ def display_EQKE_SVD_analysis(
         (EQKE_query_key, err_accumulator),
         EQKE_pos_err,
         (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-    ) = decompose_EQKE_error(
+    ) = decompose_EQKE_error_quadratic(
         model,
         key_direction=size_direction,
         query_direction=query_direction,
@@ -2008,8 +2102,8 @@ if DISPLAY_PLOTS:
 @torch.no_grad()
 def resample_EQKE_err(
     *ms: Tuple[torch.Tensor, Tuple[str, str]],
-    QK_colorscale: str = "Plasma",
-    QK_SVD_colorscale: str = "Picnic_r",
+    QK_colorscale: Colorscale = "Plasma",
+    QK_SVD_colorscale: Colorscale = "Picnic_r",
     seed: int = 1234,
     nsamples: int = 100,
     renderer: Optional[str] = None,
@@ -2819,7 +2913,7 @@ def find_min_gaps_with_EQKE(
         (EQKE_query_key, err_accumulator),
         EQKE_pos_err,
         (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-    ) = decompose_EQKE_error(
+    ) = decompose_EQKE_error_quadratic(
         model,
         key_direction=key_direction,
         query_direction=query_direction,
@@ -2987,7 +3081,7 @@ with torch.no_grad():
                 (EQKE_query_key, err_accumulator),
                 EQKE_pos_err,
                 (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-            ) = decompose_EQKE_error(
+            ) = decompose_EQKE_error_quadratic(
                 model,
                 key_direction=size_direction,
                 query_direction=query_direction,
@@ -2998,7 +3092,7 @@ with torch.no_grad():
                 tricks=tricks,
             )
             print(
-                f"Complexity of decompose_EQKE_error: {complexity_of(decompose_EQKE_error)}"
+                f"Complexity of decompose_EQKE_error: {complexity_of(decompose_EQKE_error_quadratic)}"
             )
             try:
                 err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"

@@ -696,7 +696,6 @@ class LargestWrongLogitQuadraticConfig:
     ] = "mean_query+diff"
     attention_error_handling: Literal[
         "svd",
-        "svd_product",
         "max_diff",
         "max_diff_exact",
     ] = "svd"
@@ -788,8 +787,6 @@ class LargestWrongLogitQuadraticConfig:
                 m = reduce(FactoredMatrix.__matmul__, ms, AB)  # type: ignore
                 U, S, Vh = m.svd()
                 return S[0] * np.sqrt(2)
-            case "svd_product":
-                return bound_max_row_diff_by_SVD(*matrices)[0]
             case "max_diff":
                 return max_row_diffs_per_dim(*matrices)
             case "max_diff_exact":

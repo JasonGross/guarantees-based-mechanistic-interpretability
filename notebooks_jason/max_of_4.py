@@ -1938,13 +1938,14 @@ def decompose_EUPU_error_via_svd(
     )
 
     W_E_via_U, W_E_err = factor_contribution(
-        W_E + W_pos[-1], W_E_U.squeeze(), sanity_check=sanity_check
+        W_E + W_pos[-1],
+        W_E_U.squeeze(),
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
     )  # O(d_vocab * d_model)
-    W_E_via_U.setcheckparams(atol=atol)
     W_U_via_U, W_U_err = factor_contribution(
-        W_U, W_U_U.squeeze(), sanity_check=sanity_check
+        W_U, W_U_U.squeeze(), sanity_check=sanity_check, checkparams=dict(atol=atol)
     )  # O(d_model * d_vocab_out)
-    W_U_via_U.setcheckparams(atol=atol)
     EU_lowrank = W_E_via_U @ W_U_via_U  # O(d_vocab * d_vocab_out)
 
     return (

@@ -2,15 +2,17 @@
 name = "gbmi"
 version = "0.1.0"
 description = "Guarantees-Based Mechanistic Interpretability Experiments and Tools"
-authors = ["Jason Gross <jgross@mit.edu>"
-, "Euan Ong <euan.l.y.ong@gmail.com>"
-, "Alex Gibson <mapessentials@gmail.com>"
-, "Soufiane Noubir <noubir.soufiane@gmail.com>"
-, "Som Bagchi <somsubhro.bagchi@gmail.com>"
-, "Chun Hei Yip <chy34@cam.ac.uk>"
-, "Rajashree Agrawal <rajashree.agrawal@gmail.com>"]
+authors = [
+    "Jason Gross <jgross@mit.edu>",
+    "Euan Ong <euan.l.y.ong@gmail.com>",
+    "Alex Gibson <mapessentials@gmail.com>",
+    "Soufiane Noubir <noubir.soufiane@gmail.com>",
+    "Som Bagchi <somsubhro.bagchi@gmail.com>",
+    "Chun Hei Yip <chy34@cam.ac.uk>",
+    "Rajashree Agrawal <rajashree.agrawal@gmail.com>",
+]
 readme = "README.md"
-packages = [{include = "gbmi"}]
+packages = [{ include = "gbmi" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -45,7 +47,7 @@ seaborn = "^0.13.2"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"
-black = {extras = ["jupyter"], version = "^24.0.0"}
+black = { extras = ["jupyter"], version = "^24.0.0" }
 flake8 = "^7.0.0"
 
 [build-system]

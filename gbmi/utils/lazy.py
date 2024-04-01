@@ -12,7 +12,7 @@ class lazy(Generic[T]):
         generate: Callable[[], T] = (lambda: None),
         always_regenerate: bool = False,
         *args,
-        **kwargs
+        **kwargs,
     ):
         self._generate: Callable[[], T] = generate
         self._always_regenerate: bool = always_regenerate

@@ -96,6 +96,7 @@ from gbmi.utils.sequences import (
 import shelve
 from gbmi.verification_tools.decomp import (
     factor_contribution,
+    split_SVD,
     max_row_diffs_per_dim,
     bound_max_row_diff_by_SVD,
 )

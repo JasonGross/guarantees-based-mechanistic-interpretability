@@ -1,46 +1,60 @@
-from typing import Literal, Tuple, Union, overload
+from typing import Literal, Optional, Tuple, Union, overload
+from functools import reduce
 from torch import Tensor
 from jaxtyping import Float
 import torch
 import numpy as np
+from transformer_lens import FactoredMatrix
 from gbmi.utils.lowrank import LowRankTensor
 
 
 @torch.no_grad()
 def factor_right_contribution(
     m: Float[Tensor, "r c"],  # noqa: F722
-    v: Float[Tensor, "c"],  # noqa: F821
+    v: Union[Float[Tensor, "c"], Float[Tensor, "c n"]],  # noqa: F821, F722
     sanity_check: bool = True,
     show: bool = True,
+    checkparams: Optional[dict] = None,
 ) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
-    Complexity: O(r c)
+    Complexity: O(r c n)
     """
-    v = v / v.norm(dim=-1, keepdim=True)
+    v = v / v.norm(dim=0, keepdim=True)
+    if len(v.shape) == 1:
+        v = v[:, None]
     assert (
-        m.shape[-1] == v.shape[-1]
-    ), f"m.shape[-1] must match the shape of v ({m.shape[-1]} != {v.shape[-1]}, m.shape: {m.shape}, v.shape: {v.shape})"
+        m.shape[-1] == v.shape[0]
+    ), f"m.shape[-1] must match the shape of v ({m.shape[-1]} != {v.shape[0]}, m.shape: {m.shape}, v.shape: {v.shape})"
     v_alt = m @ v
     contrib = LowRankTensor(
-        v_alt[..., None], v[..., None, :], check=sanity_check, show=show
+        v_alt,
+        v.transpose(-2, -1),
+        check=sanity_check,
+        show=show,
+        checkparams=checkparams,
     )
     if sanity_check:
-        assert contrib.check(torch.stack([v * (row @ v) for row in m], dim=0))
+        assert contrib.check(
+            torch.stack([(row @ v) @ v.transpose(-2, -1) for row in m], dim=0)
+        )
     return contrib, m - contrib
 
 
 @torch.no_grad()
 def factor_left_contribution(
     m: Float[Tensor, "r c"],  # noqa: F722
-    v: Float[Tensor, "r"],  # noqa: F821
+    v: Union[Float[Tensor, "r"], Float[Tensor, "n r"]],  # noqa: F821, F722
     sanity_check: bool = True,
     show: bool = True,
+    checkparams: Optional[dict] = None,
 ) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
-    Complexity: O(r c)
+    Complexity: O(r c n)
     """
+    if len(v.shape) == 1:
+        v = v[None, :]
     contrib, resid = factor_right_contribution(
-        m.T, v, sanity_check=sanity_check, show=show
+        m.T, v.T, sanity_check=sanity_check, show=show, checkparams=checkparams
     )
     return contrib.T, resid.T
 
@@ -48,14 +62,15 @@ def factor_left_contribution(
 @overload
 def factor_contribution(
     m: Float[Tensor, "r c"],  # noqa: F722
-    v: Float[Tensor, "r"],  # noqa: F821
+    v: Union[Float[Tensor, "r"], Float[Tensor, "n r"]],  # noqa: F821, F722
     *,
     sanity_check: bool = True,
     show: bool = True,
+    checkparams: Optional[dict] = None,
     side: Literal["left"] = "left",
 ) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
-    Complexity: O(r c)
+    Complexity: O(r c n)
     """
     ...
 
@@ -63,14 +78,15 @@ def factor_contribution(
 @overload
 def factor_contribution(
     m: Float[Tensor, "r c"],  # noqa: F722
-    v: Float[Tensor, "c"],  # noqa: F821
+    v: Union[Float[Tensor, "c"], Float[Tensor, "c n"]],  # noqa: F821, F722
     *,
     sanity_check: bool = True,
     show: bool = True,
+    checkparams: Optional[dict] = None,
     side: Literal["right"],
 ) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
-    Complexity: O(r c)
+    Complexity: O(r c n)
     """
     ...
 
@@ -78,19 +94,29 @@ def factor_contribution(
 @torch.no_grad()
 def factor_contribution(
     m: Float[Tensor, "r c"],  # noqa: F722
-    v: Union[Float[Tensor, "r"], Float[Tensor, "c"]],  # noqa: F821
+    v: Union[
+        Float[Tensor, "r"],  # noqa: F821
+        Float[Tensor, "n r"],  # noqa: F722
+        Float[Tensor, "c"],  # noqa: F821
+        Float[Tensor, "c n"],  # noqa: F722
+    ],
     *,
     sanity_check: bool = True,
     show: bool = True,
+    checkparams: Optional[dict] = None,
     side: Literal["left", "right"] = "left",
 ) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
     Complexity: O(r c)
     """
     if side == "left":
-        return factor_left_contribution(m, v, sanity_check=sanity_check)
+        return factor_left_contribution(
+            m, v, sanity_check=sanity_check, show=show, checkparams=checkparams
+        )
     elif side == "right":
-        return factor_right_contribution(m, v, sanity_check=sanity_check)
+        return factor_right_contribution(
+            m, v, sanity_check=sanity_check, show=show, checkparams=checkparams
+        )
     else:
         raise ValueError(f"side must be left or right, not {side}")
 
@@ -184,3 +210,38 @@ def bound_max_row_diff_by_SVD(
         prod_max_singular * np.sqrt(2),
         matrices,
     )
+
+
+def split_SVD(
+    *matrices: Tensor,
+    n_principle_components: int = 1,
+    sanity_check: bool = False,
+    checkparams: Optional[dict] = None,
+) -> Tuple[LowRankTensor, LowRankTensor]:
+    """Splits the product of matrices matrices into a low-rank factored matrix M consisting of the first n_principle_components singular values and vectors, and a residual matrix R"""
+    assert len(matrices) > 0
+    if len(matrices) == 1:
+        A = matrices[0]
+        return LowRankTensor(
+            A, torch.eye(A.shape[-1]).to(A), check=sanity_check, checkparams=checkparams
+        ), LowRankTensor(
+            torch.zeros(*A.shape[:-1], 1).to(A),
+            torch.zeros(*A.shape[:-2], 1, A.shape[-1]).to(A),
+            check=sanity_check,
+            checkparams=checkparams,
+        )
+    A, B, ms = matrices[0], matrices[1], matrices[2:]
+    AB = FactoredMatrix(A, B)
+    m = reduce(FactoredMatrix.__matmul__, ms, AB)  # type: ignore
+    U, S, Vh = m.svd()
+    A, B = m.A, m.B
+    U = U[..., :n_principle_components]
+    S = S[..., :n_principle_components]
+    Vh = Vh[..., :n_principle_components]
+    A0, Ar = factor_left_contribution(
+        A, U.transpose(-2, -1), sanity_check=sanity_check, checkparams=checkparams
+    )
+    B0, Br = factor_right_contribution(
+        B, Vh, sanity_check=sanity_check, checkparams=checkparams
+    )
+    return A0 @ B0, LowRankTensor(Ar, Br, check=sanity_check, checkparams=checkparams)

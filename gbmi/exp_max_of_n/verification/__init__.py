@@ -697,8 +697,9 @@ class LargestWrongLogitQuadraticConfig:
     attention_error_handling: Literal[
         "svd",
         "max_diff",
+        "max_diff_subproduct",
         "max_diff_exact",
-    ] = "svd"
+    ] = "max_diff"
 
     EUPU_OFF: ClassVar[Literal["global_max_diff_exact"]] = "global_max_diff_exact"
     attention_handling_OFF: ClassVar[
@@ -787,7 +788,7 @@ class LargestWrongLogitQuadraticConfig:
                 m = reduce(FactoredMatrix.__matmul__, ms, AB)  # type: ignore
                 U, S, Vh = m.svd()
                 return S[0] * np.sqrt(2)
-            case "max_diff":
+            case "max_diff" | "max_diff_subproduct":
                 return max_row_diffs_per_dim(*matrices)
             case "max_diff_exact":
                 m = reduce(torch.matmul, matrices)

@@ -1,6 +1,6 @@
 import math
 from typing import Union
-
+from functools import cache
 import numpy as np
 import torch
 from torch import Tensor
@@ -11,6 +11,7 @@ from jaxtyping import Float
 from gbmi.verification_tools.general import EU_PU
 
 
+@cache
 @torch.no_grad()
 def all_EVOU(
     model: HookedTransformer,
@@ -41,6 +42,7 @@ def all_EVOU(
     return EVOU
 
 
+@cache
 @torch.no_grad()
 def all_PVOU(
     model: HookedTransformer,

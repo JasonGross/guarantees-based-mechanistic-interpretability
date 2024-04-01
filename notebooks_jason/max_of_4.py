@@ -115,6 +115,7 @@ import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
+import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 
 
 try:
@@ -2172,21 +2173,10 @@ with torch.no_grad():
             (
                 lambda cfg: (
                     cfg,
-                    analysis_quadratic.find_min_gaps_with_EQKE(
+                    analysis_subcubic.find_min_gaps_with_EQKE(
                         model=model,
-                        key_direction=size_direction,
-                        query_direction=query_direction,
-                        second_key_direction=second_key_direction,
-                        second_query_direction=second_query_direction,
-                        W_Q_U=W_Q_U,
-                        W_K_U=W_K_U,
-                        EVOU=EVOU,
-                        PVOU=PVOU,
-                        W_EP=W_EP,
-                        W_U=W_U,
                         tricks=cfg,
                         use_exact_EQKE=use_exact_EQKE,
-                        attn_scale=model.blocks[0].attn.attn_scale,
                         position=1,
                         leave=(cfg is all_configs[-1]),
                     ),

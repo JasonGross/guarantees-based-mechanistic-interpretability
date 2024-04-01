@@ -6,24 +6,44 @@ from transformer_lens import HookedTransformer
 from gbmi.utils.lowrank import LowRankTensor
 from gbmi.verification_tools.decomp import split_SVD
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
 
 
 @torch.no_grad()
 def decompose_EQKE_error(
     model: HookedTransformer,
     *,
+    key_direction: Optional[Tensor] = None,
+    query_direction: Optional[Tensor] = None,
+    second_key_direction: Optional[Tensor] = None,
+    second_query_direction: Optional[Tensor] = None,
+    W_Q_U: Optional[Tensor] = None,
+    W_K_U: Optional[Tensor] = None,
+    layer: int = 0,
+    head: int = 0,
     sanity_check: bool = True,
     atol: float = 1e-4,
     approximation_rank: int = 1,
     tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
 ) -> Tuple[
-    Float[LowRankTensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+    Union[
+        Float[LowRankTensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+        Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+    ],
     Float[Tensor, "d_vocab_q n_ctx_k"],  # noqa: F722
     Tuple[
         Union[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]],  # noqa: F722, F821
-        Tuple[
-            Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
-            Float[Tensor, "d_model d_vocab_k"],  # noqa: F722
+        Union[
+            Tuple[
+                Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+                Float[Tensor, "d_model d_vocab_k"],  # noqa: F722
+            ],
+            Tuple[
+                Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+                Float[Tensor, "d_model d_model"],  # noqa: F722
+                Float[Tensor, "d_model d_model"],  # noqa: F722
+                Float[Tensor, "d_model d_vocab_k"],  # noqa: F722
+            ],
         ],
     ],
 ]:
@@ -78,32 +98,71 @@ def decompose_EQKE_error(
     &= \max_r \sum_k \left|A_{r,k}\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
     &= \max_r \sum_k \left|A_{r,k}\right|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right) \\
     \end{align*}$$
+
+    If tricks.attention_error_handling is "max_diff_subproduct", then we use quadratic.decompose_EQKE_error_quadratic to compute the low-rank factorization.
     """
     W_E, W_pos, W_Q, W_K = (
         model.W_E,
         model.W_pos,
-        model.W_Q,
-        model.W_K,
+        model.W_Q[layer, head],
+        model.W_K[layer, head],
     )
 
     W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
     W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
     W_E_pos_q = W_E + W_pos[-1][None, :]
-    EQKE_pos_err = W_E_pos_q @ (W_Q[0, 0] @ (W_K[0, 0].T @ W_pos_err.T))
-    EQKE_query_key, EQKE_err = split_SVD(
-        W_E_pos_q,
-        W_Q[0, 0],
-        W_K[0, 0].T,
-        W_E_pos_k.T,
-        n_principle_components=approximation_rank,
-        sanity_check=sanity_check,
-        checkparams=dict(atol=atol),
-    )
+    EQKE_pos_err = W_E_pos_q @ (W_Q @ (W_K.T @ W_pos_err.T))
+
+    if tricks.attention_error_handling == "max_diff_subproduct":
+        assert (
+            key_direction is not None
+        ), "key_direction must be provided if using max_diff_subproduct"
+        assert (
+            query_direction is not None
+        ), "query_direction must be provided if using max_diff_subproduct"
+        assert (
+            second_key_direction is not None
+        ), "second_key_direction must be provided if using max_diff_subproduct"
+        assert (
+            second_query_direction is not None
+        ), "second_query_direction must be provided if using max_diff_subproduct"
+        assert W_Q_U is not None, "W_Q_U must be provided if using max_diff_subproduct"
+        assert W_K_U is not None, "W_K_U must be provided if using max_diff_subproduct"
+        (
+            (EQKE_query_key, err_accumulator),
+            EQKE_pos_err,
+            (_err_upper_bound, err_matrices),
+        ) = quadratic.decompose_EQKE_error_quadratic(
+            model,
+            key_direction=key_direction,
+            query_direction=query_direction,
+            second_key_direction=second_key_direction,
+            second_query_direction=second_query_direction,
+            W_Q_U=W_Q_U,
+            W_K_U=W_K_U,
+            sanity_check=True,
+            atol=atol,
+            layer=layer,
+            head=head,
+        )
+        EQKE_query_key = EQKE_query_key + err_accumulator
+    else:
+        EQKE_query_key, EQKE_err = split_SVD(
+            W_E_pos_q,
+            W_Q,
+            W_K.T,
+            W_E_pos_k.T,
+            n_principle_components=approximation_rank,
+            sanity_check=sanity_check,
+            checkparams=dict(atol=atol),
+        )
+        err_matrices = (EQKE_err.A, EQKE_err.B)
+
     return (
         EQKE_query_key,
         EQKE_pos_err,
         (
-            tricks.bound_attention_error(EQKE_err.A, EQKE_err.B),
-            (EQKE_err.A, EQKE_err.B),
+            tricks.bound_attention_error(*err_matrices),
+            err_matrices,
         ),
     )

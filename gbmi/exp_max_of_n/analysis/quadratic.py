@@ -4,6 +4,11 @@ from jaxtyping import Float, Integer
 from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
+from gbmi.exp_max_of_n.analysis import (
+    find_second_singular_contributions,
+    find_size_and_query_direction,
+)
+from gbmi.analysis_tools.decomp import split_svd_contributions
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.quadratic import (
     compute_extreme_right_attention_quadratic,
@@ -86,6 +91,26 @@ def W_EP_direction_for_tricks(
             W_EP_svd_query = -W_EP_svd_query
         return W_EP_svd_query
     return None
+
+
+def find_EKQE_error_directions(
+    model: HookedTransformer, *, layer: int = 0, head: int = 0
+):
+    (
+        size_direction,
+        query_direction,
+        size_query_singular_value,
+    ), _ = find_size_and_query_direction(model)
+    (second_key_direction, second_key_singular_value), (
+        second_query_direction,
+        second_query_singular_value,
+    ) = find_second_singular_contributions(model, size_direction, query_direction)
+    (W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
+        model.W_Q[layer, head]
+    )
+    (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
+        model.W_K[layer, head]
+    )
 
 
 # %%

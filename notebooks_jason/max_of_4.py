@@ -56,7 +56,6 @@ from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.utils import pm_round, pm_mean_std
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
-from gbmi.utils.sequences import count_sequences
 from gbmi.utils.lowrank import LowRankTensor
 import gbmi.utils.ein as ein
 import gbmi.utils.images as image_utils
@@ -115,6 +114,7 @@ import gbmi.utils.git as git
 import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
+import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 
 
 try:
@@ -2090,33 +2090,11 @@ extreme_right_attention_softmaxed = (
 
 
 # %%
-def W_EP_direction_for_tricks(
-    *,
-    W_EP: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
-    W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
-    tricks: Optional[LargestWrongLogitQuadraticConfig] = None,
-) -> Optional[Float[Tensor, "d_model"]]:  # noqa F722
-    if (
-        tricks is None or tricks.EUPU_handling == "svd_query+max_diff"
-    ):  # the only one that makes use of the direction
-        U, _, Vh = torch.linalg.svd(W_EP @ model.W_U)
-        W_EP_svd_query = U[:, 0] @ W_EP
-        W_EP_mean_query = W_EP.mean(dim=0)
-        if ((W_EP - W_EP_svd_query) @ model.W_U).norm(dim=-1).mean() > (
-            (W_EP + W_EP_svd_query) @ model.W_U
-        ).norm(dim=-1).mean():
-            # svd got the sign wrong :-/
-            W_EP_svd_query = -W_EP_svd_query
-        return W_EP_svd_query
-    return None
-
-
-# %%
 W_EP: Float[Tensor, "d_vocab d_model"] = (  # noqa: F722
     (model.W_E + model.W_pos.mean(dim=0, keepdim=True)).detach().clone()
 )
 W_U: Float[Tensor, "d_model d_vocab_out"] = model.W_U.detach().clone()  # noqa: F722
-W_EP_svd_query = W_EP_direction_for_tricks(W_EP=W_EP, W_U=W_U)
+W_EP_svd_query = analysis_quadratic.W_EP_direction_for_tricks(W_EP=W_EP, W_U=W_U)
 W_EP_mean_query = W_EP.mean(dim=0)
 
 
@@ -2170,191 +2148,6 @@ print(
 
 
 # %%
-@torch.no_grad()
-def find_min_gaps(
-    *,
-    EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
-    EQKE_err_upper_bound: Union[
-        float, Float[Tensor, ""], Float[Tensor, "d_vocab_q"]  # noqa: F722
-    ],
-    EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
-    attn_scale: Union[Float[Tensor, ""], float] = model.blocks[  # noqa: F722
-        0
-    ].attn.attn_scale,
-    position: Optional[int] = None,
-    leave: Optional[bool] = None,
-    **compute_largest_wrong_logit_quadratic_kwargs,
-) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
-    """
-    Run the argument across all possible min_gaps, and return the min_gap that works for each query token and max token.
-
-    Since here we are finding the argument/proof rather than verifying it, the complexity does not matter.
-    """
-    d_vocab_q, d_vocab_k = EQKE.shape
-    n_ctx, d_vocab_out = PVOU.shape
-    min_gaps = torch.ones((d_vocab_q, d_vocab_k, n_ctx), dtype=torch.long)
-    if not isinstance(EQKE_err_upper_bound, Tensor):
-        EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
-    if EQKE_err_upper_bound.ndim < 1:
-        EQKE_err_upper_bound = EQKE_err_upper_bound[None]
-    for min_gap in tqdm(
-        list(reversed(range(1, d_vocab_k))), position=position, leave=leave
-    ):
-        extreme_right_attention: Float[
-            Tensor, "minmax=2 d_vocab_q d_vocab_max n_ctx_copies_nonmax"  # noqa: F722
-        ] = quadratic.compute_extreme_right_attention_quadratic(EQKE, min_gap=min_gap)
-        extreme_right_attention_adjusted = extreme_right_attention.clone()
-        extreme_right_attention_adjusted[0] -= EQKE_err_upper_bound[:, None, None]
-        extreme_right_attention_adjusted[1] += EQKE_err_upper_bound[:, None, None]
-        extreme_right_attention_softmaxed = (
-            quadratic.compute_extreme_softmaxed_right_attention_quadratic(
-                extreme_right_attention_adjusted,
-                EQKE_pos_err,
-                min_gap=min_gap,
-                attn_scale=attn_scale,
-            )
-        )
-        largest_wrong_logit = quadratic.compute_largest_wrong_logit_quadratic(
-            extreme_right_attention_softmaxed,
-            min_gap=min_gap,
-            **compute_largest_wrong_logit_quadratic_kwargs,
-        )
-        # if the largest wrong logit is negative, then this gap works
-        min_gaps[largest_wrong_logit < 0] = min_gap
-
-    return min_gaps
-
-
-# %%
-@torch.no_grad()
-def find_min_gaps_with_EQKE(
-    model: HookedTransformer,
-    *,
-    key_direction: Tensor,
-    query_direction: Tensor,
-    second_key_direction: Tensor,
-    second_query_direction: Tensor,
-    W_Q_U: Tensor,
-    W_K_U: Tensor,
-    EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
-    PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
-    W_EP: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
-    W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
-    sanity_check: bool = True,
-    atol: float = 1e-4,
-    tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
-    use_exact_EQKE: bool = False,
-    # svd_EUPU: bool = False,
-    attn_scale: Union[Float[Tensor, ""], float] = model.blocks[  # noqa: F722
-        0
-    ].attn.attn_scale,
-    position: Optional[int] = None,
-    leave: Optional[bool] = None,
-) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
-    (
-        (EQKE_query_key, err_accumulator),
-        EQKE_pos_err,
-        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-    ) = quadratic.decompose_EQKE_error_quadratic(
-        model,
-        key_direction=key_direction,
-        query_direction=query_direction,
-        second_key_direction=second_key_direction,
-        second_query_direction=second_query_direction,
-        W_Q_U=W_Q_U,
-        W_K_U=W_K_U,
-        sanity_check=sanity_check,
-        atol=atol,
-        tricks=tricks,
-    )
-
-    err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-    cur_EQKE = EQKE_query_key + err_accumulator + (err_exact if use_exact_EQKE else 0)
-    EQKE_err_upper_bound = torch.tensor(0) if use_exact_EQKE else err_upper_bound
-
-    W_EP_direction = W_EP_direction_for_tricks(W_EP=W_EP, W_U=W_U, tricks=tricks)
-    # cur_EUPU_low_rank = EUPU_lowrank if svd_EUPU else None
-    # cur_EUPU_high_rank = torch.zeros_like(EUPU) if svd_EUPU else EUPU
-    # cur_EUPU_max_err = torch.tensor(0) if not svd_EUPU else EUPU_err_upper_bound
-
-    return find_min_gaps(
-        EQKE=cur_EQKE,
-        EQKE_err_upper_bound=EQKE_err_upper_bound,
-        EQKE_pos_err=EQKE_pos_err,
-        EVOU=EVOU,
-        PVOU=PVOU,
-        tricks=tricks,
-        attn_scale=attn_scale,
-        position=position,
-        leave=leave,
-        W_EP=W_EP,
-        W_U=W_U,
-        W_EP_direction=W_EP_direction,
-    )
-
-
-# %%
-@torch.no_grad()
-def count_correct_sequences(
-    largest_wrong_logit: Float[
-        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-    ],
-    min_gap: Union[
-        int, Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
-    ] = 1,
-) -> int:
-    d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
-    correct_count = 0
-    for q_tok in range(d_vocab_q):
-        for max_tok in range(d_vocab_max):
-            for n_copies_nonmax in range(n_ctx):
-                cur_min_gap = (
-                    min_gap
-                    if isinstance(min_gap, int)
-                    else int(min_gap[q_tok, max_tok, n_copies_nonmax].item())
-                )
-                # use not to also catch nans
-                if (
-                    (not largest_wrong_logit[q_tok, max_tok, n_copies_nonmax] < 0)
-                    or q_tok > max_tok
-                    or (q_tok != max_tok and n_copies_nonmax == 0)
-                    or (q_tok != max_tok and max_tok - q_tok < cur_min_gap)
-                    or (max_tok == 0 and n_copies_nonmax > 0)
-                ):
-                    continue
-                if n_copies_nonmax == 0:
-                    correct_count += 1
-                elif q_tok == max_tok and n_copies_nonmax == n_ctx - 1:
-                    correct_count += 1
-                elif q_tok != max_tok and n_copies_nonmax == 1:
-                    correct_count += 1
-                else:
-                    # N.B. Here, n_copies_nonmax DOES include the query token when it's not equal to max_tok
-                    nonmax_pre_query_count = (
-                        n_copies_nonmax - 1 if q_tok != max_tok else n_copies_nonmax
-                    )
-                    # count the number of sequences of length n_ctx - 1 with nonmax_pre_query_count tokens less than or equal to max_tok - cur_min_gap and the remaining tokens equal to max_tok, where order matters
-                    correct_count += count_sequences(
-                        n_ctx - 1, nonmax_pre_query_count, max_tok - cur_min_gap
-                    )
-    return correct_count
-
-
-def compute_accuracy_lower_bound_from(
-    largest_wrong_logit: Float[
-        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-    ],
-    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
-) -> Tuple[float, Tuple[int, int]]:
-    """
-    returns correct_count / total_sequences, (correct_count, total_sequences)
-    """
-    d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
-    correct_count = count_correct_sequences(largest_wrong_logit, min_gap=min_gap)
-    total_sequences = d_vocab_max**n_ctx
-    return correct_count / total_sequences, (correct_count, total_sequences)
-
-
 # %%
 try_all_configurations: bool = True  # @param {type:"boolean"}
 use_tricks: bool = True  # @param {type:"boolean"}
@@ -2379,7 +2172,7 @@ with torch.no_grad():
             (
                 lambda cfg: (
                     cfg,
-                    find_min_gaps_with_EQKE(
+                    analysis_quadratic.find_min_gaps_with_EQKE(
                         model=model,
                         key_direction=size_direction,
                         query_direction=query_direction,
@@ -2431,7 +2224,6 @@ with torch.no_grad():
                 second_query_direction=second_query_direction,
                 W_Q_U=W_Q_U,
                 W_K_U=W_K_U,
-                tricks=tricks,
             )
             print(
                 f"Complexity of decompose_EQKE_error: {complexity_of(quadratic.decompose_EQKE_error_quadratic)}"
@@ -2475,7 +2267,7 @@ with torch.no_grad():
 
             prooftime += time.time() - starttime
             # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
-            W_EP_direction = W_EP_direction_for_tricks(
+            W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
                 W_EP=W_EP, W_U=W_U, tricks=tricks
             )
             starttime = time.time()
@@ -2546,7 +2338,9 @@ with torch.no_grad():
             accuracy_bound, (
                 correct_count,
                 total_sequences,
-            ) = compute_accuracy_lower_bound_from(largest_wrong_logit, min_gap=min_gaps)
+            ) = quadratic.compute_accuracy_lower_bound_from(
+                largest_wrong_logit, min_gap=min_gaps
+            )
             print(
                 f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
             )

@@ -7,6 +7,7 @@ from torch import Tensor
 from transformer_lens import HookedTransformer
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.lowrank import LowRankTensor
+from gbmi.utils.sequences import count_sequences
 from gbmi.verification_tools.decomp import factor_contribution
 
 
@@ -578,3 +579,64 @@ def count_unaccounted_for_by_gap(
                         - (1 + max_tok - gap) ** n_copies_nonmax
                     ) * math.comb(n_ctx - 1, n_copies_nonmax)
     return unaccounted_for
+
+
+@torch.no_grad()
+def count_correct_sequences(
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+    ],
+    min_gap: Union[
+        int, Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
+    ] = 1,
+) -> int:
+    d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
+    correct_count = 0
+    for q_tok in range(d_vocab_q):
+        for max_tok in range(d_vocab_max):
+            for n_copies_nonmax in range(n_ctx):
+                cur_min_gap = (
+                    min_gap
+                    if isinstance(min_gap, int)
+                    else int(min_gap[q_tok, max_tok, n_copies_nonmax].item())
+                )
+                # use not to also catch nans
+                if (
+                    (not largest_wrong_logit[q_tok, max_tok, n_copies_nonmax] < 0)
+                    or q_tok > max_tok
+                    or (q_tok != max_tok and n_copies_nonmax == 0)
+                    or (q_tok != max_tok and max_tok - q_tok < cur_min_gap)
+                    or (max_tok == 0 and n_copies_nonmax > 0)
+                ):
+                    continue
+                if n_copies_nonmax == 0:
+                    correct_count += 1
+                elif q_tok == max_tok and n_copies_nonmax == n_ctx - 1:
+                    correct_count += 1
+                elif q_tok != max_tok and n_copies_nonmax == 1:
+                    correct_count += 1
+                else:
+                    # N.B. Here, n_copies_nonmax DOES include the query token when it's not equal to max_tok
+                    nonmax_pre_query_count = (
+                        n_copies_nonmax - 1 if q_tok != max_tok else n_copies_nonmax
+                    )
+                    # count the number of sequences of length n_ctx - 1 with nonmax_pre_query_count tokens less than or equal to max_tok - cur_min_gap and the remaining tokens equal to max_tok, where order matters
+                    correct_count += count_sequences(
+                        n_ctx - 1, nonmax_pre_query_count, max_tok - cur_min_gap
+                    )
+    return correct_count
+
+
+def compute_accuracy_lower_bound_from(
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+    ],
+    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
+) -> Tuple[float, Tuple[int, int]]:
+    """
+    returns correct_count / total_sequences, (correct_count, total_sequences)
+    """
+    d_vocab_q, d_vocab_max, n_ctx = largest_wrong_logit.shape
+    correct_count = count_correct_sequences(largest_wrong_logit, min_gap=min_gap)
+    total_sequences = d_vocab_max**n_ctx
+    return correct_count / total_sequences, (correct_count, total_sequences)

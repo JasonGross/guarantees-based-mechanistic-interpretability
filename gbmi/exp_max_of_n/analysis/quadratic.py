@@ -1,0 +1,153 @@
+from typing import Union, Optional
+import torch
+from jaxtyping import Float, Integer
+from torch import Tensor
+from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+from gbmi.exp_max_of_n.verification.quadratic import (
+    compute_extreme_right_attention_quadratic,
+    compute_extreme_softmaxed_right_attention_quadratic,
+    compute_largest_wrong_logit_quadratic,
+    decompose_EQKE_error_quadratic,
+)
+
+
+@torch.no_grad()
+def find_min_gaps(
+    *,
+    EQKE: Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
+    EQKE_err_upper_bound: Union[
+        float, Float[Tensor, ""], Float[Tensor, "d_vocab_q"]  # noqa: F722, F821
+    ],
+    EQKE_pos_err: Float[Tensor, "d_vocab_q n_ctx"],  # noqa: F722
+    attn_scale: Union[Float[Tensor, ""], float],  # noqa: F722
+    position: Optional[int] = None,
+    leave: Optional[bool] = None,
+    **compute_largest_wrong_logit_quadratic_kwargs,
+) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+    """
+    Run the argument across all possible min_gaps, and return the min_gap that works for each query token and max token.
+
+    Since here we are finding the argument/proof rather than verifying it, the complexity does not matter.
+    """
+    d_vocab_q, d_vocab_k = EQKE.shape
+    _d_vocab_q, n_ctx = EQKE_pos_err.shape
+    min_gaps = torch.ones((d_vocab_q, d_vocab_k, n_ctx), dtype=torch.long)
+    if not isinstance(EQKE_err_upper_bound, Tensor):
+        EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
+    if EQKE_err_upper_bound.ndim < 1:
+        EQKE_err_upper_bound = EQKE_err_upper_bound[None]
+    for min_gap in tqdm(
+        list(reversed(range(1, d_vocab_k))), position=position, leave=leave
+    ):
+        extreme_right_attention: Float[
+            Tensor, "minmax=2 d_vocab_q d_vocab_max n_ctx_copies_nonmax"  # noqa: F722
+        ] = compute_extreme_right_attention_quadratic(EQKE, min_gap=min_gap)
+        extreme_right_attention_adjusted = extreme_right_attention.clone()
+        extreme_right_attention_adjusted[0] -= EQKE_err_upper_bound[:, None, None]
+        extreme_right_attention_adjusted[1] += EQKE_err_upper_bound[:, None, None]
+        extreme_right_attention_softmaxed = (
+            compute_extreme_softmaxed_right_attention_quadratic(
+                extreme_right_attention_adjusted,
+                EQKE_pos_err,
+                min_gap=min_gap,
+                attn_scale=attn_scale,
+            )
+        )
+        largest_wrong_logit = compute_largest_wrong_logit_quadratic(
+            extreme_right_attention_softmaxed,
+            min_gap=min_gap,
+            **compute_largest_wrong_logit_quadratic_kwargs,
+        )
+        # if the largest wrong logit is negative, then this gap works
+        min_gaps[largest_wrong_logit < 0] = min_gap
+
+    return min_gaps
+
+
+@torch.no_grad()
+def W_EP_direction_for_tricks(
+    *,
+    W_EP: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+    W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
+    tricks: Optional[LargestWrongLogitQuadraticConfig] = None,
+) -> Optional[Float[Tensor, "d_model"]]:  # noqa F722
+    if (
+        tricks is None or tricks.EUPU_handling == "svd_query+max_diff"
+    ):  # the only one that makes use of the direction
+        U, _, Vh = torch.linalg.svd(W_EP @ W_U)
+        W_EP_svd_query = U[:, 0] @ W_EP
+        W_EP_mean_query = W_EP.mean(dim=0)
+        if ((W_EP - W_EP_svd_query) @ W_U).norm(dim=-1).mean() > (
+            (W_EP + W_EP_svd_query) @ W_U
+        ).norm(dim=-1).mean():
+            # svd got the sign wrong :-/
+            W_EP_svd_query = -W_EP_svd_query
+        return W_EP_svd_query
+    return None
+
+
+# %%
+@torch.no_grad()
+def find_min_gaps_with_EQKE(
+    model: HookedTransformer,
+    *,
+    key_direction: Tensor,
+    query_direction: Tensor,
+    second_key_direction: Tensor,
+    second_query_direction: Tensor,
+    W_Q_U: Tensor,
+    W_K_U: Tensor,
+    EVOU: Float[Tensor, "d_vocab_k d_vocab_out"],  # noqa: F722
+    PVOU: Float[Tensor, "n_ctx d_vocab_out"],  # noqa: F722
+    W_EP: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
+    W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
+    sanity_check: bool = True,
+    atol: float = 1e-4,
+    tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
+    use_exact_EQKE: bool = False,
+    # svd_EUPU: bool = False,
+    attn_scale: Union[Float[Tensor, ""], float],  # noqa: F722
+    position: Optional[int] = None,
+    leave: Optional[bool] = None,
+) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+    (
+        (EQKE_query_key, err_accumulator),
+        EQKE_pos_err,
+        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
+    ) = decompose_EQKE_error_quadratic(
+        model,
+        key_direction=key_direction,
+        query_direction=query_direction,
+        second_key_direction=second_key_direction,
+        second_query_direction=second_query_direction,
+        W_Q_U=W_Q_U,
+        W_K_U=W_K_U,
+        sanity_check=sanity_check,
+        atol=atol,
+    )
+
+    err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    cur_EQKE = EQKE_query_key + err_accumulator + (err_exact if use_exact_EQKE else 0)
+    EQKE_err_upper_bound = torch.tensor(0) if use_exact_EQKE else err_upper_bound
+
+    W_EP_direction = W_EP_direction_for_tricks(W_EP=W_EP, W_U=W_U, tricks=tricks)
+    # cur_EUPU_low_rank = EUPU_lowrank if svd_EUPU else None
+    # cur_EUPU_high_rank = torch.zeros_like(EUPU) if svd_EUPU else EUPU
+    # cur_EUPU_max_err = torch.tensor(0) if not svd_EUPU else EUPU_err_upper_bound
+
+    return find_min_gaps(
+        EQKE=cur_EQKE,
+        EQKE_err_upper_bound=EQKE_err_upper_bound,
+        EQKE_pos_err=EQKE_pos_err,
+        EVOU=EVOU,
+        PVOU=PVOU,
+        tricks=tricks,
+        attn_scale=attn_scale,
+        position=position,
+        leave=leave,
+        W_EP=W_EP,
+        W_U=W_U,
+        W_EP_direction=W_EP_direction,
+    )

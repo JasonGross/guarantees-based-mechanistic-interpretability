@@ -203,7 +203,12 @@ def all_tokens_small_gap(
         first_token_min[:, 0],
     )
     first_token_ranges = [
-        torch.cat([torch.arange(lower, mid), torch.arange(lower_big, upper)])
+        torch.cat(
+            [
+                torch.arange(int(lower), int(mid)),
+                torch.arange(int(lower_big), int(upper)),
+            ]
+        )
         for lower, mid, lower_big, upper in zip(
             first_token_min,
             all_tokens_after_start_max,

@@ -11,9 +11,8 @@ from jaxtyping import Float
 from gbmi.verification_tools.general import EU_PU
 
 
-@cache
 @torch.no_grad()
-def all_EVOU(
+def all_EVOU_nocache(
     model: HookedTransformer,
 ) -> Float[Tensor, "d_vocab d_vocab_out"]:  # noqa: F722
     """
@@ -42,9 +41,11 @@ def all_EVOU(
     return EVOU
 
 
-@cache
+all_EVOU = cache(all_EVOU_nocache)
+
+
 @torch.no_grad()
-def all_PVOU(
+def all_PVOU_nocache(
     model: HookedTransformer,
 ) -> Float[Tensor, "n_ctx d_vocab_out"]:  # noqa: F722
     """
@@ -71,6 +72,9 @@ def all_PVOU(
         d_vocab_out,
     ), f"PVOU.shape = {PVOU.shape} != {(n_ctx, d_vocab_out)} = (n_ctx, d_vocab_out)"
     return PVOU
+
+
+all_PVOU = cache(all_PVOU_nocache)
 
 
 @torch.no_grad()

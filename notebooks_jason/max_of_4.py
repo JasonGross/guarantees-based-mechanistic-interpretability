@@ -2164,6 +2164,11 @@ else:
 # err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
 min_gaps_lists = {}
 with torch.no_grad():
+    W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(model)
+    find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
+    size_and_query_directions_kwargs = analysis_quadratic.find_EKQE_error_directions(
+        model
+    )
     for use_exact_EQKE in (False, True):
         # for svd_EUPU in (False, True):
         descr = "exact-EQKE" if use_exact_EQKE else ""
@@ -2175,6 +2180,7 @@ with torch.no_grad():
                     cfg,
                     analysis_subcubic.find_min_gaps_with_EQKE(
                         model=model,
+                        **find_min_gaps_kwargs,
                         tricks=cfg,
                         use_exact_EQKE=use_exact_EQKE,
                         position=1,
@@ -2200,24 +2206,25 @@ with torch.no_grad():
         for tricks, min_gaps in min_gaps_lists[use_exact_EQKE]:
             postkey = latexdescr + tricks.short_description(latex=True)
             print(f"==========={descr}=============================\nTricks: {tricks}")
-            starttime = time.time()
-            prooftime = 0.0
-            (
-                (EQKE_query_key, err_accumulator),
-                EQKE_pos_err,
-                (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-            ) = quadratic.decompose_EQKE_error_quadratic(
+            # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
+            W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
+                **W_EP_direction_kwargs, tricks=tricks
+            )
+            proof_results = subcubic.verify_proof(
                 model,
-                key_direction=size_direction,
-                query_direction=query_direction,
-                second_key_direction=second_key_direction,
-                second_query_direction=second_query_direction,
-                W_Q_U=W_Q_U,
-                W_K_U=W_K_U,
+                W_EP_direction=W_EP_direction,
+                **size_and_query_directions_kwargs,
+                use_exact_EQKE=use_exact_EQKE,
+                min_gaps=min_gaps,
+                tricks=tricks,
+                sanity_check=False,
             )
-            print(
-                f"Complexity of decompose_EQKE_error: {complexity_of(quadratic.decompose_EQKE_error_quadratic)}"
-            )
+            err_upper_bound = proof_results["err_upper_bound"]
+            prooftime = proof_results["prooftime"]
+            accuracy_bound = proof_results["accuracy_lower_bound"]
+            total_sequences = proof_results["total_sequences"]
+            left_behind = proof_results["left_behind"]
+
             try:
                 err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
                 err_upper_bound_value = err_upper_bound.item()
@@ -2238,112 +2245,8 @@ with torch.no_grad():
                     )
                 latex_values[err_upper_bound_key] = err_upper_bound_value
 
-            if use_exact_EQKE:
-                print(f"Complexity of using exact EQKE: O(d_vocab^2 d_model)")
-                err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-                cur_EQKE = EQKE_query_key + err_accumulator + err_exact
-                EQKE_err_upper_bound = torch.tensor(0)
-            else:
-                print(f"Complexity of using approximate EQKE: O(d_vocab^2)")
-                cur_EQKE = EQKE_query_key + err_accumulator
-                EQKE_err_upper_bound = err_upper_bound
-
-            W_EP: Float[Tensor, "d_vocab d_model"] = (  # noqa: F722
-                (model.W_E + model.W_pos.mean(dim=0, keepdim=True)).detach().clone()
-            )
-            W_U: Float[Tensor, "d_model d_vocab_out"] = (  # noqa: F722
-                model.W_U.detach().clone()
-            )
-
-            prooftime += time.time() - starttime
-            # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
-            W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
-                W_EP=W_EP, W_U=W_U, tricks=tricks
-            )
-            starttime = time.time()
-
-            extreme_right_attention = (
-                quadratic.compute_extreme_right_attention_quadratic(
-                    cur_EQKE,
-                    min_gap=min_gaps,
-                )
-            )
-            print(
-                f"Complexity of compute_extreme_right_attention_quadratic: {complexity_of(quadratic.compute_extreme_right_attention_quadratic)}"
-            )  # O(d_vocab^2)
-            if not isinstance(EQKE_err_upper_bound, Tensor):
-                EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
-            if EQKE_err_upper_bound.ndim < 1:
-                EQKE_err_upper_bound = EQKE_err_upper_bound[None]
-            min_right_attention = extreme_right_attention[0]
-            print(
-                (
-                    (min_right_attention > EQKE_err_upper_bound[:, None, None])[
-                        ~min_right_attention.isnan()
-                    ]
-                )
-                .sum()
-                .item()
-            )
-
-            extreme_right_attention_adjusted = extreme_right_attention.clone()
-            extreme_right_attention_adjusted[0] -= EQKE_err_upper_bound[:, None, None]
-            extreme_right_attention_adjusted[1] += EQKE_err_upper_bound[:, None, None]
-            extreme_right_attention_softmaxed = (
-                quadratic.compute_extreme_softmaxed_right_attention_quadratic(
-                    extreme_right_attention_adjusted,
-                    EQKE_pos_err,
-                    min_gap=min_gaps,
-                    attn_scale=model.blocks[0].attn.attn_scale,
-                )
-            )
-            print(
-                f"Complexity of compute_extreme_softmaxed_right_attention: {complexity_of(quadratic.compute_extreme_softmaxed_right_attention_quadratic)}"
-            )  # O(d_vocab^2 * n_ctx^2)
-            # EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = EU_PU(model)  # noqa: F722
-            # print(f"Complexity of EU_PU: {complexity_of(EU_PU)}")  # O(d_vocab^2 * d_model)
-            EVOU: Float[Tensor, "d_vocab d_vocab_out"] = all_EVOU(model)  # noqa: F722
-            print(
-                f"Complexity of EVOU: {complexity_of(all_EVOU)}"
-            )  # O(d_vocab^2 * d_model)
-            PVOU: Float[Tensor, "n_ctx d_vocab_out"] = all_PVOU(model)  # noqa: F722
-            print(
-                f"Complexity of PVOU: {complexity_of(all_PVOU)}"
-            )  # O(n_ctx * d_vocab * d_model)
-            largest_wrong_logit: Float[
-                Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
-            ] = quadratic.compute_largest_wrong_logit_quadratic(
-                extreme_right_attention_softmaxed,
-                W_EP=W_EP,
-                W_U=W_U,
-                EVOU=EVOU,
-                PVOU=PVOU,
-                min_gap=min_gaps,
-                W_EP_direction=W_EP_direction,
-                tricks=tricks,
-            )
-            print(
-                f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(quadratic.compute_largest_wrong_logit_quadratic)}"
-            )  # O(d_vocab^2 * n_ctx^2)
-            accuracy_bound, (
-                correct_count,
-                total_sequences,
-            ) = quadratic.compute_accuracy_lower_bound_from(
-                largest_wrong_logit, min_gap=min_gaps
-            )
-            print(
-                f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
-            )
             latex_values[f"SubcubicAccuracy{postkey}Float"] = accuracy_bound
-            prooftime += time.time() - starttime
-            print(f"Proof time: {prooftime}s")
             latex_values[f"SubcubicProofTime{postkey}Float"] = prooftime
-            left_behind = quadratic.count_unaccounted_for_by_gap(
-                min_gaps, collapse_n_ctx=False
-            )
-            print(
-                f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%})"
-            )
             latex_values[f"SubcubicDroppedSequences{postkey}"] = left_behind
             latex_values[f"SubcubicDroppedSequencesFrac{postkey}Float"] = (
                 left_behind / total_sequences

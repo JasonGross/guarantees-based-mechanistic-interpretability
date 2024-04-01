@@ -1,4 +1,6 @@
-from typing import Union, Optional, Tuple
+from typing import Callable, Union, Optional, Tuple
+from functools import reduce
+import time
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
@@ -7,6 +9,13 @@ from gbmi.utils.lowrank import LowRankTensor
 from gbmi.verification_tools.decomp import split_SVD
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
+from gbmi.verification_tools.utils import complexity_of
+from gbmi.verification_tools.l1h1 import (
+    all_EVOU,
+    all_PVOU,
+    all_EVOU_nocache,
+    all_PVOU_nocache,
+)
 
 
 @torch.no_grad()
@@ -166,3 +175,180 @@ def decompose_EQKE_error(
             err_matrices,
         ),
     )
+
+
+def verify_proof(
+    model: HookedTransformer,
+    *,
+    use_exact_EQKE: bool,
+    W_EP_direction: Optional[Float[Tensor, "d_model"]],  # noqa: F821
+    key_direction: Tensor,
+    query_direction: Tensor,
+    second_key_direction: Tensor,
+    second_query_direction: Tensor,
+    W_Q_U: Tensor,
+    W_K_U: Tensor,
+    min_gaps: Integer[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_copies_nonmax"  # noqa: F722
+    ],
+    layer: int = 0,
+    head: int = 0,
+    atol: float = 1e-4,
+    approximation_rank: int = 1,
+    tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
+    print_complexity: Union[bool, Callable[[str], None]] = True,
+    print_results: Union[bool, Callable[[str], None]] = True,
+    sanity_check: bool = True,
+):
+    if isinstance(print_complexity, bool):
+        print_complexity = print if print_complexity else lambda x: None
+    if isinstance(print_results, bool):
+        print_results = print if print_results else lambda x: None
+
+    prooftimes = []
+
+    def add_time(f, *args, **kwargs):
+        starttime = time.time()
+        result = f(*args, **kwargs)
+        prooftimes.append(time.time() - starttime)
+        return result
+
+    (
+        EQKE_query_key,
+        EQKE_pos_err,
+        (err_upper_bound, err_matrices),
+    ) = add_time(
+        decompose_EQKE_error,
+        model,
+        key_direction=key_direction,
+        query_direction=query_direction,
+        second_key_direction=second_key_direction,
+        second_query_direction=second_query_direction,
+        W_Q_U=W_Q_U,
+        W_K_U=W_K_U,
+        layer=layer,
+        head=head,
+        sanity_check=sanity_check,
+        atol=atol,
+        approximation_rank=approximation_rank,
+        tricks=tricks,
+    )
+    print_complexity(
+        f"Complexity of decompose_EQKE_error: {complexity_of(decompose_EQKE_error)}"
+    )
+
+    if use_exact_EQKE:
+        print_complexity(f"Complexity of using exact EQKE: O(d_vocab^2 d_model)")
+        err_exact = add_time(reduce, torch.matmul, err_matrices)
+        cur_EQKE = add_time(lambda: EQKE_query_key + err_exact)
+        EQKE_err_upper_bound = torch.tensor(0)
+    else:
+        print_complexity(f"Complexity of using approximate EQKE: O(d_vocab^2)")
+        cur_EQKE = EQKE_query_key
+        EQKE_err_upper_bound = err_upper_bound
+
+    extreme_right_attention = add_time(
+        quadratic.compute_extreme_right_attention_quadratic,
+        cur_EQKE,
+        min_gap=min_gaps,
+    )
+
+    print_complexity(
+        f"Complexity of compute_extreme_right_attention_quadratic: {complexity_of(quadratic.compute_extreme_right_attention_quadratic)}"
+    )  # O(d_vocab^2)
+    if not isinstance(EQKE_err_upper_bound, Tensor):
+        EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
+    if EQKE_err_upper_bound.ndim < 1:
+        EQKE_err_upper_bound = EQKE_err_upper_bound[None]
+    min_right_attention = extreme_right_attention[0]
+    print_results(
+        str(
+            (
+                (min_right_attention > EQKE_err_upper_bound[:, None, None])[
+                    ~min_right_attention.isnan()
+                ]
+            )
+            .sum()
+            .item()
+        )
+    )
+
+    def adjust_extreme_right_attention():
+        extreme_right_attention_adjusted = extreme_right_attention.clone()
+        extreme_right_attention_adjusted[0] -= EQKE_err_upper_bound[:, None, None]
+        extreme_right_attention_adjusted[1] += EQKE_err_upper_bound[:, None, None]
+        return extreme_right_attention_adjusted
+
+    extreme_right_attention_adjusted = add_time(adjust_extreme_right_attention)
+    extreme_right_attention_softmaxed = add_time(
+        quadratic.compute_extreme_softmaxed_right_attention_quadratic,
+        extreme_right_attention_adjusted,
+        EQKE_pos_err,
+        min_gap=min_gaps,
+        attn_scale=model.blocks[0].attn.attn_scale,
+    )
+    print_complexity(
+        f"Complexity of compute_extreme_softmaxed_right_attention: {complexity_of(quadratic.compute_extreme_softmaxed_right_attention_quadratic)}"
+    )  # O(d_vocab^2 * n_ctx^2)
+    EVOU: Float[Tensor, "d_vocab d_vocab_out"] = add_time(  # noqa: F722
+        all_EVOU_nocache, model
+    )
+    print_complexity(
+        f"Complexity of EVOU: {complexity_of(all_EVOU)}"
+    )  # O(d_vocab^2 * d_model)
+    PVOU: Float[Tensor, "n_ctx d_vocab_out"] = add_time(  # noqa: F722
+        all_PVOU_nocache, model
+    )
+    print_complexity(
+        f"Complexity of PVOU: {complexity_of(all_PVOU)}"
+    )  # O(n_ctx * d_vocab * d_model)
+    W_EP: Float[Tensor, "d_vocab_q d_model"] = add_time(  # noqa: F722
+        lambda: model.W_E + model.W_pos.mean(dim=0, keepdim=True)
+    )
+    print_complexity(f"Complexity of W_EP: O((d_vocab + n_ctx) * d_model)")
+
+    largest_wrong_logit: Float[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+    ] = add_time(
+        quadratic.compute_largest_wrong_logit_quadratic,
+        extreme_right_attention_softmaxed,
+        W_EP=W_EP,
+        W_U=model.W_U,
+        EVOU=EVOU,
+        PVOU=PVOU,
+        min_gap=min_gaps,
+        W_EP_direction=W_EP_direction,
+        tricks=tricks,
+    )
+    print_complexity(
+        f"Complexity of compute_largest_wrong_logit_quadratic: {complexity_of(quadratic.compute_largest_wrong_logit_quadratic)}"
+    )  # O(d_vocab^2 * n_ctx^2)
+    accuracy_bound, (
+        correct_count,
+        total_sequences,
+    ) = add_time(
+        quadratic.compute_accuracy_lower_bound_from,
+        largest_wrong_logit,
+        min_gap=min_gaps,
+    )
+    print_results(
+        f"Accuracy lower bound: {accuracy_bound} ({correct_count} correct sequences of {total_sequences})"
+    )
+
+    prooftime = sum(prooftimes)
+    print_results(f"Subcubic Proof time: {prooftime}s")
+
+    left_behind = quadratic.count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
+    print_results(
+        f"We leave on the floor {left_behind} sequences ({left_behind / total_sequences:.2%})"
+    )
+
+    return {
+        "err_upper_bound": err_upper_bound,
+        "largest_wrong_logit": largest_wrong_logit,
+        "accuracy_lower_bound": accuracy_bound,
+        "correct_count_lower_bound": correct_count,
+        "total_sequences": total_sequences,
+        "prooftime": prooftime,
+        "left_behind": left_behind,
+    }

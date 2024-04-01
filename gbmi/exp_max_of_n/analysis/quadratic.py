@@ -72,6 +72,14 @@ def find_min_gaps(
 
 
 @torch.no_grad()
+def W_EP_direction_for_tricks_kwargs(model: HookedTransformer):
+    W_EP: Float[Tensor, "d_vocab d_model"] = model.W_E + model.W_pos.mean(  # noqa: F722
+        dim=0, keepdim=True
+    )
+    return {"W_EP": W_EP, "W_U": model.W_U}
+
+
+@torch.no_grad()
 def W_EP_direction_for_tricks(
     *,
     W_EP: Float[Tensor, "d_vocab_q d_model"],  # noqa: F722
@@ -111,6 +119,14 @@ def find_EKQE_error_directions(
     (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
         model.W_K[layer, head]
     )
+    return {
+        "key_direction": size_direction,
+        "query_direction": query_direction,
+        "second_key_direction": second_key_direction,
+        "second_query_direction": second_query_direction,
+        "W_Q_U": W_Q_U,
+        "W_K_U": W_K_U,
+    }
 
 
 # %%

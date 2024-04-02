@@ -50,7 +50,7 @@ from gbmi.training_tools.logging import (
 @dataclass
 class IndHead(ExperimentConfig):
     # using int instead of abstract class because i'm clueless what's going on with typing
-    zero_biases: bool = False
+    zero_biases: bool = True
     bos: bool = True
     seq_length: int = 5
     num_tokens: int = 3

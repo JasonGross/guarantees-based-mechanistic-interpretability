@@ -262,6 +262,34 @@ def compute_QK_by_position(
     )
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
+    strings = {
+        "html": (
+            "<br>",
+            "",
+            "W<sub>E</sub>",
+            "W<sub>pos</sub>",
+            "W<sub>Q</sub>",
+            "W<sub>K</sub>",
+            "<sup>T</sup>",
+            "𝔼",
+            "<sub>dim=0</sub>",
+            "<sub>p</sub>",
+            "QK",
+        ),
+        "latex": (
+            "\n",
+            "$",
+            "W_E",
+            r"W_{\mathrm{pos}}",
+            "W_Q",
+            "W_K",
+            "^T",
+            r"\mathbb{E}",
+            r"_{\mathrm{dim}=0}",
+            "_p",
+            r"\mathrm{QK}",
+        ),
+    }
     if includes_eos:
         QK = (
             (W_E[-1] + W_pos[-1])
@@ -271,7 +299,22 @@ def compute_QK_by_position(
         )
         return {
             "data": {"QK": QK.numpy()},
-            "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub>[-1] + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub>[:-1] - 𝔼<sub>dim=0</sub>W<sub>pos</sub>[:-1])<sup>T</sup>",
+            "title": {
+                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe}[-1] + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos}[:-1] - {sE}{s_dim0}{sWpos}[:-1]){sT}{smath}"
+                for key, (
+                    nl,
+                    smath,
+                    sWe,
+                    sWpos,
+                    sWq,
+                    sWk,
+                    sT,
+                    sE,
+                    s_dim0,
+                    s_p,
+                    sQK,
+                ) in strings.items()
+            },
             "xaxis": "position",
             "yaxis": "attention score pre-softmax",
         }
@@ -279,7 +322,22 @@ def compute_QK_by_position(
         QK = (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_pos - W_pos.mean(dim=0)).T
         return {
             "data": {"QK": QK.numpy()},
-            "title": "Positional Contribution to Attention Score<br>(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub> - 𝔼<sub>dim=0</sub>W<sub>pos</sub>)<sup>T</sup>",
+            "title": {
+                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos} - {sE}{s_dim0}{sWpos}){sT}{smath}"
+                for key, (
+                    nl,
+                    smath,
+                    sWe,
+                    sWpos,
+                    sWq,
+                    sWk,
+                    sT,
+                    sE,
+                    s_dim0,
+                    s_p,
+                    sQK,
+                ) in strings.items()
+            },
             "xaxis": "key position",
             "yaxis": "query token",
         }

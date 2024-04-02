@@ -490,14 +490,14 @@ def display_basic_interpretation(
     if includes_eos:
         fig_qk = px.scatter(
             pos_QK["data"],
-            title=pos_QK["title"],
+            title=pos_QK["title"][title_kind],
             labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
         )
         fig_qk.show(renderer=renderer)
     else:
         fig_qk = imshow(
             pos_QK["data"]["QK"],
-            title=pos_QK["title"],
+            title=pos_QK["title"][title_kind],
             colorscale=QK_colorscale,
             plot_with=plot_with,
             xaxis=pos_QK["xaxis"],

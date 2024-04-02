@@ -143,6 +143,10 @@ LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
 LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "values.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
+    Path(__file__).with_suffix("") / "tikzplotlib-preamble.tex"
+)
+LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_GIT_DIFF_PATH = Path(__file__).with_suffix("") / "git-diff-info.diff"
 LATEX_GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = 2
@@ -2288,6 +2292,8 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
             fig.update_layout(title_text=orig_title)
 
 
+with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
+    f.write(tikzplotlib.Flavors.latex.preamble())
 errs = []
 for file_path in LATEX_FIGURE_PATH.glob("*.png"):
     file_path.unlink()
@@ -2298,11 +2304,11 @@ for k, fig in latex_figures.items():
         unsupported_by_tikzplotly = any(
             isinstance(trace, go.Heatmap) for trace in fig.data
         )
-        if not unsupported_by_tikzplotly:
-            p = LATEX_FIGURE_PATH / f"{k}.tex"
-            print(f"Saving {p}...")
-            p.parent.mkdir(parents=True, exist_ok=True)
-            tikzplotly.save(p, fig)
+        # if not unsupported_by_tikzplotly:
+        #     p = LATEX_FIGURE_PATH / f"{k}.tex"
+        #     print(f"Saving {p}...")
+        #     p.parent.mkdir(parents=True, exist_ok=True)
+        #     tikzplotly.save(p, fig)
         with texify_title(fig) as fig:
             if True or unsupported_by_tikzplotly:
                 for ext in (".pdf", ".svg"):

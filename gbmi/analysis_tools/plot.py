@@ -61,6 +61,7 @@ def imshow_plotly(
     xaxis="",
     yaxis="",
     colorscale: Colorscale = "RdBu",
+    figsize: Optional[Tuple[float, float]] = None,
     **kwargs,
 ):
     fig = px.imshow(
@@ -82,10 +83,11 @@ def imshow_matplotlib(
     yaxis="",
     colorscale: Colorscale = "RdBu",
     title: Optional[str] = None,
+    figsize: Optional[Tuple[float, float]] = None,
     **kwargs,
 ):
     cmap = colorscale_to_cmap(colorscale)
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=figsize)
     sns.heatmap(
         utils.to_numpy(tensor),
         ax=ax,
@@ -168,6 +170,7 @@ def line_matplotlib(
     hovertemplate=None,
     **kwargs,
 ):
+    raise NotImplementedError("Matplotlib line plots are not yet supported.")
     fig = px.line(
         utils.to_numpy(tensor),
         labels={"index": xaxis, "value": yaxis},

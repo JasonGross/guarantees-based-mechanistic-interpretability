@@ -706,11 +706,13 @@ def train_or_load_model(
     )
 
 
-def add_force_argument(parser: ArgumentParser) -> ArgumentParser:
+def add_force_argument(
+    parser: ArgumentParser, default: Optional[Literal["train", "load"]] = None
+) -> ArgumentParser:
     parser.add_argument(
         "--force",
         choices=[None, "train", "load"],
-        default=None,
+        default=default,
         help="Force action: None (default), 'train', or 'load'.",
     )
     return parser

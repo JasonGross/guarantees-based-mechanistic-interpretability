@@ -129,6 +129,7 @@ except:
 # %%
 DISPLAY_PLOTS: bool = True  # @param {type:"boolean"}
 RENDERER: Optional[str] = "png"  # @param ["png", None]
+PLOT_WITH: Literal["plotly", "matplotlib"] = "plotly"  # @param ["plotly", "matplotlib"]
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
@@ -762,6 +763,7 @@ if DISPLAY_PLOTS:
         OV_colorscale=default_OV_colorscale,
         QK_colorscale=default_QK_colorscale,
         QK_SVD_colorscale=default_QK_SVD_colorscale,
+        plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
     latex_figures["EQKE"] = figs["EQKE"]
@@ -779,160 +781,6 @@ if DISPLAY_PLOTS:
     unused_keys = [k for k in figs if k not in latex_figures]
     if unused_keys:
         print(f"Unused keys: {unused_keys}")
-
-# %%
-import matplotlib.figure
-import matplotlib.pyplot as plt
-from gbmi.exp_max_of_n.plot import compute_QK
-
-
-@torch.no_grad()
-def display_basic_interpretation_matplotlib(
-    model: HookedTransformer,
-    include_uncentered: bool = False,
-    legend_at_bottom: bool = False,
-    include_equals_OV: bool = False,
-    includes_eos: Optional[bool] = None,
-    OV_colorscale: Colorscale = "bwr_r",  # "Picnic_r",
-    QK_colorscale: Colorscale = "PiYG",  # plasma",  # "Sunsetdark_r"
-    QK_SVD_colorscale: Colorscale = "PiYG",  # "Picnic_r",
-    renderer: Optional[str] = None,
-) -> dict[str, matplotlib.figure.Figure]:
-    QK_cmap = colorscale_to_cmap(QK_colorscale)
-    QK_SVD_cmap = colorscale_to_cmap(QK_SVD_colorscale)
-    OV_cmap = colorscale_to_cmap(OV_colorscale)
-    if includes_eos is None:
-        includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
-
-    QK = compute_QK(model, includes_eos=includes_eos, with_attn_scale=True)
-    result = {}
-    if includes_eos:
-        fig_qk, ax = plt.subplots()
-        ax.plot(QK["data"])
-        ax.set_title(QK["title"]["latex"])
-        ax.set_xlabel(QK["xaxis"])
-        ax.set_ylabel(QK["yaxis"])
-        fig_qk.show()
-    else:
-        fig_qk, ax = plt.subplots()
-        vmax = np.max(np.abs(QK["data"]))
-        cax = ax.imshow(QK["data"], cmap=QK_cmap, vmin=-vmax, vmax=vmax)
-        fig_qk.colorbar(cax)
-        ax.set_title(QK["title"]["latex"])
-        ax.set_xlabel(QK["xaxis"])
-        ax.set_ylabel(QK["yaxis"])
-        fig_qk.show()
-        _, figs = find_size_and_query_direction(
-            model,
-            plot_heatmaps=True,
-            renderer=renderer,
-            colorscale=QK_SVD_colorscale,
-            plot_with="matplotlib",
-        )
-        assert figs is not None
-        for k, fig in figs.items():
-            result[f"EQKE {k}"] = fig
-    result["EQKE"] = fig_qk
-
-    #     if include_uncentered:
-    #         OV = compute_OV(model, centered=False, includes_eos=includes_eos)
-    #         fig_ov = px.imshow(
-    #             OV["data"],
-    #             title=OV["title"],
-    #             color_continuous_scale=OV_colorscale,
-    #             color_continuous_midpoint=0,
-    #             labels={"x": OV["xaxis"], "y": OV["yaxis"]},
-    #         )
-    #         result["EVOU"] = fig_ov
-    #         fig_ov.show(renderer=renderer)
-    #     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
-    #     fig_ov = px.imshow(
-    #         OV["data"],
-    #         title=OV["title"],
-    #         color_continuous_scale=OV_colorscale,
-    #         labels={"x": OV["xaxis"], "y": OV["yaxis"]},
-    #     )
-    #     result["EVOU-centered"] = fig_ov
-    #     fig_ov.show(renderer=renderer)
-
-    #     pos_QK = compute_QK_by_position(model, includes_eos=includes_eos)
-    #     if includes_eos:
-    #         fig_qk = px.scatter(
-    #             pos_QK["data"],
-    #             title=pos_QK["title"],
-    #             labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
-    #         )
-    #         fig_qk.show(renderer=renderer)
-    #     else:
-    #         fig_qk = px.imshow(
-    #             pos_QK["data"]["QK"],
-    #             title=pos_QK["title"],
-    #             color_continuous_scale=QK_colorscale,
-    #             labels={"x": pos_QK["xaxis"], "y": pos_QK["yaxis"]},
-    #         )
-    #         fig_qk.show(renderer=renderer)
-    #     result["EQKP"] = fig_qk
-
-    #     irrelevant = compute_irrelevant(
-    #         model, include_equals_OV=include_equals_OV, includes_eos=includes_eos
-    #     )
-    #     for key, data in irrelevant["data"].items():
-    #         if len(data.shape) == 2:
-    #             fig = px.imshow(
-    #                 data,
-    #                 title=key,
-    #                 color_continuous_scale=OV_colorscale,
-    #                 labels={"x": irrelevant["xaxis"], "y": irrelevant["yaxis"]},
-    #             )
-    #             result[f"irrelevant_{key}"] = fig
-    #             fig.show(renderer=renderer)
-    #     fig = px.scatter(
-    #         {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
-    #         title=irrelevant["title"],
-    #         labels={
-    #             "index": irrelevant["xaxis"],
-    #             "variable": "",
-    #             "value": irrelevant["yaxis"],
-    #         },
-    #     )
-    #     if legend_at_bottom:
-    #         fig.update_layout(
-    #             legend=dict(
-    #                 orientation="h",
-    #                 yanchor="bottom",
-    #                 y=-0.5,
-    #                 xanchor="center",
-    #                 x=0.5,
-    #             )
-    #         )
-    #     result["irrelevant"] = fig
-    # fig.show(renderer=renderer)
-    return result
-
-
-if DISPLAY_PLOTS:
-    figs = display_basic_interpretation_matplotlib(
-        model,
-        include_uncentered=True,
-        OV_colorscale=default_OV_colorscale,
-        QK_colorscale=default_QK_colorscale,
-        QK_SVD_colorscale=default_QK_SVD_colorscale,
-    )
-    latex_figures["EQKE"] = figs["EQKE"]
-    # latex_figures["EVOU"] = figs["EVOU"]
-    # latex_figures["EVOU-centered"] = figs["EVOU-centered"]
-    # latex_figures["EQKP"] = figs["EQKP"]
-    # latex_figures["EQKE-SVD"] = figs["EQKE Attention SVD"]
-    # del figs["EQKE Attention SVD"]
-    # EUPU_keys = [k for k in figs.keys() if k.startswith("irrelevant_")]
-    # assert len(EUPU_keys) == 1, f"EUPU_keys: {EUPU_keys}"
-    # latex_figures["EUPU"] = figs[EUPU_keys[0]]
-    # del figs[EUPU_keys[0]]
-    # latex_figures["PVOU"] = figs["irrelevant"]
-    # del figs["irrelevant"]
-    # unused_keys = [k for k in figs if k not in latex_figures]
-    # if unused_keys:
-    #     print(f"Unused keys: {unused_keys}")
 
 
 # %%

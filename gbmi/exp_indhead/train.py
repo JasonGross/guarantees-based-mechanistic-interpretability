@@ -5,15 +5,17 @@ from dataclasses import field
 from typing import (
     Any,
     Dict,
+    List,
     Optional,
     Union,
     Literal,
     Tuple,
 )
-
+import sys
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
+import simple_parsing
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from gbmi.exp_indhead.data_utils import (
@@ -30,6 +32,9 @@ from gbmi.model import (
     Config,
     ExperimentConfig,
     DataModule,
+    train_or_load_model,
+    add_force_argument,
+    add_no_save_argument,
 )
 from gbmi.utils import (
     reseed,
@@ -474,3 +479,29 @@ class IndHeadDataModule(DataModule):
         return DataLoader(
             self.data_test, batch_size=min(self.config.batch_size, self.n_test_samples)
         )
+
+
+def main(
+    argv: List[str] = sys.argv,
+    default: Config[IndHead] = ABCAB8_1H,
+    default_force: Optional[Literal["train", "load"]] = None,
+):
+    parser = simple_parsing.ArgumentParser(
+        description="Train a model with configurable attention rate."
+    )
+    parser.add_arguments(IndHead, dest="experiment_config", default=default.experiment)
+    add_force_argument(parser, default=default_force)
+    add_no_save_argument(parser)
+    Config.add_arguments(parser, default=default)
+
+    args = parser.parse_args(argv[1:])
+
+    config = Config(args.experiment_config)
+    config = config.update_from_args(args)
+    print("Model config:", IndHeadTrainingWrapper.build_model(config).cfg)
+    print("Training model:", config)
+    return train_or_load_model(config, force=args.force, save_to=args.save_to)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Literal
 import numpy as np
 import torch
 from torch import Tensor
@@ -7,7 +7,15 @@ from jaxtyping import Float, Integer
 from transformer_lens import HookedTransformer
 import plotly.express as px
 import plotly.graph_objects as go
-from gbmi.analysis_tools.plot import Colorscale, weighted_histogram
+import matplotlib.figure
+import matplotlib.pyplot as plt
+from gbmi.analysis_tools.plot import (
+    Colorscale,
+    weighted_histogram,
+    colorscale_to_cmap,
+    imshow,
+    line,
+)
 from gbmi.analysis_tools.utils import pm_round
 
 from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
@@ -154,18 +162,89 @@ def compute_OV(
         OV = (W_E + W_pos.mean(dim=0)) @ W_V[0, 0] @ W_O[0, 0] @ W_U
         W_E_pos_suffix = ""
     result: dict = {"xaxis": "output logit token", "yaxis": "input token"}
+    strings = {
+        "html": (
+            "<br>",
+            "",
+            "W<sub>E</sub>",
+            "W<sub>U</sub>",
+            "W<sub>pos</sub>",
+            "W<sub>O</sub>",
+            "W<sub>V</sub>",
+            "<sup>T</sup>",
+            "𝔼",
+            "<sub>dim=0</sub>",
+            "<sub>p</sub>",
+            "OV",
+            ".diag()",
+            "None",
+        ),
+        "latex": (
+            "\n",
+            "$",
+            "W_E",
+            "W_U",
+            r"W_{\mathrm{pos}}",
+            "W_O",
+            "W_V",
+            "^T",
+            r"\mathbb{E}",
+            r"_{\mathrm{dim}=0}",
+            "_p",
+            r"\mathrm{OV}",
+            r"\mathrm{.diag}()",
+            r"\mathrm{None}",
+        ),
+    }
+
     if not centered:
         result.update(
             {
                 "data": OV.numpy(),
-                "title": f"Attention Computation: (W<sub>E</sub>{W_E_pos_suffix} + 𝔼<sub>p</sub>W<sub>pos</sub>{W_E_pos_suffix}[p])W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>",
+                "title": {
+                    key: f"Attention Computation: {smath}({sWe}{W_E_pos_suffix} + {sE}{s_p}{sWpos}{W_E_pos_suffix}[p]){sWv}{sWo}{sWu}{smath}"
+                    for key, (
+                        nl,
+                        smath,
+                        sWe,
+                        sWu,
+                        sWpos,
+                        sWo,
+                        sWv,
+                        sT,
+                        sE,
+                        s_dim0,
+                        s_p,
+                        sOV,
+                        sdiag,
+                        sNone,
+                    ) in strings.items()
+                },
             }
         )
         return result
     result.update(
         {
             "data": (OV - OV.diag()[:, None]).numpy(),
-            "title": f"Attention Computation (centered)<br>OV := (W<sub>E</sub>{W_E_pos_suffix} + 𝔼<sub>dim=0</sub>W<sub>pos</sub>{W_E_pos_suffix})W<sub>V</sub>W<sub>O</sub>W<sub>U</sub><br>OV - OV.diag()[:, None]",
+            "title": {
+                key: f"Attention Computation (centered){nl}{smath}{sOV} := ({sWe}{W_E_pos_suffix} + {sE}{s_dim0}{sWpos}{W_E_pos_suffix}){sWv}{sWo}{sWu}{smath}{nl}{smath}{sOV} - {sOV}{sdiag}[:, {sNone}]{smath}"
+                for key, (
+                    nl,
+                    smath,
+                    sWe,
+                    sWu,
+                    sWpos,
+                    sWo,
+                    sWv,
+                    sT,
+                    sE,
+                    s_dim0,
+                    s_p,
+                    sOV,
+                    sdiag,
+                    sNone,
+                ) in strings.items()
+            },
         }
     )
     return result
@@ -272,55 +351,80 @@ def display_basic_interpretation(
     OV_colorscale: Colorscale = "Picnic_r",
     QK_colorscale: Colorscale = "Plasma",  # "Sunsetdark_r"
     QK_SVD_colorscale: Colorscale = "Picnic_r",
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
 ) -> dict[str, go.Figure]:
+    QK_cmap = colorscale_to_cmap(QK_colorscale)
+    QK_SVD_cmap = colorscale_to_cmap(QK_SVD_colorscale)
+    OV_cmap = colorscale_to_cmap(OV_colorscale)
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
     QK = compute_QK(model, includes_eos=includes_eos)
+    title_kind = {"plotly": "html", "matplotlib": "latex"}[plot_with]
     result = {}
     if includes_eos:
-        fig_qk = px.line(
-            {"QK": QK["data"]},
-            title=QK["title"]["html"],
-            labels={
-                "index": QK["xaxis"],
-                "variable": "",
-                "value": QK["yaxis"],
-            },
-        )
-        fig_qk.show(renderer=renderer)
+        match plot_with:
+            case "plotly":
+                fig_qk = px.line(
+                    {"QK": QK["data"]},
+                    title=QK["title"]["html"],
+                    labels={
+                        "index": QK["xaxis"],
+                        "variable": "",
+                        "value": QK["yaxis"],
+                    },
+                )
+                fig_qk.show(renderer=renderer)
+            case "matplotlib":
+                fig_qk, ax = plt.subplots()
+                ax.plot(QK["data"])
+                ax.set_title(QK["title"]["latex"])
+                ax.set_xlabel(QK["xaxis"])
+                ax.set_ylabel(QK["yaxis"])
+                fig_qk.show()
     else:
-        fig_qk = px.imshow(
+        fig_qk = imshow(
             QK["data"],
-            title=QK["title"]["html"],
-            color_continuous_scale=QK_colorscale,
-            labels={"x": QK["xaxis"], "y": QK["yaxis"]},
+            title=QK["title"][title_kind],
+            xlabel=QK["xaxis"],
+            ylabel=QK["yaxis"],
+            colorscale=QK_colorscale,
+            plot_with=plot_with,
+            renderer=renderer,
         )
-        fig_qk.show(renderer=renderer)
         _, figs = find_size_and_query_direction(
-            model, plot_heatmaps=True, renderer=renderer, colorscale=QK_SVD_colorscale
+            model,
+            plot_heatmaps=True,
+            renderer=renderer,
+            colorscale=QK_SVD_colorscale,
+            plot_with=plot_with,
         )
+        assert figs is not None
         for k, fig in figs.items():
             result[f"EQKE {k}"] = fig
     result["EQKE"] = fig_qk
 
     if include_uncentered:
         OV = compute_OV(model, centered=False, includes_eos=includes_eos)
-        fig_ov = px.imshow(
+        fig_ov = imshow(
             OV["data"],
-            title=OV["title"],
-            color_continuous_scale=OV_colorscale,
-            color_continuous_midpoint=0,
-            labels={"x": OV["xaxis"], "y": OV["yaxis"]},
+            title=OV["title"][title_kind],
+            xlabel=OV["xaxis"],
+            ylabel=OV["yaxis"],
+            colorscale=OV_colorscale,
+            plot_with=plot_with,
+            renderer=renderer,
         )
         result["EVOU"] = fig_ov
-        fig_ov.show(renderer=renderer)
     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
-    fig_ov = px.imshow(
+    fig_ov = imshow(
         OV["data"],
-        title=OV["title"],
-        color_continuous_scale=OV_colorscale,
-        labels={"x": OV["xaxis"], "y": OV["yaxis"]},
+        title=OV["title"][title_kind],
+        xlabel=OV["xaxis"],
+        ylabel=OV["yaxis"],
+        colorscale=OV_colorscale,
+        plot_with=plot_with,
+        renderer=renderer,
     )
     result["EVOU-centered"] = fig_ov
     fig_ov.show(renderer=renderer)

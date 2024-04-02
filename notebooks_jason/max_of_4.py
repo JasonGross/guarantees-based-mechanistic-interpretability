@@ -24,6 +24,7 @@ from PIL import Image
 import io
 import dataclasses
 import math
+import glob
 from scipy import stats
 from contextlib import contextmanager
 from collections import defaultdict
@@ -2288,7 +2289,9 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
 
 
 errs = []
-
+for file_path in LATEX_FIGURE_PATH.glob("*.png"):
+    file_path.unlink()
+    print(f"Deleted: {file_path}")
 for k, fig in latex_figures.items():
     if isinstance(fig, go.Figure):
         fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts

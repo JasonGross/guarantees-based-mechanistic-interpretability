@@ -1267,7 +1267,7 @@ if DISPLAY_PLOTS:
 # %%
 if DISPLAY_PLOTS:
     latex_figures["EQKE-scatter-attention-difference-vs-gap"] = (
-        scatter_attention_difference_vs_gap(model, renderer="png")
+        scatter_attention_difference_vs_gap(model, renderer=RENDERER)
     )
     for duplicate_by_sequence_count in [False, True]:
         fig, (flat_diffs, duplication_factors) = hist_attention_difference_over_gap(

@@ -441,7 +441,7 @@ def display_basic_interpretation(
             pos_QK["data"]["QK"],
             title=pos_QK["title"],
             colorscale=QK_colorscale,
-            plot_width=plot_with,
+            plot_with=plot_with,
             xaxis=pos_QK["xaxis"],
             yaxis=pos_QK["yaxis"],
             renderer=renderer,

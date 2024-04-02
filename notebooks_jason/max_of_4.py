@@ -135,7 +135,9 @@ except:
 # %%
 DISPLAY_PLOTS: bool = True  # @param {type:"boolean"}
 RENDERER: Optional[str] = "png"  # @param ["png", None]
-PLOT_WITH: Literal["plotly", "matplotlib"] = "plotly"  # @param ["plotly", "matplotlib"]
+PLOT_WITH: Literal["plotly", "matplotlib"] = (  # @param ["plotly", "matplotlib"]
+    "matplotlib"
+)
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}

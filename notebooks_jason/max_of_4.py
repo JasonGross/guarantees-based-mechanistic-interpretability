@@ -2240,6 +2240,16 @@ with open(LATEX_GIT_DIFF_PATH, "w") as f:
 
 
 # %%
+# @title export LaTeX code
+with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
+    f.write(
+        re.sub(
+            r"\\documentclass{[^}]*}" + "\n*", "", tikzplotlib.Flavors.latex.preamble()
+        )
+    )
+
+
+# %%
 # @title export LaTeX figures
 @contextmanager
 def texify_title(fig: go.Figure, show: bool = False, renderer=None):
@@ -2294,12 +2304,6 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
             fig.update_layout(title_text=orig_title)
 
 
-with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
-    f.write(
-        re.sub(
-            r"\documentclass{[^}]*}" + "\n*", "", tikzplotlib.Flavors.latex.preamble()
-        )
-    )
 errs = []
 for file_path in LATEX_FIGURE_PATH.glob("*.png"):
     file_path.unlink()

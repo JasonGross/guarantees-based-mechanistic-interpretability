@@ -56,6 +56,7 @@ $(eval $(call add_target,test-load-experiments,max-of-2-grok,$(PYTHON) -m gbmi.e
 $(eval $(call add_target,test-load-experiments,max-of-2-grok-17,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 3000 --validate-every-epochs 1 --force-adjacent-gap 0$(comma)1$(comma)2$(comma)17 --use-log1p --lr 0.001 --betas 0.9 0.98 --weight-decay 1.0 --optimizer AdamW --training-ratio 0.099609375 --log-matrix-interp --checkpoint-every-epochs 1 --batch-size 408 --log-every-n-steps 1 --use-end-of-sequence $(FORCE_LOAD)))
 $(eval $(call add_target,test-load-experiments,max-of-2-grok-17-kaiming,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 2 --deterministic --train-for-epochs 3000 --validate-every-epochs 1 --force-adjacent-gap 0$(comma)1$(comma)2$(comma)17 --use-log1p --lr 0.001 --betas 0.9 0.98 --weight-decay 1.0 --optimizer AdamW --training-ratio 0.099609375 --log-matrix-interp --checkpoint-every-epochs 1 --batch-size 408 --log-every-n-steps 1 --use-end-of-sequence --use-kaiming-init $(FORCE_LOAD)))
 $(eval $(call add_target,test-load-experiments,max-of-4-123,$(PYTHON) -m gbmi.exp_max_of_n.train --max-of 4 --deterministic --seed 123 --train-for-steps 3000 --lr 0.001 --betas 0.9 0.999 --optimizer AdamW --use-log1p $(FORCE_LOAD)))
+$(eval $(call add_target,test-load-experiments,indhead-abcab8-1h,$(PYTHON) -m gbmi.exp_indhead.run_training_abcab8_1h $(FORCE_LOAD)))
 
 test-load-experiments-print-report test-load-experiments-report:
 	@$(MAKE) -f $(SELF) --no-print-directory test-load-experiments-print-report-success

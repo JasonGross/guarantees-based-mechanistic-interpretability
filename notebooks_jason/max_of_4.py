@@ -2295,7 +2295,11 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
 
 
 with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
-    f.write(tikzplotlib.Flavors.latex.preamble())
+    f.write(
+        re.sub(
+            r"\documentclass{[^}]*}" + "\n*", "", tikzplotlib.Flavors.latex.preamble()
+        )
+    )
 errs = []
 for file_path in LATEX_FIGURE_PATH.glob("*.png"):
     file_path.unlink()

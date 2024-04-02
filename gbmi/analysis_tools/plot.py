@@ -93,7 +93,7 @@ def imshow_matplotlib(
         ax=ax,
         center=0.0,
         cmap=cmap,
-        cbar_kws={"label": "Scale"},
+        # cbar_kws={"label": "Scale"},
     )
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)

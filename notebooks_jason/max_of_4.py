@@ -2074,6 +2074,7 @@ with torch.no_grad():
                     analysis_subcubic.find_min_gaps_with_EQKE(
                         model=model,
                         **find_min_gaps_kwargs,
+                        **size_and_query_directions_kwargs,
                         tricks=cfg,
                         use_exact_EQKE=use_exact_EQKE,
                         position=1,

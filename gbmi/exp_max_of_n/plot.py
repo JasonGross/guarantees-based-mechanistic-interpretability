@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, Union
 import numpy as np
 import torch
 from torch import Tensor
@@ -353,7 +353,7 @@ def display_basic_interpretation(
     QK_SVD_colorscale: Colorscale = "Picnic_r",
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
-) -> dict[str, go.Figure]:
+) -> dict[str, Union[go.Figure, matplotlib.figure.Figure]]:
     QK_cmap = colorscale_to_cmap(QK_colorscale)
     QK_SVD_cmap = colorscale_to_cmap(QK_SVD_colorscale)
     OV_cmap = colorscale_to_cmap(OV_colorscale)
@@ -386,8 +386,8 @@ def display_basic_interpretation(
         fig_qk = imshow(
             QK["data"],
             title=QK["title"][title_kind],
-            xlabel=QK["xaxis"],
-            ylabel=QK["yaxis"],
+            xaxis=QK["xaxis"],
+            yaxis=QK["yaxis"],
             colorscale=QK_colorscale,
             plot_with=plot_with,
             renderer=renderer,
@@ -409,8 +409,8 @@ def display_basic_interpretation(
         fig_ov = imshow(
             OV["data"],
             title=OV["title"][title_kind],
-            xlabel=OV["xaxis"],
-            ylabel=OV["yaxis"],
+            xaxis=OV["xaxis"],
+            yaxis=OV["yaxis"],
             colorscale=OV_colorscale,
             plot_with=plot_with,
             renderer=renderer,
@@ -420,14 +420,13 @@ def display_basic_interpretation(
     fig_ov = imshow(
         OV["data"],
         title=OV["title"][title_kind],
-        xlabel=OV["xaxis"],
-        ylabel=OV["yaxis"],
+        xaxis=OV["xaxis"],
+        yaxis=OV["yaxis"],
         colorscale=OV_colorscale,
         plot_with=plot_with,
         renderer=renderer,
     )
     result["EVOU-centered"] = fig_ov
-    fig_ov.show(renderer=renderer)
 
     pos_QK = compute_QK_by_position(model, includes_eos=includes_eos)
     if includes_eos:
@@ -438,13 +437,15 @@ def display_basic_interpretation(
         )
         fig_qk.show(renderer=renderer)
     else:
-        fig_qk = px.imshow(
+        fig_qk = imshow(
             pos_QK["data"]["QK"],
             title=pos_QK["title"],
-            color_continuous_scale=QK_colorscale,
-            labels={"x": pos_QK["xaxis"], "y": pos_QK["yaxis"]},
+            colorscale=QK_colorscale,
+            plot_width=plot_with,
+            xaxis=pos_QK["xaxis"],
+            yaxis=pos_QK["yaxis"],
+            renderer=renderer,
         )
-        fig_qk.show(renderer=renderer)
     result["EQKP"] = fig_qk
 
     irrelevant = compute_irrelevant(
@@ -452,14 +453,15 @@ def display_basic_interpretation(
     )
     for key, data in irrelevant["data"].items():
         if len(data.shape) == 2:
-            fig = px.imshow(
+            fig = imshow(
                 data,
                 title=key,
-                color_continuous_scale=OV_colorscale,
-                labels={"x": irrelevant["xaxis"], "y": irrelevant["yaxis"]},
+                colorscale=OV_colorscale,
+                xaxis=irrelevant["xaxis"],
+                yaxis=irrelevant["yaxis"],
+                renderer=renderer,
             )
             result[f"irrelevant_{key}"] = fig
-            fig.show(renderer=renderer)
     fig = px.scatter(
         {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
         title=irrelevant["title"],

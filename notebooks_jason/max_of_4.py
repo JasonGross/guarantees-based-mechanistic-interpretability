@@ -27,6 +27,8 @@ import math
 from scipy import stats
 from contextlib import contextmanager
 from collections import defaultdict
+import matplotlib.pyplot as plt
+import seaborn as sns
 import tikzplotly
 import tikzplotlib
 import matplotlib
@@ -43,6 +45,7 @@ from typing import (
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+
 from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
     hist_attention_difference_over_gap,
@@ -53,6 +56,8 @@ from gbmi.analysis_tools.plot import (
     weighted_histogram,
     Colorscale,
     colorscale_to_cmap,
+    imshow,
+    line,
 )
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.utils import pm_round, pm_mean_std
@@ -879,8 +884,9 @@ if DISPLAY_PLOTS:
 @torch.no_grad()
 def make_better_slides_plots_00(
     model: HookedTransformer,
-    OV_colorscale: str = "Picnic_r",
-    QK_colorscale: str = "Plasma",
+    OV_colorscale: Colorscale = "Picnic_r",
+    QK_colorscale: Colorscale = "Plasma",
+    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
     renderer: Optional[str] = None,
 ) -> dict[str, go.Figure]:
     W_E, W_pos, W_U, W_V, W_O, W_Q, W_K = (
@@ -911,38 +917,48 @@ def make_better_slides_plots_00(
         ("OV", OV_zmax, OV_colorscale),
         ("QK", QK_zmax, QK_colorscale),
     ):
-        results[f"{key}-colorbar"] = fig = go.Figure(
-            data=go.Heatmap(
-                z=[[0]],
-                colorscale=colorscale,
-                showscale=True,
-                zmin=-zmax,
-                zmax=zmax,
-                zmid=0,
-                colorbar=dict(x=0),
-            )
-        )
-        fig.add_trace(
-            go.Heatmap(
-                z=[[0]],
-                colorscale="Picnic_r",
-                showscale=False,
-                zmin=-zmax,
-                zmax=zmax,
-                zmid=0,
-            )
-        )
-        fig.update_layout(
-            width=75,
-            xaxis_showgrid=False,
-            yaxis_showgrid=False,
-            xaxis_zeroline=False,
-            yaxis_zeroline=False,
-            xaxis_visible=False,
-            yaxis_visible=False,
-            margin=dict(l=0, r=0, b=0, t=0),
-        )
-        fig.show(renderer)
+        match plot_with:
+            case "plotly":
+                results[f"{key}-colorbar"] = fig = go.Figure(
+                    data=go.Heatmap(
+                        z=[[0]],
+                        colorscale=colorscale,
+                        showscale=True,
+                        zmin=-zmax,
+                        zmax=zmax,
+                        zmid=0,
+                        colorbar=dict(x=0),
+                    )
+                )
+                fig.add_trace(
+                    go.Heatmap(
+                        z=[[0]],
+                        colorscale="Picnic_r",
+                        showscale=False,
+                        zmin=-zmax,
+                        zmax=zmax,
+                        zmid=0,
+                    )
+                )
+                fig.update_layout(
+                    width=75,
+                    xaxis_showgrid=False,
+                    yaxis_showgrid=False,
+                    xaxis_zeroline=False,
+                    yaxis_zeroline=False,
+                    xaxis_visible=False,
+                    yaxis_visible=False,
+                    margin=dict(l=0, r=0, b=0, t=0),
+                )
+                fig.show(renderer)
+            case "matplotlib":
+                cmap = colorscale_to_cmap(colorscale)
+                results[f"{key}-colorbar"] = fig = plt.figure(figsize=(0.5, 4))
+                norm = matplotlib.colors.Normalize(vmin=-10, vmax=10)
+                cbar = matplotlib.colorbar.ColorbarBase(
+                    plt.gca(), cmap=cmap, norm=norm, orientation="vertical"
+                )
+                plt.show()
     for m, title, colorscale, zmax, labels in (
         (
             EPU,
@@ -981,29 +997,58 @@ def make_better_slides_plots_00(
         ),
     ):
         key = title
-        results[key] = fig = px.imshow(
-            m,
-            title=title,
-            color_continuous_scale=colorscale,
-            color_continuous_midpoint=0,
-            zmin=-zmax,
-            zmax=zmax,
-            labels=labels,
-        )
-        fig.show(renderer)
-        # remove title
-        fig.update_layout(title_text="")
-        fig.update(layout_coloraxis_showscale=False)
-        # crop whitespace
-        fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-        trim_plotly_figure(fig)
-        fig.show(renderer)
+        match plot_with:
+            case "plotly":
+                results[key] = fig = px.imshow(
+                    m,
+                    title=title,
+                    color_continuous_scale=colorscale,
+                    color_continuous_midpoint=0,
+                    zmin=-zmax,
+                    zmax=zmax,
+                    labels=labels,
+                )
+                fig.show(renderer)
+                # remove title
+                fig.update_layout(title_text="")
+                fig.update(layout_coloraxis_showscale=False)
+                # crop whitespace
+                fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+                trim_plotly_figure(fig)
+                fig.show(renderer)
+            case "matplotlib":
+                cmap = colorscale_to_cmap(colorscale)
+                fig, ax = plt.subplots()
+                results[key] = fig
+                cbar_ax = sns.heatmap(
+                    m, cmap=cmap, center=0, vmin=-zmax, vmax=zmax, cbar=True, ax=ax
+                )
+                to_latex = (
+                    lambda s: re.sub(r"([a-zA-Z]*)<sub>([^>]*)</sub>", r"$\1_{\2}$", s)
+                    .replace("position j", "position $j$")
+                    .replace("key position k", "position $k$")
+                )
+                ax.set_xlabel(to_latex(labels["x"]))
+                ax.set_ylabel(to_latex(labels["y"]))
+                plt.tight_layout()
+                plt.show()
+                ax.set_title("")
+                fig.colorbar(cbar_ax.collections[0], ax=ax, use_gridspec=False).remove()
+                plt.tight_layout()
+                plt.show()
+
     return results
 
 
 ## %%
 if DISPLAY_PLOTS:
-    figs = make_better_slides_plots_00(model, renderer=RENDERER)
+    figs = make_better_slides_plots_00(
+        model,
+        OV_colorscale=default_OV_colorscale,
+        QK_colorscale=default_QK_colorscale,
+        plot_with=PLOT_WITH,
+        renderer=RENDERER,
+    )
     for k, fig in figs.items():
         latex_figures[f"Decomposition-{k}"] = fig
 
@@ -1397,19 +1442,16 @@ def display_EQKE_SVD_analysis(
     results_float["EQKESecondSingularFloat"] = S[1].item()
     results_float["EQKEThirdSingularFloat"] = S[2].item()
 
-    fig = px.imshow(
-        (
-            EQKE_query_key
-            + err_accumulator
-            + W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-        ).numpy(),
-        color_continuous_scale=QK_colorscale,
-        color_continuous_midpoint=0,
+    fig = imshow(
+        EQKE_exact,
+        colorscale=QK_colorscale,
         title="EQKE",
-        labels={"x": "key token", "y": "query token"},
+        xaxis="key token",
+        yaxis="query token",
+        plot_with=PLOT_WITH,
+        renderer=renderer,
     )
     results["EQKE"] = fig
-    fig.show(renderer)
     fig = px.imshow(
         EQKE_query_key.numpy(),
         title="EQKE<sub>1</sub>",

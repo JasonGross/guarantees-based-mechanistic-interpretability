@@ -244,7 +244,7 @@ def verify_proof(
         EQKE_err_upper_bound = torch.tensor(0)
     else:
         print_complexity(f"Complexity of using approximate EQKE: O(d_vocab^2)")
-        cur_EQKE = EQKE_query_key
+        cur_EQKE = EQKE_query_key + 0.0
         EQKE_err_upper_bound = err_upper_bound
 
     extreme_right_attention = add_time(

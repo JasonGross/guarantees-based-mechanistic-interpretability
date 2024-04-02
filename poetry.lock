@@ -4553,13 +4553,13 @@ webcolors = "*"
 
 [[package]]
 name = "tikzplotly"
-version = "0.1.2"
+version = "0.1.3"
 description = "Convert plotly figures to LaTeX / tikz figures"
 optional = false
 python-versions = "*"
 files = [
-    {file = "tikzplotly-0.1.2-py3-none-any.whl", hash = "sha256:f7de60501d7ef966ea198697c5c07b8a6319689d81cafac09b3a696c3a00983c"},
-    {file = "tikzplotly-0.1.2.tar.gz", hash = "sha256:d3a99addb16980bf2409117706846bf7f396f3811888dc0e15f8f8083f56b8c5"},
+    {file = "tikzplotly-0.1.3-py3-none-any.whl", hash = "sha256:520f366bc515232d21d84d126ae55f9fa1dbc0a1f3ee4332cb9551b5a3452467"},
+    {file = "tikzplotly-0.1.3.tar.gz", hash = "sha256:43d11ac820459aa492da20d95b756a10262f431d896847d2d7a7a6099ea7fe7f"},
 ]
 
 [package.dependencies]

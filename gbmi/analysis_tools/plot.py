@@ -63,6 +63,11 @@ def imshow_plotly(
     renderer: Optional[str] = None,
     xaxis: str = "",
     yaxis: str = "",
+    zmin: Optional[float] = None,
+    zmax: Optional[float] = None,
+    showxticklabels: bool = True,
+    showyticklabels: bool = True,
+    showticklabels: bool = True,
     colorscale: Colorscale = "RdBu",
     figsize: Optional[Tuple[float, float]] = None,
     **kwargs,
@@ -72,8 +77,12 @@ def imshow_plotly(
         color_continuous_midpoint=0.0,
         color_continuous_scale=colorscale,
         labels={"x": xaxis, "y": yaxis},
+        zmin=zmin,
+        zmax=zmax,
         **kwargs,
     )
+    fig.update_xaxes(showticklabels=showticklabels and showxticklabels)
+    fig.update_yaxes(showticklabels=showticklabels and showyticklabels)
     fig.show(renderer)
     return fig
 
@@ -86,7 +95,12 @@ def imshow_matplotlib(
     yaxis: str = "",
     colorscale: Colorscale = "RdBu",
     title: Optional[str] = None,
+    showxticklabels: bool = True,
+    showyticklabels: bool = True,
+    showticklabels: bool = True,
     figsize: Optional[Tuple[float, float]] = None,
+    zmin: Optional[float] = None,
+    zmax: Optional[float] = None,
     **kwargs,
 ):
     cmap = colorscale_to_cmap(colorscale)
@@ -96,8 +110,12 @@ def imshow_matplotlib(
         ax=ax,
         center=0.0,
         cmap=cmap,
+        vmin=zmin,
+        vmax=zmax,
         # cbar_kws={"label": "Scale"},
     )
+    ax.set_xticklabels(ax.get_xticklabels(), visible=showticklabels and showxticklabels)
+    ax.set_yticklabels(ax.get_yticklabels(), visible=showticklabels and showyticklabels)
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
     if title is not None:
@@ -225,7 +243,7 @@ def line(
             )
 
 
-def scatter(
+def scatter_plotly(
     x,
     y,
     xaxis: str = "",
@@ -241,6 +259,57 @@ def scatter(
     )
     fig.show(renderer)
     return fig
+
+
+def scatter_matplotlib(
+    x,
+    y,
+    xaxis: str = "",
+    yaxis: str = "",
+    caxis: str = "",
+    renderer: Optional[str] = None,
+    **kwargs,
+):
+    x = utils.to_numpy(x)
+    y = utils.to_numpy(y)
+    fig, ax = plt.subplots()
+    ax.scatter(x, y)
+    ax.set_xlabel(xaxis)
+    ax.set_ylabel(yaxis)
+    return fig
+
+
+def scatter(
+    x,
+    y,
+    xaxis: str = "",
+    yaxis: str = "",
+    caxis: str = "",
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+    **kwargs,
+):
+    match plot_with:
+        case "plotly":
+            return scatter_plotly(
+                x,
+                y,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                caxis=caxis,
+                renderer=renderer,
+                **kwargs,
+            )
+        case "matplotlib":
+            return scatter_matplotlib(
+                x,
+                y,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                caxis=caxis,
+                renderer=renderer,
+                **kwargs,
+            )
 
 
 def hist_plotly(

@@ -15,6 +15,7 @@ from gbmi.analysis_tools.plot import (
     colorscale_to_cmap,
     imshow,
     line,
+    scatter,
 )
 from gbmi.analysis_tools.utils import pm_round
 from gbmi.analysis_tools.plot import hist
@@ -661,16 +662,18 @@ def scatter_attention_difference_vs_gap(
     renderer: Optional[str] = None,
 ) -> Union[go.Figure, matplotlib.figure.Figure]:
     _, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
-    assert plot_with == "plotly", "Only plotly is supported right now"
-    fig = px.scatter(
+    title_kind = {"plotly": "html", "matplotlib": "latex"}[plot_with]
+    smath = "" if title_kind == "html" else "$"
+    sdhead = "d<sub>head</sub>" if title_kind == "html" else r"d_{\mathrm{head}}"
+    spowmhalf = "<sup>-½</sup>" if title_kind == "html" else r"^{-\sfrac{1}{2}}"
+    fig = scatter(
         x=flat_idxs,
         y=flat_diffs,
-        labels={
-            "x": "i - j",
-            "y": "d<sub>head</sub><sup>-½</sup>((E+P)QKE[i] - (E+P)QKE[j])",
-        },
+        xaxis=f"{smath}i - j{smath}",
+        yaxis=f"{smath}{sdhead}{spowmhalf}((E+P)QKE[i] - (E+P)QKE[j]){smath}",
+        plot_with=plot_with,
+        renderer=renderer,
     )
-    fig.show(renderer)
     return fig
 
 

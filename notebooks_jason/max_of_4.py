@@ -1245,6 +1245,7 @@ if DISPLAY_PLOTS:
             hist_EVOU_max_minus_diag_logit_diff(
                 model,
                 duplicate_by_sequence_count=duplicate_by_sequence_count,
+                plot_with=PLOT_WITH,
                 renderer=RENDERER,
             )
         )
@@ -1275,7 +1276,9 @@ if DISPLAY_PLOTS:
 # %%
 if DISPLAY_PLOTS:
     latex_figures["EQKE-scatter-attention-difference-vs-gap"] = (
-        scatter_attention_difference_vs_gap(model, renderer=RENDERER)
+        scatter_attention_difference_vs_gap(
+            model, plot_with=PLOT_WITH, renderer=RENDERER
+        )
     )
     for duplicate_by_sequence_count in [False, True]:
         fig, (flat_diffs, duplication_factors) = hist_attention_difference_over_gap(
@@ -1407,6 +1410,7 @@ def display_EQKE_SVD_analysis(
     *,
     QK_colorscale: Colorscale = "Plasma",
     QK_SVD_colorscale: Colorscale = "Picnic_r",
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
 ) -> Tuple[dict[str, go.Figure], dict[str, float]]:
     results = {}
@@ -1456,7 +1460,7 @@ def display_EQKE_SVD_analysis(
         title="EQKE",
         xaxis="key token",
         yaxis="query token",
-        plot_with=PLOT_WITH,
+        plot_with=plot_with,
         renderer=renderer,
     )
     results["EQKE"] = fig
@@ -1561,23 +1565,21 @@ def display_EQKE_SVD_analysis(
         (W_K_errT, "K<sup>⟂</sup>", "WKkPerp"),
         (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>", "WEkkPerp"),
     ):
-        fig = px.imshow(
-            m.numpy(),
+        fig = imshow(
+            m,
             title=s,
-            color_continuous_scale=QK_colorscale,
-            color_continuous_midpoint=0,
+            colorscale=QK_colorscale,
             zmax=zmax,
             zmin=-zmax,
+            showticklabels=False,
         )
-        fig.update_xaxes(showticklabels=False)
-        fig.update_yaxes(showticklabels=False)
-        fig.show(renderer)
         results[key] = fig
         fig = analyze_svd(
             m,
             scale_by_singular_value=False,
             descr=s,
             colorscale=QK_SVD_colorscale,
+            plot_with=PLOT_WITH,
             renderer=renderer,
         )
         results[key + "-svd"] = fig
@@ -1605,7 +1607,13 @@ def display_EQKE_SVD_analysis(
 
 
 if DISPLAY_PLOTS:
-    figs, values = display_EQKE_SVD_analysis(model, renderer=RENDERER)
+    figs, values = display_EQKE_SVD_analysis(
+        model,
+        plot_with=PLOT_WITH,
+        QK_colorscale=default_QK_colorscale,
+        QK_SVD_colorscale=default_QK_SVD_colorscale,
+        renderer=RENDERER,
+    )
     key_pairs = {
         k: k for k in ("WKkPerp-svd", "WQqPerp-svd", "WEqqPerp-svd", "WEkkPerp-svd")
     } | {"EQKE_err": "EQKE-err", "EQKE_err_svd": "EQKE-err-svd"}

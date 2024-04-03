@@ -17,6 +17,7 @@ from gbmi.analysis_tools.plot import (
     line,
 )
 from gbmi.analysis_tools.utils import pm_round
+from gbmi.analysis_tools.plot import hist
 
 from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
 from gbmi.verification_tools.l1h1 import all_EQKE, all_EVOU, all_PVOU
@@ -551,8 +552,10 @@ def hist_EVOU_max_minus_diag_logit_diff(
     duplicate_by_sequence_count: bool = True,
     renderer: Optional[str] = None,
     num_bins: Optional[int] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
 ) -> Tuple[
-    go.Figure, Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]]  # noqa: F821
+    Union[go.Figure, matplotlib.figure.Figure],
+    Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]],  # noqa: F821
 ]:
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
@@ -574,26 +577,50 @@ def hist_EVOU_max_minus_diag_logit_diff(
     )
     min, max = max_logit_minus_diag.min().item(), max_logit_minus_diag.max().item()
     mid, spread = (min + max) / 2, (max - min) / 2
+    title_kind = "html" if plot_with == "plotly" else "latex"
+    sEVOU = "EVOU" if title_kind == "html" else r"\mathrm{EVOU}"
+    smath = "" if title_kind == "html" else "$"
+    sT = "<sup>T</sup>" if title_kind == "html" else "^T"
+    nl = "<br>" if title_kind == "html" else "\n"
+    sWE = "W<sub>E</sub>" if title_kind == "html" else r"W_E"
+    sWV = "W<sub>V</sub>" if title_kind == "html" else r"W_V"
+    sWO = "W<sub>O</sub>" if title_kind == "html" else r"W_O"
+    sWU = "W<sub>U</sub>" if title_kind == "html" else r"W_U"
+    sdiag = ".diag()" if title_kind == "html" else r"\mathrm{.diag}()"
+    smax = "max" if title_kind == "html" else r"\max"
+    s_i = "<sub>i</sub>" if title_kind == "html" else r"_i"
+    xbar = "x̄" if title_kind == "html" else r"\bar{x}"
+    sigma = "σ" if title_kind == "html" else r"\sigma"
+    pm = "±" if title_kind == "html" else r"\pm"
+    sNone = "None" if title_kind == "html" else r"\mathrm{None}"
+    sdotmax = ".max" if title_kind == "html" else r"\mathrm{.max}"
+    sdim = "dim" if title_kind == "html" else r"\mathrm{dim}"
     title = (
-        f"EVOU := W<sub>E</sub>W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>"
+        f"{smath}{sEVOU} := {sWE}{sWV}{sWO}{sWU}{smath}"
         f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
-        f"<br>(EVOU - EVOU.diag()[:,None]).max(dim=-1) (excluding diagonal)"
-        f"<br>x̄±σ: {pm_round(mean, std)}; range: {pm_round(mid, spread)}"
+        f"{nl}{smath}({sEVOU} - {sEVOU}{sdiag}[:,{sNone}]){sdotmax}({sdim}=-1){smath} (excluding diagonal)"
+        f"{nl}{smath}{xbar}{pm}{sigma}{smath}: {smath}{pm_round(mean, std, sep=f' {pm} ')}{smath}; range: {smath}{pm_round(mid, spread,sep=f' {pm} ')}{smath}"
     )
     if not duplicate_by_sequence_count:
-        fig = px.histogram(
-            {"": max_logit_minus_diag},
+        fig = hist(
+            max_logit_minus_diag,
             title=title,
-            labels={"value": "logit - diag", "variable": ""},
+            xaxis="logit - diag",
+            column_names="",
+            variable="",
+            renderer=renderer,
+            plot_with=plot_with,
         )
     else:
         fig = weighted_histogram(
             max_logit_minus_diag.numpy(),
             duplication_factors.numpy(),
             title=title,
-            labels={"x": "logit - diag", "y": "count * # sequences with given max"},
+            xaxis="logit - diag",
+            yaxis="count * # sequences with given max",
+            renderer=renderer,
+            plot_with=plot_with,
         )
-    fig.show(renderer=renderer)
     return fig, (max_logit_minus_diag, duplication_factors)
 
 
@@ -629,9 +656,12 @@ def compute_attention_difference_vs_gap(
 
 
 def scatter_attention_difference_vs_gap(
-    model: HookedTransformer, renderer: Optional[str] = None
-) -> go.Figure:
+    model: HookedTransformer,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+) -> Union[go.Figure, matplotlib.figure.Figure]:
     _, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
+    assert plot_with == "plotly", "Only plotly is supported right now"
     fig = px.scatter(
         x=flat_idxs,
         y=flat_diffs,
@@ -649,10 +679,12 @@ def hist_attention_difference_over_gap(
     model: HookedTransformer,
     *,
     duplicate_by_sequence_count: bool = True,
-    renderer: Optional[str] = None,
     num_bins: Optional[int] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
 ) -> Tuple[
-    go.Figure, Tuple[Float[Tensor, "batch"], Float[Tensor, "batch"]]  # noqa: F821
+    Union[go.Figure, matplotlib.figure.Figure],
+    Tuple[Float[Tensor, "batch"], Float[Tensor, "batch"]],  # noqa: F821
 ]:
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
@@ -671,18 +703,43 @@ def hist_attention_difference_over_gap(
     std = np.average(
         (flat_diffs - mean).numpy() ** 2, weights=duplication_factors.numpy()
     )
+    title_kind = "html" if plot_with == "plotly" else "latex"
+    rm = lambda s: s if title_kind == "html" else r"\mathrm{" + s + "}"
+    smath = "" if title_kind == "html" else "$"
+    sT = "<sup>T</sup>" if title_kind == "html" else "^T"
+    nl = "<br>" if title_kind == "html" else "\n"
+    sWE = "W<sub>E</sub>" if title_kind == "html" else r"W_E"
+    sWQ = "W<sub>Q</sub>" if title_kind == "html" else r"W_Q"
+    sWK = "W<sub>K</sub>" if title_kind == "html" else r"W_K"
+    sWpos = "W<sub>pos</sub>" if title_kind == "html" else r"W_{\mathrm{pos}}"
+    sdhead = "d<sub>head</sub>" if title_kind == "html" else r"d_{\mathrm{head}}"
+    sdiag = ".diag()" if title_kind == "html" else r"\mathrm{.diag}()"
+    smax = "max" if title_kind == "html" else r"\max"
+    s_i = "<sub>i</sub>" if title_kind == "html" else r"_i"
+    xbar = "x̄" if title_kind == "html" else r"\bar{x}"
+    sigma = "σ" if title_kind == "html" else r"\sigma"
+    pm = "±" if title_kind == "html" else r"\pm"
+    sNone = "None" if title_kind == "html" else r"\mathrm{None}"
+    sdotmax = ".max" if title_kind == "html" else r"\mathrm{.max}"
+    sdim = "dim" if title_kind == "html" else r"\mathrm{dim}"
+    spowmhalf = "<sup>-½</sup>" if title_kind == "html" else r"^{-\sfrac{1}{2}}"
     title = (
-        f"EQKE := (W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>W<sub>E</sub><sup>T</sup>"
+        f"{smath}{rm('EQKE')} := ({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}{sWE}{sT}{smath}"
         f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
-        f"<br>d<sub>head</sub><sup>-½</sup>(EQKE[i] - EQKE[j]) / (i - j)"
-        f"<br>x̄±σ: {pm_round(mean, std)}"
+        f"{nl}{smath}{sdhead}{spowmhalf}({rm('EQKE')}[i] - {rm('EQKE')}[j]) / (i - j){smath}"
+        f"{nl}{smath}{xbar}{pm}{sigma}{smath}: {smath}{pm_round(mean, std, sep=f' {pm} ')}{smath}"
     )
-    xlabel = "d<sub>head</sub><sup>-½</sup>(EQKE[i]-EQKE[j])/(i-j)"
+    xlabel = f"{smath}{sdhead}{spowmhalf}({rm('EQKE')}[i]-{rm('EQKE')}[j])/(i-j){smath}"
     if not duplicate_by_sequence_count:
-        fig = px.histogram(
-            {"": flat_diffs},
-            labels={"value": "", "y": "count", "x": xlabel},
+        fig = hist(
+            flat_diffs,
+            xaxis=xlabel,
+            column_names="",
+            variable="",
+            yaxis="count",
             title=title,
+            plot_with=plot_with,
+            renderer=renderer,
         )
     else:
         fig = weighted_histogram(
@@ -690,10 +747,9 @@ def hist_attention_difference_over_gap(
             duplication_factors.numpy(),
             title=title,
             num_bins=num_bins,
-            labels={
-                "x": xlabel,
-                "y": "count * # sequences with given max",
-            },
+            xaxis=xlabel,
+            yaxis="count * # sequences with given max",
+            renderer=renderer,
+            plot_with=plot_with,
         )
-    fig.show(renderer)
     return fig, (flat_diffs, duplication_factors)

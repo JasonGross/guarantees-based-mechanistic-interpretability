@@ -247,7 +247,7 @@ def hist_plotly(
     tensor,
     renderer: Optional[str] = None,
     xaxis: str = "value",
-    yaxis: str = "",
+    yaxis: str = "count",
     variable: str = "variable",
     column_names: Optional[str | Collection[str]] = None,
     **kwargs,
@@ -268,7 +268,7 @@ def hist_matplotlib(
     tensor,
     renderer: Optional[str] = None,
     xaxis: str = "value",
-    yaxis: str = "",
+    yaxis: str = "count",
     variable: str = "variable",
     column_names: Optional[str | Collection[str]] = None,
     figsize: Optional[Tuple[float, float]] = None,
@@ -297,7 +297,7 @@ def hist(
     *,
     renderer: Optional[str] = None,
     xaxis: str = "value",
-    yaxis: str = "",
+    yaxis: str = "count",
     variable: str = "variable",
     column_names: Optional[str | Collection[str]] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
@@ -513,6 +513,9 @@ def weighted_histogram(
     weights,
     num_bins: Optional[int] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+    xaxis: str = "value",
+    yaxis: str = "count",
     **kwargs,
 ):
     if num_bins is None:
@@ -532,7 +535,9 @@ def weighted_histogram(
     bin_centers = (bins[:-1] + bins[1:]) / 2
     match plot_with:
         case "plotly":
-            fig = px.bar(x=bin_centers, y=hist_counts, **kwargs)
+            fig = px.bar(
+                x=bin_centers, y=hist_counts, labels={"x": xaxis, "y": yaxis}, **kwargs
+            )
             fig.update_layout(bargap=0)
             # Iterate over each trace (bar chart) in the figure and adjust the marker properties
             for trace in fig.data:
@@ -545,10 +550,12 @@ def weighted_histogram(
                     trace.marker.line.color = trace.marker.color = (
                         "rgba(0, 0, 255, 1.0)"
                     )
+            fig.show(renderer)
         case "matplotlib":
             fig, ax = plt.subplots()
-            sns.histplot(data, weights=weights, bins=bins, ax=ax, **kwargs)
-            # FIXME labels
+            sns.histplot(
+                data, weights=weights, bins=bins, ax=ax, x=xaxis, y=yaxis, **kwargs
+            )
             # ax.bar(bin_centers, hist_counts, width=np.diff(bins), align="center")
             plt.show()
     return fig

@@ -70,6 +70,7 @@ class f_g(ExperimentConfig):
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
+    use_kaiming_init: bool = True
 
     def __post_init__(self):
         setattr(self, _EXCLUDE, ("logging_options",))
@@ -124,7 +125,7 @@ def f_g_config(fun: Fun, n_head: int, elements: int, seed: int):
         seed=seed,
         deterministic=False,
         batch_size=39707,
-        train_for=(2000, "epochs"),
+        train_for=(3000, "epochs"),
         log_every_n_steps=1,
         validate_every=(100, "epochs"),
     )
@@ -144,11 +145,19 @@ class f_g_TrainingWrapper(TrainingWrapper[f_g]):
                 "seed": reseed(config.seed, "model"),
                 "d_vocab": config.experiment.fun_index + 1,
                 "d_vocab_out": config.experiment.fun_index,
+                "init_weights": not config.experiment.use_kaiming_init,
             },
             warn_if_not_default=False,
         )
 
         model = HookedTransformer(config.experiment.model_config)
+        if config.experiment.use_kaiming_init:
+            if model.cfg.seed is not None:
+                torch.manual_seed(model.cfg.seed)
+
+            for name, param in model.named_parameters():
+                if "W_" in name:
+                    torch.nn.init.kaiming_uniform_(param)
         if config.experiment.zero_biases:
             for name, param in model.named_parameters():
                 if "b_" in name:

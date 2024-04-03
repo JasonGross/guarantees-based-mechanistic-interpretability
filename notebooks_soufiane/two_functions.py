@@ -205,16 +205,30 @@ def max_1_2(i):
     return i[..., :4].max(dim=-1).values
 
 
+def split_add_sub(i):
+    return ((i[..., 0] + i[..., 1]) % 53, (i[..., 2] - i[..., 3]) % 53)
+
+
+def add_1(i):
+    return (i[..., 0] + i[..., 1]) % 53
+
+
+def sub_2(i):
+    return (i[..., 2] - i[..., 3]) % 53
+
+
 def const_23(i):
     return 23 * torch.ones(len(i)).long().cuda()
 
 
-add_sub_1_head_CONFIG = f_g_config(fun=add_sub(53, 2), n_head=1, elements=2, seed=600)
-runtime_add_sub_1, model_add_sub_1 = train_or_load_model(
-    add_sub_1_head_CONFIG, force="train"
-)
-# loss_scatter(model_min_max_1, split_min_max, None, max_2, True,600,"max_2")
-# loss_scatter(model_min_max_1, split_min_max, None, min_1, False,600,"min_1")
+for i in range(1200, 2000, 100):
+    add_sub_1_head_CONFIG = f_g_config(fun=add_sub(53, 2), n_head=1, elements=2, seed=i)
+    runtime_add_sub_1, model_add_sub_1 = train_or_load_model(
+        add_sub_1_head_CONFIG, force="train"
+    )
+
+    loss_scatter(model_add_sub_1, split_add_sub, None, add_1, True, i, "add_1")
+    loss_scatter(model_add_sub_1, split_add_sub, None, sub_2, False, i, "sub_2")
 
 """
 for i in range(700,2000,100):

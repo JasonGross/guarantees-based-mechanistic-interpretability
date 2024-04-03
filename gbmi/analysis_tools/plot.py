@@ -609,6 +609,7 @@ def hist_EVOU_max_logit_diff(
         variable="",
         title=title,
         column_names="",
+        plot_with=plot_with,
         renderer=renderer,
     )
     return fig, max_logit_diff

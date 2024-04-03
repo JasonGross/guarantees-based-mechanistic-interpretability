@@ -1414,7 +1414,8 @@ def display_EQKE_SVD_analysis(
     QK_SVD_colorscale: Colorscale = "Picnic_r",
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
-) -> Tuple[dict[str, go.Figure], dict[str, float]]:
+) -> Tuple[dict[str, Union[go.Figure, plt.figure.Figure]], dict[str, float]]:
+    title_kind = "html" if plot_with == "plotly" else "latex"
     results = {}
     results_float = {}
     (
@@ -1466,38 +1467,46 @@ def display_EQKE_SVD_analysis(
         renderer=renderer,
     )
     results["EQKE"] = fig
-    fig = px.imshow(
+    fig = imshow(
         EQKE_query_key.numpy(),
-        title="EQKE<sub>1</sub>",
-        color_continuous_scale=QK_colorscale,
-        color_continuous_midpoint=0,
+        title="EQKE<sub>1</sub>" if title_kind == "html" else "EQKE$_1$",
+        colorscale=QK_colorscale,
+        plot_with=plot_with,
+        renderer=renderer,
     )
     results["EQKE1"] = fig
-    fig.show(renderer)
-    fig = px.imshow(
+    fig = imshow(
         err_accumulator.numpy(),
-        title="err_accumulator",
-        color_continuous_scale=QK_colorscale,
-        color_continuous_midpoint=0,
+        title="err_accumulator" if title_kind == "html" else r"err\_accumulator",
+        colorscale=QK_colorscale,
+        plot_with=plot_with,
+        renderer=renderer,
     )
     results["err_accumulator"] = fig
-    fig.show(renderer)
-    fig = px.imshow(
-        (EQKE_query_key + err_accumulator).numpy(),
-        title="EQKE<sub>2</sub>",
-        color_continuous_scale=QK_colorscale,
-        color_continuous_midpoint=0,
+    fig = imshow(
+        (EQKE_query_key + err_accumulator),
+        title="EQKE<sub>2</sub>" if title_kind == "html" else "EQKE$_2$",
+        colorscale=QK_colorscale,
+        plot_with=plot_with,
+        renderer=renderer,
     )
     results["EQKE2"] = fig
-    fig.show(renderer)
-    fig = px.imshow(
+    smath = "" if title_kind == "html" else "$"
+    sWE = "W<sub>E</sub>" if title_kind == "html" else "W_E"
+    sWpos = "W<sub>pos</sub>" if title_kind == "html" else r"W_{\mathrm{pos}}"
+    sWQ = "W<sub>Q</sub>" if title_kind == "html" else r"W_Q"
+    sWK = "W<sub>K</sub>" if title_kind == "html" else r"W_K"
+    sT = "<sup>T</sup>" if title_kind == "html" else "^T"
+    sE = "𝔼" if title_kind == "html" else r"\mathbb{E}"
+    s_p = "<sub>p</sub>" if title_kind == "html" else "_p"
+    fig = imshow(
         EQKE_pos_err.numpy(),
-        color_continuous_scale=QK_colorscale,
-        color_continuous_midpoint=0,
-        title="(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>pos</sub> - 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
+        title=f"{smath}({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}({sWpos} - {sE}{s_p}{sWpos}[p]){sT}{smath}",
+        colorscale=QK_colorscale,
+        plot_with=plot_with,
+        renderer=renderer,
     )
     results["EQKE_pos_err"] = fig
-    fig.show(renderer)
     EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
     results_float["EQKEErrMaxRowDiffFloat"] = (
         (EQKE_err.max(dim=-1).values - EQKE_err.min(dim=-1).values).max().item()
@@ -1511,30 +1520,31 @@ def display_EQKE_SVD_analysis(
     ):
         print(f"{k}: {results_float[k]}")
     zmax = EQKE_err.abs().max().item()
-    fig = px.imshow(
+    fig = imshow(
         EQKE_err.numpy(),
-        title="EQKE_err",
-        labels={"x": "key token", "y": "query token"},
-        color_continuous_scale=QK_colorscale,
-        color_continuous_midpoint=0,
+        title="EQKE_err" if title_kind == "html" else r"EQKE\_err",
+        xaxis="key token",
+        yaxis="query token",
+        colorscale=QK_colorscale,
         zmax=zmax,
         zmin=-zmax,
+        plot_with=plot_with,
+        renderer=renderer,
     )
     results["EQKE_err"] = fig
-    fig.show(renderer)
-    fig = px.imshow(
+    fig = imshow(
         EQKE_err.numpy(),
-        title="EQKE_err",
-        labels={"x": "", "y": ""},
-        color_continuous_scale=QK_colorscale,
-        color_continuous_midpoint=0,
+        title="EQKE_err" if title_kind == "html" else r"EQKE\_err",
+        xaxis="",
+        yaxis="",
+        colorscale=QK_colorscale,
         zmax=zmax,
         zmin=-zmax,
+        showticklabels=False,
+        plot_with=plot_with,
+        renderer=renderer,
     )
-    fig.update_xaxes(showticklabels=False)
-    fig.update_yaxes(showticklabels=False)
     results["EQKE_err_noticks"] = fig
-    fig.show(renderer)
     results["EQKE_err_svd"] = analyze_svd(
         (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T),
         descr="EQKE_err",
@@ -1562,26 +1572,36 @@ def display_EQKE_SVD_analysis(
     results_float["EQKEErrProdFirstSingularFloat"] = np.prod(ss)
     results_float["EQKEErrProdFirstSingularSqrtTwoFloat"] = np.prod(ss) * np.sqrt(2)
     for m, s, key in (
-        (W_E_query_err2, "E<sub>q,2</sub><sup>⟂</sup>", "WEqqPerp"),
-        (W_Q_err, "Q<sup>⟂</sup>", "WQqPerp"),
-        (W_K_errT, "K<sup>⟂</sup>", "WKkPerp"),
-        (W_E_key_err2T, "E<sub>k,2</sub><sup>⟂</sup>", "WEkkPerp"),
+        (
+            W_E_query_err2,
+            {"html": "E<sub>q,2</sub><sup>⟂</sup>", "latex": r"$E_{q,2}^{\perp}$"},
+            "WEqqPerp",
+        ),
+        (W_Q_err, {"html": "Q<sup>⟂</sup>", "latex": r"$Q^{\perp}$"}, "WQqPerp"),
+        (W_K_errT, {"html": "K<sup>⟂</sup>", "latex": r"$K^{\perp}$"}, "WKkPerp"),
+        (
+            W_E_key_err2T,
+            {"html": "E<sub>k,2</sub><sup>⟂</sup>", "latex": r"$E_{k,2}^{\perp}$"},
+            "WEkkPerp",
+        ),
     ):
         fig = imshow(
-            m,
-            title=s,
+            m.numpy(),
+            title=s[title_kind],
             colorscale=QK_colorscale,
             zmax=zmax,
             zmin=-zmax,
             showticklabels=False,
+            plot_with=plot_with,
+            renderer=renderer,
         )
         results[key] = fig
         fig = analyze_svd(
             m,
             scale_by_singular_value=False,
-            descr=s,
+            descr=s[title_kind],
             colorscale=QK_SVD_colorscale,
-            plot_with=PLOT_WITH,
+            plot_with=plot_with,
             renderer=renderer,
         )
         results[key + "-svd"] = fig
@@ -1758,8 +1778,6 @@ def resample_EQKE_err(
                 ax.hist(
                     m_numpy,
                     bins=edges,
-                    label="matrix element value",
-                    title=title["latex"],
                 )
                 ax.plot(
                     bin_centers, pdf_scaled, linestyle="-", color="r", label=line_name
@@ -1767,6 +1785,7 @@ def resample_EQKE_err(
                 ax.set_title(title["latex"])
                 ax.set_xlabel("matrix element value")
                 ax.set_ylabel("count")
+                ax.legend()
                 plt.show()
         results[fig_key] = fig
     # what if we randomize the order of all matrices without replacement?
@@ -1815,16 +1834,16 @@ if DISPLAY_PLOTS:
         (
             W_E_query_err2,
             (
-                {"html": "E<sub>q,2</sub><sup>⟂</sup>", "latex": r"$E_{q,2}^\perp"},
+                {"html": "E<sub>q,2</sub><sup>⟂</sup>", "latex": r"$E_{q,2}^\perp$"},
                 "WEqqPerp-hist",
             ),
         ),
-        (W_Q_err, ({"html": "Q<sup>⟂</sup>", "latex": r"$Q^\perp"}, "WQqPerp-hist")),
-        (W_K_errT, ({"html": "K<sup>⟂</sup>", "latex": r"$K^\perp"}, "WKkPerp-hist")),
+        (W_Q_err, ({"html": "Q<sup>⟂</sup>", "latex": r"$Q^\perp$"}, "WQqPerp-hist")),
+        (W_K_errT, ({"html": "K<sup>⟂</sup>", "latex": r"$K^\perp$"}, "WKkPerp-hist")),
         (
             W_E_key_err2T,
             (
-                {"html": "E<sub>k,2</sub><sup>⟂</sup>", "latex": r"$E_{k,2}^\perp"},
+                {"html": "E<sub>k,2</sub><sup>⟂</sup>", "latex": r"$E_{k,2}^\perp$"},
                 "WEkkPerp-hist",
             ),
         ),
@@ -1899,21 +1918,17 @@ def decompose_EUPU_error_via_svd(
 
 # %%
 if DISPLAY_PLOTS:
-    analyze_svd(
-        model.W_E @ model.W_U, descr="W_E @ W_U", plot_with=PLOT_WITH, renderer=RENDERER
-    )
+    analyze_svd(model.W_E @ model.W_U, descr="W_E @ W_U", renderer=RENDERER)
     analyze_svd(
         model.W_E,
         descr="W_E",
         scale_by_singular_value=False,
-        plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
     analyze_svd(
         model.W_U,
         descr="W_U",
         scale_by_singular_value=False,
-        plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
 
@@ -2265,11 +2280,12 @@ with torch.no_grad():
                     print(f"All gaps are: {set(v.numpy())}")
                     continue
                 try:
+                    shash = "#" if PLOT_WITH == "plotly" else r"\#"
                     fig = weighted_histogram(
                         v.numpy(),
                         weights.flatten().detach().numpy(),
                         xaxis="gap",
-                        yaxis="count * # sequences",
+                        yaxis="count * {shash} sequences",
                         num_bins=v.max().item(),
                         plot_with=PLOT_WITH,
                         renderer=RENDERER,
@@ -2360,6 +2376,38 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
             fig.update_layout(title_text=orig_title)
 
 
+@contextmanager
+def texify_matplotlib_title(fig: matplotlib.figure.Figure, show: bool = False):
+    def texify(s: Optional[str]) -> Optional[str]:
+        if s is None:
+            return None
+        orig_s = s
+        s = s.replace("\n", "\\\\\n")
+        if s != orig_s:
+            return s
+        return None
+
+    orig_suptitle = fig._suptitle.get_text() if fig._suptitle else None
+    orig_titles = [ax.get_title() for ax in fig.axes if fig.axes]
+    new_suptitle = texify(orig_suptitle)
+    new_titles = [texify(t) for t in orig_titles]
+    try:
+        if new_suptitle is not None:
+            fig.suptitle(new_suptitle)
+        if fig.axes:
+            for ax, new_title in zip(fig.axes, new_titles):
+                if new_title is not None:
+                    ax.set_title(new_title)
+        yield fig
+    finally:
+        if new_suptitle is not None:
+            fig.suptitle(orig_suptitle)
+        if fig.axes:
+            for ax, orig_title in zip(fig.axes, orig_titles):
+                if orig_title is not None:
+                    ax.set_title(orig_title)
+
+
 errs = []
 for file_path in LATEX_FIGURE_PATH.glob("*.png"):
     file_path.unlink()
@@ -2392,7 +2440,8 @@ for k, fig in latex_figures.items():
         p = LATEX_FIGURE_PATH / f"{k}.tex"
         print(f"Saving {p}...")
         p.parent.mkdir(parents=True, exist_ok=True)
-        tikzplotlib.save(p, fig)
+        with texify_matplotlib_title(fig) as fig:
+            tikzplotlib.save(p, fig)
         for ext in (".pdf", ".svg"):
             p = LATEX_FIGURE_PATH / f"{k}{ext}"
             print(f"Saving {p}...")

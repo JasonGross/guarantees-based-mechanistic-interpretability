@@ -117,10 +117,16 @@ def imshow_matplotlib(
         vmax=zmax,
         # cbar_kws={"label": "Scale"},
     )
-    ax.set_xticklabels(ax.get_xticklabels(), visible=showticklabels and showxticklabels)
-    ax.set_yticklabels(ax.get_yticklabels(), visible=showticklabels and showyticklabels)
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
+    ax.set_xticklabels(ax.get_xticklabels(), visible=showticklabels and showxticklabels)
+    ax.set_yticklabels(ax.get_yticklabels(), visible=showticklabels and showyticklabels)
+    ax.tick_params(
+        bottom=showticklabels and showxticklabels,
+        left=showticklabels and showyticklabels,
+        top=False,
+        right=False,
+    )
     if title is not None:
         ax.set_title(title)
     if show:
@@ -379,6 +385,8 @@ def hist_matplotlib(
     sns.histplot(data=data, ax=ax, **kwargs)
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
+    if not column_names and ax.get_legend() is not None:
+        ax.get_legend().remove()
     if title is not None:
         ax.set_title(title)
     if show:
@@ -613,6 +621,8 @@ def weighted_histogram(
     renderer: Optional[str] = None,
     xaxis: str = "value",
     yaxis: str = "count",
+    column_name: str = "",
+    title: Optional[str] = None,
     **kwargs,
 ):
     if num_bins is None:
@@ -633,7 +643,11 @@ def weighted_histogram(
     match plot_with:
         case "plotly":
             fig = px.bar(
-                x=bin_centers, y=hist_counts, labels={"x": xaxis, "y": yaxis}, **kwargs
+                x=bin_centers,
+                y=hist_counts,
+                labels={"x": xaxis, "y": yaxis},
+                title=title,
+                **kwargs,
             )
             fig.update_layout(bargap=0)
             # Iterate over each trace (bar chart) in the figure and adjust the marker properties
@@ -650,9 +664,21 @@ def weighted_histogram(
             fig.show(renderer)
         case "matplotlib":
             fig, ax = plt.subplots()
+            df = pd.DataFrame({"data": data, "weights": weights})
             sns.histplot(
-                data, weights=weights, bins=bins, ax=ax, x=xaxis, y=yaxis, **kwargs
+                df,
+                weights="weights",
+                bins=num_bins,
+                ax=ax,
+                x="data",
+                edgecolor="none",
+                **kwargs,
             )
+            if not column_name and ax.get_legend() is not None:
+                ax.get_legend().remove()
+            ax.set(xlabel=xaxis, ylabel=yaxis)
+            if title is not None:
+                ax.set_title(title)
             # ax.bar(bin_centers, hist_counts, width=np.diff(bins), align="center")
             plt.show()
     return fig

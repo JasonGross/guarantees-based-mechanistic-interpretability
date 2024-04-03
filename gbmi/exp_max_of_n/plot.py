@@ -596,6 +596,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
     sNone = "None" if title_kind == "html" else r"\mathrm{None}"
     sdotmax = ".max" if title_kind == "html" else r"\mathrm{.max}"
     sdim = "dim" if title_kind == "html" else r"\mathrm{dim}"
+    shash = "#" if title_kind == "html" else r"\#"
     title = (
         f"{smath}{sEVOU} := {sWE}{sWV}{sWO}{sWU}{smath}"
         f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
@@ -618,7 +619,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
             duplication_factors.numpy(),
             title=title,
             xaxis="logit - diag",
-            yaxis="count * # sequences with given max",
+            yaxis=f"count * {shash} sequences with given max",
             renderer=renderer,
             plot_with=plot_with,
         )
@@ -726,6 +727,7 @@ def hist_attention_difference_over_gap(
     sdotmax = ".max" if title_kind == "html" else r"\mathrm{.max}"
     sdim = "dim" if title_kind == "html" else r"\mathrm{dim}"
     spowmhalf = "<sup>-½</sup>" if title_kind == "html" else r"^{-\sfrac{1}{2}}"
+    shash = "#" if title_kind == "html" else r"\#"
     title = (
         f"{smath}{rm('EQKE')} := ({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}{sWE}{sT}{smath}"
         f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
@@ -751,7 +753,7 @@ def hist_attention_difference_over_gap(
             title=title,
             num_bins=num_bins,
             xaxis=xlabel,
-            yaxis="count * # sequences with given max",
+            yaxis=f"count * {shash} sequences with given max",
             renderer=renderer,
             plot_with=plot_with,
         )

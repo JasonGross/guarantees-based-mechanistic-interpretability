@@ -1233,7 +1233,7 @@ if DISPLAY_PLOTS:
 # %%
 if DISPLAY_PLOTS:
     latex_figures["EVOU-hist-max-row-diff"], max_logit_diff = hist_EVOU_max_logit_diff(
-        model, renderer=RENDERER
+        model, plot_with=PLOT_WITH, renderer=RENDERER
     )
     latex_values["EVOUMeanMaxRowDiffFloat"] = max_logit_diff.mean().item()
     for duplicate_by_sequence_count in [False, True]:
@@ -2216,6 +2216,7 @@ with torch.no_grad():
                         weights.flatten().detach().numpy(),
                         labels={"x": "gap", "y": "count * # sequences"},
                         num_bins=v.max().item(),
+                        plot_with=PLOT_WITH,
                     )
                     latex_figures[f"SubcubicGapHistogram{postkey}"] = fig
                     fig.show(RENDERER)

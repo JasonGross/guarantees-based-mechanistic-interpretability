@@ -3,10 +3,13 @@ from pathlib import Path
 from typing import Callable, Collection, Literal, Optional, Tuple, Union
 import imageio
 from matplotlib.colors import Colormap, to_hex, is_color_like
+import torch
 import numpy as np
 from torch import Tensor
 from jaxtyping import Float
 import matplotlib.pyplot as plt
+import matplotlib.figure
+import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
 import plotly.graph_objects as go
@@ -57,9 +60,9 @@ def colorscale_to_cmap(colorscale: Colorscale, *, name: str = "custom") -> Color
 def imshow_plotly(
     tensor,
     *,
-    renderer=None,
-    xaxis="",
-    yaxis="",
+    renderer: Optional[str] = None,
+    xaxis: str = "",
+    yaxis: str = "",
     colorscale: Colorscale = "RdBu",
     figsize: Optional[Tuple[float, float]] = None,
     **kwargs,
@@ -78,9 +81,9 @@ def imshow_plotly(
 def imshow_matplotlib(
     tensor,
     *,
-    renderer=None,
-    xaxis="",
-    yaxis="",
+    renderer: Optional[str] = None,
+    xaxis: str = "",
+    yaxis: str = "",
     colorscale: Colorscale = "RdBu",
     title: Optional[str] = None,
     figsize: Optional[Tuple[float, float]] = None,
@@ -106,9 +109,9 @@ def imshow_matplotlib(
 def imshow(
     tensor,
     *,
-    renderer=None,
-    xaxis="",
-    yaxis="",
+    renderer: Optional[str] = None,
+    xaxis: str = "",
+    yaxis: str = "",
     colorscale: Colorscale = "RdBu",
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     **kwargs,
@@ -137,9 +140,9 @@ def imshow(
 def line_plotly(
     tensor,
     *,
-    renderer=None,
-    xaxis="",
-    yaxis="",
+    renderer: Optional[str] = None,
+    xaxis: str = "",
+    yaxis: str = "",
     line_labels=None,
     showlegend=None,
     hovertemplate=None,
@@ -162,9 +165,9 @@ def line_plotly(
 def line_matplotlib(
     tensor,
     *,
-    renderer=None,
-    xaxis="",
-    yaxis="",
+    renderer: Optional[str] = None,
+    xaxis: str = "",
+    yaxis: str = "",
     line_labels=None,
     showlegend=None,
     hovertemplate=None,
@@ -188,9 +191,9 @@ def line_matplotlib(
 def line(
     tensor,
     *,
-    renderer=None,
-    xaxis="",
-    yaxis="",
+    renderer: Optional[str] = None,
+    xaxis: str = "",
+    yaxis: str = "",
     line_labels=None,
     showlegend=None,
     hovertemplate=None,
@@ -222,7 +225,15 @@ def line(
             )
 
 
-def scatter(x, y, xaxis="", yaxis="", caxis="", renderer=None, **kwargs):
+def scatter(
+    x,
+    y,
+    xaxis: str = "",
+    yaxis: str = "",
+    caxis: str = "",
+    renderer: Optional[str] = None,
+    **kwargs,
+):
     x = utils.to_numpy(x)
     y = utils.to_numpy(y)
     fig = px.scatter(
@@ -232,19 +243,94 @@ def scatter(x, y, xaxis="", yaxis="", caxis="", renderer=None, **kwargs):
     return fig
 
 
-def hist(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
+def hist_plotly(
+    tensor,
+    renderer: Optional[str] = None,
+    xaxis: str = "value",
+    yaxis: str = "",
+    variable: str = "variable",
+    column_names: Optional[str | Collection[str]] = None,
+    **kwargs,
+):
+    data = utils.to_numpy(tensor)
+    if isinstance(column_names, str):
+        data = {column_names: data}
+    elif column_names is not None:
+        data = {name: data[i] for i, name in enumerate(column_names)}
     fig = px.histogram(
-        utils.to_numpy(tensor), labels={"x": xaxis, "y": yaxis}, **kwargs
+        data, labels={"value": xaxis, "y": yaxis, "variable": variable}, **kwargs
     )
     fig.show(renderer)
     return fig
+
+
+def hist_matplotlib(
+    tensor,
+    renderer: Optional[str] = None,
+    xaxis: str = "value",
+    yaxis: str = "",
+    variable: str = "variable",
+    column_names: Optional[str | Collection[str]] = None,
+    figsize: Optional[Tuple[float, float]] = None,
+    title: Optional[str] = None,
+    **kwargs,
+):
+    data = utils.to_numpy(tensor)
+    if isinstance(column_names, str):
+        data = {column_names: data}
+    elif column_names is not None:
+        data = {name: data[i] for i, name in enumerate(column_names)}
+    if isinstance(data, dict):
+        data = pd.DataFrame(data)
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.histplot(data=data, ax=ax, **kwargs)
+    ax.set_xlabel(xaxis)
+    ax.set_ylabel(yaxis)
+    if title is not None:
+        ax.set_title(title)
+    plt.show()
+    return fig
+
+
+def hist(
+    tensor,
+    *,
+    renderer: Optional[str] = None,
+    xaxis: str = "value",
+    yaxis: str = "",
+    variable: str = "variable",
+    column_names: Optional[str | Collection[str]] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    **kwargs,
+):
+    match plot_with:
+        case "plotly":
+            return hist_plotly(
+                tensor,
+                renderer=renderer,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                variable=variable,
+                column_names=column_names,
+                **kwargs,
+            )
+        case "matplotlib":
+            return hist_matplotlib(
+                tensor,
+                renderer=renderer,
+                xaxis=xaxis,
+                yaxis=yaxis,
+                variable=variable,
+                column_names=column_names,
+                **kwargs,
+            )
 
 
 def summarize(
     values,
     name=None,
     histogram=False,
-    renderer=None,
+    renderer: Optional[str] = None,
     hist_args={},
     imshow_args=None,
     include_value=False,
@@ -376,27 +462,59 @@ def summarize(
 
 
 def hist_EVOU_max_logit_diff(
-    model: HookedTransformer, mean_PVOU: bool = False, renderer: Optional[str] = None
-) -> Tuple[go.Figure, Float[Tensor, "d_vocab"]]:  # noqa: F821
+    model: HookedTransformer,
+    mean_PVOU: bool = False,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+) -> Tuple[
+    Union[go.Figure, matplotlib.figure.Figure], Float[Tensor, "d_vocab"]  # noqa: F821
+]:
     EVOU = all_EVOU(model)
-    WE_str = "W<sub>E</sub>"
+    title_kind = "html" if plot_with == "plotly" else "latex"
+    WE_str = "W<sub>E</sub>" if title_kind == "html" else "W_E"
+    smath = "" if title_kind == "html" else "$"
+    sE = "𝔼" if title_kind == "html" else r"\mathbb{E}"
+    s_p = "<sub>p</sub>" if title_kind == "html" else "_p"
+    sWpos = "W<sub>pos</sub>" if title_kind == "html" else r"W_{\mathrm{pos}}"
+    sEVOU = "EVOU" if title_kind == "html" else r"\mathrm{EVOU}"
+    sWv = "W<sub>V</sub>" if title_kind == "html" else r"W_V"
+    sWo = "W<sub>O</sub>" if title_kind == "html" else r"W_O"
+    sWu = "W<sub>U</sub>" if title_kind == "html" else r"W_U"
+    smax = "max" if title_kind == "html" else r"\max"
+    smin = "min" if title_kind == "html" else r"\min"
+    s_i = "<sub>i</sub>" if title_kind == "html" else "_i"
+    s_j = "<sub>j</sub>" if title_kind == "html" else "_j"
+    xbar = "x̄" if title_kind == "html" else r"\bar{x}"
+    sigma = "σ" if title_kind == "html" else r"\sigma"
+    pm = "±" if title_kind == "html" else r"\pm"
+    nl = "<br>" if title_kind == "html" else "\n"
     if mean_PVOU:
         EVOU += all_PVOU(model).mean(dim=0)
-        WE_str = "(W<sub>E</sub> + 𝔼<sub>p</sub>W<sub>pos</sub>[p])"
+        WE_str = f"({WE_str} + {sE}{s_p}{sWpos}[p])"
     max_logit_diff = EVOU.max(dim=-1).values - EVOU.min(dim=-1).values
     mean, std = max_logit_diff.mean().item(), max_logit_diff.std().item()
     min, max = max_logit_diff.min().item(), max_logit_diff.max().item()
     mid, spread = (min + max) / 2, (max - min) / 2
-    fig = px.histogram(
-        {"": max_logit_diff},
-        title=f"EVOU := {WE_str}W<sub>V</sub>W<sub>O</sub>W<sub>U</sub><br>max<sub>i</sub>EVOU[:,i] - min<sub>j</sub>EVOU[:,j]<br>x̄±σ: {pm_round(mean, std)}; range: {pm_round(mid, spread)}",
-        labels={"value": "logit diff", "variable": ""},
+    title = f"{smath}{sEVOU} := {WE_str}{sWv}{sWo}{sWu}{smath}{nl}{smath}{smax}{s_i}{sEVOU}[:,i] - {smin}{s_j}EVOU[:,j]{smath}{nl}{smath}{xbar}{pm}{sigma}{smath}: {smath}{pm_round(mean, std, sep=f' {pm} ')}{smath}; range: {smath}{pm_round(mid, spread, sep=f' {pm} ')}{smath}"
+    fig = hist(
+        max_logit_diff,
+        xaxis="logit diff",
+        variable="",
+        title=title,
+        column_names="",
+        renderer=renderer,
     )
-    fig.show(renderer)
     return fig, max_logit_diff
 
 
-def weighted_histogram(data, weights, num_bins: Optional[int] = None, **kwargs):
+@torch.no_grad()
+def weighted_histogram(
+    data,
+    weights,
+    num_bins: Optional[int] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    **kwargs,
+):
     if num_bins is None:
         _, bin_edges = np.histogram(data, bins="auto")
         num_bins = len(bin_edges) - 1
@@ -412,15 +530,27 @@ def weighted_histogram(data, weights, num_bins: Optional[int] = None, **kwargs):
 
     # Plot using px.bar, manually setting the x (bins) and y (counts)
     bin_centers = (bins[:-1] + bins[1:]) / 2
-    fig = px.bar(x=bin_centers, y=hist_counts, **kwargs)
-    fig.update_layout(bargap=0)
-    # Iterate over each trace (bar chart) in the figure and adjust the marker properties
-    for trace in fig.data:
-        if trace.type == "bar":  # Check if the trace is a bar chart
-            # Update marker properties to remove the border line or adjust its appearance
-            trace.marker.line.width = 0  # Set line width to 0 to remove the border
-            # Optionally, you can also set the line color to match the bar color exactly
-            trace.marker.line.color = trace.marker.color = "rgba(0, 0, 255, 1.0)"
+    match plot_with:
+        case "plotly":
+            fig = px.bar(x=bin_centers, y=hist_counts, **kwargs)
+            fig.update_layout(bargap=0)
+            # Iterate over each trace (bar chart) in the figure and adjust the marker properties
+            for trace in fig.data:
+                if trace.type == "bar":  # Check if the trace is a bar chart
+                    # Update marker properties to remove the border line or adjust its appearance
+                    trace.marker.line.width = (
+                        0  # Set line width to 0 to remove the border
+                    )
+                    # Optionally, you can also set the line color to match the bar color exactly
+                    trace.marker.line.color = trace.marker.color = (
+                        "rgba(0, 0, 255, 1.0)"
+                    )
+        case "matplotlib":
+            fig, ax = plt.subplots()
+            sns.histplot(data, weights=weights, bins=bins, ax=ax, **kwargs)
+            # FIXME labels
+            # ax.bar(bin_centers, hist_counts, width=np.diff(bins), align="center")
+            plt.show()
     return fig
 
 

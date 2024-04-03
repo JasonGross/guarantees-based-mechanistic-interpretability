@@ -17,13 +17,13 @@ from jaxtyping import Float, Shaped
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 from transformer_lens import utils as utils
-
-import gbmi.utils
-
 import numpy as np
 from sklearn.decomposition import PCA
 import plotly.graph_objs as go
 import matplotlib.pyplot as plt  # To use the colormap
+import matplotlib.figure
+import gbmi.utils
+from gbmi.analysis_tools.plot import Colorscale, colorscale_to_cmap
 
 
 def pca_2d(
@@ -243,9 +243,11 @@ def analyze_svd(
     M,
     descr="",
     scale_by_singular_value=True,
-    colorscale="Picnic_r",
+    colorscale: Colorscale = "Picnic_r",
     singular_color="blue",
-    renderer=None,
+    figsize: Optional[Tuple[int, int]] = (15, 5),
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
 ):
     U, S, Vh = torch.linalg.svd(M)
     V = Vh.T
@@ -255,80 +257,114 @@ def analyze_svd(
     if descr:
         descr = f" for {descr}"
 
-    fig = make_subplots(rows=1, cols=3, subplot_titles=["U", "Singular Values", "V"])
     uzmax, vzmax = U.abs().max().item(), V.abs().max().item()
-    fig.add_trace(
-        go.Heatmap(
-            z=utils.to_numpy(U),
-            zmin=-uzmax,
-            zmax=uzmax,
-            colorscale=colorscale,
-            zmid=0,
-            showscale=False,
-            hovertemplate="U: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Heatmap(
-            z=utils.to_numpy(V),
-            colorscale=colorscale,
-            zmin=-vzmax,
-            zmax=vzmax,
-            zmid=0,
-            showscale=False,
-            hovertemplate="V: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
-        ),
-        row=1,
-        col=3,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=np.arange(S.shape[0]),
-            y=utils.to_numpy(S),
-            mode="lines+markers",
-            marker=dict(color=singular_color),
-            line=dict(color=singular_color),
-            hovertemplate="Singular Value: %{y}<br>Singular Index: %{x}<extra></extra>",
-        ),
-        row=1,
-        col=2,
-    )
-    fig.update_layout(title=f"SVD{descr}")  # , margin=dict(l=150, r=150))
+    cmap = colorscale_to_cmap(colorscale)
+    match plot_with:
+        case "plotly":
+            fig = make_subplots(
+                rows=1, cols=3, subplot_titles=["U", "Singular Values", "V"]
+            )
+            fig.add_trace(
+                go.Heatmap(
+                    z=utils.to_numpy(U),
+                    zmin=-uzmax,
+                    zmax=uzmax,
+                    colorscale=colorscale,
+                    zmid=0,
+                    showscale=False,
+                    hovertemplate="U: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
+                ),
+                row=1,
+                col=1,
+            )
+            fig.add_trace(
+                go.Heatmap(
+                    z=utils.to_numpy(V),
+                    colorscale=colorscale,
+                    zmin=-vzmax,
+                    zmax=vzmax,
+                    zmid=0,
+                    showscale=False,
+                    hovertemplate="V: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
+                ),
+                row=1,
+                col=3,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=np.arange(S.shape[0]),
+                    y=utils.to_numpy(S),
+                    mode="lines+markers",
+                    marker=dict(color=singular_color),
+                    line=dict(color=singular_color),
+                    hovertemplate="Singular Value: %{y}<br>Singular Index: %{x}<extra></extra>",
+                ),
+                row=1,
+                col=2,
+            )
+            fig.update_layout(title=f"SVD{descr}")  # , margin=dict(l=150, r=150))
 
-    fig.update_yaxes(range=[0, None], row=1, col=2)
-    # fig.update_yaxes(range=[0, None], row=1, col=2)
-    # fig.update_layout(yaxis_scaleanchor="x")
-    fig.update_yaxes(scaleanchor="x", autorange="reversed", row=1, col=1)
-    fig.update_yaxes(scaleanchor="x", autorange="reversed", row=1, col=3)
+            fig.update_yaxes(range=[0, None], row=1, col=2)
+            # fig.update_yaxes(range=[0, None], row=1, col=2)
+            # fig.update_layout(yaxis_scaleanchor="x")
+            fig.update_yaxes(scaleanchor="x", autorange="reversed", row=1, col=1)
+            fig.update_yaxes(scaleanchor="x", autorange="reversed", row=1, col=3)
 
-    # fig.update_xaxes(scaleanchor='y', scaleratio=1, range=[0, U.shape[0]], row=1, col=1)
-    # fig.update_yaxes(scaleanchor='x', scaleratio=1, range=[0, U.shape[1]], row=1, col=1)
+            # fig.update_xaxes(scaleanchor='y', scaleratio=1, range=[0, U.shape[0]], row=1, col=1)
+            # fig.update_yaxes(scaleanchor='x', scaleratio=1, range=[0, U.shape[1]], row=1, col=1)
 
-    # fig.update_xaxes(scaleanchor='y', scaleratio=1, range=[0, None], row=1, col=2)
-    # fig.update_yaxes(scaleanchor='x', scaleratio=1, range=[0, S.shape[0]], row=1, col=2)
+            # fig.update_xaxes(scaleanchor='y', scaleratio=1, range=[0, None], row=1, col=2)
+            # fig.update_yaxes(scaleanchor='x', scaleratio=1, range=[0, S.shape[0]], row=1, col=2)
 
-    # fig.update_xaxes(scaleanchor='y', scaleratio=1, range=[0, Vh.shape[0]], row=1, col=3)
-    # fig.update_yaxes(scaleanchor='x', scaleratio=1, range=[0, Vh.shape[1]], row=1, col=3)
+            # fig.update_xaxes(scaleanchor='y', scaleratio=1, range=[0, Vh.shape[0]], row=1, col=3)
+            # fig.update_yaxes(scaleanchor='x', scaleratio=1, range=[0, Vh.shape[1]], row=1, col=3)
 
-    # fig.update_xaxes(range=[0, None], row=1, col=1)
-    # fig.update_xaxes(range=[0, None], row=1, col=2)
-    # fig.update_xaxes(range=[0, None], row=1, col=3)
+            # fig.update_xaxes(range=[0, None], row=1, col=1)
+            # fig.update_xaxes(range=[0, None], row=1, col=2)
+            # fig.update_xaxes(range=[0, None], row=1, col=3)
 
-    # fig.update_yaxes(range=[0, None], row=1, col=1)
-    # fig.update_yaxes(range=[0, None], row=1, col=2)
-    # fig.update_yaxes(range=[0, None], row=1, col=3)
+            # fig.update_yaxes(range=[0, None], row=1, col=1)
+            # fig.update_yaxes(range=[0, None], row=1, col=2)
+            # fig.update_yaxes(range=[0, None], row=1, col=3)
 
-    # fig.update_yaxes(title_text="Query Token", row=1, col=1)
-    fig.update_yaxes(range=[0, None], row=1, col=2)
-    # fig.update_yaxes(title_text="Key Token", row=1, col=3)
+            # fig.update_yaxes(title_text="Query Token", row=1, col=1)
+            fig.update_yaxes(range=[0, None], row=1, col=2)
+            # fig.update_yaxes(title_text="Key Token", row=1, col=3)
 
-    fig.show(renderer)
+            fig.show(renderer)
 
-    # line(S, title=f"Singular Values{descr}")
-    # imshow(U, title=f"Principal Components on U{descr}")
-    # imshow(Vh, title=f"Principal Components on Vh{descr}")
+            # line(S, title=f"Singular Values{descr}")
+            # imshow(U, title=f"Principal Components on U{descr}")
+            # imshow(Vh, title=f"Principal Components on Vh{descr}")
+        case "matplotlib":
+            fig, axs = plt.subplots(1, 3, figsize=figsize)
+            cax_u = axs[0].imshow(utils.to_numpy(U), cmap=cmap, vmin=-uzmax, vmax=uzmax)
+            axs[0].set_title("U")
+            axs[0].invert_yaxis()
+            fig.colorbar(cax_u, ax=axs[0], orientation="vertical").remove()
+
+            axs[1].plot(
+                np.arange(S.shape[0]),
+                utils.to_numpy(S),
+                marker="o",
+                linestyle="-",
+                color=singular_color,
+            )
+            axs[1].set_title("Singular Values")
+            axs[1].set_ylim(bottom=0)
+
+            cax_v = axs[2].matshow(
+                utils.to_numpy(V), cmap=cmap, vmin=-vzmax, vmax=vzmax
+            )
+            axs[2].set_title("V")
+            axs[2].invert_yaxis()
+            fig.colorbar(
+                cax_v, ax=axs[2], orientation="vertical"
+            ).remove()  # Remove colorbar if not needed
+
+            fig.suptitle(f"SVD{descr}")
+            plt.tight_layout()
+            plt.show()
     return fig
 
 

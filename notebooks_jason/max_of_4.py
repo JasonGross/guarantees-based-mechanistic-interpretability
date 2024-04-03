@@ -29,6 +29,7 @@ from scipy import stats
 from contextlib import contextmanager
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import matplotlib.figure
 import seaborn as sns
 import tikzplotly
 import tikzplotlib
@@ -1284,6 +1285,7 @@ if DISPLAY_PLOTS:
         fig, (flat_diffs, duplication_factors) = hist_attention_difference_over_gap(
             model,
             duplicate_by_sequence_count=duplicate_by_sequence_count,
+            plot_with=PLOT_WITH,
             renderer=RENDERER,
         )
         key = "EQKE-hist-attention-difference-over-gap" + (
@@ -1712,14 +1714,15 @@ if DISPLAY_PLOTS:
 # random resampling of EQKE_err
 @torch.no_grad()
 def resample_EQKE_err(
-    *ms: Tuple[torch.Tensor, Tuple[str, str]],
-    QK_colorscale: Colorscale = "Plasma",
-    QK_SVD_colorscale: Colorscale = "Picnic_r",
+    *ms: Tuple[torch.Tensor, Tuple[dict[Literal["html", "latex"], str], str]],
+    # QK_colorscale: Colorscale = "Plasma",
+    # QK_SVD_colorscale: Colorscale = "Picnic_r",
     seed: int = 1234,
     nsamples: int = 100,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
-) -> Tuple[dict[str, go.Figure], dict[str, float]]:
-    results = {}
+) -> Tuple[dict[str, Union[go.Figure, matplotlib.figure.Figure]], dict[str, float]]:
+    results: dict = {}
     results_float = {}
     EQKE_err_exact = reduce(torch.matmul, [m for m, s in ms])
     for m, (title, fig_key) in ms:
@@ -1731,22 +1734,41 @@ def resample_EQKE_err(
             bin_centers, loc=m.mean().item(), scale=m.std().item()
         )
         pdf_scaled = pdf_values * m.numel() * np.diff(edges)
-        fig = px.histogram(
-            {"": m_numpy},
-            nbins=len(edges) - 1,
-            title=title,
-            labels={"variable": "", "value": "matrix element value"},
+        line_name = r"$\mathcal{N}(%s)$" % pm_round(
+            m.mean().item(), m.std().item(), sep=", "
         )
-        # f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})"
-        fig.add_scatter(
-            x=bin_centers,
-            y=pdf_scaled,
-            mode="lines",
-            name=r"$\mathcal{N}(%s)$"
-            % pm_round(m.mean().item(), m.std().item(), sep=", "),
-        )
+        match plot_with:
+            case "plotly":
+                fig = px.histogram(
+                    {"": m_numpy},
+                    nbins=len(edges) - 1,
+                    title=title["html"],
+                    labels={"variable": "", "value": "matrix element value"},
+                )
+                # f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})"
+                fig.add_scatter(
+                    x=bin_centers,
+                    y=pdf_scaled,
+                    mode="lines",
+                    name=line_name,
+                )
+                fig.show(renderer)
+            case "matplotlib":
+                fig, ax = plt.subplots()
+                ax.hist(
+                    m_numpy,
+                    bins=edges,
+                    label="matrix element value",
+                    title=title["latex"],
+                )
+                ax.plot(
+                    bin_centers, pdf_scaled, linestyle="-", color="r", label=line_name
+                )
+                ax.set_title(title["latex"])
+                ax.set_xlabel("matrix element value")
+                ax.set_ylabel("count")
+                plt.show()
         results[fig_key] = fig
-        fig.show(renderer)
     # what if we randomize the order of all matrices without replacement?
     torch.manual_seed(seed)
     results_float["ResampleEQKEErrSeed"] = seed
@@ -1790,10 +1812,23 @@ def resample_EQKE_err(
 
 if DISPLAY_PLOTS:
     figs, values = resample_EQKE_err(
-        (W_E_query_err2, ("E<sub>q,2</sub><sup>⟂</sup>", "WEqqPerp-hist")),
-        (W_Q_err, ("Q<sup>⟂</sup>", "WQqPerp-hist")),
-        (W_K_errT, ("K<sup>⟂</sup>", "WKkPerp-hist")),
-        (W_E_key_err2T, ("E<sub>k,2</sub><sup>⟂</sup>", "WEkkPerp-hist")),
+        (
+            W_E_query_err2,
+            (
+                {"html": "E<sub>q,2</sub><sup>⟂</sup>", "latex": r"$E_{q,2}^\perp"},
+                "WEqqPerp-hist",
+            ),
+        ),
+        (W_Q_err, ({"html": "Q<sup>⟂</sup>", "latex": r"$Q^\perp"}, "WQqPerp-hist")),
+        (W_K_errT, ({"html": "K<sup>⟂</sup>", "latex": r"$K^\perp"}, "WKkPerp-hist")),
+        (
+            W_E_key_err2T,
+            (
+                {"html": "E<sub>k,2</sub><sup>⟂</sup>", "latex": r"$E_{k,2}^\perp"},
+                "WEkkPerp-hist",
+            ),
+        ),
+        plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
     latex_figures.update(figs)
@@ -1864,12 +1899,22 @@ def decompose_EUPU_error_via_svd(
 
 # %%
 if DISPLAY_PLOTS:
-    analyze_svd(model.W_E @ model.W_U, descr="W_E @ W_U", renderer=RENDERER)
     analyze_svd(
-        model.W_E, descr="W_E", scale_by_singular_value=False, renderer=RENDERER
+        model.W_E @ model.W_U, descr="W_E @ W_U", plot_with=PLOT_WITH, renderer=RENDERER
     )
     analyze_svd(
-        model.W_U, descr="W_U", scale_by_singular_value=False, renderer=RENDERER
+        model.W_E,
+        descr="W_E",
+        scale_by_singular_value=False,
+        plot_with=PLOT_WITH,
+        renderer=RENDERER,
+    )
+    analyze_svd(
+        model.W_U,
+        descr="W_U",
+        scale_by_singular_value=False,
+        plot_with=PLOT_WITH,
+        renderer=RENDERER,
     )
 
 # %%
@@ -2089,7 +2134,7 @@ with torch.no_grad():
                     cfg,
                     analysis_subcubic.find_min_gaps_with_EQKE(
                         model=model,
-                        **find_min_gaps_kwargs,
+                        **find_min_gaps_kwargs,  # type: ignore
                         **size_and_query_directions_kwargs,
                         tricks=cfg,
                         use_exact_EQKE=use_exact_EQKE,
@@ -2123,7 +2168,7 @@ with torch.no_grad():
             proof_results = subcubic.verify_proof(
                 model,
                 W_EP_direction=W_EP_direction,
-                **size_and_query_directions_kwargs,
+                **size_and_query_directions_kwargs,  # type: ignore
                 use_exact_EQKE=use_exact_EQKE,
                 min_gaps=min_gaps,
                 tricks=tricks,
@@ -2223,12 +2268,13 @@ with torch.no_grad():
                     fig = weighted_histogram(
                         v.numpy(),
                         weights.flatten().detach().numpy(),
-                        labels={"x": "gap", "y": "count * # sequences"},
+                        xaxis="gap",
+                        yaxis="count * # sequences",
                         num_bins=v.max().item(),
                         plot_with=PLOT_WITH,
+                        renderer=RENDERER,
                     )
                     latex_figures[f"SubcubicGapHistogram{postkey}"] = fig
-                    fig.show(RENDERER)
                 except Exception as e:
                     etype, value, tb = sys.exc_info()
                     if value is None:

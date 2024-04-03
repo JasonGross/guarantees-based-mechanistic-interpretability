@@ -70,6 +70,7 @@ def imshow_plotly(
     showticklabels: bool = True,
     colorscale: Colorscale = "RdBu",
     figsize: Optional[Tuple[float, float]] = None,
+    show: bool = True,
     **kwargs,
 ):
     fig = px.imshow(
@@ -83,7 +84,8 @@ def imshow_plotly(
     )
     fig.update_xaxes(showticklabels=showticklabels and showxticklabels)
     fig.update_yaxes(showticklabels=showticklabels and showyticklabels)
-    fig.show(renderer)
+    if show:
+        fig.show(renderer)
     return fig
 
 
@@ -101,6 +103,7 @@ def imshow_matplotlib(
     figsize: Optional[Tuple[float, float]] = None,
     zmin: Optional[float] = None,
     zmax: Optional[float] = None,
+    show: bool = True,
     **kwargs,
 ):
     cmap = colorscale_to_cmap(colorscale)
@@ -120,7 +123,8 @@ def imshow_matplotlib(
     ax.set_ylabel(yaxis)
     if title is not None:
         ax.set_title(title)
-    plt.show()
+    if show:
+        plt.show()
     return fig
 
 
@@ -132,6 +136,7 @@ def imshow(
     yaxis: str = "",
     colorscale: Colorscale = "RdBu",
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    show: bool = True,
     **kwargs,
 ):
     match plot_with:
@@ -142,6 +147,7 @@ def imshow(
                 xaxis=xaxis,
                 yaxis=yaxis,
                 colorscale=colorscale,
+                show=show,
                 **kwargs,
             )
         case "matplotlib":
@@ -151,6 +157,7 @@ def imshow(
                 xaxis=xaxis,
                 yaxis=yaxis,
                 colorscale=colorscale,
+                show=show,
                 **kwargs,
             )
 
@@ -164,6 +171,7 @@ def line_plotly(
     line_labels=None,
     showlegend=None,
     hovertemplate=None,
+    show: bool = True,
     **kwargs,
 ):
     fig = px.line(
@@ -176,7 +184,8 @@ def line_plotly(
         fig.update_layout(showlegend=showlegend)
     if hovertemplate is not None:
         fig.update_traces(hovertemplate=hovertemplate)
-    fig.show(renderer)
+    if show:
+        fig.show(renderer)
     return fig
 
 
@@ -189,6 +198,7 @@ def line_matplotlib(
     line_labels=None,
     showlegend=None,
     hovertemplate=None,
+    show: bool = True,
     **kwargs,
 ):
     raise NotImplementedError("Matplotlib line plots are not yet supported.")
@@ -215,6 +225,7 @@ def line(
     line_labels=None,
     showlegend=None,
     hovertemplate=None,
+    show: bool = True,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     **kwargs,
 ):
@@ -228,6 +239,7 @@ def line(
                 line_labels=line_labels,
                 showlegend=showlegend,
                 hovertemplate=hovertemplate,
+                show=show,
                 **kwargs,
             )
         case "matplotlib":
@@ -239,6 +251,7 @@ def line(
                 line_labels=line_labels,
                 showlegend=showlegend,
                 hovertemplate=hovertemplate,
+                show=show,
                 **kwargs,
             )
 
@@ -249,6 +262,7 @@ def scatter_plotly(
     xaxis: str = "",
     yaxis: str = "",
     caxis: str = "",
+    show: bool = True,
     renderer: Optional[str] = None,
     **kwargs,
 ):
@@ -257,7 +271,8 @@ def scatter_plotly(
     fig = px.scatter(
         y=y, x=x, labels={"x": xaxis, "y": yaxis, "color": caxis}, **kwargs
     )
-    fig.show(renderer)
+    if show:
+        fig.show(renderer)
     return fig
 
 
@@ -267,6 +282,7 @@ def scatter_matplotlib(
     xaxis: str = "",
     yaxis: str = "",
     caxis: str = "",
+    show: bool = True,
     renderer: Optional[str] = None,
     **kwargs,
 ):
@@ -276,6 +292,8 @@ def scatter_matplotlib(
     ax.scatter(x, y)
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
+    if show:
+        plt.show()
     return fig
 
 
@@ -285,6 +303,7 @@ def scatter(
     xaxis: str = "",
     yaxis: str = "",
     caxis: str = "",
+    show: bool = True,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
     **kwargs,
@@ -298,6 +317,7 @@ def scatter(
                 yaxis=yaxis,
                 caxis=caxis,
                 renderer=renderer,
+                show=show,
                 **kwargs,
             )
         case "matplotlib":
@@ -308,6 +328,7 @@ def scatter(
                 yaxis=yaxis,
                 caxis=caxis,
                 renderer=renderer,
+                show=show,
                 **kwargs,
             )
 
@@ -319,6 +340,7 @@ def hist_plotly(
     yaxis: str = "count",
     variable: str = "variable",
     column_names: Optional[str | Collection[str]] = None,
+    show: bool = True,
     **kwargs,
 ):
     data = utils.to_numpy(tensor)
@@ -329,7 +351,8 @@ def hist_plotly(
     fig = px.histogram(
         data, labels={"value": xaxis, "y": yaxis, "variable": variable}, **kwargs
     )
-    fig.show(renderer)
+    if show:
+        fig.show(renderer)
     return fig
 
 
@@ -342,6 +365,7 @@ def hist_matplotlib(
     column_names: Optional[str | Collection[str]] = None,
     figsize: Optional[Tuple[float, float]] = None,
     title: Optional[str] = None,
+    show: bool = True,
     **kwargs,
 ):
     data = utils.to_numpy(tensor)
@@ -357,7 +381,8 @@ def hist_matplotlib(
     ax.set_ylabel(yaxis)
     if title is not None:
         ax.set_title(title)
-    plt.show()
+    if show:
+        plt.show()
     return fig
 
 
@@ -369,6 +394,7 @@ def hist(
     yaxis: str = "count",
     variable: str = "variable",
     column_names: Optional[str | Collection[str]] = None,
+    show: bool = True,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     **kwargs,
 ):
@@ -381,6 +407,7 @@ def hist(
                 yaxis=yaxis,
                 variable=variable,
                 column_names=column_names,
+                show=show,
                 **kwargs,
             )
         case "matplotlib":
@@ -391,6 +418,7 @@ def hist(
                 yaxis=yaxis,
                 variable=variable,
                 column_names=column_names,
+                show=show,
                 **kwargs,
             )
 

@@ -219,7 +219,7 @@ def find_all_d_attention_scores(model: HookedTransformer, min_gap: int = 1) -> U
         scores = torch.zeros((d_vocab, d_vocab)) + float("inf")
         for q_tok in range(d_vocab):
             for k_tok in range(d_vocab):
-                if math.abs(k_tok - q_tok) >= min_gap:
+                if np.abs(k_tok - q_tok) >= min_gap:
                     # q_tok is always in the last position
                     scores[q_tok, k_tok] = (
                         x_scores[0, q_tok, k_tok].item()

@@ -1278,8 +1278,8 @@ if DISPLAY_PLOTS:
 if DISPLAY_PLOTS:
     latex_figures["EQKE-scatter-attention-difference-vs-gap"] = (
         scatter_attention_difference_vs_gap(
-            model, plot_with=PLOT_WITH, renderer=RENDERER
-        )
+            model, plot_with="plotly", renderer=RENDERER
+        )  # this one is too big to export to TeX
     )
     for duplicate_by_sequence_count in [False, True]:
         fig, (flat_diffs, duplication_factors) = hist_attention_difference_over_gap(

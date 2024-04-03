@@ -125,7 +125,9 @@ def imshow_matplotlib(
         bottom=showticklabels and showxticklabels,
         left=showticklabels and showyticklabels,
         top=False,
+        labeltop=False,
         right=False,
+        labelright=False,
     )
     if title is not None:
         ax.set_title(title)

@@ -2319,6 +2319,10 @@ with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
         re.sub(
             r"\\documentclass{[^}]*}" + "\n*", "", tikzplotlib.Flavors.latex.preamble()
         )
+        + r"""
+% for line breaks
+\pgfplotsset{title/.append style={align=center}}
+"""
     )
 
 

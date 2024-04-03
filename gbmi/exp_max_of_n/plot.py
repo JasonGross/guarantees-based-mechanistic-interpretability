@@ -350,6 +350,7 @@ def compute_irrelevant(
     model: HookedTransformer,
     include_equals_OV: bool = False,
     includes_eos: Optional[bool] = None,
+    title_kind: Literal["html", "latex"] = "html",
 ) -> dict:
     W_E, W_pos, W_V, W_O, W_U = (
         model.W_E.to("cpu"),
@@ -365,22 +366,30 @@ def compute_irrelevant(
     W_E_k = W_E[:-1] if includes_eos else W_E
     W_E_q_index = "[-1]" if includes_eos else ""
     W_pos_k_index = "[:-1]" if includes_eos else ""
+    smath = "" if title_kind == "html" else "$"
+    sWE = "W<sub>E</sub>" if title_kind == "html" else r"W_E"
+    sWpos = "W<sub>pos</sub>" if title_kind == "html" else r"W_{\mathrm{pos}}"
+    sWV = "W<sub>V</sub>" if title_kind == "html" else r"W_V"
+    sWO = "W<sub>O</sub>" if title_kind == "html" else r"W_O"
+    sWU = "W<sub>U</sub>" if title_kind == "html" else r"W_U"
+    sE = "𝔼" if title_kind == "html" else r"\mathbb{E}"
+    s_dim0 = "<sub>dim=0</sub>" if title_kind == "html" else r"_{\mathrm{dim}=0}"
     data = {
-        f"(W<sub>E</sub>{W_E_q_index}+W<sub>pos</sub>[-1])W<sub>U</sub>": (
+        f"{smath}({sWE}{W_E_q_index}+{sWpos}[-1]){sWU}{smath}": (
             ((W_E_q + W_pos[-1]) @ W_U).numpy()
         ),
     }
     if include_equals_OV:
         data.update(
             {
-                f"(W<sub>E</sub>{W_E_q_index}+W<sub>pos</sub>[-1])W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>": (
+                f"{smath}({sWE}{W_E_q_index}+{sWpos}[-1]){sWV}{sWO}{sWU}{smath}": (
                     (W_E_q + W_pos[-1]) @ W_V[0, 0] @ W_O[0, 0] @ W_U
                 ),
             }
         )
     data.update(
         {
-            f"(W<sub>pos</sub>[{i}] - 𝔼<sub>dim=0</sub>W<sub>pos</sub>{W_pos_k_index})W<sub>V</sub>W<sub>O</sub>W<sub>U</sub>": (
+            f"{smath}({sWpos}[{i}] - {sE}{s_dim0}{sWpos}{W_pos_k_index}){sWV}{sWO}{sWU}{smath}": (
                 (
                     (W_pos_k[i] - W_pos_k.mean(dim=0))
                     @ W_V[0, 0, :, :]
@@ -420,7 +429,7 @@ def display_basic_interpretation(
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
     QK = compute_QK(model, includes_eos=includes_eos)
-    title_kind = {"plotly": "html", "matplotlib": "latex"}[plot_with]
+    title_kind = "html" if plot_with == "plotly" else "latex"
     result = {}
     if includes_eos:
         match plot_with:
@@ -509,7 +518,16 @@ def display_basic_interpretation(
     result["EQKP"] = fig_qk
 
     irrelevant = compute_irrelevant(
-        model, include_equals_OV=include_equals_OV, includes_eos=includes_eos
+        model,
+        include_equals_OV=include_equals_OV,
+        includes_eos=includes_eos,
+        title_kind=title_kind,
+    )
+    irrelevant_plotly = compute_irrelevant(
+        model,
+        include_equals_OV=include_equals_OV,
+        includes_eos=includes_eos,
+        title_kind="html",
     )
     for key, data in irrelevant["data"].items():
         if len(data.shape) == 2:
@@ -519,16 +537,17 @@ def display_basic_interpretation(
                 colorscale=OV_colorscale,
                 xaxis=irrelevant["xaxis"],
                 yaxis=irrelevant["yaxis"],
+                plot_with=plot_with,
                 renderer=renderer,
             )
             result[f"irrelevant_{key}"] = fig
     fig = px.scatter(
-        {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
-        title=irrelevant["title"],
+        {k: v for k, v in irrelevant_plotly["data"].items() if len(v.shape) == 1},
+        title=irrelevant_plotly["title"],
         labels={
-            "index": irrelevant["xaxis"],
+            "index": irrelevant_plotly["xaxis"],
             "variable": "",
-            "value": irrelevant["yaxis"],
+            "value": irrelevant_plotly["yaxis"],
         },
     )
     if legend_at_bottom:

@@ -4534,7 +4534,7 @@ webcolors = "*"
 type = "git"
 url = "https://github.com/JasonGross/tikzplotlib.git"
 reference = "patched"
-resolved_reference = "d4095edcf2960a65966d9938ede1c118ecdd53c2"
+resolved_reference = "e3133a8680a7bd4663fc074efd8bf3de236d9c1c"
 
 [[package]]
 name = "tikzplotly"

@@ -27,7 +27,7 @@ def armin(
 
 
 runtime_model_1, model = train_or_load_model(ABCAB8_1H, force="load")
-model.to("cpu")
+model.to("cuda")
 n_ctx = model.W_pos.shape[0]
 d_voc = model.W_E.shape[0]
 e_p = model.W_E.unsqueeze(dim=0) + model.W_pos.unsqueeze(dim=1)
@@ -64,8 +64,8 @@ for p in range(2, n_ctx + 1):
 
 z = model.W_O[0, 0]
 v = model.W_V[0, 0]
-q_1 = model.blocks[1].attn.W_Q.squeeze(dim=0)
-k_1 = model.blocks[1].attn.W_Q.squeeze(dim=0)
+q_1 = model.W_Q[1, 0]
+k_1 = model.W_K[1, 0]
 """
 everything_1_1 = ein.array(
     lambda a, c, i_2, j, x: (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
@@ -77,20 +77,20 @@ everything_1_1 = ein.array(
 """
 # %%
 everything_1_1 = torch.ones((d_voc, d_voc, n_ctx, n_ctx, d_voc)).fill_(-torch.inf)
-for a in range(d_voc):
+for a in tqdm(range(d_voc)):
     for c in range(d_voc):
         for i_2 in range(n_ctx):
-            for j in range(1, i_2):
+            for j in range(i_2):
                 for x in range(d_voc):
                     everything_1_1[a, c, i_2, j, x] = (
                         (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
                         @ q_1
                         @ (k_1.T)
                         @ (e_p[j, x].T)
-                        * (1 / sqrt(32))
+                        * (1 / sqrt(128))
                     )
 everything_1_2 = torch.ones((d_voc, d_voc, n_ctx, n_ctx, d_voc)).fill_(-torch.inf)
-for a in range(d_voc):
+for a in tqdm(range(d_voc)):
     for c in range(d_voc):
         for i_2 in range(n_ctx):
             for j in range(1, i_2):
@@ -100,7 +100,7 @@ for a in range(d_voc):
                         @ q_1
                         @ k_1.T
                         @ ((e_p[j - 1, y]) @ v @ z).T
-                        * (1 / sqrt(32))
+                        * (1 / sqrt(128))
                     )
 """
 everything_1_2 = ein.array(
@@ -113,17 +113,17 @@ everything_1_2 = ein.array(
 )
 """
 everything_1_b = torch.ones((d_voc, d_voc, n_ctx, n_ctx, d_voc)).fill_(torch.inf)
-for a in range(d_voc):
+for a in tqdm(range(d_voc)):
     for c in range(d_voc):
         for i_2 in range(n_ctx):
-            for j in range(1, i_2):
+            for i_1 in range(1, i_2):
                 for b in range(d_voc):
-                    everything_1_2[a, c, i_2, j, b] = (
+                    everything_1_b[a, c, i_2, i_1, b] = (
                         (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
                         @ q_1
                         @ k_1.T
-                        @ (e_p[j, b] + (e_p[j - 1, a]) @ v @ z).T
-                        * (1 / sqrt(32))
+                        @ (e_p[i_1, b] + (e_p[i_1 - 1, a]) @ v @ z).T
+                        * (1 / sqrt(128))
                     )
 """
 everything_1_b = ein.array(
@@ -134,6 +134,8 @@ everything_1_b = ein.array(
     * (1 / sqrt(32)),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
+"""
+
 """
 armintable_1_1 = ein.array(
     lambda a, c, i_2, j: ein.max(
@@ -157,5 +159,98 @@ armintable_1_2 = ein.array(
     ),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0]],
 )
+"""
+print(everything_1_2)
+# %%
 
-print(everything_1_1 + everything_1_2)
+attn = torch.zeros((d_voc, d_voc, d_voc, n_ctx, n_ctx))
+xs = torch.zeros((d_voc, d_voc, d_voc, n_ctx, n_ctx))
+ys = torch.zeros((d_voc, d_voc, d_voc, n_ctx, n_ctx))
+
+for a in tqdm(range(d_voc)):
+    for b in range(d_voc):
+        for c in range(d_voc):
+            for i_2 in range(2, n_ctx):
+                for i_1 in range(0, i_2 - 2):
+                    vals = []
+
+                    for j in range(i_2):
+
+                        if j != i_1 + 1:
+                            if j != 0:
+
+                                assert everything_1_1[a, c, i_2, j].isfinite().all(), (
+                                    everything_1_1[a, c, i_2, j],
+                                    a,
+                                    c,
+                                    i_2,
+                                    j,
+                                )
+                                assert everything_1_2[a, c, i_2, j].isfinite().all(), (
+                                    everything_1_2[a, c, i_2, j],
+                                    a,
+                                    c,
+                                    i_2,
+                                    j,
+                                )
+                                """
+                                attn[a, b, c, i_2, i_1] += torch.exp(
+                                    everything_1_1[a, c, i_2, j].max(dim=-1).values
+                                    + everything_1_1[a, c, i_2, j].max(dim=-1).values
+                                )
+                                """
+                                x = np.argwhere(
+                                    (
+                                        everything_1_1[a, c, i_2, j].max()
+                                        == everything_1_1[a, c, i_2, j]
+                                    ).numpy()
+                                )[0]
+                                y = np.argwhere(
+                                    (
+                                        everything_1_2[a, c, i_2, j].max()
+                                        == everything_1_2[a, c, i_2, j]
+                                    ).numpy()
+                                )[0]
+                                vals.append(
+                                    everything_1_1[a, c, i_2, j]
+                                    .max(dim=-1)
+                                    .values
+                                    #   + everything_1_2[a, c, i_2, j].max(dim=-1).values
+                                )
+
+                            if j == 0:
+                                assert everything_1_1[a, c, i_2, j].isfinite().all(), (
+                                    everything_1_1[a, c, i_2, j],
+                                    a,
+                                    c,
+                                    i_2,
+                                    j,
+                                )
+                                x = np.argwhere(
+                                    (
+                                        everything_1_1[a, c, i_2, j].max()
+                                        == everything_1_1[a, c, i_2, j]
+                                    ).numpy()
+                                )[0]
+                                vals.append(
+                                    everything_1_1[a, c, i_2, j].max(dim=-1).values
+                                )
+
+                                # attn[a, b, c, i_2, i_1] += torch.exp(
+                                #     everything_1_1[a, c, i_2, j].max(dim=-1).values
+                                # )
+                    assert everything_1_b[a, c, i_2, i_1 + 1, b].isfinite(), (
+                        everything_1_b[a, c, i_2, i_1 + 1, b],
+                        a,
+                        c,
+                        i_2,
+                        i_1 + 1,
+                        b,
+                    )
+                    vals.append(everything_1_b[a, c, i_2, i_1 + 1, b])
+                    vals = torch.tensor(vals)
+                    attn[a, b, c, i_2, i_1] = vals.softmax(dim=0)[-1]
+print(attn[10, 15, 20, 6, 2])
+
+
+# %%

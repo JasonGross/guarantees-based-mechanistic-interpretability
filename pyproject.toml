@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Guarantees-Based Mechanistic Interpretability Experiments and Tools"
 authors = [
     "Jason Gross <jgross@mit.edu>",
-    "Euan Ong <euan.l.y.ong@gmail.com>",
+    "Euan Ong <euan@ong.ac>",
     "Alex Gibson <mapessentials@gmail.com>",
     "Soufiane Noubir <noubir.soufiane@gmail.com>",
     "Som Bagchi <somsubhro.bagchi@gmail.com>",

@@ -366,7 +366,6 @@ class ModelMatrixLoggingOptions:
             or self.EU
             or self.PU
         ):
-
             d_vocab = W_E.shape[0]
             n_ctx = W_pos.shape[0]
             sEq: dict[int, str] = {}
@@ -399,6 +398,7 @@ class ModelMatrixLoggingOptions:
             ] = {}
             W_E_v: dict[int, Float[Tensor, "d_vocab d_model"]] = {}  # noqa: F722
             W_pos_v: dict[int, Float[Tensor, "n_ctx d_model"]] = {}  # noqa: F722
+
             for l in range(-1, W_Q.shape[0]):
                 add_mean: Optional[Literal["pos_to_tok", "tok_to_pos"]] = (
                     self.add_mean
@@ -621,146 +621,149 @@ class ModelMatrixLoggingOptions:
                 sPk[l] = f"{sPk[l]}ᵀ"
                 sEk[l] = f"{sEk[l]}ᵀ"
 
-        def apply_U(
-            x: Float[Tensor, "... d_model"]  # noqa: F722
-        ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
-            return x @ W_U + b_U
+            def apply_U(
+                x: Float[Tensor, "... d_model"]  # noqa: F722
+            ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
+                return x @ W_U + b_U
 
-        def apply_VO(
-            x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
-        ) -> Float[Tensor, "... a d_model"]:  # noqa: F722
-            return (x @ W_V[l, h, :, :] + b_V[l, h, None, :]) @ W_O[l, h, :, :] + b_O[
-                l, None, None, :
-            ]
+            def apply_VO(
+                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+            ) -> Float[Tensor, "... a d_model"]:  # noqa: F722
+                return (x @ W_V[l, h, :, :] + b_V[l, h, None, :]) @ W_O[
+                    l, h, :, :
+                ] + b_O[l, None, None, :]
 
-        def apply_Q(
-            x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
-        ) -> Float[Tensor, "... a d_head"]:  # noqa: F722
-            return x @ W_Q[l, h, :, :] + b_Q[l, h, None, :]
+            def apply_Q(
+                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+            ) -> Float[Tensor, "... a d_head"]:  # noqa: F722
+                return x @ W_Q[l, h, :, :] + b_Q[l, h, None, :]
 
-        def apply_KT(
-            x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
-        ) -> Float[Tensor, "... d_head a"]:  # noqa: F722
-            return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
+            def apply_KT(
+                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+            ) -> Float[Tensor, "... d_head a"]:  # noqa: F722
+                return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
 
-        if self.EU:
-            yield f"{sEq[-1]}U", apply_U(W_E_q[-1])
-        if self.PU and (sPq[-1] != "0" or self.log_zeros):
-            yield f"{sPq[-1]}U", apply_U(W_pos_q[-1])
+            if self.EU:
+                yield f"{sEq[-1]}U", apply_U(W_E_q[-1])
+            if self.PU and (sPq[-1] != "0" or self.log_zeros):
+                yield f"{sPq[-1]}U", apply_U(W_pos_q[-1])
 
-        for l in range(W_Q.shape[0]):
-            for h in range(W_Q.shape[1]):
-                for (
-                    (qx, qx_direct, qsx, qsx_direct, qskip_composition),
-                    (kx, kx_direct, ksx, ksx_direct, kskip_composition),
-                    test,
-                    nanify_above_diagonal_if_query_direct,
-                ) in (
-                    (
-                        (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
-                        (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
-                        self.EQKE,
-                        False,
-                    ),
-                    (
-                        (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
-                        (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
-                        self.EQKP,
-                        False,
-                    ),
-                    (
-                        (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
-                        (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
-                        self.PQKE,
-                        False,
-                    ),
-                    (
-                        (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
-                        (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
-                        self.PQKP,
-                        self.nanify_causal_attn and model.cfg.attention_dir == "causal",
-                    ),
-                ):
-                    if test:
-                        for (
-                            sq,
-                            lh_q,
-                            v_q,
-                            is_direct_q,
-                        ) in ModelMatrixLoggingOptions.compute_paths(
-                            apply_VO,
-                            model.cfg.n_heads,
-                            x=qx,
-                            x_direct=qx_direct,
-                            sx=qsx,
-                            sx_direct=qsx_direct,
-                            l=l,
-                            reverse_strs=False,
-                            skip_composition=qskip_composition,
-                        ):
+            for l in range(W_Q.shape[0]):
+                for h in range(W_Q.shape[1]):
+                    for (
+                        (qx, qx_direct, qsx, qsx_direct, qskip_composition),
+                        (kx, kx_direct, ksx, ksx_direct, kskip_composition),
+                        test,
+                        nanify_above_diagonal_if_query_direct,
+                    ) in (
+                        (
+                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
+                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
+                            self.EQKE,
+                            False,
+                        ),
+                        (
+                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
+                            (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
+                            self.EQKP,
+                            False,
+                        ),
+                        (
+                            (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
+                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
+                            self.PQKE,
+                            False,
+                        ),
+                        (
+                            (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
+                            (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
+                            self.PQKP,
+                            self.nanify_causal_attn
+                            and model.cfg.attention_dir == "causal",
+                        ),
+                    ):
+                        if test:
                             for (
-                                sk,
-                                lh_k,
-                                v_k,
-                                is_direct_k,
+                                sq,
+                                lh_q,
+                                v_q,
+                                is_direct_q,
                             ) in ModelMatrixLoggingOptions.compute_paths(
                                 apply_VO,
                                 model.cfg.n_heads,
-                                x=kx,
-                                x_direct=kx_direct,
-                                sx=f"{ksx}ᵀ",
-                                sx_direct=ksx_direct,
+                                x=qx,
+                                x_direct=qx_direct,
+                                sx=qsx,
+                                sx_direct=qsx_direct,
                                 l=l,
-                                reverse_strs=True,
-                                skip_composition=kskip_composition,
+                                reverse_strs=False,
+                                skip_composition=qskip_composition,
                             ):
-                                if sq != "0" or self.log_zeros:
-                                    matrix = apply_Q(v_q, l, h) @ apply_KT(v_k, l, h)
-                                    if (
-                                        nanify_above_diagonal_if_query_direct
-                                        and is_direct_q
-                                        and len(matrix.shape) >= 2
-                                    ):
-                                        # set everything above the main diagonal to NaN
-                                        rows, cols = torch.triu_indices(
-                                            *matrix.shape[-2:], offset=1
+                                for (
+                                    sk,
+                                    lh_k,
+                                    v_k,
+                                    is_direct_k,
+                                ) in ModelMatrixLoggingOptions.compute_paths(
+                                    apply_VO,
+                                    model.cfg.n_heads,
+                                    x=kx,
+                                    x_direct=kx_direct,
+                                    sx=f"{ksx}ᵀ",
+                                    sx_direct=ksx_direct,
+                                    l=l,
+                                    reverse_strs=True,
+                                    skip_composition=kskip_composition,
+                                ):
+                                    if sq != "0" or self.log_zeros:
+                                        matrix = apply_Q(v_q, l, h) @ apply_KT(
+                                            v_k, l, h
                                         )
-                                        matrix[..., rows, cols] = float("nan")
-                                    yield (
-                                        f"{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
-                                        matrix,
-                                    )
-                if self.EVOU:
-                    for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
-                        apply_VO,
-                        model.cfg.n_heads,
-                        x=W_E_v[l],
-                        x_direct=W_E_v[l],
-                        sx=sEv[l],
-                        sx_direct=sEv[l],
-                        l=l,
-                        reverse_strs=False,
-                    ):
-                        yield (
-                            f"{sv}VOU<br>.{lh_v}l{l}h{h}",
-                            apply_U(apply_VO(v, l, h)),
-                        )
-                if self.PVOU:
-                    for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
-                        apply_VO,
-                        model.cfg.n_heads,
-                        x=W_pos_v[l],
-                        x_direct=W_pos_v[l],
-                        sx=sPv[l],
-                        sx_direct=sPv[l],
-                        l=l,
-                        reverse_strs=False,
-                        skip_composition=self.shortformer,
-                    ):
-                        yield (
-                            f"{sv}VOU<br>.{lh_v}l{l}h{h}",
-                            apply_U(apply_VO(v, l, h)),
-                        )
+                                        if (
+                                            nanify_above_diagonal_if_query_direct
+                                            and is_direct_q
+                                            and len(matrix.shape) >= 2
+                                        ):
+                                            # set everything above the main diagonal to NaN
+                                            rows, cols = torch.triu_indices(
+                                                *matrix.shape[-2:], offset=1
+                                            )
+                                            matrix[..., rows, cols] = float("nan")
+                                        yield (
+                                            f"{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
+                                            matrix,
+                                        )
+                    if self.EVOU:
+                        for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
+                            apply_VO,
+                            model.cfg.n_heads,
+                            x=W_E_v[l],
+                            x_direct=W_E_v[l],
+                            sx=sEv[l],
+                            sx_direct=sEv[l],
+                            l=l,
+                            reverse_strs=False,
+                        ):
+                            yield (
+                                f"{sv}VOU<br>.{lh_v}l{l}h{h}",
+                                apply_U(apply_VO(v, l, h)),
+                            )
+                    if self.PVOU:
+                        for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
+                            apply_VO,
+                            model.cfg.n_heads,
+                            x=W_pos_v[l],
+                            x_direct=W_pos_v[l],
+                            sx=sPv[l],
+                            sx_direct=sPv[l],
+                            l=l,
+                            reverse_strs=False,
+                            skip_composition=self.shortformer,
+                        ):
+                            yield (
+                                f"{sv}VOU<br>.{lh_v}l{l}h{h}",
+                                apply_U(apply_VO(v, l, h)),
+                            )
 
     @torch.no_grad()
     def log_matrices(
@@ -779,23 +782,30 @@ class ModelMatrixLoggingOptions:
             QKs_by_layer = tuple(
                 tuple(name for name in QKs if lh in name) for lh in lh_s
             )
-            figs = {
-                self.superplot_title: plot_tensors(
-                    matrices.items(),
-                    title=self.superplot_title + self._superplot_title_extra,
-                    plot_1D_kind=self.plot_1D_kind,
-                    groups=(
-                        (
-                            {
-                                OVs: dict(colorscale="Picnic_r", zmid=0),
-                            }
-                            | {QKss: dict(colorscale="Plasma") for QKss in QKs_by_layer}
-                        )
-                        if self.group_colorbars
-                        else None
-                    ),
-                )
-            }
+            figs = (
+                {
+                    self.superplot_title: plot_tensors(
+                        matrices.items(),
+                        title=self.superplot_title + self._superplot_title_extra,
+                        plot_1D_kind=self.plot_1D_kind,
+                        groups=(
+                            (
+                                {
+                                    OVs: dict(colorscale="Picnic_r", zmid=0),
+                                }
+                                | {
+                                    QKss: dict(colorscale="Plasma")
+                                    for QKss in QKs_by_layer
+                                }
+                            )
+                            if self.group_colorbars
+                            else None
+                        ),
+                    )
+                }
+                if matrices
+                else {}
+            )
         else:
             figs = {
                 name: plot_tensors(

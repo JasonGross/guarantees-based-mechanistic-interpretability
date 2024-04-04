@@ -62,10 +62,11 @@ for p in range(2, n_ctx + 1):
                     tmp[:, tmp_sm[-2, :].min(dim=-1).indices],
                 )
 
-z = model.attn.W_O[0, 0]
-v = model.attn.W_V[0, 0]
+z = model.W_O[0, 0]
+v = model.W_V[0, 0]
 q_1 = model.blocks[1].attn.W_Q.squeeze(dim=0)
 k_1 = model.blocks[1].attn.W_Q.squeeze(dim=0)
+"""
 everything_1_1 = ein.array(
     lambda a, c, i_2, j, x: (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
     @ q_1
@@ -73,7 +74,35 @@ everything_1_1 = ein.array(
     @ (e_p[j, x].T)
     * (1 / sqrt(32))
 )
+"""
 # %%
+everything_1_1 = torch.ones((d_voc, d_voc, n_ctx, n_ctx, d_voc)).fill_(-torch.inf)
+for a in range(d_voc):
+    for c in range(d_voc):
+        for i_2 in range(n_ctx):
+            for j in range(1, i_2):
+                for x in range(d_voc):
+                    everything_1_1[a, c, i_2, j, x] = (
+                        (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
+                        @ q_1
+                        @ (k_1.T)
+                        @ (e_p[j, x].T)
+                        * (1 / sqrt(32))
+                    )
+everything_1_2 = torch.ones((d_voc, d_voc, n_ctx, n_ctx, d_voc)).fill_(-torch.inf)
+for a in range(d_voc):
+    for c in range(d_voc):
+        for i_2 in range(n_ctx):
+            for j in range(1, i_2):
+                for y in range(d_voc):
+                    everything_1_2[a, c, i_2, j, y] = (
+                        (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
+                        @ q_1
+                        @ k_1.T
+                        @ ((e_p[j - 1, y]) @ v @ z).T
+                        * (1 / sqrt(32))
+                    )
+"""
 everything_1_2 = ein.array(
     lambda a, c, i_2, j, y: (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
     @ q_1
@@ -82,6 +111,21 @@ everything_1_2 = ein.array(
     * (1 / sqrt(32)),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
+"""
+everything_1_b = torch.ones((d_voc, d_voc, n_ctx, n_ctx, d_voc)).fill_(torch.inf)
+for a in range(d_voc):
+    for c in range(d_voc):
+        for i_2 in range(n_ctx):
+            for j in range(1, i_2):
+                for b in range(d_voc):
+                    everything_1_2[a, c, i_2, j, b] = (
+                        (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
+                        @ q_1
+                        @ k_1.T
+                        @ (e_p[j, b] + (e_p[j - 1, a]) @ v @ z).T
+                        * (1 / sqrt(32))
+                    )
+"""
 everything_1_b = ein.array(
     lambda a, c, i_2, i_1, b: (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
     @ q_1
@@ -90,6 +134,7 @@ everything_1_b = ein.array(
     * (1 / sqrt(32)),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
+"""
 armintable_1_1 = ein.array(
     lambda a, c, i_2, j: ein.max(
         lambda x: torch.where(
@@ -113,19 +158,4 @@ armintable_1_2 = ein.array(
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0]],
 )
 
-print(everything_1_b[23][2][4][2][3])
-print(everything_1_1[23][2][4][2][3] + everything_1_2[23][2][4][2][3])
-print(
-    np.argwhere(
-        np.array(everything_1_2.detach())[23][2][1][0]
-        == np.array(everything_1_2.detach())[23][2][1][0].max()
-    )
-)
-surroundingexp = torch.exp(armintable_1_1 + armintable_1_2)
-print(surroundingexp.shape)
-print(np.array(surroundingexp.detach())[23][2][1][0])
-print(
-    np.argwhere(
-        np.array(surroundingexp.detach()) == np.array(surroundingexp.detach()).max()
-    )
-)
+print(everything_1_1 + everything_1_2)

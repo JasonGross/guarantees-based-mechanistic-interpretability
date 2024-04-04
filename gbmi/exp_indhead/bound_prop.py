@@ -17,6 +17,7 @@ from functools import partial
 from inspect import signature
 from typing import Callable, Optional, List
 from torch import Tensor
+import numpy as np
 
 
 def armin(
@@ -40,9 +41,6 @@ everything = (
     )
     / model.blocks[0].attn.attn_scale
 )
-print(everything.shape)
-print(n_ctx)
-print(d_voc)
 # %%
 table = torch.zeros((d_voc, d_voc, n_ctx, d_voc)) + float("nan")
 for p in range(2, n_ctx + 1):
@@ -63,52 +61,71 @@ for p in range(2, n_ctx + 1):
                     tmp_sm[:, tmp_sm[-2, :].min(dim=-1).indices],
                     tmp[:, tmp_sm[-2, :].min(dim=-1).indices],
                 )
-v = model.W_V[0, 0]
-z = model.W_O[0, 0]
-q_1 = model.W_Q[0, 0]
-k_1 = model.W_K[0, 0]
+
+z = model.attn.W_O[0, 0]
+v = model.attn.W_V[0, 0]
+q_1 = model.blocks[1].attn.W_Q.squeeze(dim=0)
+k_1 = model.blocks[1].attn.W_Q.squeeze(dim=0)
 everything_1_1 = ein.array(
     lambda a, c, i_2, j, x: (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
     @ q_1
     @ (k_1.T)
     @ (e_p[j, x].T)
+    * (1 / sqrt(32))
 )
+# %%
 everything_1_2 = ein.array(
     lambda a, c, i_2, j, y: (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
     @ q_1
     @ k_1.T
-    @ ((e_p[j - 1, y]) @ v @ z).T,
+    @ ((e_p[j - 1, y]) @ v @ z).T
+    * (1 / sqrt(32)),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
 everything_1_b = ein.array(
     lambda a, c, i_2, i_1, b: (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ z)
     @ q_1
     @ k_1.T
-    @ (e_p[i_1, b] + (e_p[i_1 - 1, a]) @ v @ z).T,
+    @ ((e_p[i_1, b] + (e_p[i_1 - 1, a]) @ v @ z).T)
+    * (1 / sqrt(32)),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
-
 armintable_1_1 = ein.array(
-    lambda a, c, i_2, j: armin(lambda x: everything_1_1[a, c, i_2, j, x])
-)
-armintable_1_2 = ein.array(
-    lambda a, c, i_2, j: armin(
-        lambda y: torch.where(y != a, everything_1_2[a, c, i_2, j, y], -torch.inf),
+    lambda a, c, i_2, j: ein.max(
+        lambda x: torch.where(
+            torch.logical_and(torch.logical_and(x != c, x != a), i_2 > j),
+            everything_1_1[a, c, i_2, j, x],
+            -torch.inf,
+        ),
         sizes=[e_p.shape[1]],
     ),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0]],
 )
-worst_possible = ein.array(
-    lambda a, c, i_2: ein.sum(
-        lambda j: torch.exp(
-            everything_1_1[a, c, i_2, j, armintable_1_1[a, c, i_2, j]]
-            + everything_1_2[a, c, i_2, j, armintable_1_2[a, c, i_2, j]]
-        )
+armintable_1_2 = ein.array(
+    lambda a, c, i_2, j: ein.max(
+        lambda y: torch.where(
+            torch.logical_and(torch.logical_and(y != c, i_2 > j), y != a),
+            everything_1_2[a, c, i_2, j, y],
+            -torch.inf,
+        ),
+        sizes=[e_p.shape[1]],
     ),
-    sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0]],
+    sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0]],
 )
+
+print(everything_1_b[23][2][4][2][3])
+print(everything_1_1[23][2][4][2][3] + everything_1_2[23][2][4][2][3])
 print(
-    ein.array(
-        lambda a, c, i_2, j: everything_1_1[a, c, i_2, j, armintable_1_2[a, c, i_2, j]]
+    np.argwhere(
+        np.array(everything_1_2.detach())[23][2][1][0]
+        == np.array(everything_1_2.detach())[23][2][1][0].max()
+    )
+)
+surroundingexp = torch.exp(armintable_1_1 + armintable_1_2)
+print(surroundingexp.shape)
+print(np.array(surroundingexp.detach())[23][2][1][0])
+print(
+    np.argwhere(
+        np.array(surroundingexp.detach()) == np.array(surroundingexp.detach()).max()
     )
 )

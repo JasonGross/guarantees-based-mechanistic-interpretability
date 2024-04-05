@@ -27,49 +27,86 @@ def armin(
     return ein.apply(f, collect=lambda xs, d: xs.max(d).indices, sizes=sizes)
 
 
+device = "cuda"
 runtime_model_1, model = train_or_load_model(ABCAB8_1H, force="load")
-model.to("cuda")
+model.to(device)
 c = 10
 d = 10
 W_pos = model.W_pos
 W_E = model.W_E
-
+epsilon = 0.05
 n_ctx = W_pos.shape[0]
 d_voc = W_E.shape[0]
 d_model = W_E.shape[1]
-# %%
-W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float()
+
+
+def noise(M):
+    return epsilon * (torch.rand_like(M) - 0.5)
+
+
+def add_noise(*ms):
+    for m in ms:
+        m += noise(m.shape)
+
 
 # %%
-W_pos = ein.array(lambda i, j: ((i + d_voc) == j) * 1.0, sizes=[n_ctx, d_model]).float()
+W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float().to(device) + noise(
+    W_E
+)
+# %%
+W_pos = (
+    ein.array(lambda i, j: ((i + d_voc) == j) * 1.0, sizes=[n_ctx, d_model])
+    .float()
+    .to(device)
+) + noise(W_pos)
 
 # %%
 
 
 W_O_0 = model.W_O[0, 0]
-W_O_0 = ein.array(
-    lambda i, j: ((i + n_ctx + d_voc) == j) * 1.0, sizes=[d_voc, d_model]
-).float()
+W_O_0 = (
+    ein.array(lambda i, j: ((i + n_ctx + d_voc) == j) * 1.0, sizes=[d_voc, d_model])
+    .float()
+    .to(device)
+)
+W_O_0 = W_O_0 + noise(W_O_0)
 W_V_0 = model.W_V[0, 0]
-W_V_0 = ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc]).float()
+W_V_0 = (
+    ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc]).float().to(device)
+)
+W_V_0 = W_V_0 + noise(W_V_0)
 W_V_1 = model.W_V[1, 0]
-W_V_1 = ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc]).float()
+W_V_1 = (
+    ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc]).float().to(device)
+)
+W_V_1 = W_V_1 + noise(W_V_1)
 W_O_1 = model.W_O[1, 0]
-W_O_1 = ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_voc, d_model]).float()
+W_O_1 = (
+    ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_voc, d_model]).float().to(device)
+)
+W_O_1 = W_O_1 + noise(W_O_1)
 W_Q_0 = model.W_Q[0, 0]
 W_Q_0 = (
     ein.array(lambda i, j: where((i + d_voc + 1) == j, c, 0), sizes=[n_ctx, d_model])
     .float()
+    .to(device)
     .T
 )
+W_Q_0 = W_Q_0 + noise(W_Q_0)
 W_Q_1 = model.W_Q[1, 0]
-W_Q_1 = ein.array(lambda i, j: where(i == j, d, 0), sizes=[d_voc, d_model]).float().T
+W_Q_1 = (
+    ein.array(lambda i, j: where(i == j, d, 0), sizes=[d_voc, d_model])
+    .float()
+    .T.to(device)
+)
+W_Q_1 = W_Q_1 + noise(W_Q_1)
 W_K_0 = model.W_K[0, 0]
 W_K_0 = (
     ein.array(lambda i, j: where((i + d_voc) == j, c, 0), sizes=[n_ctx, d_model])
     .float()
     .T
-)
+).to(device)
+W_K_0 = W_K_0 + noise(W_K_0)
 W_K_1 = model.W_K[1, 0]
 W_K_1 = (
     ein.array(
@@ -77,12 +114,14 @@ W_K_1 = (
     )
     .float()
     .T
-)
+).to(device)
+W_K_1 = W_K_1 + noise(W_K_1)
 # %%
-px.imshow(W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T)
+px.imshow((W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T).cpu())
 # %%
 W_U = model.W_U
-W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float()
+W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
+W_U = W_U + noise(W_U)
 attn_scale_0 = model.blocks[0].attn.attn_scale
 attn_scale_1 = model.blocks[1].attn.attn_scale
 
@@ -139,7 +178,7 @@ everything_1_1 = ein.array(
 """
 everything_1_1 = ein.array(
     lambda a, c, i_2, j, x: torch.where(
-        j < i_2,
+        (j < i_2) & (x != a),
         (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o)
         @ q_1
         @ (k_1.T)
@@ -154,7 +193,7 @@ everything_1_1 = ein.array(
 
 everything_1_2 = ein.array(
     lambda a, c, i_2, j, y: torch.where(
-        torch.logical_and(j >= 1, j < i_2),
+        (j >= 1) & (j < i_2) & (y != a),
         (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o)
         @ q_1
         @ k_1.T
@@ -168,10 +207,10 @@ everything_1_2 = ein.array(
 
 
 # %%
-px.imshow(W_E @ q_1 @ k_1.T @ o.T @ v.T @ W_E.T)
+px.imshow((W_E @ q_1 @ k_1.T @ o.T @ v.T @ W_E.T).cpu())
 
 # %%
-px.imshow(W_E @ v)
+px.imshow((W_E @ v).cpu())
 # %%
 
 everything_1_b = ein.array(
@@ -215,87 +254,139 @@ armintable_1_2 = ein.array(
 
 
 attn = torch.zeros((d_voc, d_voc, d_voc, n_ctx, n_ctx))
+last_dim_indices_1_1 = torch.arange(
+    everything_1_1.shape[-1], device=everything_1_1.device
+)
+last_dim_indices_1_2 = torch.arange(
+    everything_1_2.shape[-1], device=everything_1_2.device
+)
 
+
+def make_inner_val(a, c, i_2, j):
+    return torch.where(
+        last_dim_indices_1_1 == a,
+        -torch.inf,
+        everything_1_1[a, c, i_2, j],
+    ).max(dim=-1).values + torch.where(
+        torch.tensor(j != 0, device=device),
+        torch.where(
+            last_dim_indices_1_2 == a,
+            -torch.inf,
+            everything_1_2[a, c, i_2, j],
+        )
+        .max(dim=-1)
+        .values,
+        0.0,
+    )
+
+
+# %%
+x = torch.tensor([1, 2, 3])
+
+ein.array(lambda i: x[i])
+
+# %%
 for a in tqdm(range(d_voc)):
     for b in range(d_voc):
         for c in range(d_voc):
             for i_2 in range(2, n_ctx):
                 for i_1 in range(0, i_2 - 2):
-                    vals = []
-                    for j in range(i_2):
-                        if j != i_1 + 1:
-                            if j != 0:
-                                # assert everything_1_1[a, c, i_2, j].isfinite().all(), (
-                                #     everything_1_1[a, c, i_2, j],
-                                #     a,
-                                #     c,
-                                #     i_2,
-                                #     j,
-                                # )
-                                # assert everything_1_2[a, c, i_2, j].isfinite().all(), (
-                                #     everything_1_2[a, c, i_2, j],
-                                #     a,
-                                #     c,
-                                #     i_2,
-                                #     j,
-                                # )
-                                """
-                                attn[a, b, c, i_2, i_1] += torch.exp(
-                                    everything_1_1[a, c, i_2, j].max(dim=-1).values
-                                    + everything_1_1[a, c, i_2, j].max(dim=-1).values
-                                )
-                                """
-                                """
-                                x = np.argwhere(
-                                    (
-                                        everything_1_1[a, c, i_2, j].max()
-                                        == everything_1_1[a, c, i_2, j]
-                                    ).numpy()
-                                )[0]
-                                y = np.argwhere(
-                                    (
-                                        everything_1_2[a, c, i_2, j].max()
-                                        == everything_1_2[a, c, i_2, j]
-                                    ).numpy()
-                                )[0]
-                                """
-                                everything_1_1[a, c, i_2, j, a] = -torch.inf
-                                everything_1_2[a, c, i_2, j, a] = -torch.inf
-                                vals.append(
-                                    everything_1_1[a, c, i_2, j].max(dim=-1).values
-                                    + everything_1_2[a, c, i_2, j].max(dim=-1).values
-                                )
-                            if j == 0:
-                                # assert everything_1_1[a, c, i_2, j].isfinite().all(), (
-                                #     everything_1_1[a, c, i_2, j],
-                                #     a,
-                                #     c,
-                                #     i_2,
-                                #     j,
-                                # )
-                                everything_1_1[a, c, i_2, j, a] = -torch.inf
-                                # x = np.argwhere(
-                                #     (
-                                #         everything_1_1[a, c, i_2, j].max()
-                                #         == everything_1_1[a, c, i_2, j]
-                                #     ).numpy()
-                                # )[0]
-                                vals.append(
-                                    everything_1_1[a, c, i_2, j].max(dim=-1).values
-                                )
-                                # attn[a, b, c, i_2, i_1] += torch.exp(
-                                #     everything_1_1[a, c, i_2, j].max(dim=-1).values
-                                # )
-                    assert everything_1_b[a, c, i_2, i_1 + 1, b].isfinite(), (
-                        everything_1_b[a, c, i_2, i_1 + 1, b],
-                        a,
-                        c,
-                        i_2,
-                        i_1 + 1,
-                        b,
+                    vals = torch.cat(
+                        [
+                            ein.array(
+                                lambda j: make_inner_val(a, c, i_2, j),
+                                sizes=[i_1 + 1],
+                                device=device,
+                            ),
+                            ein.array(
+                                lambda j: make_inner_val(a, c, i_2, i_1 + 2 + j),
+                                sizes=[i_2 - 2 - i_1],
+                                device=device,
+                            ),
+                            everything_1_b[a, c, i_2, i_1 + 1, b].unsqueeze(dim=0),
+                        ]
                     )
-                    vals.append(everything_1_b[a, c, i_2, i_1 + 1, b])
-                    vals = torch.tensor(vals)
+
                     attn[a, b, c, i_2, i_1] = vals.softmax(dim=0)[-1]
+
+# for a in tqdm(range(d_voc)):
+#     for b in range(d_voc):
+#         for c in range(d_voc):
+#             for i_2 in range(2, n_ctx):
+#                 for i_1 in range(0, i_2 - 2):
+#                     vals = []
+#                     for j in range(i_2):
+#                         if j != i_1 + 1:
+
+#                             vals.append(
+#                                 torch.where(
+#                                     last_dim_indices_1_1 == a,
+#                                     -torch.inf,
+#                                     everything_1_1[a, c, i_2, j],
+#                                 )
+#                                 .max(dim=-1)
+#                                 .values
+#                                 + torch.where(
+#                                     torch.tensor(j != 0, device=device),
+#                                     torch.where(
+#                                         last_dim_indices_1_2 == a,
+#                                         -torch.inf,
+#                                         everything_1_2[a, c, i_2, j],
+#                                     )
+#                                     .max(dim=-1)
+#                                     .values,
+#                                     0.0,
+#                                 )
+#                             )
+#                     vals.append(everything_1_b[a, c, i_2, i_1 + 1, b])
+#                     vals = torch.tensor(vals)
+#                     attn[a, b, c, i_2, i_1] = vals.softmax(dim=0)[-1]
+
+
+# for a in tqdm(range(d_voc)):
+#     for b in range(d_voc):
+#         for c in range(d_voc):
+#             for i_2 in range(2, n_ctx):
+#                 for i_1 in range(0, i_2 - 2):
+#                     vals = []
+#                     for j in range(i_2):
+#                         if j != i_1 + 1:
+#                             if j != 0:
+#                                 condition_1_1 = last_dim_indices_1_1 == a
+
+#                                 condition_1_2 = last_dim_indices_1_2 == a
+
+#                                 modified_1_2 = torch.where(
+#                                     condition_1_2,
+#                                     -torch.inf,
+#                                     everything_1_2,
+#                                 )
+#                                 modified_1_1 = torch.where(
+#                                     condition_1_1,
+#                                     -torch.inf,
+#                                     everything_1_1,
+#                                 )
+
+#                                 vals.append(
+#                                     modified_1_1[a, c, i_2, j].max(dim=-1).values
+#                                     + modified_1_2[a, c, i_2, j].max(dim=-1).values
+#                                 )
+#                             if j == 0:
+
+#                                 condition_1_1 = last_dim_indices_1_1 == a
+
+#                                 modified_1_1 = torch.where(
+#                                     condition_1_1,
+#                                     -torch.inf,
+#                                     everything_1_1,
+#                                 )
+
+#                                 vals.append(
+#                                     modified_1_1[a, c, i_2, j].max(dim=-1).values
+#                                 )
+
+#                     vals.append(everything_1_b[a, c, i_2, i_1 + 1, b])
+#                     vals = torch.tensor(vals)
+#                     attn[a, b, c, i_2, i_1] = vals.softmax(dim=0)[-1]
 
 # %%

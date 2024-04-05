@@ -59,6 +59,7 @@ for p in range(2, n_ctx + 1):
                     tmp_sm[:, tmp_sm[-2, :].min(dim=-1).indices],
                     tmp[:, tmp_sm[-2, :].min(dim=-1).indices],
                 )
+
 z = model.W_O[0, 0]
 v = model.W_V[0, 0]
 q_1 = model.W_Q[1, 0]
@@ -158,16 +159,21 @@ armintable_1_2 = ein.array(
 """
 print(everything_1_2)
 # %%
+
 attn = torch.zeros((d_voc, d_voc, d_voc, n_ctx, n_ctx))
+
 for a in tqdm(range(d_voc)):
     for b in range(d_voc):
         for c in range(d_voc):
             for i_2 in range(2, n_ctx):
                 for i_1 in range(0, i_2 - 2):
                     vals = []
+
                     for j in range(i_2):
+
                         if j != i_1 + 1:
                             if j != 0:
+
                                 # assert everything_1_1[a, c, i_2, j].isfinite().all(), (
                                 #     everything_1_1[a, c, i_2, j],
                                 #     a,
@@ -188,6 +194,7 @@ for a in tqdm(range(d_voc)):
                                     + everything_1_1[a, c, i_2, j].max(dim=-1).values
                                 )
                                 """
+
                                 """
                                 x = np.argwhere(
                                     (
@@ -208,6 +215,7 @@ for a in tqdm(range(d_voc)):
                                     everything_1_1[a, c, i_2, j].max(dim=-1).values
                                     + everything_1_2[a, c, i_2, j].max(dim=-1).values
                                 )
+
                             if j == 0:
                                 # assert everything_1_1[a, c, i_2, j].isfinite().all(), (
                                 #     everything_1_1[a, c, i_2, j],
@@ -226,6 +234,7 @@ for a in tqdm(range(d_voc)):
                                 vals.append(
                                     everything_1_1[a, c, i_2, j].max(dim=-1).values
                                 )
+
                                 # attn[a, b, c, i_2, i_1] += torch.exp(
                                 #     everything_1_1[a, c, i_2, j].max(dim=-1).values
                                 # )

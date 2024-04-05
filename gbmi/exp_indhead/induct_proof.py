@@ -163,7 +163,7 @@ armintable_1_2 = ein.array(
 print(everything_1_2)
 # %%
 
-attn = torch.zeros((d_voc, d_voc, d_voc, n_ctx, n_ctx))
+attn = torch.zeros((d_voc, d_voc, d_voc, n_ctx, n_ctx, n_ctx))
 
 for a in tqdm(range(d_voc)):
     for b in range(d_voc):
@@ -241,18 +241,38 @@ for a in tqdm(range(d_voc)):
                                 # attn[a, b, c, i_2, i_1] += torch.exp(
                                 #     everything_1_1[a, c, i_2, j].max(dim=-1).values
                                 # )
-                    assert everything_1_b[a, c, i_2, i_1 + 1, b].isfinite(), (
-                        everything_1_b[a, c, i_2, i_1 + 1, b],
-                        a,
-                        c,
-                        i_2,
-                        i_1 + 1,
-                        b,
-                    )
-                    vals.append(everything_1_b[a, c, i_2, i_1 + 1, b])
+                        else:
+                            # assert everything_1_b[a, c, i_2, i_1 + 1, b].isfinite(), (
+                            #     everything_1_b[a, c, i_2, i_1 + 1, b],
+                            #     a,
+                            #     c,
+                            #     i_2,
+                            #     i_1 + 1,
+                            #     b,
+                            # )
+                            vals.append(everything_1_b[a, c, i_2, i_1 + 1, b])
                     vals = torch.tensor(vals)
-                    attn[a, b, c, i_2, i_1] = vals.softmax(dim=0)[-1]
-print(attn[10, 15, 20, 6, 2])
+                    soft = vals.softmax(dim=0)
+                    print(soft)
+                    print(i_1, i_2)
+                    print(a, b, c)
+                    assert len(soft) == i_2, "ahhhhh"
+                    d = torch.cat((soft, torch.zeros(n_ctx - i_2).fill_(-torch.inf)))
+                    attn[a, b, c, i_2, i_1] = d
 
 
 # %%
+
+
+pre_final = torch.zeros(
+    (
+        d_voc,
+        d_voc,
+        d_voc,
+        n_ctx,
+        n_ctx,
+        d_voc,
+    )
+).fill_(
+    torch.inf
+)  # a,b,c,i_2,i_1,

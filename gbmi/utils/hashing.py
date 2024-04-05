@@ -28,6 +28,7 @@ import base64
 import torch
 from transformer_lens import HookedTransformer
 import numpy
+import cloudpickle
 
 # Implemented for https://github.com/lemon24/reader/issues/179
 
@@ -51,6 +52,16 @@ ExcludeFilter = Union[
     Mapping[str, bool],
     Callable[[object], Union[None, bool, Collection[str], Mapping[str, bool]]],
 ]
+
+
+def lambda_hash(thing: object) -> str:
+    cloudpickle.Pickler.dispatch_table[torch.Tensor] = lambda x: (
+        int,
+        (hash(x),),
+    )
+    result = hashlib.md5(cloudpickle.dumps(thing)).hexdigest()
+    del cloudpickle.Pickler.dispatch_table[torch.Tensor]
+    return result
 
 
 def get_hash(

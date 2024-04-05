@@ -45,6 +45,7 @@ nltk = "^3.8.1"
 tikzplotlib = { git = "https://github.com/JasonGross/tikzplotlib.git", branch = "patched" }
 seaborn = "^0.13.2"
 pandas = "^2.2.1"
+cloudpickle = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"

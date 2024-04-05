@@ -4,6 +4,7 @@ import copy
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 
 from pathlib import Path
 from typing import (
@@ -21,6 +22,7 @@ from typing import (
     Any,
     Union,
     Sequence,
+    Generic,
 )
 
 from jaxtyping import Float

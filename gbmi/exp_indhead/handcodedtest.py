@@ -144,7 +144,7 @@ everything_1_1 = ein.array(
         @ q_1
         @ (k_1.T)
         @ (e_p[j, x].T)
-        * (1 / sqrt(32)),
+        * (1 / attn_scale_1),
         -torch.inf,
     ),
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],

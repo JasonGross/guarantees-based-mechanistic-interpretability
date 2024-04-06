@@ -64,6 +64,7 @@ class IndHead(ExperimentConfig):
     positional_embedding_type: Literal["standard", "rotary", "shortformer"] = "standard"
     other_tokens_distinct_from_predicted_token: bool = False
     alpha_mix_uniform: Optional[float] = None
+    high_precision: bool = True
 
     n_train_samples: int = 4096
     n_test_samples: int = 1
@@ -82,6 +83,7 @@ class IndHead(ExperimentConfig):
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
         for field, should_ignore in [
             ("logging_options", True),
+            ("high_precision", self.high_precision is False),
             ("alpha_mix_uniform", self.task != "abcab"),
             ("corpus", self.task == "exact-bigram"),
         ]:
@@ -314,6 +316,7 @@ class IndHeadTrainingWrapper(TrainingWrapper[IndHead]):
             use_bos=self.config.experiment.bos,
             only_eos=self.config.experiment.only_last_tokens,
             only_strong_signal=self.config.experiment.only_strong_signal,
+            high_precision=self.config.experiment.high_precision,
             _xs=_xs,
         )
 

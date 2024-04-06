@@ -17,6 +17,7 @@ class ExactBigramTask:
         use_bos: bool,
         only_eos: Optional[int] = None,
         only_strong_signal: bool = False,
+        high_precision: bool = True,
         # _xs only for logging purposes
         _xs: Optional[Integer[Tensor, "batch pos"]] = None,  # noqa: F722
     ) -> Float[Tensor, ""]:  # noqa: F722
@@ -41,6 +42,8 @@ class ExactBigramTask:
             labels = einops.rearrange(labels, "b p v -> (b p) v")
         assert len(logits.shape) == 2, logits.shape
         assert len(labels.shape) == 2, labels.shape
+        if high_precision:
+            logits = logits.to(torch.float64)
         loss = torch.nn.functional.cross_entropy(logits, labels)
         return loss
 

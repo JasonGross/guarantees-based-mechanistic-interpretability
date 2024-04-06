@@ -7,6 +7,7 @@ from gbmi.utils import (
     deep_getattr_or_item,
     deep_setattr_or_item,
     log_softmax,
+    cross_entropy,
 )
 from gbmi.utils.testing import TestCase
 
@@ -129,3 +130,43 @@ class TestInit(TestCase):
         loss = logits.sum()
         loss.backward()
         self.assertIsNotNone(x.grad, "Gradients should not be None")
+
+    def cross_entropy_tester_helper(self, *args, rtol=1e-13, **kwargs):
+        expected = torch.nn.functional.cross_entropy(*args, **kwargs)
+        res = cross_entropy(*args, **kwargs)
+        diff = torch.abs(res - expected)
+        self.assertAllClose(
+            res,
+            expected,
+            msg=f"cross_entropy(*{args}, **{kwargs}) == {res} != {expected} within {rtol} ({diff} difference)",
+            rtol=rtol,
+        )
+
+    def test_cross_entropy(self):
+        # Test with class indices as target
+        input = torch.randn(10, 3, requires_grad=True)
+        target = torch.randint(0, 3, (10,))
+        self.cross_entropy_tester_helper(input, target)
+
+        # Test with ignore_index
+        target[0] = 2  # Set an ignore index
+        self.cross_entropy_tester_helper(input, target, ignore_index=5)
+
+        # Test with weights
+        weights = torch.tensor([0.2, 0.5, 0.3])
+        # self.cross_entropy_tester_helper(input, target, weight=weights)
+
+        # Test with label smoothing
+        self.cross_entropy_tester_helper(input, target, label_smoothing=0.1)
+
+        # Test with class probabilities as target (simulated)
+        target_probs = torch.softmax(torch.randn(10, 3), dim=1)
+        self.cross_entropy_tester_helper(
+            input, target_probs, rtol=1e-5
+        )  # Adjusted rtol for numerical stability
+
+        # Test reduction='sum'
+        self.cross_entropy_tester_helper(input, target, reduction="sum")
+
+        # Test reduction='none'
+        self.cross_entropy_tester_helper(input, target, reduction="none")

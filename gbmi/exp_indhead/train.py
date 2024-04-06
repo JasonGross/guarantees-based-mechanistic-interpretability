@@ -74,7 +74,7 @@ class IndHead(ExperimentConfig):
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
     summary_slug_extra: str = ""
-    version_number: int = 4
+    version_number: int = 5
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
@@ -83,8 +83,6 @@ class IndHead(ExperimentConfig):
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
         for field, should_ignore in [
             ("logging_options", True),
-            ("high_precision", self.high_precision is False),
-            ("alpha_mix_uniform", self.task != "abcab"),
             ("corpus", self.task == "exact-bigram"),
         ]:
             if should_ignore:

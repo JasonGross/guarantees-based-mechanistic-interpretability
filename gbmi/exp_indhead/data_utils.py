@@ -4,6 +4,7 @@ from jaxtyping import Float, Integer
 import torch
 from torch import Tensor
 from tqdm.auto import tqdm
+import gbmi.utils as utils
 from gbmi.utils.english_ngram import ngram_count_table, DEFAULT_CORPUS
 
 
@@ -44,7 +45,9 @@ class ExactBigramTask:
         assert len(labels.shape) == 2, labels.shape
         if high_precision:
             logits = logits.to(torch.float64)
-        loss = torch.nn.functional.cross_entropy(logits, labels)
+            loss = utils.cross_entropy(logits, labels)
+        else:
+            loss = torch.nn.functional.cross_entropy(logits, labels)
         return loss
 
     @staticmethod

@@ -29,7 +29,7 @@ def armin(
     return ein.apply(f, collect=lambda xs, d: xs.max(d).indices, sizes=sizes)
 
 
-device = "cuda"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 runtime_model_1, model = train_or_load_model(ABCAB8_1H, force="load")
 model.to(device)
 c = 10
@@ -291,31 +291,56 @@ x = torch.tensor([1, 2, 3])
 ein.array(lambda i: x[i])
 
 # %%
-for a in tqdm(range(d_voc)):
-    for b in range(d_voc):
-        for c in range(d_voc):
-            for i_2 in range(2, n_ctx):
-                for i_1 in range(0, i_2 - 2):
-                    x = ein.array(
-                        lambda j: make_inner_val(a, c, i_2, j),
-                        sizes=[i_1 + 1],
-                        device=device,
-                    )
-                    y = ein.array(
-                        lambda j: make_inner_val(a, c, i_2, i_1 + 2 + j),
-                        sizes=[i_2 - 2 - i_1],
-                        device=device,
-                    )
-                    z = everything_1_b[a, c, i_2, i_1 + 1, b].unsqueeze(dim=0)
-                    vals = torch.cat(
-                        [
-                            x,
-                            y,
-                            z,
-                        ]
-                    )
+# pre-softmax
+attn_pattern = ein.array(
+    lambda a, b, c, i_2, i_1, j: torch.where(
+        (i_2 >= 2) & (i_1 < (i_2 - 2)),
+        torch.where(
+            j < i_2,
+            torch.where(
+                j == i_1 + 1,
+                everything_1_b[a, c, i_2, (i_1 + 1) % n_ctx, b],
+                make_inner_val(a, c, i_2, j),
+            ),
+            -torch.inf,
+        ),
+        -torch.inf,
+    ),
+    device=device,
+    sizes=[d_voc, d_voc, d_voc, n_ctx, n_ctx, n_ctx],
+)
+attn = attn_pattern.softmax(dim=-1)
+# %%
+attn_correct = ein.array(
+    lambda a, b, c, i_2, i_1: torch.where(
+        i_1 + 1 < n_ctx, attn[a, b, c, i_2, i_1, (i_1 + 1) % n_ctx], torch.nan
+    ),
+    device=device,
+    sizes=attn.shape[:-1],
+)
 
-                    attn[a, b, c, i_2, i_1] = vals.softmax(dim=0)[-1]
+# vals = ein.array(
+#     lambda a, b, c, i_2, i_1, j: torch.where(
+#         (i_2 >= 2) & (i_1 < (i_2 - 2)),
+#         torch.where(
+#             0 <= j - 1 < i_1 + 1,
+#             make_inner_val(a, c, i_2, j - 1),
+#             torch.where(
+#                 i_1 + 1 <= j - 1 < i_2 - 1,
+#                 make_inner_val(a, c, j + 1 - 1),
+#                 torch.where(
+#                     j - 1 == -1, everything_1_b[a, c, i_2, i_1 + 1, b], -torch.inf
+#                 ),
+#             ),
+#         ),
+#         -torch.inf,
+#     ),
+#     device=device,
+#     sizes=[d_voc, d_voc, d_voc, n_ctx, n_ctx, n_ctx],
+# )
+
+
+# attn = vals.softmax(dim=-1)
 
 # for a in tqdm(range(d_voc)):
 #     for b in range(d_voc):

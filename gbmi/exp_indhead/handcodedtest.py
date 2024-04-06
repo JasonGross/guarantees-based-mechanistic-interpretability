@@ -8,7 +8,9 @@ import torch
 import einops
 from torch import tensor
 from math import *
-from tqdm.auto import tqdm
+
+# from tqdm.auto import tqdm
+from tqdm import tqdm
 import plotly.express as px
 from gbmi.utils.sequences import generate_all_sequences
 import pandas as pd
@@ -117,7 +119,7 @@ W_K_1 = (
 ).to(device)
 W_K_1 = W_K_1 + noise(W_K_1)
 # %%
-px.imshow((W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T).cpu())
+# px.imshow((W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T).cpu())
 # %%
 W_U = model.W_U
 W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
@@ -186,6 +188,7 @@ everything_1_1 = ein.array(
         * (1 / attn_scale_1),
         -torch.inf,
     ),
+    device=device,
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
 # %%
@@ -201,16 +204,17 @@ everything_1_2 = ein.array(
         * (1 / attn_scale_1),
         -torch.inf,
     ),
+    device=device,
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
 # %%
 
 
 # %%
-px.imshow((W_E @ q_1 @ k_1.T @ o.T @ v.T @ W_E.T).cpu())
+# px.imshow((W_E @ q_1 @ k_1.T @ o.T @ v.T @ W_E.T).cpu())
 
 # %%
-px.imshow((W_E @ v).cpu())
+# px.imshow((W_E @ v).cpu())
 # %%
 
 everything_1_b = ein.array(
@@ -223,6 +227,7 @@ everything_1_b = ein.array(
         * (1 / attn_scale_1),
         torch.inf,
     ),
+    device=device,
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
 # %%
@@ -268,7 +273,7 @@ def make_inner_val(a, c, i_2, j):
         -torch.inf,
         everything_1_1[a, c, i_2, j],
     ).max(dim=-1).values + torch.where(
-        torch.tensor(j != 0, device=device),
+        j != 0,
         torch.where(
             last_dim_indices_1_2 == a,
             -torch.inf,
@@ -291,19 +296,22 @@ for a in tqdm(range(d_voc)):
         for c in range(d_voc):
             for i_2 in range(2, n_ctx):
                 for i_1 in range(0, i_2 - 2):
+                    x = ein.array(
+                        lambda j: make_inner_val(a, c, i_2, j),
+                        sizes=[i_1 + 1],
+                        device=device,
+                    )
+                    y = ein.array(
+                        lambda j: make_inner_val(a, c, i_2, i_1 + 2 + j),
+                        sizes=[i_2 - 2 - i_1],
+                        device=device,
+                    )
+                    z = everything_1_b[a, c, i_2, i_1 + 1, b].unsqueeze(dim=0)
                     vals = torch.cat(
                         [
-                            ein.array(
-                                lambda j: make_inner_val(a, c, i_2, j),
-                                sizes=[i_1 + 1],
-                                device=device,
-                            ),
-                            ein.array(
-                                lambda j: make_inner_val(a, c, i_2, i_1 + 2 + j),
-                                sizes=[i_2 - 2 - i_1],
-                                device=device,
-                            ),
-                            everything_1_b[a, c, i_2, i_1 + 1, b].unsqueeze(dim=0),
+                            x,
+                            y,
+                            z,
                         ]
                     )
 

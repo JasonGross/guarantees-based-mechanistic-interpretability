@@ -95,21 +95,21 @@ W_Q_0 = (
     .T
 )
 W_Q_0 = W_Q_0 + noise(W_Q_0)
-W_Q_1 = model.W_Q[1, 0]
+
 W_Q_1 = (
     ein.array(lambda i, j: where(i == j, d, 0), sizes=[d_voc, d_model])
     .float()
     .T.to(device)
 )
 W_Q_1 = W_Q_1 + noise(W_Q_1)
-W_K_0 = model.W_K[0, 0]
+
 W_K_0 = (
     ein.array(lambda i, j: where((i + d_voc) == j, c, 0), sizes=[n_ctx, d_model])
     .float()
     .T
 ).to(device)
 W_K_0 = W_K_0 + noise(W_K_0)
-W_K_1 = model.W_K[1, 0]
+
 W_K_1 = (
     ein.array(
         lambda i, j: where((i + n_ctx + d_voc) == j, d, 0), sizes=[d_voc, d_model]
@@ -121,13 +121,22 @@ W_K_1 = W_K_1 + noise(W_K_1)
 # %%
 # px.imshow((W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T).cpu())
 # %%
-W_U = model.W_U
 W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
 W_U = W_U + noise(W_U)
 attn_scale_0 = model.blocks[0].attn.attn_scale
 attn_scale_1 = model.blocks[1].attn.attn_scale
-
-
+W_pos = model.W_pos
+W_E = model.W_E
+W_K_1 = model.W_K[1, 0]
+W_U = model.W_U
+W_V_1 = model.W_V[1, 0]
+W_K_0 = model.W_K[0, 0]
+W_V_0 = model.W_V[0, 0]
+W_O_0 = model.W_O[0, 0]
+W_Q_1 = model.W_Q[1, 0]
+W_Q_0 = model.W_Q[0, 0]
+W_O_1 = model.W_O[1, 0]
+W_Q_0 = model.W_Q[0, 0]
 e_p = W_E.unsqueeze(dim=0) + W_pos.unsqueeze(dim=1)
 print(e_p.shape)
 everything = (
@@ -421,5 +430,38 @@ attn_correct = ein.array(
 #                     vals.append(everything_1_b[a, c, i_2, i_1 + 1, b])
 #                     vals = torch.tensor(vals)
 #                     attn[a, b, c, i_2, i_1] = vals.softmax(dim=0)[-1]
+# %%
+PVOU = W_pos @ W_V_1 @ W_O_1 @ W_U
+PVOVOU = W_pos @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U
+EVOVOU = W_E @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U
+EVOU = W_E @ W_V_1 @ W_O_1 @ W_U
+# %%
+px.imshow(PVOU.detach().cpu())
+
+
+# %%
+def compute_worst_case_scenario_pos(M, b, attn_on_b):
+
+    attn_to_others = torch.tensor(M.max(dim=0).values) * (1.0 - attn_on_b)
+    attn_to_others[b] = attn_on_b * M.min(dim=0).values[b]
+    return attn_to_others
+
+
+def compute_worst_case_scenario_evou(b, attn_on_b):
+    attn_to_others = torch.tensor(EVOU.max(dim=0).values) * (1.0 - attn_on_b)
+    attn_to_others[b] = attn_on_b * EVOU[b][b]
+
+    return attn_to_others
+
+
+attn_to_b = 0.6
+pre_softmax = (
+    compute_worst_case_scenario_pos(PVOU, 1, attn_to_b)
+    + compute_worst_case_scenario_pos(PVOVOU, 1, attn_to_b)
+    + compute_worst_case_scenario_pos(EVOVOU, 1, attn_to_b)
+    + compute_worst_case_scenario_evou(1, attn_to_b)
+)
+print(pre_softmax.softmax(dim=0))
+
 
 # %%

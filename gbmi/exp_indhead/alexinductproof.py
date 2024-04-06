@@ -198,12 +198,8 @@ for a in tqdm(range(d_voc)):
                                 """
 
                                 """
-                                x = np.argwhere(
-                                    (
-                                        everything_1_1[a, c, i_2, j].max()
-                                        == everything_1_1[a, c, i_2, j]
-                                    ).numpy()
-                                )[0]
+                                x =
+
                                 y = np.argwhere(
                                     (
                                         everything_1_2[a, c, i_2, j].max()

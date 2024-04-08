@@ -51,7 +51,6 @@ tensor([[0, 0, 0, 0],
         [2, 2, 2, 2]])""",
         )
 
-    # TODOs and bugs
     def test_ein_diagonal_indexing_works_on_square_matrices(self):
         A = torch.tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
         diag = ein.array(lambda i: A[i, i])
@@ -70,12 +69,13 @@ tensor([[0, 0, 0, 0],
             """tensor([ 2.0000,  4.7183, 10.3891])""",
         )
 
-    def test_ein_unbound_usage_before_usage_fails_with_implicit_sizes(self):
+    def test_ein_unbound_usage_before_usage_succeeds_with_implicit_sizes(self):
         A = torch.tensor([1, 2, 3])
-        self.assertExpectedRaisesInline(
-            ValueError,
-            lambda: ein.array(lambda i: torch.exp(i) + A[i]),
-            """dimension dim is unbound""",
+        self.assertExpectedPretty(
+            ein.array(
+                lambda i: torch.exp(i) + A[i],
+            ),
+            """tensor([ 2.0000,  4.7183, 10.3891])""",
         )
 
     def test_ein_unbound_usage_before_usage_succeeds_with_explicit_sizes(self):
@@ -85,6 +85,11 @@ tensor([[0, 0, 0, 0],
             """tensor([ 2.0000,  4.7183, 10.3891])""",
         )
 
+    def test_ein_index_an_indexed_array(self):
+        A = torch.tensor([[0, 1], [2, 3]])
+        self.assertTrue(torch.allclose(ein.array(lambda i, j: A[i][j]), A))
+
+    # TODOs and bugs
     def test_ein_indexing_fails_if_out_of_range_positive(self):
         A = torch.tensor([0, 1, 2])
         self.assertExpectedRaisesInline(
@@ -97,4 +102,13 @@ tensor([[0, 0, 0, 0],
         A = torch.tensor([0, 1, 2])
         self.assertExpectedPretty(
             ein.array(lambda i: 0 * A[i] + A[i - 1]), """tensor([2, 0, 1])"""
+        )
+
+    # TODO: add a better warning for the following
+    def test_ein_unbound_index_with_no_size_errors(self):
+        A = torch.tensor([[0, 1], [2, 3]])
+        self.assertExpectedRaisesInline(
+            ValueError,
+            lambda: ein.array(lambda i, j: A[j, j]),
+            """dimension dim is unbound""",
         )

@@ -207,6 +207,7 @@ def display_size_direction_stats(
     fit_funcs: Iterable = (cubic_func, quintic_func),
     delta_fit_funcs: Iterable = (quadratic_func, quartic_func),
     colorscale: Colorscale = "Plasma_r",
+    dtick: Optional[float | int] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     **kwargs,
 ):
@@ -216,26 +217,30 @@ def display_size_direction_stats(
         Vh = Vh * S[:, None].sqrt()
     results = {}
 
-    match plot_with:
-        case "plotly":
-            fig = imshow(
-                QK,
-                title="Attention<br>(W<sub>E</sub> + W<sub>pos</sub>[-1])W<sub>Q</sub>W<sub>K</sub><sup>T</sup>(W<sub>E</sub> + 𝔼<sub>p</sub>W<sub>pos</sub>[p])<sup>T</sup>",
-                xaxis="Key Token",
-                yaxis="Query Token",
-                renderer=renderer,
-                colorscale=colorscale,
-                **kwargs,
-            )
-        case "matplotlib":
-            fig, ax = plt.subplots()
-            sns.heatmap(QK, cmap=cmap, ax=ax)
-            ax.set_title(
-                "Attention\n$(W_E + W_{\\mathrm{pos}}[-1])W_Q W_K^T (W_E + \\mathbb{E}_p W_{\\mathrm{pos}}[p])^T$"
-            )
-            ax.set_xlabel("Key Token")
-            ax.set_ylabel("Query Token")
-            plt.show()
+    title_kind = {"plotly": "html", "matplotlib": "latex"}[plot_with]
+    nl = "<br>" if title_kind == "html" else "\n"
+    smath = "" if title_kind == "html" else "$"
+    sWE = "W<sub>E</sub>" if title_kind == "html" else "W_E"
+    sWpos = "W<sub>pos</sub>" if title_kind == "html" else r"W_{\mathrm{pos}}"
+    sWQ = "W<sub>Q</sub>" if title_kind == "html" else r"W_Q"
+    sWK = "W<sub>K</sub>" if title_kind == "html" else r"W_K"
+    sT = "<sup>T</sup>" if title_kind == "html" else "^T"
+    sEp = "𝔼<sub>p</sub>" if title_kind == "html" else r"\mathbb{E}_p"
+
+    title = f"Attention{nl}{smath}({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}({sWE} + {sEp}{sWpos}[p]){sT}{smath}"
+
+    fig = imshow(
+        QK,
+        title=title,
+        xaxis="Key Token",
+        yaxis="Query Token",
+        renderer=renderer,
+        colorscale=colorscale,
+        dtick_x=dtick,
+        dtick_y=dtick,
+        plot_with=plot_with,
+        **kwargs,
+    )
     results["Attention"] = fig
 
     uzmax, vzmax = U.abs().max().item(), Vh.abs().max().item()

@@ -9,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.figure
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from gbmi.analysis_tools.plot import (
     Colorscale,
     weighted_histogram,
@@ -420,6 +421,8 @@ def display_basic_interpretation(
     OV_colorscale: Colorscale = "Picnic_r",
     QK_colorscale: Colorscale = "Plasma",  # "Sunsetdark_r"
     QK_SVD_colorscale: Colorscale = "Picnic_r",
+    tok_dtick: Optional[int | float] = None,
+    pos_dtick: Optional[int | float] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
 ) -> dict[str, Union[go.Figure, matplotlib.figure.Figure]]:
@@ -458,6 +461,8 @@ def display_basic_interpretation(
             xaxis=QK["xaxis"],
             yaxis=QK["yaxis"],
             colorscale=QK_colorscale,
+            dtick_x=tok_dtick,
+            dtick_y=tok_dtick,
             plot_with=plot_with,
             renderer=renderer,
         )
@@ -467,6 +472,7 @@ def display_basic_interpretation(
             renderer=renderer,
             colorscale=QK_SVD_colorscale,
             plot_with=plot_with,
+            dtick=tok_dtick,
         )
         assert figs is not None
         for k, fig in figs.items():
@@ -481,6 +487,8 @@ def display_basic_interpretation(
             xaxis=OV["xaxis"],
             yaxis=OV["yaxis"],
             colorscale=OV_colorscale,
+            dtick_x=tok_dtick,
+            dtick_y=tok_dtick,
             plot_with=plot_with,
             renderer=renderer,
         )
@@ -492,6 +500,8 @@ def display_basic_interpretation(
         xaxis=OV["xaxis"],
         yaxis=OV["yaxis"],
         colorscale=OV_colorscale,
+        dtick_x=tok_dtick,
+        dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
     )
@@ -513,6 +523,8 @@ def display_basic_interpretation(
             plot_with=plot_with,
             xaxis=pos_QK["xaxis"],
             yaxis=pos_QK["yaxis"],
+            dtick_x=pos_dtick,
+            dtick_y=tok_dtick,
             renderer=renderer,
         )
     result["EQKP"] = fig_qk
@@ -537,6 +549,8 @@ def display_basic_interpretation(
                 colorscale=OV_colorscale,
                 xaxis=irrelevant["xaxis"],
                 yaxis=irrelevant["yaxis"],
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
                 plot_with=plot_with,
                 renderer=renderer,
             )

@@ -777,6 +777,7 @@ if DISPLAY_PLOTS:
         OV_colorscale=default_OV_colorscale,
         QK_colorscale=default_QK_colorscale,
         QK_SVD_colorscale=default_QK_SVD_colorscale,
+        tok_dtick=10,
         plot_with=PLOT_WITH,
         renderer=RENDERER,
     )

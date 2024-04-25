@@ -70,6 +70,8 @@ def imshow_plotly(
     showticklabels: bool = True,
     colorscale: Colorscale = "RdBu",
     figsize: Optional[Tuple[float, float]] = None,
+    dtick_x: Optional[float | int] = None,
+    dtick_y: Optional[float | int] = None,
     show: bool = True,
     **kwargs,
 ):
@@ -82,8 +84,14 @@ def imshow_plotly(
         zmax=zmax,
         **kwargs,
     )
-    fig.update_xaxes(showticklabels=showticklabels and showxticklabels)
-    fig.update_yaxes(showticklabels=showticklabels and showyticklabels)
+    xtickargs: dict = dict(showticklabels=showticklabels and showxticklabels)
+    ytickargs: dict = dict(showticklabels=showticklabels and showyticklabels)
+    if dtick_x is not None and xtickargs["showticklabels"]:
+        xtickargs["dtick"] = dtick_x
+    if dtick_y is not None and ytickargs["showticklabels"]:
+        ytickargs["dtick"] = dtick_y
+    fig.update_xaxes(**xtickargs)
+    fig.update_yaxes(**ytickargs)
     if show:
         fig.show(renderer)
     return fig
@@ -103,6 +111,8 @@ def imshow_matplotlib(
     figsize: Optional[Tuple[float, float]] = None,
     zmin: Optional[float] = None,
     zmax: Optional[float] = None,
+    dtick_x: Optional[float | int] = None,
+    dtick_y: Optional[float | int] = None,
     show: bool = True,
     **kwargs,
 ):
@@ -119,11 +129,23 @@ def imshow_matplotlib(
     )
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
-    ax.set_xticklabels(ax.get_xticklabels(), visible=showticklabels and showxticklabels)
-    ax.set_yticklabels(ax.get_yticklabels(), visible=showticklabels and showyticklabels)
+    showxticklabels &= showticklabels
+    showyticklabels &= showticklabels
+    if showxticklabels and dtick_x is not None:
+        xticks = np.arange(0, tensor.shape[1], dtick_x, dtype=type(dtick_x))
+        ax.set_xticks(xticks)
+        ax.set_xticklabels(xticks, visible=showxticklabels)
+    else:
+        ax.set_xticklabels(ax.get_xticklabels(), visible=showxticklabels)
+    if showyticklabels and dtick_y is not None:
+        yticks = np.arange(0, tensor.shape[0], dtick_y, dtype=type(dtick_y))
+        ax.set_yticks(yticks)
+        ax.set_yticklabels(yticks, visible=showyticklabels)
+    else:
+        ax.set_yticklabels(ax.get_yticklabels(), visible=showyticklabels)
     ax.tick_params(
-        bottom=showticklabels and showxticklabels,
-        left=showticklabels and showyticklabels,
+        bottom=showxticklabels,
+        left=showyticklabels,
         top=False,
         labeltop=False,
         right=False,

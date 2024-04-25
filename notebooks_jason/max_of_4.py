@@ -896,6 +896,8 @@ def make_better_slides_plots_00(
     model: HookedTransformer,
     OV_colorscale: Colorscale = "Picnic_r",
     QK_colorscale: Colorscale = "Plasma",
+    tok_dtick: Optional[int | float] = None,
+    pos_dtick: Optional[int | float] = None,
     plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
     renderer: Optional[str] = None,
 ) -> dict[str, go.Figure]:
@@ -969,13 +971,21 @@ def make_better_slides_plots_00(
                     plt.gca(), cmap=cmap, norm=norm, orientation="vertical"
                 )
                 plt.show()
-    for m, title, colorscale, zmax, labels in (
+    to_latex = (
+        lambda s: re.sub(r"([a-zA-Z]*)<sub>([^>]*)</sub>", r"$\1_{\2}$", s)
+        .replace("position j", "position $j$")
+        .replace("key position k", "position $k$")
+    )
+    maybe_to_latex = to_latex if plot_with == "matplotlib" else (lambda x: x)
+    for m, title, colorscale, zmax, labels, dtick_x, dtick_y in (
         (
             EPU,
             "EPU",
             OV_colorscale,
             OV_zmax,
             {"x": "output logit", "y": "query token t<sub>i</sub>"},
+            tok_dtick,
+            tok_dtick,
         ),
         (
             EVOU,
@@ -983,6 +993,8 @@ def make_better_slides_plots_00(
             OV_colorscale,
             OV_zmax,
             {"x": "output logit", "y": "key token t<sub>j</sub>"},
+            tok_dtick,
+            tok_dtick,
         ),
         (
             PVOU,
@@ -990,6 +1002,8 @@ def make_better_slides_plots_00(
             OV_colorscale,
             OV_zmax,
             {"x": "output logit", "y": "position j"},
+            tok_dtick,
+            pos_dtick,
         ),
         (
             EQKE,
@@ -997,6 +1011,8 @@ def make_better_slides_plots_00(
             QK_colorscale,
             QK_zmax,
             {"x": "key token t<sub>k</sub>", "y": "query token t<sub>q</sub>"},
+            tok_dtick,
+            tok_dtick,
         ),
         (
             EQKP,
@@ -1004,20 +1020,28 @@ def make_better_slides_plots_00(
             QK_colorscale,
             QK_zmax,
             {"x": "key position k", "y": "query token t<sub>q</sub>"},
+            pos_dtick,
+            tok_dtick,
         ),
     ):
         key = title
+        results[key] = fig = imshow(
+            m,
+            title=title,
+            colorscale=colorscale,
+            zmax=zmax,
+            zmin=-zmax,
+            xaxis=maybe_to_latex(labels["x"]),
+            yaxis=maybe_to_latex(labels["y"]),
+            show=False,
+            renderer=renderer,
+            plot_with=plot_with,
+            dtick_x=dtick_x,
+            dtick_y=dtick_y,
+        )
         match plot_with:
             case "plotly":
-                results[key] = fig = px.imshow(
-                    m,
-                    title=title,
-                    color_continuous_scale=colorscale,
-                    color_continuous_midpoint=0,
-                    zmin=-zmax,
-                    zmax=zmax,
-                    labels=labels,
-                )
+                assert isinstance(fig, go.Figure), f"fig: {type(fig)}"
                 fig.show(renderer)
                 # remove title
                 fig.update_layout(title_text="")
@@ -1027,19 +1051,8 @@ def make_better_slides_plots_00(
                 trim_plotly_figure(fig)
                 fig.show(renderer)
             case "matplotlib":
-                cmap = colorscale_to_cmap(colorscale)
-                fig, ax = plt.subplots()
-                results[key] = fig
-                cbar_ax = sns.heatmap(
-                    m, cmap=cmap, center=0, vmin=-zmax, vmax=zmax, cbar=True, ax=ax
-                )
-                to_latex = (
-                    lambda s: re.sub(r"([a-zA-Z]*)<sub>([^>]*)</sub>", r"$\1_{\2}$", s)
-                    .replace("position j", "position $j$")
-                    .replace("key position k", "position $k$")
-                )
-                ax.set_xlabel(to_latex(labels["x"]))
-                ax.set_ylabel(to_latex(labels["y"]))
+                assert isinstance(fig, plt.Figure), f"fig: {type(fig)}"
+                ax, cbar_ax = fig.axes
                 plt.tight_layout()
                 plt.show()
                 ax.set_title("")
@@ -1056,6 +1069,7 @@ if DISPLAY_PLOTS:
         model,
         OV_colorscale=default_OV_colorscale,
         QK_colorscale=default_QK_colorscale,
+        tok_dtick=10,
         plot_with=PLOT_WITH,
         renderer=RENDERER,
     )

@@ -251,9 +251,10 @@ def analyze_svd(
 ):
     U, S, Vh = torch.linalg.svd(M)
     V = Vh.T
+    U, V = U[:, : S.shape[0]], V[:, : S.shape[0]]
     if scale_by_singular_value:
-        U = U[:, : S.shape[0]] * S[None, : U.shape[1]].sqrt()
-        V = V[:, : S.shape[0]] * S[None, : V.shape[1]].sqrt()
+        U = U * S[None, : U.shape[1]].sqrt()
+        V = V * S[None, : V.shape[1]].sqrt()
     if descr:
         descr = f" for {descr}"
 
@@ -340,7 +341,6 @@ def analyze_svd(
             fig, axs = plt.subplots(1, 3, figsize=figsize)
             cax_u = axs[0].imshow(utils.to_numpy(U), cmap=cmap, vmin=-uzmax, vmax=uzmax)
             axs[0].set_title("U")
-            axs[0].invert_yaxis()
             fig.colorbar(cax_u, ax=axs[0], orientation="vertical").remove()
 
             axs[1].plot(
@@ -357,13 +357,39 @@ def analyze_svd(
                 utils.to_numpy(V), cmap=cmap, vmin=-vzmax, vmax=vzmax
             )
             axs[2].set_title("V")
-            axs[2].invert_yaxis()
             fig.colorbar(
                 cax_v, ax=axs[2], orientation="vertical"
             ).remove()  # Remove colorbar if not needed
 
+            for ax, ax_m in zip(axs, (U, None, V)):
+                ax.tick_params(
+                    axis="both",  # Changes apply to the x and y-axis
+                    which="both",  # Both major and minor ticks are affected
+                    bottom=True,
+                    labelbottom=True,
+                    left=True,
+                    labelleft=True,
+                    top=False,
+                    labeltop=False,
+                    right=False,
+                    labelright=False,
+                )
+                if ax_m is not None:
+                    ax.set_ylim(top=0, bottom=ax_m.shape[0])
+                    # ax.invert_yaxis()
+                    ax.set_facecolor("white")
+                    # Get current ticks
+                    yticks = ax.get_yticks()
+                    yticks = yticks[(yticks >= 0) & (yticks <= ax_m.shape[0])]
+                    ax.set_yticks(yticks)
+                    # ax.set_yticklabels([f"{int(tick)}" for tick in yticks])
+
             fig.suptitle(f"SVD{descr}")
-            plt.tight_layout()
+            plt.tight_layout(pad=3.0)
+            plt.show()
+            fig.suptitle("")
+            axs[1].set_title(f"Singular Values{descr}")
+            plt.figure(fig)
             plt.show()
     return fig
 

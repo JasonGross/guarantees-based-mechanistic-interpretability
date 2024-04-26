@@ -310,7 +310,8 @@ def display_size_direction_stats(
             axs[0].set_title("Query-Side SVD")
             axs[0].set_xlabel("Singular Index")
             axs[0].set_ylabel("Query Token")
-            axs[0].invert_yaxis()
+            # axs[0].invert_yaxis()
+            axs[0].set_ylim(top=0)
 
             # Plot 2: Singular Values Line Plot
             axs[1].plot(np.arange(S.shape[0]), S, marker="o", color="blue")
@@ -327,7 +328,8 @@ def display_size_direction_stats(
             axs[2].set_title("Key-Side SVD")
             axs[2].set_xlabel("Singular Index")
             axs[2].set_ylabel("Key Token")
-            axs[2].invert_yaxis()
+            # axs[2].invert_yaxis()
+            axs[2].set_ylim(top=0)
 
             for ax in axs:
                 ax.tick_params(

@@ -2505,6 +2505,12 @@ for k, fig in latex_figures.items():
     else:
         raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
 
+try:
+    subprocess.run(["optipng", "-o5", *LATEX_FIGURE_PATH.glob("*.png")], check=True)
+except FileNotFoundError as e:
+    print(f"Warning: {e}")
+    errs.append(e)
+
 for e in errs:
     raise e
 # %%

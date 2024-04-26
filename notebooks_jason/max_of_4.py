@@ -1441,6 +1441,8 @@ def display_EQKE_SVD_analysis(
     *,
     QK_colorscale: Colorscale = "Plasma",
     QK_SVD_colorscale: Colorscale = "Picnic_r",
+    tok_dtick: Optional[int | float] = None,
+    pos_dtick: Optional[int | float] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
 ) -> Tuple[dict[str, Union[go.Figure, plt.figure.Figure]], dict[str, float]]:
@@ -1492,6 +1494,8 @@ def display_EQKE_SVD_analysis(
         title="EQKE",
         xaxis="key token",
         yaxis="query token",
+        dtick_x=tok_dtick,
+        dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
     )
@@ -1500,6 +1504,8 @@ def display_EQKE_SVD_analysis(
         EQKE_query_key.numpy(),
         title="EQKE<sub>1</sub>" if title_kind == "html" else "EQKE$_1$",
         colorscale=QK_colorscale,
+        dtick_x=tok_dtick,
+        dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
     )
@@ -1508,6 +1514,8 @@ def display_EQKE_SVD_analysis(
         err_accumulator.numpy(),
         title="err_accumulator" if title_kind == "html" else r"err\_accumulator",
         colorscale=QK_colorscale,
+        dtick_x=tok_dtick,
+        dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
     )
@@ -1516,6 +1524,8 @@ def display_EQKE_SVD_analysis(
         (EQKE_query_key + err_accumulator),
         title="EQKE<sub>2</sub>" if title_kind == "html" else "EQKE$_2$",
         colorscale=QK_colorscale,
+        dtick_x=tok_dtick,
+        dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
     )
@@ -1532,6 +1542,8 @@ def display_EQKE_SVD_analysis(
         EQKE_pos_err.numpy(),
         title=f"{smath}({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}({sWpos} - {sE}{s_p}{sWpos}[p]){sT}{smath}",
         colorscale=QK_colorscale,
+        dtick_x=pos_dtick,
+        dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
     )
@@ -1557,6 +1569,8 @@ def display_EQKE_SVD_analysis(
         colorscale=QK_colorscale,
         zmax=zmax,
         zmin=-zmax,
+        dtick_x=tok_dtick,
+        dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
     )
@@ -1664,6 +1678,7 @@ if DISPLAY_PLOTS:
         plot_with=PLOT_WITH,
         QK_colorscale=default_QK_colorscale,
         QK_SVD_colorscale=default_QK_SVD_colorscale,
+        tok_dtick=10,
         renderer=RENDERER,
     )
     key_pairs = {

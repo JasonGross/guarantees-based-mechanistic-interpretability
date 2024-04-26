@@ -244,6 +244,7 @@ def display_size_direction_stats(
     results["Attention"] = fig
 
     uzmax, vzmax = U.abs().max().item(), Vh.abs().max().item()
+    zmax = np.max([uzmax, vzmax])
     match plot_with:
         case "plotly":
             fig = make_subplots(
@@ -300,11 +301,12 @@ def display_size_direction_stats(
             fig.show(renderer)
         case "matplotlib":
             fig, axs = plt.subplots(1, 3, figsize=(20, 5))
+            # fig.subplots_adjust(hspace=0.5, wspace=0.4)
             # Plot 1: Query-Side SVD Heatmap
             cax1 = axs[0].matshow(
-                U, cmap=cmap, vmin=-uzmax, vmax=uzmax
+                U, cmap=cmap, vmin=-zmax, vmax=zmax
             )  # Adjust cmap to match your colorscale
-            fig.colorbar(cax1, ax=axs[0])  # Optional: Add a colorbar
+            # fig.colorbar(cax1, ax=axs[0])  # Optional: Add a colorbar
             axs[0].set_title("Query-Side SVD")
             axs[0].set_xlabel("Singular Index")
             axs[0].set_ylabel("Query Token")
@@ -319,7 +321,7 @@ def display_size_direction_stats(
 
             # Plot 3: Key-Side SVD Heatmap
             cax3 = axs[2].matshow(
-                Vh.T, cmap=cmap, vmin=-vzmax, vmax=vzmax
+                Vh.T, cmap=cmap, vmin=-zmax, vmax=zmax
             )  # Adjust cmap to match your colorscale
             fig.colorbar(cax3, ax=axs[2])  # Optional: Add a colorbar
             axs[2].set_title("Key-Side SVD")
@@ -327,9 +329,26 @@ def display_size_direction_stats(
             axs[2].set_ylabel("Key Token")
             axs[2].invert_yaxis()
 
+            for ax in axs:
+                ax.tick_params(
+                    axis="both",  # Changes apply to the x and y-axis
+                    which="both",  # Both major and minor ticks are affected
+                    bottom=True,
+                    labelbottom=True,
+                    left=True,
+                    labelleft=True,
+                    top=False,
+                    labeltop=False,
+                    right=False,
+                    labelright=False,
+                )
+
             # Adjust layout
-            plt.tight_layout()
-            plt.suptitle("Attention SVD")
+            fig.tight_layout(pad=3.0)
+            fig.suptitle("Attention SVD")
+            plt.show()
+            fig.suptitle("")
+            plt.figure(fig)
             plt.show()
     results["Attention SVD"] = fig
 

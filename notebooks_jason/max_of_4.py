@@ -29,6 +29,7 @@ from scipy import stats
 from contextlib import contextmanager
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import matplotlib.figure
 import seaborn as sns
 import tikzplotly
@@ -966,10 +967,15 @@ def make_better_slides_plots_00(
             case "matplotlib":
                 cmap = colorscale_to_cmap(colorscale)
                 results[f"{key}-colorbar"] = fig = plt.figure(figsize=(0.5, 4))
-                norm = matplotlib.colors.Normalize(vmin=-10, vmax=10)
-                cbar = matplotlib.colorbar.ColorbarBase(
-                    plt.gca(), cmap=cmap, norm=norm, orientation="vertical"
+                norm = matplotlib.colors.Normalize(vmin=-zmax, vmax=zmax)
+                cbar = fig.colorbar(
+                    cm.ScalarMappable(norm=norm, cmap=cmap),
+                    cax=fig.gca(),
+                    orientation="vertical",
                 )
+                # cbar = matplotlib.colorbar.ColorbarBase(
+                #     plt.gca(), cmap=cmap, norm=norm, orientation="vertical"
+                # )
                 plt.show()
     to_latex = (
         lambda s: re.sub(r"([a-zA-Z]*)<sub>([^>]*)</sub>", r"$\1_{\2}$", s)
@@ -1056,8 +1062,16 @@ def make_better_slides_plots_00(
                 plt.tight_layout()
                 plt.show()
                 ax.set_title("")
-                fig.colorbar(cbar_ax.collections[0], ax=ax, use_gridspec=False).remove()
+                assert hasattr(cbar_ax, "_colorbar"), cbar_ax
+                cbar = cbar_ax._colorbar
+                cbar_ax.remove()
+                # fig.colorbar(cbar_ax.collections[0], ax=ax, use_gridspec=False).remove()
+                for c in ax.get_children():
+                    if getattr(c, "colorbar", None) is cbar:
+                        print(f"!! Manually removing colorbar from {c}")
+                        del c.colorbar
                 plt.tight_layout()
+                plt.figure(fig)
                 plt.show()
 
     return results

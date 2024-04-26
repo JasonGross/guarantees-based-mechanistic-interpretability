@@ -375,6 +375,7 @@ def compute_irrelevant(
     sWU = "W<sub>U</sub>" if title_kind == "html" else r"W_U"
     sE = "𝔼" if title_kind == "html" else r"\mathbb{E}"
     s_dim0 = "<sub>dim=0</sub>" if title_kind == "html" else r"_{\mathrm{dim}=0}"
+    s_p = "<sub>p</sub>" if title_kind == "html" else r"_p"
     data = {
         f"{smath}({sWE}{W_E_q_index}+{sWpos}[-1]){sWU}{smath}": (
             ((W_E_q + W_pos[-1]) @ W_U).numpy()
@@ -390,7 +391,7 @@ def compute_irrelevant(
         )
     data.update(
         {
-            f"{smath}({sWpos}[{i}] - {sE}{s_dim0}{sWpos}{W_pos_k_index}){sWV}{sWO}{sWU}{smath}": (
+            f"{smath}({sWpos}[{i}] - {sE}{s_p}{sWpos}{W_pos_k_index}[p]){sWV}{sWO}{sWU}{smath}": (
                 (
                     (W_pos_k[i] - W_pos_k.mean(dim=0))
                     @ W_V[0, 0, :, :]
@@ -406,7 +407,7 @@ def compute_irrelevant(
         "data": data,
         "title": "Irrelevant Contributions to logits",
         "xaxis": "output logit token",
-        "yaxis": "input token",
+        "yaxis": {2: "input token", 1: "output logit value"},
     }
 
 
@@ -548,34 +549,24 @@ def display_basic_interpretation(
                 title=key,
                 colorscale=OV_colorscale,
                 xaxis=irrelevant["xaxis"],
-                yaxis=irrelevant["yaxis"],
+                yaxis=irrelevant["yaxis"][len(data.shape)],
                 dtick_x=tok_dtick,
                 dtick_y=tok_dtick,
                 plot_with=plot_with,
                 renderer=renderer,
             )
             result[f"irrelevant_{key}"] = fig
-    fig = px.scatter(
-        {k: v for k, v in irrelevant_plotly["data"].items() if len(v.shape) == 1},
-        title=irrelevant_plotly["title"],
-        labels={
-            "index": irrelevant_plotly["xaxis"],
-            "variable": "",
-            "value": irrelevant_plotly["yaxis"],
-        },
+    result["irrelevant"] = fig = scatter(
+        {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
+        title=irrelevant["title"],
+        xaxis=irrelevant["xaxis"],
+        caxis="",
+        yaxis=irrelevant["yaxis"][1],
+        legend_at_bottom=legend_at_bottom,
+        plot_with=plot_with,
+        renderer=renderer,
+        show=True,
     )
-    if legend_at_bottom:
-        fig.update_layout(
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.5,
-                xanchor="center",
-                x=0.5,
-            )
-        )
-    result["irrelevant"] = fig
-    fig.show(renderer=renderer)
     return result
 
 

@@ -287,49 +287,75 @@ def line(
 
 
 def scatter_plotly(
-    x,
-    y,
+    *data,
+    # index: str = "index",
+    # variable: str = "variable",
+    # value: str = "value",
     xaxis: str = "",
     yaxis: str = "",
     caxis: str = "",
     show: bool = True,
     renderer: Optional[str] = None,
+    legend_at_bottom: bool = False,
     **kwargs,
 ):
-    x = utils.to_numpy(x)
-    y = utils.to_numpy(y)
-    fig = px.scatter(
-        y=y, x=x, labels={"x": xaxis, "y": yaxis, "color": caxis}, **kwargs
-    )
+    # x = utils.to_numpy(x)
+    # y = utils.to_numpy(y)
+    # labels = {"x": xaxis, "y": yaxis, "color": caxis}
+    labels = {"index": xaxis, "variable": caxis, "value": yaxis}
+    fig = px.scatter(*data, labels=labels, **kwargs)
+    if legend_at_bottom:
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.5,
+                xanchor="center",
+                x=0.5,
+            )
+        )
     if show:
         fig.show(renderer)
     return fig
 
 
 def scatter_matplotlib(
-    x,
-    y,
+    *data,
     xaxis: str = "",
     yaxis: str = "",
     caxis: str = "",
     show: bool = True,
+    title: Optional[str] = None,
+    legend_at_bottom: bool = False,
     renderer: Optional[str] = None,
     **kwargs,
 ):
-    x = utils.to_numpy(x)
-    y = utils.to_numpy(y)
+    # x = utils.to_numpy(x)
+    # y = utils.to_numpy(y)
     fig, ax = plt.subplots()
-    ax.scatter(x, y)
+    # sns_kwargs = {}
+    # if len(data) == 1 and isinstance(data[0], dict):
+    #     data = list(data)
+    #     print(data)
+    #     data[0] = pd.DataFrame(data[0])
+    #     data[0] = pd.melt(data[0], var_name="variable", value_name="value")
+    #     kwargs |= dict(x="variable", y="value")
+    #     print(data)
+    sns.scatterplot(*data, ax=ax, **kwargs)
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
+    if legend_at_bottom:
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
+    if title is not None:
+        fig.suptitle(title)
+    plt.tight_layout()
     if show:
         plt.show()
     return fig
 
 
 def scatter(
-    x,
-    y,
+    *data,
     xaxis: str = "",
     yaxis: str = "",
     caxis: str = "",
@@ -341,8 +367,7 @@ def scatter(
     match plot_with:
         case "plotly":
             return scatter_plotly(
-                x,
-                y,
+                *data,
                 xaxis=xaxis,
                 yaxis=yaxis,
                 caxis=caxis,
@@ -352,8 +377,7 @@ def scatter(
             )
         case "matplotlib":
             return scatter_matplotlib(
-                x,
-                y,
+                *data,
                 xaxis=xaxis,
                 yaxis=yaxis,
                 caxis=caxis,

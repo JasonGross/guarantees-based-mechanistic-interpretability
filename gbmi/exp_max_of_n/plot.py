@@ -230,7 +230,7 @@ def compute_OV(
         {
             "data": (OV - OV.diag()[:, None]).numpy(),
             "title": {
-                key: f"Attention Computation (centered){nl}{smath}{sOV} := ({sWe}{W_E_pos_suffix} + {sE}{s_dim0}{sWpos}{W_E_pos_suffix}){sWv}{sWo}{sWu}{smath}{nl}{smath}{sOV} - {sOV}{sdiag}[:, {sNone}]{smath}"
+                key: f"Attention Computation (centered){nl}{smath}{sOV} := ({sWe}{W_E_pos_suffix} + {sE}{s_p}{sWpos}{W_E_pos_suffix}[p]){sWv}{sWo}{sWu}{smath}{nl}{smath}{sOV} - {sOV}{sdiag}[:, {sNone}]{smath}"
                 for key, (
                     nl,
                     smath,

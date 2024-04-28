@@ -122,7 +122,7 @@ class IndHead(ExperimentConfig):
             f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{'-randend' if config.experiment.random_tokens_at_end else ''}"
             f"{f'-{config.experiment.corpus}' if config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
-            f"{f'-{config.experiment.alpha_mix_uniform}U' if config.experiment.alpha_mix_uniform and config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
+            f"{f'-{config.experiment.alpha_mix_uniform:.2f}U' if config.experiment.alpha_mix_uniform and config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
             f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
             f"{'-nondet' if not config.deterministic else ''}"
         )

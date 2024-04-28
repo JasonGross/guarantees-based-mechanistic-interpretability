@@ -66,6 +66,7 @@ class IndHead(ExperimentConfig):
     other_tokens_distinct_from_predicted_token: bool = False
     alpha_mix_uniform: Optional[float] = None
     high_precision: bool = True
+    use_kaiming_init: bool = True
 
     n_train_samples: int = 4096
     n_test_samples: int = 1
@@ -90,6 +91,7 @@ class IndHead(ExperimentConfig):
             ("logging_options", True),
             ("corpus", self.task == "exact-bigram"),
             ("ngram", self.ngram == 3 or not self.ngram_relevant),
+            ("use_kaiming_init", not self.use_kaiming_init),
         ]:
             if should_ignore:
                 exclude.add(field)
@@ -302,6 +304,13 @@ class IndHeadTrainingWrapper(TrainingWrapper[IndHead]):
             seed=reseed(config.seed, "model"),
         )
         model = HookedTransformer(model_config)
+        if config.experiment.use_kaiming_init:
+            if model.cfg.seed is not None:
+                torch.manual_seed(model.cfg.seed)
+
+            for name, param in model.named_parameters():
+                if "W_" in name:
+                    torch.nn.init.kaiming_uniform_(param)
         if config.experiment.zero_biases:
             for name, param in model.named_parameters():
                 if "b_" in name:

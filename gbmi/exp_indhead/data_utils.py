@@ -294,9 +294,9 @@ class ABCBCEnglishTask:
 
     @staticmethod
     def sample_ngrams(
+        *start: int,
         num: int,
         ngram_counts_table: Tensor,
-        *start: int,
         avoid: Iterable[int] = tuple(),
         g: torch.Generator,
     ) -> Iterable[int]:

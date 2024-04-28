@@ -302,7 +302,7 @@ class ABCBCEnglishTask:
     ) -> Iterable[int]:
         ngram_counts_table = ABCBCEnglishTask.increment_zero_counts(ngram_counts_table)
         prev = list(start)
-        ngram_count_table[..., list(avoid)] = 0
+        ngram_counts_table[..., list(avoid)] = 0
         for _ in range(num):
             cur_table = ngram_counts_table[tuple(prev)]
             if len(cur_table.shape) > 1:

@@ -27,6 +27,6 @@ for seed in torch.randint(0, 2**32 - 1, (20,)):
 
                 print(cfg)
                 print(IndHeadTrainingWrapper.build_model(cfg).cfg)
-                _, model = train_or_load_model(cfg)  # , force="train")
+                _, model = train_or_load_model(cfg, force="train")
 
 # _, model = main(default=ABCAB8_1H, default_force="train")

@@ -116,7 +116,7 @@ class Config(Generic[ExpT]):
     log_every_n_steps: int = 10
     validate_every: Optional[Tuple[int, Literal["steps", "epochs"]]] = (10, "steps")
     checkpoint_every: Optional[Tuple[int, Literal["steps", "epochs"]]] = None
-    float32_matmul_precision: Optional[Literal["medium", "high"]] = None
+    float32_matmul_precision: Literal["medium", "high", "highest"] = "highest"
 
     def __post_init__(self):
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
@@ -131,7 +131,7 @@ class Config(Generic[ExpT]):
         for field, should_ignore in [
             (
                 "float32_matmul_precision",
-                self.float32_matmul_precision is None or self.deterministic,
+                self.float32_matmul_precision == "highest" or self.deterministic,
             ),
         ]:
             if should_ignore:
@@ -284,7 +284,7 @@ class Config(Generic[ExpT]):
             "--float32-matmul-precision",
             type=str,
             choices=["highest", "high", "medium"],  # Specify acceptable choices
-            default=None,
+            default="highest",
             help="Set the precision level for 32-bit matrix multiplication. Options: 'high', 'medium', 'low'. Default is 'medium'.",
         )
         return parser
@@ -676,7 +676,9 @@ def train_or_load_model(
     ]
     if checkpoint_callback is not None:
         callbacks.append(checkpoint_callback)
-    if config.float32_matmul_precision is not None and not config.deterministic:
+    if config.deterministic:
+        torch.set_float32_matmul_precision("highest")
+    else:
         torch.set_float32_matmul_precision(config.float32_matmul_precision)
     trainer = Trainer(
         accelerator="cpu" if config.deterministic else accelerator,

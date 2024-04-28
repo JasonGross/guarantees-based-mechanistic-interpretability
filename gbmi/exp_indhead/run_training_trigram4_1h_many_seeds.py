@@ -15,6 +15,7 @@ for seed in torch.randint(0, 2**32 - 1, (20,)):
             "validate_every": (100, "epochs"),
             ("experiment", "summary_slug_extra"): "manseed",
         },
+        post_init=True,
     )
 
     print(cfg)

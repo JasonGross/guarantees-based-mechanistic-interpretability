@@ -55,6 +55,7 @@ class IndHead(ExperimentConfig):
     seq_length: int = 5
     num_tokens: int = 3
     d_model: int = 8
+    ngram: int = 3
     task: Literal["exact-bigram", "exact-trigram", "abcab"] = "exact-bigram"
     corpus: Optional[str] = None
     only_last_tokens: Optional[int] = None
@@ -79,11 +80,16 @@ class IndHead(ExperimentConfig):
         default_factory=ModelMatrixLoggingOptions
     )
 
+    @property
+    def ngram_relevant(self):
+        return self.task == "abcab" and self.corpus is not None
+
     def __post_init__(self):
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
         for field, should_ignore in [
             ("logging_options", True),
             ("corpus", self.task == "exact-bigram"),
+            ("ngram", self.ngram == 3 or not self.ngram_relevant),
         ]:
             if should_ignore:
                 exclude.add(field)
@@ -103,7 +109,9 @@ class IndHead(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[IndHead]) -> str:
         return (
-            f"IndHead-Len{config.experiment.seq_length}"
+            f"IndHead"
+            f"{f'{config.experiment.ngram}gram' if self.ngram != 3 and self.ngram_relevant else ''}"
+            f"-Len{config.experiment.seq_length}"
             f"{f'-{config.experiment.task}' if config.experiment.task != 'exact-bigram' else ''}"
             f"-d_model{config.experiment.d_model}"
             f"-ntok{config.experiment.num_tokens}"

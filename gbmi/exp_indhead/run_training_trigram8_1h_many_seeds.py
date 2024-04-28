@@ -16,6 +16,7 @@ for seed in torch.randint(0, 2**32 - 1, (20,)):
             ("experiment", "summary_slug_extra"): "manseed",
             ("experiment", "seq_length"): 8,
         },
+        post_init=True,
     )
 
     print(cfg)

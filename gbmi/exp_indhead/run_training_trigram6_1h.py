@@ -10,6 +10,7 @@ cfg = set_params(
     {
         ("experiment", "seq_length"): 6,
     },
+    post_init=True,
 )
 
 print(cfg)

@@ -1,3 +1,4 @@
+# %%
 from typing import Collection, Iterable, Optional, Sequence, Tuple
 import einops
 from jaxtyping import Float, Integer
@@ -6,6 +7,8 @@ from torch import Tensor
 from tqdm.auto import tqdm
 import gbmi.utils as utils
 from gbmi.utils.english_ngram import ngram_count_table, DEFAULT_CORPUS
+
+# %%
 
 
 class ExactBigramTask:
@@ -283,42 +286,6 @@ class ABCBCTask:
 class ABCBCEnglishTask:
 
     @staticmethod
-    def sample_trigrams(
-        a: int,
-        b: int,
-        num: int,
-        trigram_counts_table: Float[
-            Tensor, "num_tokens num_tokens num_tokens"  # noqa: F722
-        ],
-        *,
-        avoid_a: bool = True,
-        avoid_b: bool = True,
-        g: torch.Generator,
-    ) -> Iterable[int]:
-        trigram_table = trigram_counts_table.clone()
-        if avoid_a:
-            trigram_table[:, :, a] = 0
-        if avoid_b:
-            trigram_table[:, :, b] = 0
-        trigram_table = torch.where(
-            trigram_table.sum(dim=-1, keepdim=True) != 0,
-            trigram_table,
-            trigram_table.sum(dim=0),
-        )
-        trigram_table = torch.where(
-            trigram_table.sum(dim=-1, keepdim=True) != 0,
-            trigram_table,
-            trigram_table.sum(dim=0).sum(dim=0),
-        )
-        assert (
-            trigram_table.sum(dim=-1) != 0
-        ).all(), f"a: {a}, b: {b}, indices: {(trigram_table.sum(dim=-1) == 0).nonzero()}, values: {trigram_table.sum(dim=-1)[trigram_table.sum(dim=-1) == 0]}"
-        trigram_table /= trigram_table.sum(dim=-1, keepdim=True)
-        for _ in range(num):
-            a, b = b, int(torch.multinomial(trigram_table[a, b], 1, generator=g).item())
-            yield b
-
-    @staticmethod
     def increment_zero_counts(table: Tensor) -> Tensor:
         if (table == 0).any():
             return table + 1 / (1 + table.max() * table.numel())
@@ -326,14 +293,16 @@ class ABCBCEnglishTask:
             return table
 
     @staticmethod
-    def sample_ngrams_from_start(
+    def sample_ngrams(
         num: int,
         ngram_counts_table: Tensor,
-        *,
+        *start: int,
+        avoid: Iterable[int] = tuple(),
         g: torch.Generator,
     ) -> Iterable[int]:
         ngram_counts_table = ABCBCEnglishTask.increment_zero_counts(ngram_counts_table)
-        prev = []
+        prev = list(start)
+        ngram_count_table[..., list(avoid)] = 0
         for _ in range(num):
             cur_table = ngram_counts_table[tuple(prev)]
             if len(cur_table.shape) > 1:
@@ -355,16 +324,12 @@ class ABCBCEnglishTask:
         skip_end: bool = False,
         a_unique: bool = True,
         b_unique: bool = False,
-        trigram_counts_table: Float[
-            Tensor, "num_tokens num_tokens num_tokens"  # noqa F722
-        ],
+        ngram_counts_table: Float[Tensor, "num_tokens*"],  # noqa F722
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
-        assert trigram_counts_table.shape == (
-            num_tokens,
-            num_tokens,
-            num_tokens,
-        ), f"trigram_table.shape={trigram_counts_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
+        assert all(
+            i == num_tokens for i in ngram_counts_table.shape
+        ), f"trigram_table.shape={ngram_counts_table.shape} != num_tokens* = {num_tokens}*"
         g = torch.Generator(device=default_device)
         g.manual_seed(seed)
         n_samples = 0
@@ -383,8 +348,8 @@ class ABCBCEnglishTask:
             assert n_cs3 >= 0, n_cs3
             cs1 = torch.tensor(
                 list(
-                    ABCBCEnglishTask.sample_ngrams_from_start(
-                        int(n_cs1) + 2, trigram_counts_table, g=g
+                    ABCBCEnglishTask.sample_ngrams(
+                        num=int(n_cs1) + 2, ngram_counts_table=ngram_counts_table, g=g
                     )
                 ),
                 dtype=torch.long,
@@ -396,16 +361,18 @@ class ABCBCEnglishTask:
                 continue
             if (a_unique and a in cs1) or (b_unique and b in cs1):
                 continue
+            avoid = []
+            avoid += [a] if a_unique else []
+            avoid += [b] if b_unique else []
             cs2 = torch.tensor(
                 list(
-                    ABCBCEnglishTask.sample_trigrams(
+                    ABCBCEnglishTask.sample_ngrams(
                         a,
                         b,
-                        int(n_cs2),
-                        trigram_counts_table,
+                        num=int(n_cs2),
+                        ngram_counts_table=ngram_counts_table,
                         g=g,
-                        avoid_a=a_unique,
-                        avoid_b=b_unique,
+                        avoid=avoid,
                     )
                 ),
                 dtype=torch.long,
@@ -420,14 +387,13 @@ class ABCBCEnglishTask:
                 before_cs3_0, before_cs3_1 = a, b
             cs3 = torch.tensor(
                 list(
-                    ABCBCEnglishTask.sample_trigrams(
+                    ABCBCEnglishTask.sample_ngrams(
                         int(before_cs3_0),
                         int(before_cs3_1),
-                        int(n_cs3),
-                        trigram_counts_table,
+                        num=int(n_cs3),
+                        ngram_counts_table=ngram_counts_table,
                         g=g,
-                        avoid_a=a_unique,
-                        avoid_b=b_unique,
+                        avoid=avoid,
                     )
                 ),
                 dtype=torch.long,
@@ -458,25 +424,29 @@ class ABCBCEnglishTask:
         skip_end: bool = False,
         a_unique: bool = True,
         b_unique: bool = False,
+        ngram: int = 3,
         corpus: str = DEFAULT_CORPUS,
+        allow_language_truncation: bool = True,
         alpha_mix_uniform: Optional[float] = None,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
-        trigram_counts_table = ABCBCEnglishTask.increment_zero_counts(
-            torch.tensor(ngram_count_table(n=3, corpus=corpus))
+        ngram_counts_table = ABCBCEnglishTask.increment_zero_counts(
+            torch.tensor(ngram_count_table(n=ngram, corpus=corpus))
         )
-        assert trigram_counts_table.shape == (
-            num_tokens,
-            num_tokens,
-            num_tokens,
-        ), f"trigram_table.shape={trigram_counts_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
+        if allow_language_truncation:
+            ngram_counts_table = ngram_counts_table[
+                tuple(slice(num_tokens) for _ in ngram_counts_table.shape)
+            ]
+        assert ngram_counts_table.shape == tuple(
+            [num_tokens] * ngram
+        ), f"ngram_table.shape={ngram_counts_table.shape} != ({', '.join(['num_tokens'] * ngram)}) = ({', '.join([str(num_tokens)] * ngram)})"
         if alpha_mix_uniform is not None:
-            trigram_counts_table = trigram_counts_table / trigram_counts_table.sum(
+            ngram_counts_table = ngram_counts_table / ngram_counts_table.sum(
                 dim=-1, keepdim=True
             )
-            uniform_counts_table = torch.ones_like(trigram_counts_table)
+            uniform_counts_table = torch.ones_like(ngram_counts_table)
             uniform_counts_table /= uniform_counts_table.sum(dim=-1, keepdim=True)
-            trigram_counts_table = (
-                trigram_counts_table * (1 - alpha_mix_uniform)
+            ngram_counts_table = (
+                ngram_counts_table * (1 - alpha_mix_uniform)
                 + uniform_counts_table * alpha_mix_uniform
             )
         yield from ABCBCEnglishTask.dist_generator(
@@ -487,7 +457,7 @@ class ABCBCEnglishTask:
             skip_end=skip_end,
             a_unique=a_unique,
             b_unique=b_unique,
-            trigram_counts_table=trigram_counts_table,
+            ngram_counts_table=ngram_counts_table,
         )
 
 

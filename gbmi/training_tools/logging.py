@@ -3,6 +3,7 @@ import re
 from functools import partial
 from collections import defaultdict
 from dataclasses import dataclass
+import urllib.parse
 from typing import (
     Any,
     Callable,
@@ -185,7 +186,7 @@ def log_tensor(
         # Optional: Customize the plot further, e.g., adjust the aspect ratio, add labels, etc.
     else:
         raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
-    logger.log({name: fig}, commit=False, **kwargs)
+    logger.log({urllib.parse.quote(name): fig}, commit=False, **kwargs)
     # I'd like to do https://docs.wandb.ai/guides/track/log/plots#matplotlib-and-plotly-plots but am not sure how cf https://github.com/JasonGross/guarantees-based-mechanistic-interpretability/issues/33 cc Euan
     # self.log(name, fig, **kwargs)
     plt.close(fig)
@@ -815,4 +816,6 @@ class ModelMatrixLoggingOptions:
                 )
                 for name, matrix in matrices.items()
             }
-        logger.log(figs, commit=False, **kwargs)
+        logger.log(
+            {urllib.parse.quote(k): v for k, v in figs.items()}, commit=False, **kwargs
+        )

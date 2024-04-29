@@ -9,7 +9,7 @@ from gbmi.utils import set_params
 torch.manual_seed(123)
 for seed in torch.randint(0, 2**32 - 1, (20,)):
     for num_tokens in range(5, 27):
-        for task in ("abcab", "exact-ngram"):
+        for task in ("exact-ngram", "abcab"):
             for ngram in (2, 3):
                 for alpha_mix_uniform in reversed(np.linspace(start=0, stop=1, num=4)):
                     cfg = set_params(

@@ -32,6 +32,19 @@ from wandb.sdk.wandb_run import Run
 from gbmi.utils import subscript
 
 
+def encode_4_byte_unicode(text: str) -> str:
+    encoded_parts = []
+    for char in text:
+        # Check if the character is a 4-byte Unicode character
+        if ord(char) > 0xFFFF:
+            # URL-encode the 4-byte character
+            encoded_parts.append(urllib.parse.quote(char))
+        else:
+            # Add the normal character to the result
+            encoded_parts.append(char)
+    return "".join(encoded_parts)
+
+
 def str_mean(s: str) -> str:
     if len(s) == 1 or all(c.isalnum() for c in s):
         return f"𝔼{s}"
@@ -186,7 +199,7 @@ def log_tensor(
         # Optional: Customize the plot further, e.g., adjust the aspect ratio, add labels, etc.
     else:
         raise ValueError(f"Cannot plot tensor of shape {matrix.shape} ({name})")
-    logger.log({urllib.parse.quote(name): fig}, commit=False, **kwargs)
+    logger.log({encode_4_byte_unicode(name): fig}, commit=False, **kwargs)
     # I'd like to do https://docs.wandb.ai/guides/track/log/plots#matplotlib-and-plotly-plots but am not sure how cf https://github.com/JasonGross/guarantees-based-mechanistic-interpretability/issues/33 cc Euan
     # self.log(name, fig, **kwargs)
     plt.close(fig)
@@ -817,5 +830,7 @@ class ModelMatrixLoggingOptions:
                 for name, matrix in matrices.items()
             }
         logger.log(
-            {urllib.parse.quote(k): v for k, v in figs.items()}, commit=False, **kwargs
+            {encode_4_byte_unicode(k): v for k, v in figs.items()},
+            commit=False,
+            **kwargs,
         )

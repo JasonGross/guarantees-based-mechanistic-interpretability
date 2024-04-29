@@ -63,6 +63,7 @@ class IndHead(ExperimentConfig):
     only_strong_signal: bool = True
     random_tokens_at_end: bool = False
     n_heads: int = 1
+    n_layers: int = 2
     positional_embedding_type: Literal["standard", "rotary", "shortformer"] = "standard"
     other_tokens_distinct_from_predicted_token: bool = False
     alpha_mix_uniform: Optional[float] = None
@@ -97,6 +98,7 @@ class IndHead(ExperimentConfig):
             ("corpus", self.corpus_relevant),
             ("ngram", self.ngram == 3 or not self.ngram_relevant),
             ("use_kaiming_init", not self.use_kaiming_init),
+            ("n_layers", self.n_layers == 2),
         ]:
             if should_ignore:
                 exclude.add(field)
@@ -123,6 +125,7 @@ class IndHead(ExperimentConfig):
             f"-d_model{config.experiment.d_model}"
             f"-ntok{config.experiment.num_tokens}"
             f"{f'-pos-{config.experiment.positional_embedding_type}' if config.experiment.positional_embedding_type != 'standard' else ''}"
+            f"{f'-nlayer{config.experiment.n_layers}' if config.experiment.n_layers != 2 else ''}"
             f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
             f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{'-randend' if config.experiment.random_tokens_at_end else ''}"
@@ -328,7 +331,7 @@ class IndHeadTrainingWrapper(TrainingWrapper[IndHead]):
             n_ctx=cfg.seq_length + cfg.bos,
             d_model=cfg.d_model,
             d_head=cfg.d_model // cfg.n_heads,
-            n_layers=2,
+            n_layers=cfg.n_layers,
             n_heads=cfg.n_heads,
             init_weights=True,
             attn_only=True,

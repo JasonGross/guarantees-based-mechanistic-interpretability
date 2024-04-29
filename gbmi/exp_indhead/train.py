@@ -175,7 +175,7 @@ ABCAB_1H = Config(
         bos=False,
         only_strong_signal=True,
         random_tokens_at_end=False,
-        n_train_samples=10240 // 5,
+        n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
         ),
@@ -269,7 +269,7 @@ TRIGRAM4 = Config(
         corpus="webtext",
         bos=False,
         only_strong_signal=True,
-        n_train_samples=10240 // 5,
+        n_train_samples=10240,
         logging_options=ModelMatrixLoggingOptions.all(
             use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
         ),

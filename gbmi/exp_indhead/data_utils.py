@@ -350,8 +350,13 @@ def sample_ngrams_iter(
     avoid: Iterable[int] = tuple(),
     generator: torch.Generator,
 ) -> Iterable[int]:
+    def truncate(prev: Iterable[int]) -> list[int]:
+        if len(ngram_counts_table.shape) == 1:
+            return []
+        return list(prev)[-(len(ngram_counts_table.shape) - 1) :]
+
     ngram_counts_table = increment_zero_counts(ngram_counts_table)
-    prev = list(start)[-(len(ngram_counts_table.shape) - 1) :]
+    prev = truncate(list(start))
     ngram_counts_table[..., list(avoid)] = 0
     for _ in range(num):
         cur_table = ngram_counts_table[tuple(prev)]
@@ -361,7 +366,7 @@ def sample_ngrams_iter(
         next_token = int(torch.multinomial(cur_table, 1, generator=generator).item())
         yield next_token
         prev.append(next_token)
-        prev = prev[-(len(ngram_counts_table.shape) - 1) :]
+        prev = truncate(prev)
 
 
 def sample_ngrams(

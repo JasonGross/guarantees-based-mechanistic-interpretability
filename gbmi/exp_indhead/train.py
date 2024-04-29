@@ -76,7 +76,7 @@ class IndHead(ExperimentConfig):
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
     summary_slug_extra: str = ""
-    version_number: int = 6
+    version_number: int = 7
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )

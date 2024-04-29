@@ -72,6 +72,70 @@ class ExactBigramTask:
                 return
 
 
+class ExhaustiveTask:
+    @staticmethod
+    def dist_generator_helper(
+        *, num_tokens: int, seq_length: int, generator: torch.Generator
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        for x in torch.randperm(num_tokens, generator=generator):
+            x = torch.tensor([x.item()], dtype=torch.long)
+            if seq_length == 1:
+                yield x
+            else:
+                for xs in ExhaustiveTask.dist_generator_helper(
+                    num_tokens=num_tokens,
+                    seq_length=seq_length - 1,
+                    generator=generator,
+                ):
+                    yield torch.cat([x, xs])
+
+    @staticmethod
+    def dist_generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        force_strong_signal: bool = True,
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        default_device = torch.tensor([]).device
+        generator = torch.Generator(device=default_device)
+        generator.manual_seed(seed)
+        return filter(
+            (
+                lambda x: not force_strong_signal
+                or (calculate_batch_probabilities(x, num_tokens) == 1).any()
+            ),
+            ExhaustiveTask.dist_generator_helper(
+                num_tokens=num_tokens, seq_length=seq_length, generator=generator
+            ),
+        )
+
+    @staticmethod
+    def generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        force_strong_signal: bool = True,
+        max_length: Optional[int] = None,
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        n_samples = 0
+        for x in tqdm(
+            ExhaustiveTask.dist_generator(
+                seed=seed,
+                num_tokens=num_tokens,
+                seq_length=seq_length,
+                force_strong_signal=force_strong_signal,
+            ),
+            desc="Exhaustive datagen",
+            total=num_tokens**seq_length,
+        ):
+            yield x
+            n_samples += 1
+            if max_length is not None and n_samples >= max_length:
+                return
+
+
 class EnglishExactNgramTask:
     @staticmethod
     def dist_generator(

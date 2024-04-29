@@ -20,6 +20,7 @@ from torch.utils.data import Dataset, TensorDataset, DataLoader
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from gbmi.exp_indhead.data_utils import (
     ExactBigramTask,
+    ExhaustiveTask,
     ABCBCTask,
     EnglishExactNgramTask,
     ABCBCEnglishTask,
@@ -56,7 +57,7 @@ class IndHead(ExperimentConfig):
     num_tokens: int = 3
     d_model: int = 8
     ngram: int = 3
-    task: Literal["exact-bigram", "exact-ngram", "abcab"] = "exact-bigram"
+    task: Literal["exact-bigram", "exact-ngram", "abcab", "exhaustive"] = "exact-bigram"
     corpus: Optional[str] = None
     only_last_tokens: Optional[int] = None
     only_strong_signal: bool = True
@@ -162,6 +163,33 @@ DEFAULT_INDHEAD = Config(
     validate_every=(10, "epochs"),
     validation_batch_size=1,  # we want validation right now only to log the plots
 )
+
+EXHAUSTIVE7_1H = Config(
+    experiment=IndHead(
+        seq_length=7,
+        alpha_mix_uniform=None,
+        num_tokens=4,
+        n_heads=1,
+        d_model=64,
+        task="exhaustive",
+        bos=False,
+        only_strong_signal=True,
+        random_tokens_at_end=False,
+        n_train_samples=4**7,
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
+        ),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=4**7,
+    train_for=(500, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(10, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
+
 
 ABCAB_1H = Config(
     experiment=IndHead(
@@ -406,7 +434,7 @@ class IndHeadDataModule(DataModule):
     n_train_samples: int
     n_test_samples: int
     n_validate_samples: int
-    task: Literal["exact-bigram", "exact-ngram", "abcab"]
+    task: Literal["exact-bigram", "exact-ngram", "abcab", "exhaustive"]
     corpus: Optional[str] = None
     alpha_mix_uniform: Optional[float] = None
     ngram: int = 3
@@ -445,6 +473,11 @@ class IndHeadDataModule(DataModule):
         match self.task:
             case "exact-bigram":
                 generator = ExactBigramTask.generator
+            case "exhaustive":
+                generator = partial(
+                    ExhaustiveTask.generator,
+                    force_strong_signal=self.force_strong_signal,
+                )
             case "exact-ngram":
                 if self.corpus is None:
                     raise ValueError("Corpus must be provided for exact trigram task")

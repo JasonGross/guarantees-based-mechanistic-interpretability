@@ -54,118 +54,59 @@ class ExactBigramTask:
         return loss
 
     @staticmethod
-    def sample_bigram(
-        num_tokens: int,
-        seq_length: int,
-        bigram_dist: Float[Tensor, "num_tokens num_tokens"],  # noqa: F722
-        g: torch.Generator,
-    ) -> Iterable[int]:
-        token = int(torch.randint(num_tokens, (1,), generator=g).item())
-        yield token
-        for _ in range(seq_length - 1):
-            token = int(torch.multinomial(bigram_dist[token], 1, generator=g).item())
-            yield token
-
-    @staticmethod
     def generator(
         *, seed: int, num_tokens: int, seq_length: int, max_length: int
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
-        g = torch.Generator(device=default_device)
-        g.manual_seed(seed)
+        generator = torch.Generator(device=default_device)
+        generator.manual_seed(seed)
         n_samples = 0
         while True:
             bigram_dist = torch.rand(num_tokens, num_tokens)
             bigram_dist = bigram_dist / bigram_dist.sum(dim=-1, keepdim=True)
-            yield torch.tensor(
-                list(
-                    ExactBigramTask.sample_bigram(
-                        num_tokens, seq_length, bigram_dist, g
-                    )
-                ),
-                dtype=torch.long,
-                device=default_device,
+            yield sample_ngrams(
+                num=seq_length, ngram_counts_table=bigram_dist, generator=generator
             )
             n_samples += 1
             if max_length is not None and n_samples >= max_length:
                 return
 
 
-class EnglishExactTrigramTask:
+class EnglishExactNgramTask:
     @staticmethod
-    def sample_trigram_iter(
+    def dist_generator(
+        *,
+        seed: int,
+        num_tokens: int,
         seq_length: int,
-        monogram_dist: Float[Tensor, "num_tokens"],  # noqa: F821
-        bigram_dist: Float[Tensor, "num_tokens num_tokens"],  # noqa: F722
-        trigram_dist: Float[Tensor, "num_tokens num_tokens num_tokens"],  # noqa: F722
-        g: torch.Generator,
-    ) -> Iterable[int]:
-        prevtoken = int(torch.multinomial(monogram_dist, 1, generator=g).item())
-        yield prevtoken
-        if seq_length == 1:
-            return
-        token = int(torch.multinomial(bigram_dist[prevtoken], 1, generator=g).item())
-        yield token
-        for _ in range(seq_length - 2):
-            prevtoken, token = token, int(
-                torch.multinomial(trigram_dist[prevtoken, token], 1, generator=g).item()
-            )
-            yield token
-
-    @staticmethod
-    def sample_trigram(
-        seq_length: int,
-        monogram_dist: Float[Tensor, "num_tokens"],  # noqa: F821
-        bigram_dist: Float[Tensor, "num_tokens num_tokens"],  # noqa: F722
-        trigram_dist: Float[Tensor, "num_tokens num_tokens num_tokens"],  # noqa: F722
-        g: torch.Generator,
-        device: torch.device,
-    ) -> Integer[Tensor, "seq_length"]:  # noqa: F821
-        return torch.tensor(
-            list(
-                EnglishExactTrigramTask.sample_trigram_iter(
-                    seq_length, monogram_dist, bigram_dist, trigram_dist, g
-                )
-            ),
-            dtype=torch.long,
-            device=device,
-        )
-
-    @staticmethod
-    def sample_trigram_with_at_least_one_unique(
-        seq_length: int,
-        monogram_dist: Float[Tensor, "num_tokens"],  # noqa: F821
-        bigram_dist: Float[Tensor, "num_tokens num_tokens"],  # noqa: F722
-        trigram_dist: Float[Tensor, "num_tokens num_tokens num_tokens"],  # noqa: F722
-        g: torch.Generator,
-        device: torch.device,
-    ) -> Integer[Tensor, "seq_length"]:  # noqa: F821
+        max_length: Optional[int],
+        force_strong_signal: bool = True,
+        ngram_counts_table: Float[Tensor, "num_tokens*"],  # noqa F722
+    ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
+        default_device = torch.tensor([]).device
+        assert all(
+            i == num_tokens for i in ngram_counts_table.shape
+        ), f"ngram_counts_table.shape={ngram_counts_table.shape} != num_tokens* = {num_tokens}*"
+        generator = torch.Generator(device=default_device)
+        generator.manual_seed(seed)
+        n_samples = 0
         while True:
-            trigram = EnglishExactTrigramTask.sample_trigram(
-                seq_length, monogram_dist, bigram_dist, trigram_dist, g, device=device
-            )
-            if seq_length >= 2 and len(set(trigram.tolist())) == len(trigram):
-                # resample the last character to speed things up
-                final_token_dist_ref = trigram_dist[trigram[-2], trigram[-1]]
-                final_token_dist = torch.zeros_like(final_token_dist_ref)
-                idxs = torch.tensor(list(set(trigram[:-1])))
-                final_token_dist[idxs] = final_token_dist_ref[idxs]
-                if final_token_dist.sum() == 0:
-                    final_token_dist[idxs] = trigram_dist[:, trigram[-1], idxs].sum(
-                        dim=0
-                    )
-                if final_token_dist.sum() == 0:
-                    final_token_dist[idxs] = (
-                        trigram_dist[:, :, idxs].sum(dim=0).sum(dim=0)
-                    )
-                final_token_dist /= final_token_dist.sum()
-                trigram[-1] = int(
-                    torch.multinomial(final_token_dist, 1, generator=g).item()
+            yield (
+                sample_ngrams_with_at_least_one_unique(
+                    num=seq_length,
+                    ngram_counts_table=ngram_counts_table,
+                    generator=generator,
                 )
-            if (
-                calculate_batch_probabilities(trigram, monogram_dist.shape[0]) == 1
-            ).any():
-                return trigram
+                if force_strong_signal
+                else sample_ngrams(
+                    num=seq_length,
+                    ngram_counts_table=ngram_counts_table,
+                    generator=generator,
+                )
+            )
+            n_samples += 1
+            if max_length is not None and n_samples >= max_length:
+                return
 
     @staticmethod
     def generator(
@@ -175,70 +116,26 @@ class EnglishExactTrigramTask:
         seq_length: int,
         max_length: int,
         force_strong_signal: bool = True,
+        ngram: int = 3,
         corpus: str = DEFAULT_CORPUS,
+        allow_language_truncation: bool = True,
+        alpha_mix_uniform: Optional[float] = None,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
-        default_device = torch.tensor([]).device
-        monogram_table = torch.tensor(
-            ngram_count_table(n=1, corpus=corpus), device=default_device
+        ngram_counts_table = construct_ngram_counts_table(
+            num_tokens=num_tokens,
+            ngram=ngram,
+            corpus=corpus,
+            allow_language_truncation=allow_language_truncation,
+            alpha_mix_uniform=alpha_mix_uniform,
         )
-        bigram_table = torch.tensor(
-            ngram_count_table(n=2, corpus=corpus), device=default_device
+        yield from EnglishExactNgramTask.dist_generator(
+            seed=seed,
+            num_tokens=num_tokens,
+            seq_length=seq_length,
+            max_length=max_length,
+            force_strong_signal=force_strong_signal,
+            ngram_counts_table=ngram_counts_table,
         )
-        trigram_table = torch.tensor(
-            ngram_count_table(n=3, corpus=corpus), device=default_device
-        )
-        assert monogram_table.shape == (
-            num_tokens,
-        ), f"monogram_table.shape={monogram_table.shape} != (num_tokens,) = ({num_tokens},)"
-        assert bigram_table.shape == (
-            num_tokens,
-            num_tokens,
-        ), f"bigram_table.shape={bigram_table.shape} != (num_tokens, num_tokens) = ({num_tokens}, {num_tokens})"
-        assert trigram_table.shape == (
-            num_tokens,
-            num_tokens,
-            num_tokens,
-        ), f"trigram_table.shape={trigram_table.shape} != (num_tokens, num_tokens, num_tokens) = ({num_tokens}, {num_tokens}, {num_tokens})"
-
-        monogram_table /= monogram_table.sum(dim=-1, keepdim=True)
-        bigram_table = torch.where(
-            bigram_table.sum(dim=-1, keepdim=True) != 0,
-            bigram_table,
-            bigram_table.sum(dim=0),
-        )
-        bigram_table /= bigram_table.sum(dim=-1, keepdim=True)
-        trigram_table = torch.where(
-            trigram_table.sum(dim=-1, keepdim=True) != 0,
-            trigram_table,
-            trigram_table.sum(dim=0),
-        )
-        trigram_table = torch.where(
-            trigram_table.sum(dim=-1, keepdim=True) != 0,
-            trigram_table,
-            trigram_table.sum(dim=0).sum(dim=0),
-        )
-        trigram_table /= trigram_table.sum(dim=-1, keepdim=True)
-
-        g = torch.Generator(device=default_device)
-        g.manual_seed(seed)
-        n_samples = 0
-        while True:
-            sample = (
-                EnglishExactTrigramTask.sample_trigram_with_at_least_one_unique
-                if force_strong_signal
-                else EnglishExactTrigramTask.sample_trigram
-            )
-            yield sample(
-                seq_length,
-                monogram_table,
-                bigram_table,
-                trigram_table,
-                g,
-                default_device,
-            )
-            n_samples += 1
-            if max_length is not None and n_samples >= max_length:
-                return
 
 
 class ABCBCTask:
@@ -255,16 +152,18 @@ class ABCBCTask:
         b_unique: bool = False,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
         default_device = torch.tensor([]).device
-        g = torch.Generator(device=default_device)
-        g.manual_seed(seed)
+        generator = torch.Generator(device=default_device)
+        generator.manual_seed(seed)
         n_samples = 0
         n_cs = seq_length - 3
         while True:
-            tokens = torch.randperm(num_tokens, generator=g)
+            tokens = torch.randperm(num_tokens, generator=generator)
             (a, b), cs = tokens[:2], tokens[(2 if b_unique else 1) :]
-            cs = cs[torch.randint(0, cs.size(0), (n_cs,), generator=g)]
+            cs = cs[torch.randint(0, cs.size(0), (n_cs,), generator=generator)]
             split_index1, split_index2 = (
-                torch.randint(1, cs.size(0) + 1, (2,), generator=g).sort().values
+                torch.randint(1, cs.size(0) + 1, (2,), generator=generator)
+                .sort()
+                .values
             )
             cs1, cs2, cs3 = (
                 cs[:split_index1],
@@ -284,35 +183,6 @@ class ABCBCTask:
 
 
 class ABCBCEnglishTask:
-
-    @staticmethod
-    def increment_zero_counts(table: Tensor) -> Tensor:
-        if (table == 0).any():
-            return table + 1 / (1 + table.max() * table.numel())
-        else:
-            return table
-
-    @staticmethod
-    def sample_ngrams(
-        *start: int,
-        num: int,
-        ngram_counts_table: Tensor,
-        avoid: Iterable[int] = tuple(),
-        g: torch.Generator,
-    ) -> Iterable[int]:
-        ngram_counts_table = ABCBCEnglishTask.increment_zero_counts(ngram_counts_table)
-        prev = list(start)
-        ngram_counts_table[..., list(avoid)] = 0
-        for _ in range(num):
-            cur_table = ngram_counts_table[tuple(prev)]
-            if len(cur_table.shape) > 1:
-                cur_table = cur_table.sum(dim=tuple(range(1, len(cur_table.shape))))
-            cur_table = cur_table / cur_table.sum()
-            next_token = int(torch.multinomial(cur_table, 1, generator=g).item())
-            yield next_token
-            prev.append(next_token)
-            prev = prev[: len(ngram_counts_table.shape) - 1]
-
     # based on https://github.com/TomFrederik/mvp_induction/blob/main/datasets.py
     @staticmethod
     def dist_generator(
@@ -320,7 +190,7 @@ class ABCBCEnglishTask:
         seed: int,
         num_tokens: int,
         seq_length: int,
-        max_length: int,
+        max_length: Optional[int],
         skip_end: bool = False,
         a_unique: bool = True,
         b_unique: bool = False,
@@ -329,15 +199,17 @@ class ABCBCEnglishTask:
         default_device = torch.tensor([]).device
         assert all(
             i == num_tokens for i in ngram_counts_table.shape
-        ), f"trigram_table.shape={ngram_counts_table.shape} != num_tokens* = {num_tokens}*"
-        g = torch.Generator(device=default_device)
-        g.manual_seed(seed)
+        ), f"ngram_counts_table.shape={ngram_counts_table.shape} != num_tokens* = {num_tokens}*"
+        generator = torch.Generator(device=default_device)
+        generator.manual_seed(seed)
         n_samples = 0
         n_cs = seq_length - 3
         while True:
-            n_cs1 = int(torch.randint(0, n_cs + 1, (1,), generator=g).item())
-            n_cs2 = int(torch.randint(0, n_cs - n_cs1 + 1, (1,), generator=g).item())
-            if torch.rand(1, generator=g) < 0.5:
+            n_cs1 = int(torch.randint(0, n_cs + 1, (1,), generator=generator).item())
+            n_cs2 = int(
+                torch.randint(0, n_cs - n_cs1 + 1, (1,), generator=generator).item()
+            )
+            if torch.rand(1, generator=generator) < 0.5:
                 n_cs1, n_cs2 = n_cs2, n_cs1
             n_cs3 = n_cs - n_cs1 - n_cs2
             assert (
@@ -346,14 +218,10 @@ class ABCBCEnglishTask:
             assert n_cs1 >= 0, n_cs1
             assert n_cs2 >= 0, n_cs2
             assert n_cs3 >= 0, n_cs3
-            cs1 = torch.tensor(
-                list(
-                    ABCBCEnglishTask.sample_ngrams(
-                        num=int(n_cs1) + 2, ngram_counts_table=ngram_counts_table, g=g
-                    )
-                ),
-                dtype=torch.long,
-                device=default_device,
+            cs1 = sample_ngrams(
+                num=int(n_cs1) + 2,
+                ngram_counts_table=ngram_counts_table,
+                generator=generator,
             )
 
             cs1, a, b = cs1[:-2], int(cs1[-2]), int(cs1[-1])
@@ -364,19 +232,13 @@ class ABCBCEnglishTask:
             avoid = []
             avoid += [a] if a_unique else []
             avoid += [b] if b_unique else []
-            cs2 = torch.tensor(
-                list(
-                    ABCBCEnglishTask.sample_ngrams(
-                        a,
-                        b,
-                        num=int(n_cs2),
-                        ngram_counts_table=ngram_counts_table,
-                        g=g,
-                        avoid=avoid,
-                    )
-                ),
-                dtype=torch.long,
-                device=default_device,
+            cs2 = sample_ngrams(
+                a,
+                b,
+                num=int(n_cs2),
+                ngram_counts_table=ngram_counts_table,
+                generator=generator,
+                avoid=avoid,
             )
 
             if skip_end:
@@ -385,19 +247,13 @@ class ABCBCEnglishTask:
                 )[-2:]
             else:
                 before_cs3_0, before_cs3_1 = a, b
-            cs3 = torch.tensor(
-                list(
-                    ABCBCEnglishTask.sample_ngrams(
-                        int(before_cs3_0),
-                        int(before_cs3_1),
-                        num=int(n_cs3),
-                        ngram_counts_table=ngram_counts_table,
-                        g=g,
-                        avoid=avoid,
-                    )
-                ),
-                dtype=torch.long,
-                device=default_device,
+            cs3 = sample_ngrams(
+                int(before_cs3_0),
+                int(before_cs3_1),
+                num=int(n_cs3),
+                ngram_counts_table=ngram_counts_table,
+                generator=generator,
+                avoid=avoid,
             )
             if skip_end:
                 cs2, cs3 = torch.cat([cs2, cs3], dim=0), []
@@ -429,26 +285,13 @@ class ABCBCEnglishTask:
         allow_language_truncation: bool = True,
         alpha_mix_uniform: Optional[float] = None,
     ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
-        ngram_counts_table = ABCBCEnglishTask.increment_zero_counts(
-            torch.tensor(ngram_count_table(n=ngram, corpus=corpus))
+        ngram_counts_table = construct_ngram_counts_table(
+            num_tokens=num_tokens,
+            ngram=ngram,
+            corpus=corpus,
+            allow_language_truncation=allow_language_truncation,
+            alpha_mix_uniform=alpha_mix_uniform,
         )
-        if allow_language_truncation:
-            ngram_counts_table = ngram_counts_table[
-                tuple(slice(num_tokens) for _ in ngram_counts_table.shape)
-            ]
-        assert ngram_counts_table.shape == tuple(
-            [num_tokens] * ngram
-        ), f"ngram_table.shape={ngram_counts_table.shape} != ({', '.join(['num_tokens'] * ngram)}) = ({', '.join([str(num_tokens)] * ngram)})"
-        if alpha_mix_uniform is not None:
-            ngram_counts_table = ngram_counts_table / ngram_counts_table.sum(
-                dim=-1, keepdim=True
-            )
-            uniform_counts_table = torch.ones_like(ngram_counts_table)
-            uniform_counts_table /= uniform_counts_table.sum(dim=-1, keepdim=True)
-            ngram_counts_table = (
-                ngram_counts_table * (1 - alpha_mix_uniform)
-                + uniform_counts_table * alpha_mix_uniform
-            )
         yield from ABCBCEnglishTask.dist_generator(
             seed=seed,
             num_tokens=num_tokens,
@@ -459,6 +302,125 @@ class ABCBCEnglishTask:
             b_unique=b_unique,
             ngram_counts_table=ngram_counts_table,
         )
+
+
+def construct_ngram_counts_table(
+    *,
+    num_tokens: int,
+    ngram: int = 3,
+    corpus: str = DEFAULT_CORPUS,
+    allow_language_truncation: bool = True,
+    alpha_mix_uniform: Optional[float] = None,
+) -> Integer[Tensor, "..."]:
+    ngram_counts_table = increment_zero_counts(
+        torch.tensor(ngram_count_table(n=ngram, corpus=corpus))
+    )
+    if allow_language_truncation:
+        ngram_counts_table = ngram_counts_table[
+            tuple(slice(num_tokens) for _ in ngram_counts_table.shape)
+        ]
+    assert ngram_counts_table.shape == tuple(
+        [num_tokens] * ngram
+    ), f"ngram_table.shape={ngram_counts_table.shape} != ({', '.join(['num_tokens'] * ngram)}) = ({', '.join([str(num_tokens)] * ngram)})"
+    if alpha_mix_uniform is not None:
+        ngram_counts_table = ngram_counts_table / ngram_counts_table.sum(
+            dim=-1, keepdim=True
+        )
+        uniform_counts_table = torch.ones_like(ngram_counts_table)
+        uniform_counts_table /= uniform_counts_table.sum(dim=-1, keepdim=True)
+        ngram_counts_table = (
+            ngram_counts_table * (1 - alpha_mix_uniform)
+            + uniform_counts_table * alpha_mix_uniform
+        )
+
+    return ngram_counts_table
+
+
+def increment_zero_counts(table: Tensor) -> Tensor:
+    if (table == 0).any():
+        return table + 1 / (1 + table.max() * table.numel())
+    else:
+        return table
+
+
+def sample_ngrams_iter(
+    *start: int,
+    num: int,
+    ngram_counts_table: Tensor,
+    avoid: Iterable[int] = tuple(),
+    generator: torch.Generator,
+) -> Iterable[int]:
+    ngram_counts_table = increment_zero_counts(ngram_counts_table)
+    prev = list(start)
+    ngram_counts_table[..., list(avoid)] = 0
+    for _ in range(num):
+        cur_table = ngram_counts_table[tuple(prev)]
+        if len(cur_table.shape) > 1:
+            cur_table = cur_table.sum(dim=tuple(range(1, len(cur_table.shape))))
+        cur_table = cur_table / cur_table.sum()
+        next_token = int(torch.multinomial(cur_table, 1, generator=generator).item())
+        yield next_token
+        prev.append(next_token)
+        prev = prev[: len(ngram_counts_table.shape) - 1]
+
+
+def sample_ngrams(
+    *start: int,
+    num: int,
+    ngram_counts_table: Tensor,
+    avoid: Iterable[int] = tuple(),
+    generator: torch.Generator,
+) -> Integer[Tensor, "num"]:  # noqa: F821
+    return torch.tensor(
+        list(
+            sample_ngrams_iter(
+                *start,
+                num=num,
+                ngram_counts_table=ngram_counts_table,
+                avoid=avoid,
+                generator=generator,
+            )
+        ),
+        dtype=torch.long,
+    )
+
+
+def sample_ngrams_with_at_least_one_unique(
+    *start: int,
+    num: int,
+    ngram_counts_table: Tensor,
+    avoid: Iterable[int] = tuple(),
+    generator: torch.Generator,
+) -> Integer[Tensor, "seq_length"]:  # noqa: F821
+    avoid = set(avoid)
+    while True:
+        ngram = sample_ngrams(
+            *start,
+            num=num,
+            ngram_counts_table=ngram_counts_table,
+            avoid=avoid,
+            generator=generator,
+        )
+        if num >= 2 and len(set(ngram.tolist())) == len(ngram):
+            # resample the last character only to speed things up
+            ngram = ngram[:-1]
+            avoid |= set(ngram.tolist())
+            return torch.cat(
+                [
+                    ngram,
+                    sample_ngrams(
+                        *ngram.tolist(),
+                        num=1,
+                        ngram_counts_table=ngram_counts_table,
+                        avoid=avoid,
+                        generator=generator,
+                    ),
+                ]
+            )
+        if (
+            calculate_batch_probabilities(ngram, ngram_counts_table.shape[0]) == 1
+        ).any():
+            return ngram
 
 
 def calculate_batch_probabilities(

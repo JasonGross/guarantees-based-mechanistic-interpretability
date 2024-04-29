@@ -21,7 +21,7 @@ from transformer_lens import HookedTransformer, HookedTransformerConfig
 from gbmi.exp_indhead.data_utils import (
     ExactBigramTask,
     ABCBCTask,
-    EnglishExactTrigramTask,
+    EnglishExactNgramTask,
     ABCBCEnglishTask,
     calculate_batch_probabilities,
     cat_bos_token,
@@ -56,7 +56,7 @@ class IndHead(ExperimentConfig):
     num_tokens: int = 3
     d_model: int = 8
     ngram: int = 3
-    task: Literal["exact-bigram", "exact-trigram", "abcab"] = "exact-bigram"
+    task: Literal["exact-bigram", "exact-ngram", "abcab"] = "exact-bigram"
     corpus: Optional[str] = None
     only_last_tokens: Optional[int] = None
     only_strong_signal: bool = True
@@ -76,20 +76,24 @@ class IndHead(ExperimentConfig):
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
     )
     summary_slug_extra: str = ""
-    version_number: int = 5
+    version_number: int = 6
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
 
     @property
+    def corpus_relevant(self):
+        return self.task in ("abcab", "exact-ngram")
+
+    @property
     def ngram_relevant(self):
-        return self.task == "abcab" and self.corpus is not None
+        return self.corpus_relevant and self.corpus is not None
 
     def __post_init__(self):
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
         for field, should_ignore in [
             ("logging_options", True),
-            ("corpus", self.task == "exact-bigram"),
+            ("corpus", self.corpus_relevant),
             ("ngram", self.ngram == 3 or not self.ngram_relevant),
             ("use_kaiming_init", not self.use_kaiming_init),
         ]:
@@ -261,7 +265,7 @@ TRIGRAM4 = Config(
         num_tokens=26,
         n_heads=1,
         d_model=128,
-        task="exact-trigram",
+        task="exact-ngram",
         corpus="webtext",
         bos=False,
         only_strong_signal=True,
@@ -402,9 +406,10 @@ class IndHeadDataModule(DataModule):
     n_train_samples: int
     n_test_samples: int
     n_validate_samples: int
-    task: Literal["exact-bigram", "exact-trigram", "abcab"]
+    task: Literal["exact-bigram", "exact-ngram", "abcab"]
     corpus: Optional[str] = None
     alpha_mix_uniform: Optional[float] = None
+    ngram: int = 3
     seq_length: int
     bos: Optional[int]
     dataset_seed: int
@@ -422,6 +427,7 @@ class IndHeadDataModule(DataModule):
         self.task = config.experiment.task
         self.corpus = config.experiment.corpus
         self.alpha_mix_uniform = config.experiment.alpha_mix_uniform
+        self.ngram = config.experiment.ngram
         self.random_tokens_at_end = config.experiment.random_tokens_at_end
         self.force_strong_signal = config.experiment.only_strong_signal
         self.other_tokens_distinct_from_predicted_token = (
@@ -439,13 +445,15 @@ class IndHeadDataModule(DataModule):
         match self.task:
             case "exact-bigram":
                 generator = ExactBigramTask.generator
-            case "exact-trigram":
+            case "exact-ngram":
                 if self.corpus is None:
                     raise ValueError("Corpus must be provided for exact trigram task")
                 generator = partial(
-                    EnglishExactTrigramTask.generator,
+                    EnglishExactNgramTask.generator,
                     force_strong_signal=self.force_strong_signal,
                     corpus=self.corpus,
+                    ngram=self.ngram,
+                    alpha_mix_uniform=self.alpha_mix_uniform,
                 )
             case "abcab":
                 generator = (
@@ -454,6 +462,7 @@ class IndHeadDataModule(DataModule):
                     else partial(
                         ABCBCEnglishTask.generator,
                         corpus=self.corpus,
+                        ngram=self.ngram,
                         alpha_mix_uniform=self.alpha_mix_uniform,
                     )
                 )

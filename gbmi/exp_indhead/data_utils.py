@@ -355,7 +355,7 @@ def sample_ngrams_iter(
             return []
         return list(prev)[-(len(ngram_counts_table.shape) - 1) :]
 
-    ngram_counts_table = increment_zero_counts(ngram_counts_table)
+    ngram_counts_table = increment_zero_counts(ngram_counts_table.clone())
     prev = truncate(list(start))
     ngram_counts_table[..., list(avoid)] = 0
     for _ in range(num):

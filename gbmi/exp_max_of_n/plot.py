@@ -326,7 +326,7 @@ def compute_QK_by_position(
         return {
             "data": {"QK": QK.numpy()},
             "title": {
-                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos} - {sE}{s_dim0}{sWpos}){sT}{smath}"
+                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos} - {sE}{s_p}{sWpos}[p]){sT}{smath}"
                 for key, (
                     nl,
                     smath,

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from functools import partial
+from functools import partial, update_wrapper
 from dataclasses import dataclass
 from dataclasses import field
 from typing import (
@@ -10,10 +10,11 @@ from typing import (
     Union,
     Literal,
     Tuple,
+    Iterable,
 )
 import sys
 import torch
-from jaxtyping import Float, Integer
+from jaxtyping import Float, Integer, Bool
 from torch import Tensor
 import simple_parsing
 from torch.utils.data import Dataset, TensorDataset, DataLoader
@@ -140,12 +141,17 @@ class IndHead(ExperimentConfig):
         return self.num_tokens if self.bos else None
 
     def get_ground_truth(
-        self, x: Integer[Tensor, "... n"]  # noqa: F722
+        self,
+        x: Integer[Tensor, "... n"],  # noqa: F722
+        readoff: Optional[Bool[Tensor, "... n"]] = None,  # noqa: F722
     ) -> Integer[Tensor, "..."]:  # noqa: F722
         x = x[..., 1:] if self.bos else x
-        return cat_bos_uniform_labels(
-            calculate_batch_probabilities(x, self.num_tokens), bos=self.bos_token
-        )
+        probs = calculate_batch_probabilities(x, self.num_tokens)
+        if readoff is not None:
+            probs = torch.where(
+                readoff[..., : x.shape[-1]].unsqueeze(-1), probs, torch.nan
+            )
+        return cat_bos_uniform_labels(probs, bos=self.bos_token)
 
 
 DEFAULT_INDHEAD = Config(
@@ -355,7 +361,7 @@ class IndHeadTrainingWrapper(TrainingWrapper[IndHead]):
     def loss_fn(
         self,
         logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
-        labels: Integer[Tensor, "batch pos num_tokens"],  # noqa: F722
+        labels: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
         *,
         # xs only for logging purposes
         _xs: Optional[Integer[Tensor, "batch pos"]] = None,  # noqa: F722
@@ -471,21 +477,34 @@ class IndHeadDataModule(DataModule):
     ) -> Dataset[
         Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
     ]:
+        def wrap_always_readoff(func):
+            def wrapper(*args, **kwargs) -> Iterable[
+                Tuple[
+                    Integer[Tensor, "seq_length"],  # noqa: F821
+                    Bool[Tensor, "seq_length"],  # noqa: F821
+                ]
+            ]:
+                for x in func(*args, **kwargs):
+                    yield x, torch.ones_like(x, dtype=torch.bool)
+
+            wrapper = update_wrapper(wrapper, func)
+            return wrapper
+
         seed = reseed(self.dataset_seed, mode)
         n_samples = getattr(self, f"n_{mode}_samples")
         match self.task:
             case "exact-bigram":
-                generator = ExactBigramTask.generator
+                generator = wrap_always_readoff(ExactBigramTask.generator)
             case "exhaustive":
                 generator = partial(
-                    ExhaustiveTask.generator,
+                    wrap_always_readoff(ExhaustiveTask.generator),
                     force_strong_signal=self.force_strong_signal,
                 )
             case "exact-ngram":
                 if self.corpus is None:
                     raise ValueError("Corpus must be provided for exact trigram task")
                 generator = partial(
-                    EnglishExactNgramTask.generator,
+                    wrap_always_readoff(EnglishExactNgramTask.generator),
                     force_strong_signal=self.force_strong_signal,
                     corpus=self.corpus,
                     ngram=self.ngram,
@@ -493,10 +512,10 @@ class IndHeadDataModule(DataModule):
                 )
             case "abcab":
                 generator = (
-                    ABCBCTask.generator
+                    wrap_always_readoff(ABCBCTask.generator)
                     if self.corpus is None
                     else partial(
-                        ABCBCEnglishTask.generator,
+                        wrap_always_readoff(ABCBCEnglishTask.generator),
                         corpus=self.corpus,
                         ngram=self.ngram,
                         alpha_mix_uniform=self.alpha_mix_uniform,
@@ -507,18 +526,27 @@ class IndHeadDataModule(DataModule):
                     skip_end=not self.random_tokens_at_end,
                     b_unique=self.other_tokens_distinct_from_predicted_token,
                 )
-        data = torch.stack(
-            tuple(
-                generator(
-                    seed=seed,
-                    num_tokens=self.num_tokens,
-                    seq_length=self.seq_length,
-                    max_length=n_samples,
-                )
+        data_tuple = tuple(
+            generator(
+                seed=seed,
+                num_tokens=self.num_tokens,
+                seq_length=self.seq_length,
+                max_length=n_samples,
             )
         )
+        data = torch.stack(tuple(x for x, readoff in data_tuple))
+        readoff = torch.stack(tuple(readoff for x, readoff in data_tuple))
+
+        assert readoff.all()
+
         data = cat_bos_token(data, bos=self.bos)
-        dataset = TensorDataset(data, self.config.experiment.get_ground_truth(data))
+        assert (
+            self.config.experiment.get_ground_truth(data)
+            == self.config.experiment.get_ground_truth(data, readoff)
+        ).all()
+        dataset = TensorDataset(
+            data, self.config.experiment.get_ground_truth(data, readoff)
+        )
         return dataset  # type: ignore
 
     def setup(self, stage: str):

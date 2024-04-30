@@ -561,6 +561,13 @@ def display_basic_interpretation(
         renderer=renderer,
         show=True,
     )
+    match plot_with:
+        case "matplotlib":
+            assert isinstance(fig, matplotlib.figure.Figure)
+            fig.suptitle("")
+        case "plotly":
+            assert isinstance(fig, go.Figure)
+            fig.update_layout(title="")
     return result
 
 

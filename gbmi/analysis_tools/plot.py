@@ -341,11 +341,21 @@ def scatter_matplotlib(
     #     data[0] = pd.melt(data[0], var_name="variable", value_name="value")
     #     kwargs |= dict(x="variable", y="value")
     #     print(data)
-    sns.scatterplot(*data, ax=ax, **kwargs)
-    ax.set_xlabel(xaxis)
-    ax.set_ylabel(yaxis)
+    # manual scatter plotting so that we get better LaTeX export
+    if len(data) == 1 and isinstance(data[0], dict):
+        for (k, v), marker in zip(
+            data[0].items(), sns._base.unique_markers(len(data[0]))
+        ):
+            x = range(len(v))
+            plt.scatter(x, v, label=k, marker=marker)
+        if not legend_at_bottom:
+            ax.legend()
+    else:
+        sns.scatterplot(*data, ax=ax, **kwargs)
     if legend_at_bottom:
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
+    ax.set_xlabel(xaxis)
+    ax.set_ylabel(yaxis)
     if title is not None:
         fig.suptitle(title)
     plt.tight_layout()

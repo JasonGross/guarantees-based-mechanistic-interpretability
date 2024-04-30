@@ -405,7 +405,7 @@ def compute_irrelevant(
 
     return {
         "data": data,
-        "title": "Irrelevant Contributions to logits",
+        "title": "Irrelevant Contributions to logits" if include_equals_OV else "PVOU",
         "xaxis": "output logit token",
         "yaxis": {2: "input token", 1: "output logit value"},
     }
@@ -535,12 +535,6 @@ def display_basic_interpretation(
         include_equals_OV=include_equals_OV,
         includes_eos=includes_eos,
         title_kind=title_kind,
-    )
-    irrelevant_plotly = compute_irrelevant(
-        model,
-        include_equals_OV=include_equals_OV,
-        includes_eos=includes_eos,
-        title_kind="html",
     )
     for key, data in irrelevant["data"].items():
         if len(data.shape) == 2:

@@ -2490,7 +2490,7 @@ for k, fig in latex_figures.items():
         print(f"Saving {p}...")
         p.parent.mkdir(parents=True, exist_ok=True)
         with texify_matplotlib_title(fig) as fig:
-            tikzplotlib.save(p, fig)
+            tikzplotlib.save(p, fig, externalize_tables=False)
         for ext in (".pdf", ".svg"):
             p = LATEX_FIGURE_PATH / f"{k}{ext}"
             print(f"Saving {p}...")

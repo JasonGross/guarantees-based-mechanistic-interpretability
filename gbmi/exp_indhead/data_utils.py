@@ -31,6 +31,13 @@ class ExactBigramTask:
         if only_eos is not None:
             logits = logits[:, -only_eos:, :]
             labels = labels[:, -only_eos:, :]
+        # # Note that this rearrangement is not necessary because we do boolean indexing
+        # logits = einops.rearrange(logits, "b p v -> (b p) v")
+        # labels = einops.rearrange(labels, "b p v -> (b p) v")
+        # remove nans from the labels, which are used to mark locations where we don't want to test
+        mask = ~labels.isnan().any(dim=-1)
+        logits = logits[mask, :]
+        labels = labels[mask, :]
         if only_strong_signal:
             mask = (labels != 0).sum(dim=-1) == 1
             assert mask.any(
@@ -40,10 +47,6 @@ class ExactBigramTask:
             #     input((_xsi, labelsi[maski].argmax(dim=-1), maski.nonzero()))
             logits = logits[mask, :]
             labels = labels[mask, :]
-        else:
-            # Note that this rearrangement is already taken care of by boolean indexing above
-            logits = einops.rearrange(logits, "b p v -> (b p) v")
-            labels = einops.rearrange(labels, "b p v -> (b p) v")
         assert len(logits.shape) == 2, logits.shape
         assert len(labels.shape) == 2, labels.shape
         if high_precision:

@@ -1,5 +1,7 @@
 # %%
-from typing import Collection, Iterable, Optional, Sequence, Tuple
+from typing import Collection, Iterable, Optional, Sequence, Tuple, Union
+import itertools
+from itertools import chain, cycle
 import einops
 from jaxtyping import Float, Integer
 import torch
@@ -371,6 +373,87 @@ class ABCBCEnglishTask:
         )
 
 
+class ABCABCExhaustiveTask:
+    # generates all ngrams N (final character is allowed to duplicate a previous one),
+    # then for each ngram picks k sequences of random characters distinct from the ngram,
+    # then consider all splits of the sequence into XYZ (allowed to be empty)
+    # and consider XNYN[:-1]Z, read off the final character of the second N to predict N[-1]
+
+    #     def
+    # abcabx
+    # xxxxabcab
+    # abcbc
+    # xabcb
+    pass
+
+
+def all_sequences_avoiding_iter(
+    *, num_tokens: int, length: int, avoid: Collection[int] = tuple()
+) -> Iterable[Integer[Tensor, "..."]]:
+    avoid = set(avoid)
+    valid_toks = torch.tensor(
+        [tok for tok in range(num_tokens) if tok not in avoid], dtype=torch.long
+    )
+    for seq_idxs in itertools.product(range(num_tokens - len(avoid)), repeat=length):
+        yield torch.tensor([valid_toks[idx] for idx in seq_idxs], dtype=torch.long)
+
+
+def all_ngrams_iter(
+    *,
+    num_tokens: int,
+    ngram: int,
+    avoid: Iterable[int] = tuple(),
+    avoid_nodup: Iterable[int] = tuple(),
+    avoid_duplicates_initial_pattern: Iterable[bool] = tuple(),
+    avoid_duplicates: bool = False,
+) -> Iterable[Integer[Tensor, "ngram"]]:  # noqa F821
+    if ngram == 0:
+        yield torch.tensor([], dtype=torch.long)
+        return
+    avoid, avoid_nodup = tuple(avoid), tuple(avoid_nodup)
+    avoid_duplicates_initial_pattern = list(avoid_duplicates_initial_pattern) + [
+        avoid_duplicates
+    ]
+    avoid_duplicates_here, avoid_duplicates_initial_pattern = (
+        avoid_duplicates_initial_pattern[0],
+        avoid_duplicates_initial_pattern[1:],
+    )
+    for t in range(num_tokens):
+        if t not in avoid and (not avoid_duplicates_here or t not in avoid_nodup):
+            t = torch.tensor([t], dtype=torch.long)
+            for ts in all_ngrams_iter(
+                num_tokens=num_tokens,
+                ngram=ngram - 1,
+                avoid=avoid,
+                avoid_nodup=[*avoid_nodup, int(t)],
+                avoid_duplicates_initial_pattern=avoid_duplicates_initial_pattern,
+                avoid_duplicates=avoid_duplicates,
+            ):
+                yield torch.cat([t, ts], dim=-1)
+
+
+def all_ngrams(
+    *,
+    num_tokens: int,
+    ngram: int,
+    avoid: Iterable[int] = tuple(),
+    avoid_duplicates_initial_pattern: Iterable[bool] = tuple(),
+    avoid_duplicates: bool = False,
+) -> Integer[Tensor, "batch ngram"]:  # noqa F722
+    return torch.tensor(
+        list(
+            all_ngrams_iter(
+                num_tokens=num_tokens,
+                ngram=ngram,
+                avoid=avoid,
+                avoid_duplicates_initial_pattern=avoid_duplicates_initial_pattern,
+                avoid_duplicates=avoid_duplicates,
+            )
+        ),
+        dtype=torch.long,
+    )
+
+
 def construct_ngram_counts_table(
     *,
     num_tokens: int,
@@ -415,8 +498,11 @@ def sample_ngrams_iter(
     num: int,
     ngram_counts_table: Tensor,
     avoid: Iterable[int] = tuple(),
+    avoid_duplicates_initial_pattern: Iterable[bool] = tuple(),
+    avoid_duplicates: bool = False,
     generator: torch.Generator,
 ) -> Iterable[int]:
+
     def truncate(prev: Iterable[int]) -> list[int]:
         if len(ngram_counts_table.shape) == 1:
             return []
@@ -425,13 +511,24 @@ def sample_ngrams_iter(
     ngram_counts_table = increment_zero_counts(ngram_counts_table.clone())
     prev = truncate(list(start))
     ngram_counts_table[..., list(avoid)] = 0
-    for _ in range(num):
-        cur_table = ngram_counts_table[tuple(prev)]
+    ngram_counts_table_nodup = ngram_counts_table.clone()
+    avoid_duplicates_pattern = chain(
+        avoid_duplicates_initial_pattern, cycle([avoid_duplicates])
+    )
+    for _i, avoid_duplicates_here in zip(range(num), avoid_duplicates_pattern):
+        cur_table = (
+            ngram_counts_table_nodup if avoid_duplicates_here else ngram_counts_table
+        )
+        cur_table = cur_table[tuple(prev)]
         if len(cur_table.shape) > 1:
             cur_table = cur_table.sum(dim=tuple(range(1, len(cur_table.shape))))
+        assert (
+            cur_table.sum() != 0
+        ), f"Cannot avoid duplicates ({avoid_duplicates_initial_pattern}, {avoid_duplicates}; at {_i}, {avoid_duplicates_here}; avoiding {avoid}) with {prev}"
         cur_table = cur_table / cur_table.sum()
         next_token = int(torch.multinomial(cur_table, 1, generator=generator).item())
         yield next_token
+        ngram_counts_table_nodup[..., next_token] = 0
         prev.append(next_token)
         prev = truncate(prev)
 
@@ -441,6 +538,8 @@ def sample_ngrams(
     num: int,
     ngram_counts_table: Tensor,
     avoid: Iterable[int] = tuple(),
+    avoid_duplicates_initial_pattern: Iterable[bool] = tuple(),
+    avoid_duplicates: bool = False,
     generator: torch.Generator,
 ) -> Integer[Tensor, "num"]:  # noqa: F821
     return torch.tensor(
@@ -450,6 +549,8 @@ def sample_ngrams(
                 num=num,
                 ngram_counts_table=ngram_counts_table,
                 avoid=avoid,
+                avoid_duplicates=avoid_duplicates,
+                avoid_duplicates_initial_pattern=avoid_duplicates_initial_pattern,
                 generator=generator,
             )
         ),

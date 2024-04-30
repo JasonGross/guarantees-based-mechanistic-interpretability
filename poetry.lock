@@ -4577,11 +4577,14 @@ numpy = "*"
 Pillow = "*"
 webcolors = "*"
 
+[package.extras]
+dev = ["seaborn"]
+
 [package.source]
 type = "git"
 url = "https://github.com/JasonGross/tikzplotlib.git"
 reference = "patched"
-resolved_reference = "462f54dd3663fe9422913bc1e24abe664a0e8525"
+resolved_reference = "09139be8a3714fd261cc891977f540f424883702"
 
 [[package]]
 name = "tikzplotly"

@@ -319,6 +319,14 @@ def scatter_plotly(
     return fig
 
 
+def better_unique_markers(n: int) -> list:
+    # like sns._base.unique_markers, but more frindly to TeX export
+    markers = sns._base.unique_markers(n * 10)
+    str_markers = [m for m in markers if isinstance(m, str)]
+    num_markers = [m for m in markers if not isinstance(m, str)]
+    return (str_markers + num_markers)[:n]
+
+
 def scatter_matplotlib(
     *data,
     xaxis: str = "",
@@ -343,9 +351,7 @@ def scatter_matplotlib(
     #     print(data)
     # manual scatter plotting so that we get better LaTeX export
     if len(data) == 1 and isinstance(data[0], dict):
-        for (k, v), marker in zip(
-            data[0].items(), sns._base.unique_markers(len(data[0]))
-        ):
+        for (k, v), marker in zip(data[0].items(), better_unique_markers(len(data[0]))):
             x = range(len(v))
             plt.scatter(x, v, label=k, marker=marker)
         if not legend_at_bottom:

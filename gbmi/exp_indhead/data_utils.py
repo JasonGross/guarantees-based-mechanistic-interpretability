@@ -1,5 +1,6 @@
 # %%
 from typing import Collection, Iterable, Optional, Sequence, Tuple, Union, Callable
+import math
 import itertools
 from itertools import chain, cycle
 import einops
@@ -444,181 +445,78 @@ class ABCABCExhaustiveTask:
             ngrams=ngrams, junk_sequences=gen_junk
         )
 
-    # @staticmethod
-    # def dist_generator(
-    #     *,
-    #     seed: int,
-    #     num_tokens: int,
-    #     seq_length: int,
-    # ) -> Iterable[Tuple[Integer[Tensor, "seq_length"], Integer[Tensor, "seq_length"]]:  # noqa F821
-    #     default_device = torch.tensor([]).device
-    #     generator = torch.Generator(device=default_device)
-    #     generator.manual_seed(seed)
-    #     return filter(
-    #         (
-    #             lambda x: not force_strong_signal
-    #             or (calculate_batch_probabilities(x, num_tokens) == 1).any()
-    #         ),
-    #         ExhaustiveTask.dist_generator_helper(
-    #             num_tokens=num_tokens, seq_length=seq_length, generator=generator
-    #         ),
-    #     )
+    @staticmethod
+    def make_readoff(
+        seq_loc: Tuple[Integer[Tensor, "n"], int]  # noqa: F821
+    ) -> Tuple[Integer[Tensor, "n"], Bool[Tensor, "n"]]:  # noqa: F821
+        seq, loc = seq_loc
+        readoff = torch.zeros_like(seq, dtype=torch.bool)
+        readoff[..., loc] = True
+        return seq, readoff
 
-    # @staticmethod
-    # def generator(
-    #     *,
-    #     seed: int,
-    #     num_tokens: int,
-    #     seq_length: int,
-    #     force_strong_signal: bool = True,
-    #     max_length: Optional[int] = None,
-    # ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
-    #     n_samples = 0
-    #     for x in tqdm(
-    #         ExhaustiveTask.dist_generator(
-    #             seed=seed,
-    #             num_tokens=num_tokens,
-    #             seq_length=seq_length,
-    #             force_strong_signal=force_strong_signal,
-    #         ),
-    #         desc="Exhaustive datagen",
-    #         total=num_tokens**seq_length,
-    #     ):
-    #         yield x
-    #         n_samples += 1
-    #         if max_length is not None and n_samples >= max_length:
-    #             return
+    @staticmethod
+    def dist_generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        ngram: int = 3,
+        max_length: Optional[int] = None,
+    ) -> Iterable[
+        Tuple[Integer[Tensor, "seq_length"], Bool[Tensor, "seq_length"]]  # noqa F821
+    ]:
+        default_device = torch.tensor([]).device
+        generator = torch.Generator(device=default_device)
+        generator.manual_seed(seed)
 
-    # @staticmethod
-    # def mix_ngram_sequences_junk_iter(
-    #     *,
-    #     ngrams: Iterable[Integer[Tensor, "n"]],
-    #     num_tokens: int,
-    #     num_junk_sequences: int,
-    #     seq_length: int,
-    #     generator: Optional[torch.Generator],
-    # ) -> Iterable[Tuple[Integer[Tensor, "n+k+n-1"], int]]:
-    #     """
-    #     generates all ngrams N (final character is allowed to duplicate a previous one),
-    #     then for each ngram picks k sequences of random characters distinct from the ngram,
-    #     then consider all splits of the sequence into XYZ (allowed to be empty)
-    #     and consider XNYN[:-1]Z, read off the final character of the second N to predict N[-1]
+        avoid_pat = [True] * (ngram - 1) + [False]
+        ngrams = all_ngrams_iter(
+            num_tokens=num_tokens,
+            ngram=ngram,
+            avoid_duplicates_initial_pattern=avoid_pat,
+        )
+        num_ngrams = math.perm(num_tokens, ngram) * num_tokens
+        junk_seq_len = seq_length - 2 * ngram + 1
+        num_junk_split = math.comb(junk_seq_len, 2)
+        num_junk_sequences = (
+            (num_tokens - ngram) ** junk_seq_len
+            if max_length is None
+            else max_length // num_ngrams // num_junk_split
+        )
+        yield from tqdm(
+            map(
+                ABCABCExhaustiveTask.make_readoff,
+                ABCABCExhaustiveTask.mix_ngram_sequences_junk_iter(
+                    ngrams=ngrams,
+                    num_tokens=num_tokens,
+                    num_junk_sequences=num_junk_sequences,
+                    seq_length=seq_length,
+                    generator=generator,
+                ),
+            ),
+            desc="Exhaustive ngram generation",
+            total=num_ngrams * num_junk_sequences,
+        )
 
-    #     yields tuples of input tokens and the read-off positions
-    #     """
-
-    #     def gen_junk(
-    #         ngram: int, avoid: Collection[int]
-    #     ) -> Iterable[Integer[Tensor, "seq_length-2*ngram+1"]]:
-    #         valid_toks = torch.tensor(
-    #             [t for t in range(num_tokens) if t not in avoid], dtype=torch.long
-    #         )
-    #         yield from itertools.islice(
-    #             all_sequences_avoiding_iter(
-    #                 valid_toks=valid_toks,
-    #                 length=seq_length - 2 * ngram + 1,
-    #                 generator=generator,
-    #             ),
-    #             num_junk_sequences,
-    #         )
-
-    #     yield from ABCABCExhaustiveTask.mix_ngram_sequences_iter(
-    #         ngrams=ngrams, junk_sequences=gen_junk
-    #     )
-
-    # @staticmethod
-    # def dist_generator(
-    #     *,
-    #     seed: int,
-    #     num_tokens: int,
-    #     seq_length: int,
-    #     ngrams: Iterable[Integer[Tensor, "ngram"]],
-
-    #     max_length: Optional[int],
-    #     junk_sequence_count: int,
-    #     ngram_counts_table: Float[Tensor, "num_tokens*"],  # noqa F722
-    # ) -> Iterable[Integer[Tensor, "seq_length"]]:  # noqa F821
-
-    #     default_device = torch.tensor([]).device
-    #     assert all(
-    #         i == num_tokens for i in ngram_counts_table.shape
-    #     ), f"ngram_counts_table.shape={ngram_counts_table.shape} != num_tokens* = {num_tokens}*"
-    #     generator = torch.Generator(device=default_device)
-    #     generator.manual_seed(seed)
-    #     n_samples = 0
-    #     n_cs = seq_length - 3
-    #     while True:
-    #         n_cs1 = int(torch.randint(0, n_cs + 1, (1,), generator=generator).item())
-    #         n_cs2 = int(
-    #             torch.randint(0, n_cs - n_cs1 + 1, (1,), generator=generator).item()
-    #         )
-    #         if torch.rand(1, generator=generator) < 0.5:
-    #             n_cs1, n_cs2 = n_cs2, n_cs1
-    #         n_cs3 = n_cs - n_cs1 - n_cs2
-    #         assert (
-    #             n_cs1 + n_cs2 + n_cs3 == n_cs
-    #         ), f"{n_cs1} + {n_cs2} + {n_cs3} != {n_cs}"
-    #         assert n_cs1 >= 0, n_cs1
-    #         assert n_cs2 >= 0, n_cs2
-    #         assert n_cs3 >= 0, n_cs3
-    #         cs1 = sample_ngrams(
-    #             num=int(n_cs1) + 2,
-    #             ngram_counts_table=ngram_counts_table,
-    #             generator=generator,
-    #         )
-
-    #         cs1, a, b = cs1[:-2], int(cs1[-2]), int(cs1[-1])
-    #         if a == b and (a_unique or b_unique):
-    #             continue
-    #         if (a_unique and a in cs1) or (b_unique and b in cs1):
-    #             continue
-    #         avoid = []
-    #         avoid += [a] if a_unique else []
-    #         avoid += [b] if b_unique else []
-    #         cs2 = sample_ngrams(
-    #             a,
-    #             b,
-    #             num=int(n_cs2),
-    #             ngram_counts_table=ngram_counts_table,
-    #             generator=generator,
-    #             avoid=avoid,
-    #         )
-
-    #         if skip_end:
-    #             before_cs3_0, before_cs3_1 = torch.tensor(
-    #                 [a, b, *cs2], dtype=torch.long
-    #             )[-2:]
-    #         else:
-    #             before_cs3_0, before_cs3_1 = a, b
-    #         cs3 = sample_ngrams(
-    #             int(before_cs3_0),
-    #             int(before_cs3_1),
-    #             num=int(n_cs3),
-    #             ngram_counts_table=ngram_counts_table,
-    #             generator=generator,
-    #             avoid=avoid,
-    #         )
-    #         if skip_end:
-    #             cs2, cs3 = torch.cat([cs2, cs3], dim=0), []
-    #         assert (
-    #             len(cs1) + len(cs2) + len(cs3) + 4 == seq_length + 1
-    #         ), f"{len(cs1)} + {len(cs2)} + {len(cs3)} + 4 != {seq_length + 1}"
-    #         yield torch.tensor(
-    #             [*cs1, a, b, *cs2, a, b, *cs3][:-1],
-    #             dtype=torch.long,
-    #             device=default_device,
-    #         )
-    #         n_samples += 1
-    #         if max_length is not None and n_samples >= max_length:
-    #             return
-
-    # def
-    #     def
-    # abcabx
-    # xxxxabcab
-    # abcbc
-    # xabcb
-    # pass
+    @staticmethod
+    def generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        ngram: int = 3,
+        force_strong_signal: bool = True,  # unused
+        max_length: Optional[int] = None,
+    ) -> Iterable[
+        Tuple[Integer[Tensor, "seq_length"], Bool[Tensor, "seq_length"]]  # noqa F821
+    ]:
+        yield from ABCABCExhaustiveTask.dist_generator(
+            seed=seed,
+            num_tokens=num_tokens,
+            seq_length=seq_length,
+            ngram=ngram,
+            max_length=max_length,
+        )
 
 
 def all_sequences_avoiding_iter(
@@ -639,7 +537,7 @@ def all_sequences_avoiding_iter(
         for ts in all_sequences_avoiding_iter(
             valid_toks=valid_toks, length=length - 1, generator=generator
         ):
-            yield torch.cat([t, ts], dim=-1)
+            yield torch.tensor([int(t.item()), *ts], dtype=torch.long)
 
 
 def all_ngrams_iter(
@@ -931,3 +829,11 @@ def cat_bos_uniform_labels(
         ],
         dim=-2,
     )
+
+
+# %%
+# abcab builds prev token head with 5 tokens
+# xxxabcab can use prev token head on 5th token
+# seq len 8
+# stuff = list(ABCABCExhaustiveTask.generator(seed=123, num_tokens=6,seq_length=8))
+# %%

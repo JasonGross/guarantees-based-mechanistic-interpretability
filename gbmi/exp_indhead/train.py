@@ -537,13 +537,7 @@ class IndHeadDataModule(DataModule):
         data = torch.stack(tuple(x for x, readoff in data_tuple))
         readoff = torch.stack(tuple(readoff for x, readoff in data_tuple))
 
-        assert readoff.all()
-
         data = cat_bos_token(data, bos=self.bos)
-        assert (
-            self.config.experiment.get_ground_truth(data)
-            == self.config.experiment.get_ground_truth(data, readoff)
-        ).all()
         dataset = TensorDataset(
             data, self.config.experiment.get_ground_truth(data, readoff)
         )

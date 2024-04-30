@@ -4584,7 +4584,7 @@ dev = ["seaborn"]
 type = "git"
 url = "https://github.com/JasonGross/tikzplotlib.git"
 reference = "patched"
-resolved_reference = "09139be8a3714fd261cc891977f540f424883702"
+resolved_reference = "4df23c380f599b6dba97d7ed9d0beaa2a687be29"
 
 [[package]]
 name = "tikzplotly"

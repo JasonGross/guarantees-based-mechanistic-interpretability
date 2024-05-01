@@ -382,12 +382,16 @@ class ABCABCExhaustiveTask:
         junk_sequences: Callable[
             [int, Collection[int]], Iterable[Integer[Tensor, "k"]]  # noqa: F821
         ],
+        when_ngram_same_adjust_middle_tokens_to_match: bool = True,
     ) -> Iterable[Tuple[Integer[Tensor, "n+k+n-1"], int]]:  # noqa: F821
         """
         generates all ngrams N (final character is allowed to duplicate a previous one),
         then for each ngram picks k sequences of random characters distinct from the ngram,
         then consider all splits of the sequence into XYZ (allowed to be empty)
         and consider XNYN[:-1]Z, read off the final character of the second N to predict N[-1]
+
+        when_ngram_same_adjust_middle_tokens_to_match: if True, then when N[-1] == N[-2],
+        we replace YN[:-1] with N[-1]*(len(Y) + len(N[:-1])
 
         yields tuples of input tokens and the read-off positions
         """
@@ -402,8 +406,15 @@ class ABCABCExhaustiveTask:
                             junk_sequence[k0:k1],
                             junk_sequence[k1:k],
                         )
+                        second_ngram = ngram[:-1]
+                        if (
+                            when_ngram_same_adjust_middle_tokens_to_match
+                            and ngram[-1] == ngram[-2]
+                        ):
+                            Y[:] = ngram[-1]
+                            second_ngram[:] = ngram[-1]
                         seq = torch.tensor(
-                            [*X, *ngram, *Y, *ngram[:-1], *Z], dtype=torch.long
+                            [*X, *ngram, *Y, *second_ngram, *Z], dtype=torch.long
                         )
                         readoff = X.shape[0] + ngram.shape[0] + Y.shape[0] + n - 2
                         yield seq, readoff
@@ -414,6 +425,7 @@ class ABCABCExhaustiveTask:
         ngrams: Iterable[Integer[Tensor, "n"]],  # noqa: F821
         num_tokens: int,
         num_junk_sequences: int,
+        when_ngram_same_adjust_middle_tokens_to_match: bool = True,
         seq_length: int,
         generator: Optional[torch.Generator],
     ) -> Iterable[Tuple[Integer[Tensor, "n+k+n-1"], int]]:  # noqa: F821
@@ -442,7 +454,9 @@ class ABCABCExhaustiveTask:
             )
 
         yield from ABCABCExhaustiveTask.mix_ngram_sequences_iter(
-            ngrams=ngrams, junk_sequences=gen_junk
+            ngrams=ngrams,
+            junk_sequences=gen_junk,
+            when_ngram_same_adjust_middle_tokens_to_match=when_ngram_same_adjust_middle_tokens_to_match,
         )
 
     @staticmethod
@@ -461,6 +475,7 @@ class ABCABCExhaustiveTask:
         num_tokens: int,
         seq_length: int,
         ngram: int = 3,
+        when_ngram_same_adjust_middle_tokens_to_match: bool = True,
         max_length: Optional[int] = None,
     ) -> Iterable[
         Tuple[Integer[Tensor, "seq_length"], Bool[Tensor, "seq_length"]]  # noqa F821
@@ -490,6 +505,7 @@ class ABCABCExhaustiveTask:
                     ngrams=ngrams,
                     num_tokens=num_tokens,
                     num_junk_sequences=num_junk_sequences,
+                    when_ngram_same_adjust_middle_tokens_to_match=when_ngram_same_adjust_middle_tokens_to_match,
                     seq_length=seq_length,
                     generator=generator,
                 ),
@@ -506,6 +522,7 @@ class ABCABCExhaustiveTask:
         seq_length: int,
         ngram: int = 3,
         force_strong_signal: bool = True,  # unused
+        when_ngram_same_adjust_middle_tokens_to_match: bool = True,
         max_length: Optional[int] = None,
     ) -> Iterable[
         Tuple[Integer[Tensor, "seq_length"], Bool[Tensor, "seq_length"]]  # noqa F821
@@ -514,6 +531,7 @@ class ABCABCExhaustiveTask:
             seed=seed,
             num_tokens=num_tokens,
             seq_length=seq_length,
+            when_ngram_same_adjust_middle_tokens_to_match=when_ngram_same_adjust_middle_tokens_to_match,
             ngram=ngram,
             max_length=max_length,
         )

@@ -25,6 +25,7 @@ from gbmi.exp_indhead.data_utils import (
     ABCBCTask,
     EnglishExactNgramTask,
     ABCBCEnglishTask,
+    ABCABCExhaustiveTask,
     calculate_batch_probabilities,
     cat_bos_token,
     cat_bos_uniform_labels,
@@ -58,7 +59,9 @@ class IndHead(ExperimentConfig):
     num_tokens: int = 3
     d_model: int = 8
     ngram: int = 3
-    task: Literal["exact-bigram", "exact-ngram", "abcab", "exhaustive"] = "exact-bigram"
+    task: Literal[
+        "exact-bigram", "exact-ngram", "abcab", "abcabc-exhaustive", "exhaustive"
+    ] = "exact-bigram"
     corpus: Optional[str] = None
     only_last_tokens: Optional[int] = None
     only_strong_signal: bool = True
@@ -80,6 +83,7 @@ class IndHead(ExperimentConfig):
     )
     summary_slug_extra: str = ""
     version_number: int = 8
+    datagen_version_number: Optional[int] = None
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
@@ -93,6 +97,15 @@ class IndHead(ExperimentConfig):
         return self.corpus_relevant and self.corpus is not None
 
     def __post_init__(self):
+        match self.task:
+            case (
+                "exact-bigram"
+                | "exact-ngram"
+                | "abcab"
+                | "exhaustive"
+                | "abcabc-exhaustive"
+            ):
+                self.datagen_version_number = None
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
         for field, should_ignore in [
             ("logging_options", True),
@@ -100,6 +113,7 @@ class IndHead(ExperimentConfig):
             ("ngram", self.ngram == 3 or not self.ngram_relevant),
             ("use_kaiming_init", not self.use_kaiming_init),
             ("n_layers", self.n_layers == 2),
+            ("datagen_version_number", self.datagen_version_number is None),
         ]:
             if should_ignore:
                 exclude.add(field)
@@ -321,6 +335,31 @@ TRIGRAM4 = Config(
     validation_batch_size=1,  # we want validation right now only to log the plots
 )
 
+ABCABC8 = Config(
+    experiment=IndHead(
+        seq_length=8,
+        num_tokens=6,
+        n_heads=1,
+        d_model=8 + 6 + 6 + 1,
+        task="abcabc-exhaustive",
+        corpus=None,
+        bos=False,
+        only_strong_signal=True,
+        n_train_samples=48600,
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
+        ),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=48600,
+    train_for=(500, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(50, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
+
 
 class IndHeadTrainingWrapper(TrainingWrapper[IndHead]):
     def __init__(self, config: Config[IndHead], model: HookedTransformer):
@@ -443,7 +482,9 @@ class IndHeadDataModule(DataModule):
     n_train_samples: int
     n_test_samples: int
     n_validate_samples: int
-    task: Literal["exact-bigram", "exact-ngram", "abcab", "exhaustive"]
+    task: Literal[
+        "exact-bigram", "exact-ngram", "abcab", "abcabc-exhaustive", "exhaustive"
+    ]
     corpus: Optional[str] = None
     alpha_mix_uniform: Optional[float] = None
     ngram: int = 3
@@ -526,6 +567,8 @@ class IndHeadDataModule(DataModule):
                     skip_end=not self.random_tokens_at_end,
                     b_unique=self.other_tokens_distinct_from_predicted_token,
                 )
+            case "abcabc-exhaustive":
+                generator = partial(ABCABCExhaustiveTask.generator, ngram=self.ngram)
         data_tuple = tuple(
             generator(
                 seed=seed,

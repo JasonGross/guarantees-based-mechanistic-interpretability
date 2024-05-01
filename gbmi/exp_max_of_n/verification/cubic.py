@@ -295,7 +295,10 @@ def count_correct_sequences_cubic(
                 ):
                     continue
                 if n_copies_nonmax == 0:
-                    correct_count += 1
+                    cur_largest_wrong_logit = largest_wrong_logit[
+                        q_tok, max_tok, max_tok, 0
+                    ]
+                    correct_count += (cur_largest_wrong_logit < 0).sum()
                 else:
                     cur_largest_wrong_logit = largest_wrong_logit[
                         q_tok, max_tok, :max_tok, n_copies_nonmax

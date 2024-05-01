@@ -493,12 +493,16 @@ class ABCABCExhaustiveTask:
         num_ngrams = math.perm(num_tokens, ngram) * num_tokens
         junk_seq_len = seq_length - 2 * ngram + 1
         num_junk_split = math.comb(junk_seq_len, 2)
-        num_junk_sequences = (
-            (num_tokens - ngram) ** junk_seq_len
-            if max_length is None
-            else max_length // num_ngrams // num_junk_split
+        num_junk_sequences = max(
+            1,
+            (
+                (num_tokens - ngram) ** junk_seq_len
+                if max_length is None
+                else max_length // num_ngrams // num_junk_split
+            ),
         )
-        yield from tqdm(
+        n_samples = 0
+        for x in tqdm(
             map(
                 ABCABCExhaustiveTask.make_readoff,
                 ABCABCExhaustiveTask.mix_ngram_sequences_junk_iter(
@@ -512,7 +516,11 @@ class ABCABCExhaustiveTask:
             ),
             desc="Exhaustive ngram generation",
             total=num_ngrams * num_junk_sequences,
-        )
+        ):
+            yield x
+            n_samples += 1
+            if max_length is not None and n_samples >= max_length:
+                return
 
     @staticmethod
     def generator(

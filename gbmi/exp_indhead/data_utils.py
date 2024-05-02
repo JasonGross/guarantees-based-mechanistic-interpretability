@@ -948,38 +948,38 @@ def cat_bos_uniform_labels(
 
 
 # %%
-# abcab builds prev token head with 5 tokens
-# xxxabcab can use prev token head on 5th token
-# seq len 8
-stuff = list(ABCABCExhaustiveTask.generator(seed=123, num_tokens=6, seq_length=8))
-# %%
-xs = torch.stack([x for x, _ in stuff])
-readoff = torch.stack([r for _, r in stuff])
+# # abcab builds prev token head with 5 tokens
+# # xxxabcab can use prev token head on 5th token
+# # seq len 8
+# stuff = list(ABCABCExhaustiveTask.generator(seed=123, num_tokens=6, seq_length=8))
+# # %%
+# xs = torch.stack([x for x, _ in stuff])
+# readoff = torch.stack([r for _, r in stuff])
 
-# %%
-pred_toks = torch.where(
-    readoff, calculate_batch_probabilities(xs, 6).argmax(dim=-1), torch.inf
-)
-pred_tok, pred_tok_idxs = pred_toks.min(dim=-1)
-src_tok = xs[torch.arange(xs.shape[0]), pred_tok_idxs]
-prev_copy_idx = (xs == src_tok.unsqueeze(dim=-1)).int().argmax(dim=-1)
-# prior_src_tok = xs[torch.arange(xs.shape[0]), prev_copy_idx - 1]
-prior_tok = xs[torch.arange(xs.shape[0]), torch.where(readoff)[1] - 1]
-alltok = set(src_tok.tolist())
-print("bigram")
-print(
-    {
-        (i, j): ((src_tok == i) & (pred_tok == j)).sum().item()
-        for i in alltok
-        for j in alltok
-    }
-)
-print("trigram")
-print(
-    {
-        (i, j): ((prior_tok == i) & (pred_tok == j)).sum().item()
-        for i in alltok
-        for j in alltok
-    }
-)
+# # %%
+# pred_toks = torch.where(
+#     readoff, calculate_batch_probabilities(xs, 6).argmax(dim=-1), torch.inf
+# )
+# pred_tok, pred_tok_idxs = pred_toks.min(dim=-1)
+# src_tok = xs[torch.arange(xs.shape[0]), pred_tok_idxs]
+# prev_copy_idx = (xs == src_tok.unsqueeze(dim=-1)).int().argmax(dim=-1)
+# # prior_src_tok = xs[torch.arange(xs.shape[0]), prev_copy_idx - 1]
+# prior_tok = xs[torch.arange(xs.shape[0]), torch.where(readoff)[1] - 1]
+# alltok = set(src_tok.tolist())
+# print("bigram")
+# print(
+#     {
+#         (i, j): ((src_tok == i) & (pred_tok == j)).sum().item()
+#         for i in alltok
+#         for j in alltok
+#     }
+# )
+# print("trigram")
+# print(
+#     {
+#         (i, j): ((prior_tok == i) & (pred_tok == j)).sum().item()
+#         for i in alltok
+#         for j in alltok
+#     }
+# )
 # %%

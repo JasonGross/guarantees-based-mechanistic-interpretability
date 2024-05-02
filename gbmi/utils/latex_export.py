@@ -73,7 +73,7 @@ def to_latex_defs(values: dict[str, SupportedLaTeXType], sort: bool = True) -> s
             elif isinstance(value, float) or isinstance(value, np.floating):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")
             else:
-                raise ValueError(f"Unsupported type {type(value)} for {key}")
+                raise ValueError(f"Unsupported type {type(value)} for {key} ({value})")
     return "\n".join(lines)
 
 

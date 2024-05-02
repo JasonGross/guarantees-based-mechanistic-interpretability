@@ -26,6 +26,7 @@ from gbmi.exp_indhead.data_utils import (
     EnglishExactNgramTask,
     ABCBCEnglishTask,
     ABCABCExhaustiveTask,
+    ABCABCEnglishTask,
     calculate_batch_probabilities,
     cat_bos_token,
     cat_bos_uniform_labels,
@@ -59,9 +60,9 @@ class IndHead(ExperimentConfig):
     num_tokens: int = 3
     d_model: int = 8
     ngram: int = 3
-    task: Literal[
-        "exact-bigram", "exact-ngram", "abcab", "abcabc-exhaustive", "exhaustive"
-    ] = "exact-bigram"
+    task: Literal["exact-bigram", "exact-ngram", "abcab", "abcabc", "exhaustive"] = (
+        "exact-bigram"
+    )
     corpus: Optional[str] = None
     only_last_tokens: Optional[int] = None
     only_strong_signal: bool = True
@@ -90,7 +91,7 @@ class IndHead(ExperimentConfig):
 
     @property
     def corpus_relevant(self):
-        return self.task in ("abcab", "exact-ngram")
+        return self.task in ("abcab", "abcabc", "exact-ngram")
 
     @property
     def ngram_relevant(self):
@@ -98,13 +99,7 @@ class IndHead(ExperimentConfig):
 
     def __post_init__(self):
         match self.task:
-            case (
-                "exact-bigram"
-                | "exact-ngram"
-                | "abcab"
-                | "exhaustive"
-                | "abcabc-exhaustive"
-            ):
+            case "exact-bigram" | "exact-ngram" | "abcab" | "exhaustive" | "abcabc":
                 self.datagen_version_number = None
         exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
         for field, should_ignore in [
@@ -341,8 +336,8 @@ ABCABC8 = Config(
         num_tokens=6,
         n_heads=1,
         d_model=8 + 6 + 6 + 1,
-        task="abcabc-exhaustive",
-        corpus=None,
+        task="abcabc",
+        corpus="webtext",
         bos=False,
         only_strong_signal=True,
         n_train_samples=48600,
@@ -482,9 +477,7 @@ class IndHeadDataModule(DataModule):
     n_train_samples: int
     n_test_samples: int
     n_validate_samples: int
-    task: Literal[
-        "exact-bigram", "exact-ngram", "abcab", "abcabc-exhaustive", "exhaustive"
-    ]
+    task: Literal["exact-bigram", "exact-ngram", "abcab", "abcabc", "exhaustive"]
     corpus: Optional[str] = None
     alpha_mix_uniform: Optional[float] = None
     ngram: int = 3
@@ -567,8 +560,18 @@ class IndHeadDataModule(DataModule):
                     skip_end=not self.random_tokens_at_end,
                     b_unique=self.other_tokens_distinct_from_predicted_token,
                 )
-            case "abcabc-exhaustive":
-                generator = partial(ABCABCExhaustiveTask.generator, ngram=self.ngram)
+            case "abcabc":
+                generator = (
+                    partial(ABCABCExhaustiveTask.generator, ngram=self.ngram)
+                    if self.corpus is None
+                    else partial(
+                        ABCABCEnglishTask.generator,
+                        ngram=self.ngram,
+                        corpus=self.corpus,
+                        alpha_mix_uniform=self.alpha_mix_uniform,
+                    )
+                )
+
         data_tuple = tuple(
             generator(
                 seed=seed,

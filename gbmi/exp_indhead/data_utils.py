@@ -515,7 +515,11 @@ class ABCABCExhaustiveTask:
                 ),
             ),
             desc="Exhaustive ngram generation",
-            total=num_ngrams * num_junk_sequences,
+            total=(
+                max_length
+                if max_length is not None
+                else num_ngrams * num_junk_sequences
+            ),
         ):
             yield x
             n_samples += 1
@@ -541,6 +545,92 @@ class ABCABCExhaustiveTask:
             seq_length=seq_length,
             when_ngram_same_adjust_middle_tokens_to_match=when_ngram_same_adjust_middle_tokens_to_match,
             ngram=ngram,
+            max_length=max_length,
+        )
+
+
+class ABCABCEnglishTask:
+    @staticmethod
+    def dist_generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        when_ngram_same_adjust_middle_tokens_to_match: bool = True,
+        max_length: Optional[int] = None,
+        ngram_counts_table: Float[Tensor, "num_tokens*"],  # noqa F722
+    ) -> Iterable[
+        Tuple[Integer[Tensor, "seq_length"], Bool[Tensor, "seq_length"]]  # noqa F821
+    ]:
+        ngram = len(ngram_counts_table.shape)
+        default_device = torch.tensor([]).device
+        assert all(
+            i == num_tokens for i in ngram_counts_table.shape
+        ), f"ngram_counts_table.shape={ngram_counts_table.shape} != num_tokens* = {num_tokens}*"
+        generator = torch.Generator(device=default_device)
+        generator.manual_seed(seed)
+
+        avoid_pat = [True] * (ngram - 1) + [False]
+        ngrams = (
+            sample_ngrams(
+                num=ngram,
+                ngram_counts_table=ngram_counts_table,
+                avoid_duplicates_initial_pattern=avoid_pat,
+                generator=generator,
+            )
+            for _ in itertools.repeat(None)
+        )
+
+        n_samples = 0
+        for x in tqdm(
+            map(
+                ABCABCExhaustiveTask.make_readoff,
+                ABCABCExhaustiveTask.mix_ngram_sequences_junk_iter(
+                    ngrams=ngrams,
+                    num_tokens=num_tokens,
+                    num_junk_sequences=1,
+                    when_ngram_same_adjust_middle_tokens_to_match=when_ngram_same_adjust_middle_tokens_to_match,
+                    seq_length=seq_length,
+                    generator=generator,
+                ),
+            ),
+            desc="Exhaustive ngram generation",
+            total=max_length,
+        ):
+            yield x
+            n_samples += 1
+            if max_length is not None and n_samples >= max_length:
+                return
+
+    @staticmethod
+    def generator(
+        *,
+        seed: int,
+        num_tokens: int,
+        seq_length: int,
+        ngram: int = 3,
+        force_strong_signal: bool = True,  # unused
+        when_ngram_same_adjust_middle_tokens_to_match: bool = True,
+        max_length: Optional[int] = None,
+        corpus: str = DEFAULT_CORPUS,
+        allow_language_truncation: bool = True,
+        alpha_mix_uniform: Optional[float] = None,
+    ) -> Iterable[
+        Tuple[Integer[Tensor, "seq_length"], Bool[Tensor, "seq_length"]]  # noqa F821
+    ]:
+        ngram_counts_table = construct_ngram_counts_table(
+            num_tokens=num_tokens,
+            ngram=ngram,
+            corpus=corpus,
+            allow_language_truncation=allow_language_truncation,
+            alpha_mix_uniform=alpha_mix_uniform,
+        )
+        yield from ABCABCEnglishTask.dist_generator(
+            seed=seed,
+            num_tokens=num_tokens,
+            seq_length=seq_length,
+            when_ngram_same_adjust_middle_tokens_to_match=when_ngram_same_adjust_middle_tokens_to_match,
+            ngram_counts_table=ngram_counts_table,
             max_length=max_length,
         )
 
@@ -861,5 +951,35 @@ def cat_bos_uniform_labels(
 # abcab builds prev token head with 5 tokens
 # xxxabcab can use prev token head on 5th token
 # seq len 8
-# stuff = list(ABCABCExhaustiveTask.generator(seed=123, num_tokens=6,seq_length=8))
+stuff = list(ABCABCExhaustiveTask.generator(seed=123, num_tokens=6, seq_length=8))
+# %%
+xs = torch.stack([x for x, _ in stuff])
+readoff = torch.stack([r for _, r in stuff])
+
+# %%
+pred_toks = torch.where(
+    readoff, calculate_batch_probabilities(xs, 6).argmax(dim=-1), torch.inf
+)
+pred_tok, pred_tok_idxs = pred_toks.min(dim=-1)
+src_tok = xs[torch.arange(xs.shape[0]), pred_tok_idxs]
+prev_copy_idx = (xs == src_tok.unsqueeze(dim=-1)).int().argmax(dim=-1)
+# prior_src_tok = xs[torch.arange(xs.shape[0]), prev_copy_idx - 1]
+prior_tok = xs[torch.arange(xs.shape[0]), torch.where(readoff)[1] - 1]
+alltok = set(src_tok.tolist())
+print("bigram")
+print(
+    {
+        (i, j): ((src_tok == i) & (pred_tok == j)).sum().item()
+        for i in alltok
+        for j in alltok
+    }
+)
+print("trigram")
+print(
+    {
+        (i, j): ((prior_tok == i) & (pred_tok == j)).sum().item()
+        for i in alltok
+        for j in alltok
+    }
+)
 # %%

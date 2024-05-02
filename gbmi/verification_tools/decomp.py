@@ -151,10 +151,10 @@ def max_row_diffs_per_dim_2(
     """
     max_B_diffs = B.max(dim=-1).values - B.min(dim=-1).values
     if use_mean_row:
-        EA = A.mean(dim=-2)
+        EA = A.mean(dim=-2, keepdim=True)
         EAB = EA @ B
         EAB_diffs = EAB.max(dim=-1).values - EAB.min(dim=-1).values
-        A = A - EA.unsqueeze(dim=-1)
+        A = A - EA
         return EAB_diffs + A.abs() @ max_B_diffs
     else:
         return A.abs() @ max_B_diffs

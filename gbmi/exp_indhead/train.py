@@ -569,6 +569,7 @@ class IndHeadDataModule(DataModule):
                         ngram=self.ngram,
                         corpus=self.corpus,
                         alpha_mix_uniform=self.alpha_mix_uniform,
+                        when_ngram_same_adjust_middle_tokens_to_match=False,
                     )
                 )
 

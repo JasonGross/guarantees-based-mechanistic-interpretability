@@ -122,28 +122,25 @@ def decompose_EQKE_error(
     W_E_pos_q = W_E + W_pos[-1][None, :]
     EQKE_pos_err = W_E_pos_q @ (W_Q @ (W_K.T @ W_pos_err.T))
 
-    if tricks.attention_error_handling in (
-        "max_diff_subproduct",
-        "mean+max_diff_subproduct",
-    ):
+    if "subproduct" in tricks.attention_error_handling:
         assert (
             key_direction is not None
-        ), "key_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        ), f"key_direction must be provided if using {tricks.attention_error_handling}"
         assert (
             query_direction is not None
-        ), "query_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        ), f"query_direction must be provided if using {tricks.attention_error_handling}"
         assert (
             second_key_direction is not None
-        ), "second_key_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        ), f"second_key_direction must be provided if using {tricks.attention_error_handling}"
         assert (
             second_query_direction is not None
-        ), "second_query_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        ), f"second_query_direction must be provided if using {tricks.attention_error_handling}"
         assert (
             W_Q_U is not None
-        ), "W_Q_U must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        ), f"W_Q_U must be provided if using {tricks.attention_error_handling}"
         assert (
             W_K_U is not None
-        ), "W_K_U must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        ), f"W_K_U must be provided if using {tricks.attention_error_handling}"
         (
             (EQKE_query_key, err_accumulator),
             EQKE_pos_err,

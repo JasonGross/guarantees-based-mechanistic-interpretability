@@ -17,6 +17,7 @@ from gbmi.utils.sequences import generate_all_sequences
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU, all_attention_scores
 from gbmi.verification_tools.decomp import (
     max_row_diffs_per_dim,
+    max_row_diffs_per_dim_no_multipy,
     bound_max_row_diff_by_SVD,
 )
 
@@ -698,8 +699,11 @@ class LargestWrongLogitQuadraticConfig:
         "svd",
         "max_diff",
         "max_diff_subproduct",
+        "max_diff_subproduct_recursive",
         "mean+max_diff",
         "mean+max_diff_subproduct",
+        "mean+max_diff_subproduct_recursive",
+        "mean_recursive+max_diff_subproduct_recursive",
         "max_diff_exact",
     ] = "max_diff"
 
@@ -790,10 +794,28 @@ class LargestWrongLogitQuadraticConfig:
                 m = reduce(FactoredMatrix.__matmul__, ms, AB)  # type: ignore
                 U, S, Vh = m.svd()
                 return S[0] * np.sqrt(2)
-            case "max_diff" | "max_diff_subproduct":
-                return max_row_diffs_per_dim(*matrices, use_mean_row=False)
-            case "mean+max_diff" | "mean+max_diff_subproduct":
-                return max_row_diffs_per_dim(*matrices, use_mean_row=True)
+            case (
+                "max_diff"
+                | "max_diff_subproduct"
+                | "mean+max_diff"
+                | "mean+max_diff_subproduct"
+            ):
+                use_mean_row = self.attention_error_handling.startswith("mean")
+                return max_row_diffs_per_dim(*matrices, use_mean_row=use_mean_row)
+            case (
+                "max_diff_subproduct_recursive"
+                | "mean+max_diff_subproduct_recursive"
+                | "mean_recursive+max_diff_subproduct_recursive"
+            ):
+                use_mean_row = self.attention_error_handling.startswith("mean")
+                use_mean_row_recursively = self.attention_error_handling.startswith(
+                    "mean_recursively"
+                )
+                return max_row_diffs_per_dim_no_multipy(
+                    *matrices,
+                    use_mean_row=use_mean_row,
+                    use_mean_row_recursively=use_mean_row_recursively,
+                )
             case "max_diff_exact":
                 m = reduce(torch.matmul, matrices)
                 return m.max(dim=-1).values - m.min(dim=-1).values

@@ -191,6 +191,40 @@ def max_row_diffs_per_dim(*m: Tensor, use_mean_row: bool = False) -> Tensor:
     return max_row_diffs_stacked.min(dim=-1).values
 
 
+@torch.no_grad()
+def max_row_diffs_per_dim_no_multipy(
+    *m: Tensor, use_mean_row: bool = False, use_mean_row_recursively: bool = False
+) -> Tensor:
+    r"""Computes the maximum difference between elements in the same row of the product of the passed matrices by using the max row diff trick recursively.
+
+    Complexity: O(\sum_i m[i].shape[-2] * m[i].shape[-1]))
+
+    Preconditions:
+        \forall i: m[i].shape[-1] == m[i + 1].shape[-2]
+    Postconditions:
+        Define
+            M := \prod_i m[i]
+        \forall r, i, j:
+            -return_r <= M_{r,i} - M_{r,j} <= return_r
+    """
+    if len(m) == 1:
+        return m[0].max(dim=-1).values - m[0].min(dim=-1).values
+    A, m = m[0], m[1:]
+    if use_mean_row:
+        EA = A.mean(dim=-2, keepdim=True)
+        EAm = reduce(torch.matmul, m, EA)
+        EAm_diffs = EAm.max(dim=-1).values - EAm.min(dim=-1).values
+        A = A - EA
+    else:
+        EAm_diffs = 0
+
+    return EAm_diffs + A.abs() @ max_row_diffs_per_dim_no_multipy(
+        *m,
+        use_mean_row=use_mean_row_recursively,
+        use_mean_row_recursively=use_mean_row_recursively,
+    )
+
+
 # %%
 @torch.no_grad()
 def bound_max_row_diff_by_SVD(

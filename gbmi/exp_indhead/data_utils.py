@@ -947,11 +947,12 @@ def cat_bos_uniform_labels(
     )
 
 
-# %%
+# # %%
 # # abcab builds prev token head with 5 tokens
 # # xxxabcab can use prev token head on 5th token
 # # seq len 8
 # stuff = list(ABCABCExhaustiveTask.generator(seed=123, num_tokens=6, seq_length=8))
+# stuff = list(ABCABCEnglishTask.generator(seed=123, num_tokens=6, seq_length=8, corpus="webtext", max_length=48600))
 # # %%
 # xs = torch.stack([x for x, _ in stuff])
 # readoff = torch.stack([r for _, r in stuff])

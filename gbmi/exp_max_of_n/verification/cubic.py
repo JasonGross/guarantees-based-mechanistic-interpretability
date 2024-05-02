@@ -286,7 +286,7 @@ def count_correct_sequences_cubic(
     ],
 ) -> int:
     d_vocab_q, d_vocab_max, d_vocab_nonmax, n_ctx = largest_wrong_logit.shape
-    correct_count = 0
+    correct_count: int = 0
     for q_tok in range(d_vocab_q):
         for max_tok in range(d_vocab_max):
             for n_copies_nonmax in range(n_ctx):
@@ -298,7 +298,7 @@ def count_correct_sequences_cubic(
                     cur_largest_wrong_logit = largest_wrong_logit[
                         q_tok, max_tok, max_tok, 0
                     ]
-                    correct_count += (cur_largest_wrong_logit < 0).sum()
+                    correct_count += int((cur_largest_wrong_logit < 0).sum().item())
                 else:
                     cur_largest_wrong_logit = largest_wrong_logit[
                         q_tok, max_tok, :max_tok, n_copies_nonmax

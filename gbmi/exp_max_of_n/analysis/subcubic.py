@@ -39,6 +39,7 @@ def find_min_gaps_with_EQKE(
     attn_scale: Optional[Union[Float[Tensor, ""], float]] = None,  # noqa: F722
     position: Optional[int] = None,
     leave: Optional[bool] = None,
+    desc: Optional[str] = None,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     if EVOU is None:
         EVOU = all_EVOU(model)
@@ -88,6 +89,7 @@ def find_min_gaps_with_EQKE(
         attn_scale=attn_scale,
         position=position,
         leave=leave,
+        desc=desc,
         W_EP=W_EP,
         W_U=W_U,
         W_EP_direction=W_EP_direction,

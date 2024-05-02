@@ -2200,6 +2200,7 @@ with torch.no_grad():
                         use_exact_EQKE=use_exact_EQKE,
                         position=1,
                         leave=(cfg is all_configs[-1]),
+                        desc=f"min gaps {cfg.short_description()}",
                     ),
                 )
             ),

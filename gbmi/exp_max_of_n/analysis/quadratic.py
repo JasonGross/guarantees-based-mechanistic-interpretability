@@ -29,6 +29,7 @@ def find_min_gaps(
     attn_scale: Union[Float[Tensor, ""], float],  # noqa: F722
     position: Optional[int] = None,
     leave: Optional[bool] = None,
+    desc: Optional[str] = None,
     **compute_largest_wrong_logit_quadratic_kwargs,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     """
@@ -44,7 +45,10 @@ def find_min_gaps(
     if EQKE_err_upper_bound.ndim < 1:
         EQKE_err_upper_bound = EQKE_err_upper_bound[None]
     for min_gap in tqdm(
-        list(reversed(range(1, d_vocab_k))), position=position, leave=leave
+        list(reversed(range(1, d_vocab_k))),
+        position=position,
+        leave=leave,
+        desc=desc,
     ):
         extreme_right_attention: Float[
             Tensor, "minmax=2 d_vocab_q d_vocab_max n_ctx_copies_nonmax"  # noqa: F722
@@ -152,6 +156,7 @@ def find_min_gaps_with_EQKE(
     attn_scale: Union[Float[Tensor, ""], float],  # noqa: F722
     position: Optional[int] = None,
     leave: Optional[bool] = None,
+    desc: Optional[str] = None,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     (
         (EQKE_query_key, err_accumulator),
@@ -188,6 +193,7 @@ def find_min_gaps_with_EQKE(
         attn_scale=attn_scale,
         position=position,
         leave=leave,
+        desc=desc,
         W_EP=W_EP,
         W_U=W_U,
         W_EP_direction=W_EP_direction,

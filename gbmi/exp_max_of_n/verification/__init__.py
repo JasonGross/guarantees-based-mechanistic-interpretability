@@ -698,6 +698,8 @@ class LargestWrongLogitQuadraticConfig:
         "svd",
         "max_diff",
         "max_diff_subproduct",
+        "mean+max_diff",
+        "mean+max_diff_subproduct",
         "max_diff_exact",
     ] = "max_diff"
 
@@ -789,7 +791,9 @@ class LargestWrongLogitQuadraticConfig:
                 U, S, Vh = m.svd()
                 return S[0] * np.sqrt(2)
             case "max_diff" | "max_diff_subproduct":
-                return max_row_diffs_per_dim(*matrices)
+                return max_row_diffs_per_dim(*matrices, use_mean_row=False)
+            case "mean+max_diff" | "mean+max_diff_subproduct":
+                return max_row_diffs_per_dim(*matrices, use_mean_row=True)
             case "max_diff_exact":
                 m = reduce(torch.matmul, matrices)
                 return m.max(dim=-1).values - m.min(dim=-1).values

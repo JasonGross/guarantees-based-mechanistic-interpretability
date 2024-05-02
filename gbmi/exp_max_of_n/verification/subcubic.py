@@ -108,7 +108,7 @@ def decompose_EQKE_error(
     &= \max_r \sum_k \left|A_{r,k}\right|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right) \\
     \end{align*}$$
 
-    If tricks.attention_error_handling is "max_diff_subproduct", then we use quadratic.decompose_EQKE_error_quadratic to compute the low-rank factorization.
+    If tricks.attention_error_handling is "max_diff_subproduct" or "mean+max_diff_subproduct", then we use quadratic.decompose_EQKE_error_quadratic to compute the low-rank factorization.
     """
     W_E, W_pos, W_Q, W_K = (
         model.W_E,
@@ -122,21 +122,28 @@ def decompose_EQKE_error(
     W_E_pos_q = W_E + W_pos[-1][None, :]
     EQKE_pos_err = W_E_pos_q @ (W_Q @ (W_K.T @ W_pos_err.T))
 
-    if tricks.attention_error_handling == "max_diff_subproduct":
+    if tricks.attention_error_handling in (
+        "max_diff_subproduct",
+        "mean+max_diff_subproduct",
+    ):
         assert (
             key_direction is not None
-        ), "key_direction must be provided if using max_diff_subproduct"
+        ), "key_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
         assert (
             query_direction is not None
-        ), "query_direction must be provided if using max_diff_subproduct"
+        ), "query_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
         assert (
             second_key_direction is not None
-        ), "second_key_direction must be provided if using max_diff_subproduct"
+        ), "second_key_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
         assert (
             second_query_direction is not None
-        ), "second_query_direction must be provided if using max_diff_subproduct"
-        assert W_Q_U is not None, "W_Q_U must be provided if using max_diff_subproduct"
-        assert W_K_U is not None, "W_K_U must be provided if using max_diff_subproduct"
+        ), "second_query_direction must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        assert (
+            W_Q_U is not None
+        ), "W_Q_U must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
+        assert (
+            W_K_U is not None
+        ), "W_K_U must be provided if using max_diff_subproduct or mean+max_diff_subproduct"
         (
             (EQKE_query_key, err_accumulator),
             EQKE_pos_err,

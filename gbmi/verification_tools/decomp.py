@@ -124,7 +124,9 @@ def factor_contribution(
 # %%
 @torch.no_grad()
 def max_row_diffs_per_dim_2(
-    A: Float[Tensor, "... a b"], B: Float[Tensor, "... b c"]  # noqa: F722
+    A: Float[Tensor, "... a b"],  # noqa: F722
+    B: Float[Tensor, "... b c"],  # noqa: F722
+    use_mean_row: bool = False,
 ) -> Float[Tensor, "... a"]:  # noqa: F722
     r"""Computes the maximum difference between elements in the same row of the product of A and B
 
@@ -141,17 +143,26 @@ def max_row_diffs_per_dim_2(
     &= \max_r \sum_k \left|A_{r,k}\right|\left|\max_{i,j}  \left(B_{k,i} - B_{k,j}\right)\right| \\
     \end{align*}$$
 
+    If use_mean_row is True, we combine this with the mean+diff trick over r.
+
     Postconditions:
         \forall r, i, j:
             -return_r <= (AB)_{r,i} - (AB)_{r,j} <= return_r
     """
     max_B_diffs = B.max(dim=-1).values - B.min(dim=-1).values
-    return A.abs() @ max_B_diffs.abs()
+    if use_mean_row:
+        EA = A.mean(dim=-2)
+        EAB = EA @ B
+        EAB_diffs = EAB.max(dim=-1).values - EAB.min(dim=-1).values
+        A = A - EA.unsqueeze(dim=-1)
+        return EAB_diffs + A.abs() @ max_B_diffs
+    else:
+        return A.abs() @ max_B_diffs
 
 
 # %%
 @torch.no_grad()
-def max_row_diffs_per_dim(*m: Tensor) -> Tensor:
+def max_row_diffs_per_dim(*m: Tensor, use_mean_row: bool = False) -> Tensor:
     r"""Computes the maximum difference between elements in the same row of the product of the passed matrices by considering all points to break the product at
 
     Complexity: O(  \sum_{0 ≤ i < j < len(m) - 1} m[0].shape[-2] * m[i].shape[-1] * m[j].shape[-1]
@@ -172,7 +183,7 @@ def max_row_diffs_per_dim(*m: Tensor) -> Tensor:
         partial_products_l.append(partial_products_l[-1] @ ml)
         partial_products_r.append(mr @ partial_products_r[-1])
     max_row_diffs = [
-        max_row_diffs_per_dim_2(l, r)
+        max_row_diffs_per_dim_2(l, r, use_mean_row=use_mean_row)
         for l, r in zip(partial_products_l, reversed(partial_products_r))
     ]
     # all estimates in max_row_diffs are valid, so we can reduce over them

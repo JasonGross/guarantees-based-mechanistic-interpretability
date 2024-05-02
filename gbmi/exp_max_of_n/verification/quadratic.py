@@ -631,7 +631,9 @@ def compute_accuracy_lower_bound_from(
     largest_wrong_logit: Float[
         Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
     ],
-    min_gap: Union[int, Integer[Tensor, "d_vocab_q d_vocab_max"]] = 1,  # noqa: F722
+    min_gap: Union[
+        int, Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
+    ] = 1,
 ) -> Tuple[float, Tuple[int, int]]:
     """
     returns correct_count / total_sequences, (correct_count, total_sequences)

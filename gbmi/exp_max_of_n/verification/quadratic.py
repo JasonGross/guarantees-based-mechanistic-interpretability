@@ -609,17 +609,13 @@ def count_correct_sequences(
                     or (max_tok == 0 and n_copies_nonmax > 0)
                 ):
                     continue
-                if n_copies_nonmax == 0:
-                    correct_count += 1
-                elif q_tok == max_tok and n_copies_nonmax == n_ctx - 1:
-                    correct_count += 1
-                elif q_tok != max_tok and n_copies_nonmax == 1:
+                # N.B. Here, n_copies_nonmax DOES include the query token when it's not equal to max_tok
+                nonmax_pre_query_count = (
+                    n_copies_nonmax - 1 if q_tok != max_tok else n_copies_nonmax
+                )
+                if nonmax_pre_query_count == 0:
                     correct_count += 1
                 else:
-                    # N.B. Here, n_copies_nonmax DOES include the query token when it's not equal to max_tok
-                    nonmax_pre_query_count = (
-                        n_copies_nonmax - 1 if q_tok != max_tok else n_copies_nonmax
-                    )
                     # count the number of sequences of length n_ctx - 1 with nonmax_pre_query_count tokens less than or equal to max_tok - cur_min_gap and the remaining tokens equal to max_tok, where order matters
                     correct_count += count_sequences(
                         n_ctx - 1, nonmax_pre_query_count, max_tok - cur_min_gap

@@ -307,31 +307,35 @@ def compute_extreme_right_attention_quadratic(
     n_ctx = min_gap.shape[-1] if not isinstance(min_gap, int) else 1
     result = torch.zeros((2, EQKE.shape[0], EQKE.shape[1], n_ctx)).to(EQKE.device)
     for q_tok in range(EQKE.shape[0]):
-        running_extrema = torch.zeros((2, EQKE[q_tok].shape[0], n_ctx)).to(EQKE.device)
+        # running_extrema[:, k] is inclusive of attention paid to token value k
+        running_extrema = torch.zeros((2, EQKE[q_tok].shape[0])).to(EQKE.device)
         for max_tok in range(EQKE.shape[1]):
+            running_extrema[:, max_tok] = EQKE[q_tok, max_tok].item()
+            if max_tok > 0:
+                # running_extrema.shape[0] is flipped from result.shape[0] because we subtract running extrema;
+                # 0 is max here, 1 is min
+                assert (
+                    running_extrema[:, max_tok - 1 : max_tok + 1].shape[1] == 2
+                )  # sanity check for slicing by (max_tok-1, max_tok)
+                running_extrema[0, max_tok] = (
+                    running_extrema[0, max_tok - 1 : max_tok + 1].max(dim=1).values
+                )
+                running_extrema[1, max_tok] = (
+                    running_extrema[1, max_tok - 1 : max_tok + 1].min(dim=1).values
+                )
             for n_copies_nonmax in range(n_ctx):
                 cur_min_gap = (
                     min_gap
                     if isinstance(min_gap, int)
                     else int(min_gap[q_tok, max_tok, n_copies_nonmax].item())
                 )
-                if max_tok > 0:
-                    running_extrema[1, max_tok, n_copies_nonmax] = min(
-                        running_extrema[0, max_tok - 1, n_copies_nonmax].item(),
-                        EQKE[q_tok, max_tok].item(),
-                    )
-                    running_extrema[0, max_tok, n_copies_nonmax] = max(
-                        running_extrema[1, max_tok - 1, n_copies_nonmax].item(),
-                        EQKE[q_tok, max_tok].item(),
-                    )
                 if max_tok != q_tok and (max_tok - q_tok < cur_min_gap):
                     result[:, q_tok, max_tok, n_copies_nonmax] = float("nan")
                 elif max_tok < cur_min_gap:
                     result[:, q_tok, max_tok, n_copies_nonmax] = 0
                 else:
                     result[:, q_tok, max_tok, n_copies_nonmax] = (
-                        EQKE[q_tok, max_tok]
-                        - running_extrema[:, max_tok - cur_min_gap, n_copies_nonmax]
+                        EQKE[q_tok, max_tok] - running_extrema[:, max_tok - cur_min_gap]
                     )
     return result
 

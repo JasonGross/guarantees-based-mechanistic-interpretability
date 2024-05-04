@@ -204,9 +204,6 @@ def compute_largest_wrong_logit_quadratic(
         right_attention_logits_max: Float[Tensor, ""] = (  # noqa: F722
             right_attention_logits_tmp.max()
         )
-        # if the maximum non-max logit is negative, we do worst by attending as little as possible to the max token
-        # but if it's positive, we do poorly if we attend as much as possible to the max token
-        min_max_index = 0 if right_attention_logits_max.item() < 0 else 1
         for n_copies_nonmax in range(1, n_ctx):
             cur_min_gap = (
                 min_gap
@@ -220,6 +217,16 @@ def compute_largest_wrong_logit_quadratic(
             # maximum added to the wrong logit from paying attention to the wrong thing
             wrong_attention_logits: Float[Tensor, ""] = (  # noqa: F722
                 EVOU_max_logit_diff[: max_tok - cur_min_gap + 1].max()
+            )
+
+            # if the maximum non-max logit is negative (more generally: smaller for the right thing than the wrong thing),
+            # we do worst by attending as little as possible to the max token,
+            # but if it's positive (more generally: larger for the right thing than the wrong thing),
+            # we do poorly if we attend as much as possible to the max token
+            min_max_index = (
+                0
+                if right_attention_logits_max.item() < wrong_attention_logits.item()
+                else 1
             )
 
             # First we combine query-independent logit information, then we reduce over output tokens and loop over queries

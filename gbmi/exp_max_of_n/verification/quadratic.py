@@ -317,12 +317,12 @@ def compute_extreme_right_attention_quadratic(
                 assert (
                     running_extrema[:, max_tok - 1 : max_tok + 1].shape[1] == 2
                 )  # sanity check for slicing by (max_tok-1, max_tok)
-                running_extrema[0, max_tok] = (
-                    running_extrema[0, max_tok - 1 : max_tok + 1].max(dim=1).values
-                )
-                running_extrema[1, max_tok] = (
-                    running_extrema[1, max_tok - 1 : max_tok + 1].min(dim=1).values
-                )
+                running_extrema[0, max_tok] = running_extrema[
+                    0, max_tok - 1 : max_tok + 1
+                ].max()
+                running_extrema[1, max_tok] = running_extrema[
+                    1, max_tok - 1 : max_tok + 1
+                ].min()
             for n_copies_nonmax in range(n_ctx):
                 cur_min_gap = (
                     min_gap

@@ -790,11 +790,15 @@ if DISPLAY_PLOTS:
     latex_figures["EQKP"] = figs["EQKP"]
     latex_figures["EQKE-SVD"] = figs["EQKE Attention SVD"]
     del figs["EQKE Attention SVD"]
+    PVOU_keys = [k for k in figs.keys() if k.startswith("irrelevant_") and "V" in k]
+    assert len(PVOU_keys) == 1, f"PVOU_keys: {PVOU_keys}"
+    latex_figures["PVOU"] = figs[PVOU_keys[0]]
+    del figs[PVOU_keys[0]]
     EUPU_keys = [k for k in figs.keys() if k.startswith("irrelevant_")]
     assert len(EUPU_keys) == 1, f"EUPU_keys: {EUPU_keys}"
     latex_figures["EUPU"] = figs[EUPU_keys[0]]
     del figs[EUPU_keys[0]]
-    latex_figures["PVOU"] = figs["irrelevant"]
+    latex_figures["PVOU-scatter"] = figs["irrelevant"]
     del figs["irrelevant"]
     unused_keys = [k for k in figs if k not in latex_figures]
     if unused_keys:

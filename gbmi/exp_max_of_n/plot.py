@@ -352,6 +352,7 @@ def compute_irrelevant(
     include_equals_OV: bool = False,
     includes_eos: Optional[bool] = None,
     title_kind: Literal["html", "latex"] = "html",
+    pvou_as_2d: bool = True,
 ) -> dict:
     W_E, W_pos, W_V, W_O, W_U = (
         model.W_E.to("cpu"),
@@ -376,10 +377,9 @@ def compute_irrelevant(
     sE = "𝔼" if title_kind == "html" else r"\mathbb{E}"
     s_dim0 = "<sub>dim=0</sub>" if title_kind == "html" else r"_{\mathrm{dim}=0}"
     s_p = "<sub>p</sub>" if title_kind == "html" else r"_p"
+    EU_key = f"{smath}({sWE}{W_E_q_index}+{sWpos}[-1]){sWU}{smath}"
     data = {
-        f"{smath}({sWE}{W_E_q_index}+{sWpos}[-1]){sWU}{smath}": (
-            ((W_E_q + W_pos[-1]) @ W_U).numpy()
-        ),
+        EU_key: (((W_E_q + W_pos[-1]) @ W_U).numpy()),
     }
     if include_equals_OV:
         data.update(
@@ -387,6 +387,18 @@ def compute_irrelevant(
                 f"{smath}({sWE}{W_E_q_index}+{sWpos}[-1]){sWV}{sWO}{sWU}{smath}": (
                     (W_E_q + W_pos[-1]) @ W_V[0, 0] @ W_O[0, 0] @ W_U
                 ),
+            }
+        )
+    PVOU_key = (
+        f"{smath}({sWpos} - {sE}{s_p}{sWpos}{W_pos_k_index}[p]){sWV}{sWO}{sWU}{smath}"
+    )
+    if pvou_as_2d:
+        data.update(
+            {
+                PVOU_key: (W_pos_k - W_pos_k.mean(dim=0))
+                @ W_V[0, 0, :, :]
+                @ W_O[0, 0, :, :]
+                @ W_U
             }
         )
     data.update(
@@ -407,7 +419,11 @@ def compute_irrelevant(
         "data": data,
         "title": "Irrelevant Contributions to logits" if include_equals_OV else "PVOU",
         "xaxis": "output logit token",
-        "yaxis": {2: "input token", 1: "output logit value"},
+        "yaxis": {
+            EU_key: "input token",
+            1: "output logit value",
+            PVOU_key: "input position",
+        },
     }
 
 
@@ -543,24 +559,28 @@ def display_basic_interpretation(
                 title=key,
                 colorscale=OV_colorscale,
                 xaxis=irrelevant["xaxis"],
-                yaxis=irrelevant["yaxis"][len(data.shape)],
+                yaxis=irrelevant["yaxis"][key],
                 dtick_x=tok_dtick,
-                dtick_y=tok_dtick,
+                dtick_y=pos_dtick if data.shape[0] == model.cfg.n_ctx else tok_dtick,
                 plot_with=plot_with,
                 renderer=renderer,
             )
             result[f"irrelevant_{key}"] = fig
-    result["irrelevant"] = fig = scatter(
-        {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
-        title=irrelevant["title"],
-        xaxis=irrelevant["xaxis"],
-        caxis="",
-        yaxis=irrelevant["yaxis"][1],
-        legend_at_bottom=legend_at_bottom,
-        plot_with=plot_with,
-        renderer=renderer,
-        show=True,
-    )
+    if include_equals_OV:
+        fig = scatter(
+            {k: v for k, v in irrelevant["data"].items() if len(v.shape) == 1},
+            title=irrelevant["title"],
+            xaxis=irrelevant["xaxis"],
+            caxis="",
+            yaxis=irrelevant["yaxis"][1],
+            legend_at_bottom=legend_at_bottom,
+            plot_with=plot_with,
+            renderer=renderer,
+            show=True,
+        )
+    else:
+        pass
+    result["irrelevant"] = fig
     match plot_with:
         case "matplotlib":
             assert isinstance(fig, matplotlib.figure.Figure)

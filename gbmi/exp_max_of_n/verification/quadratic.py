@@ -88,23 +88,21 @@ def compute_extreme_softmaxed_right_attention_quadratic(
                 tmp[0, :-1] = EQKE_pos_err[q_tok]
                 tmp[1, :-1] = EQKE_pos_err[q_tok].flip(dims=[0])
                 tmp[:, -1] = 0
-                if n_copies_nonmax == n_ctx - 1 and max_tok == q_tok:
-                    # max tok in the query position, so we handle this case specially
-                    tmp[:, -1] += extreme_right_attention[
-                        :, q_tok, max_tok, n_copies_nonmax
-                    ]
-                    tmp = (tmp / attn_scale).softmax(dim=-1)
-                    result[:, q_tok, max_tok, n_copies_nonmax] = tmp[:, -1]
-                else:
-                    # put the max tokens in the least favored slots, where attention is lowest
-                    n_copies_max = n_ctx - n_copies_nonmax
-                    tmp[:, :n_copies_max] += extreme_right_attention[
-                        :, q_tok, max_tok, n_copies_nonmax
-                    ].unsqueeze(-1)
-                    tmp = (tmp / attn_scale).softmax(dim=-1)
-                    result[:, q_tok, max_tok, n_copies_nonmax] = tmp[
-                        :, :n_copies_max
-                    ].sum(dim=-1)
+                n_copies_max = n_ctx - n_copies_nonmax
+                # we handle max tok in the query position specially
+                # put the max tokens in the least favored slots, where attention is lowest
+                max_indices = (
+                    list(range(n_copies_max))
+                    if max_tok != q_tok
+                    else (list(range(n_copies_max - 1)) + [-1])
+                )
+                tmp[:, max_indices] += extreme_right_attention[
+                    :, q_tok, max_tok, n_copies_nonmax
+                ].unsqueeze(-1)
+                tmp = (tmp / attn_scale).softmax(dim=-1)
+                result[:, q_tok, max_tok, n_copies_nonmax] = tmp[:, max_indices].sum(
+                    dim=-1
+                )
     return result
 
 

@@ -161,7 +161,9 @@ matplotlib.rcParams[
 \usepackage{amssymb}
 \usepackage{xfrac}
 \usepackage{lmodern}"""
-default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Picnic_r")
+default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale(
+    "RdBu"
+)  # px.colors.get_colorscale("Picnic_r")
 # default_OV_matplotlib_colorscale_2024_03_26: Colorscale = 'bwr_r'
 default_QK_colorscale_2024_03_26: Colorscale = [
     [0, "#ff0000"],

@@ -63,6 +63,7 @@ import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 # %%
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
+OVERWRITE_CSV_FROM_CACHE: bool = False  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
 TRAIN_CSV_PATH = Path(__file__).with_suffix("") / "all-models-train-values.csv"
 TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
@@ -349,8 +350,10 @@ brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
 
 batch_size = 4096  # 16_384 # 8182
 
-unknown_seeds = set(runtime_models.keys()) - set(brute_force_results["seed"])
-known_seeds = set(runtime_models.keys()) - unknown_seeds
+all_seeds = set(runtime_models.keys())
+unknown_seeds = all_seeds - set(brute_force_results["seed"])
+known_seeds = all_seeds - unknown_seeds
+relevant_seeds = all_seeds if OVERWRITE_CSV_FROM_CACHE else unknown_seeds
 brute_force_data = {
     seed: brute_force_results[brute_force_results["seed"] == seed].iloc[0].to_dict()
     for seed in known_seeds
@@ -451,7 +454,7 @@ lengths = [
             vocab_size=runtime_models[seed][1].cfg.d_vocab,
         )
     )
-    for seed in runtime_models.keys()
+    for seed in relevant_seeds
 ]
 
 total_batches = sum(
@@ -461,7 +464,7 @@ total_batches = sum(
 
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_brute_force_for, pbar=pbar), runtime_models.keys())
+        executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
 
 update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
@@ -481,8 +484,10 @@ if os.path.exists(CUBIC_CSV_PATH):
 else:
     cubic_results = pd.DataFrame(columns=cubic_columns)
 
-unknown_seeds = set(runtime_models.keys()) - set(cubic_results["seed"])
-known_seeds = set(runtime_models.keys()) - unknown_seeds
+all_seeds = set(runtime_models.keys())
+unknown_seeds = all_seeds - set(cubic_results["seed"])
+known_seeds = all_seeds - unknown_seeds
+relevant_seeds = all_seeds if OVERWRITE_CSV_FROM_CACHE else unknown_seeds
 cubic_data = {
     seed: cubic_results[cubic_results["seed"] == seed].iloc[0].to_dict()
     for seed in known_seeds
@@ -542,11 +547,9 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
         traceback.print_exc()
 
 
-with tqdm(
-    total=len(runtime_models.keys()), desc="batches for cubic", position=0
-) as pbar:
+with tqdm(total=len(relevant_seeds), desc="batches for cubic", position=0) as pbar:
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_cubic, pbar=pbar), runtime_models.keys())
+        executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
 
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
@@ -584,8 +587,10 @@ if os.path.exists(SUBCUBIC_CSV_PATH):
 else:
     subcubic_results = pd.DataFrame(columns=subcubic_columns)
 
-unknown_seeds = set(runtime_models.keys()) - set(subcubic_results["seed"])
-known_seeds = set(runtime_models.keys()) - unknown_seeds
+all_seeds = set(runtime_models.keys())
+unknown_seeds = all_seeds - set(subcubic_results["seed"])
+known_seeds = all_seeds - unknown_seeds
+relevant_seeds = all_seeds if OVERWRITE_CSV_FROM_CACHE else unknown_seeds
 subcubic_data = {
     seed: subcubic_results[subcubic_results["seed"] == seed].iloc[0].to_dict()
     for seed in known_seeds
@@ -754,17 +759,17 @@ def _handle_subcubic(seed: int, *, pbar: tqdm):
 
 
 total_count = sum(
-    (1 + model.cfg.d_vocab)
+    (1 + runtime_models[seed][1].cfg.d_vocab)
     * sum(
         2 if cfg.attention_error_handling == "max_diff_exact" else 1
         for cfg in all_configs
     )
-    for _runtime, model in runtime_models.values()
+    for seed in relevant_seeds
 )
 
 with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_subcubic, pbar=pbar), runtime_models.keys())
+        executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):

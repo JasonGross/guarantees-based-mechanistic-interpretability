@@ -30,6 +30,7 @@ def find_min_gaps(
     position: Optional[int] = None,
     leave: Optional[bool] = None,
     desc: Optional[str] = None,
+    pbar: Optional[tqdm] = None,
     **compute_largest_wrong_logit_quadratic_kwargs,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     """
@@ -44,12 +45,15 @@ def find_min_gaps(
         EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
     if EQKE_err_upper_bound.ndim < 1:
         EQKE_err_upper_bound = EQKE_err_upper_bound[None]
-    for min_gap in tqdm(
-        list(reversed(range(1, d_vocab_k))),
-        position=position,
-        leave=leave,
-        desc=desc,
-    ):
+    min_gap_list = list(reversed(range(1, d_vocab_k)))
+    if pbar is None:
+        min_gap_list = tqdm(
+            min_gap_list,
+            position=position,
+            leave=leave,
+            desc=desc,
+        )
+    for min_gap in min_gap_list:
         extreme_right_attention: Float[
             Tensor, "minmax=2 d_vocab_q d_vocab_max n_ctx_copies_nonmax"  # noqa: F722
         ] = compute_extreme_right_attention_quadratic(EQKE, min_gap=min_gap)
@@ -71,6 +75,9 @@ def find_min_gaps(
         )
         # if the largest wrong logit is negative, then this gap works
         min_gaps[largest_wrong_logit < 0] = min_gap
+
+        if pbar is not None:
+            pbar.update(1)
 
     return min_gaps
 
@@ -157,6 +164,7 @@ def find_min_gaps_with_EQKE(
     position: Optional[int] = None,
     leave: Optional[bool] = None,
     desc: Optional[str] = None,
+    pbar: Optional[tqdm] = None,
 ) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
     (
         (EQKE_query_key, err_accumulator),
@@ -194,6 +202,7 @@ def find_min_gaps_with_EQKE(
         position=position,
         leave=leave,
         desc=desc,
+        pbar=pbar,
         W_EP=W_EP,
         W_U=W_U,
         W_EP_direction=W_EP_direction,

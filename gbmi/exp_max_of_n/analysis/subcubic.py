@@ -2,6 +2,7 @@ from typing import Union, Optional, Tuple
 import time
 from functools import reduce
 import torch
+from tqdm.auto import tqdm
 from jaxtyping import Float, Integer
 from torch import Tensor
 from transformer_lens import HookedTransformer
@@ -41,6 +42,7 @@ def find_min_gaps_with_EQKE(
     position: Optional[int] = None,
     leave: Optional[bool] = None,
     desc: Optional[str] = None,
+    pbar: Optional[tqdm] = None,
     record_time: bool = False,
 ) -> Union[
     Tuple[
@@ -100,6 +102,7 @@ def find_min_gaps_with_EQKE(
         position=position,
         leave=leave,
         desc=desc,
+        pbar=pbar,
         W_EP=W_EP,
         W_U=W_U,
         W_EP_direction=W_EP_direction,

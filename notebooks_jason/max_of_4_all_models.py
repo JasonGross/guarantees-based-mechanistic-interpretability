@@ -66,10 +66,8 @@ cache_dir.mkdir(exist_ok=True)
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
 TRAIN_CSV_PATH = Path(__file__).with_suffix("") / "all-models-train-values.csv"
 TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-BRUTE_FORCE_CSV_PATH = (
-    Path(__file__).with_suffix("") / "all-models-brute-force-values.csv"
-)
-BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+csv_path = Path(__file__).with_suffix("") / "all-models-brute-force-values.csv"
+csv_path.parent.mkdir(exist_ok=True, parents=True)
 CUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-cubic-values.csv"
 CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-subcubic-values.csv"
@@ -199,7 +197,41 @@ training_wrappers = {
     seed: MaxOfNTrainingWrapper(cfgs[seed], model)
     for seed, (_runtime, model) in runtime_models.items()
 }
+
+
 # training_wrapper.run_batch = Memoize(training_wrapper.run_batch, name=f"{__file__}.training_wrapper.run_batch", use_pandas=False, use_shelf=True)  # type: ignore
+# %%
+def update_csv_with_rows(
+    csv_path: Path,
+    new_data: list[dict[str, Union[float, int, str]]],
+    columns: list[str],
+    *,
+    subset: str = "seed",
+):
+    if os.path.exists(csv_path):
+        results = pd.read_csv(csv_path)
+
+    new_df = pd.DataFrame(new_data, columns=columns)
+    if results.empty:
+        results = new_df
+    else:
+        results = pd.concat([results, new_df], ignore_index=True).drop_duplicates(
+            subset=subset, keep="last"
+        )
+    results.to_csv(csv_path, index=False)
+
+
+def update_csv(
+    csv_path: Path,
+    data: dict[int, dict[str, Union[float, int, str]]],
+    columns: list[str],
+    *,
+    subset: str = "seed",
+):
+    new_data = [data[seed] for seed in sorted(data.keys())]
+    update_csv_with_rows(csv_path, new_data, columns, subset=subset)
+
+
 # %% [markdown]
 # # Training stats
 # %%
@@ -283,27 +315,18 @@ if os.path.exists(TRAIN_CSV_PATH):
 else:
     train_results = pd.DataFrame(columns=train_columns)
 
-# Collect new data
-new_data = [
-    {
+train_data = {
+    seed: {
         "seed": seed,
         "loss": train_average_loss[seed],
         "accuracy": train_average_accuracy[seed],
         "model-seed": cfgs[seed].experiment.model_config.seed,
         "dataset-seed": datamodules[seed].dataset_seed,
     }
-    for seed in sorted(runtime_models.keys())
-]
+    for seed in runtime_models.keys()
+}
 
-# Append new data to the DataFrame
-new_data = pd.DataFrame(new_data, columns=train_columns)
-if train_results.empty:
-    train_results = new_data
-train_results = pd.concat([train_results, new_data], ignore_index=True).drop_duplicates(
-    subset="seed", keep="last"
-)
-
-train_results.to_csv(TRAIN_CSV_PATH, index=False)
+update_csv(TRAIN_CSV_PATH, train_data, columns=train_columns)
 
 # %% [markdown]
 # # Brute Force Proof
@@ -317,8 +340,8 @@ brute_force_columns = [
     "cpu",
     "duration",
 ]
-if os.path.exists(BRUTE_FORCE_CSV_PATH):
-    brute_force_results = pd.read_csv(BRUTE_FORCE_CSV_PATH)
+if os.path.exists(csv_path):
+    brute_force_results = pd.read_csv(csv_path)
 else:
     brute_force_results = pd.DataFrame(columns=brute_force_columns)
 
@@ -440,19 +463,7 @@ with tqdm(total=total_batches, desc="batches for brute force", position=0) as pb
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(partial(_handle_brute_force_for, pbar=pbar), runtime_models.keys())
 
-new_data = [brute_force_data[seed] for seed in sorted(brute_force_data.keys())]
-
-if os.path.exists(BRUTE_FORCE_CSV_PATH):
-    brute_force_results = pd.read_csv(BRUTE_FORCE_CSV_PATH)
-
-new_data = pd.DataFrame(new_data, columns=brute_force_columns)
-if brute_force_results.empty:
-    brute_force_results = new_data
-else:
-    brute_force_results = pd.concat(
-        [brute_force_results, new_data], ignore_index=True
-    ).drop_duplicates(subset="seed", keep="last")
-brute_force_results.to_csv(BRUTE_FORCE_CSV_PATH, index=False)
+update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
 # %% [markdown]
 # # Cubic proof
@@ -472,9 +483,13 @@ else:
 
 unknown_seeds = set(runtime_models.keys()) - set(cubic_results["seed"])
 known_seeds = set(runtime_models.keys()) - unknown_seeds
-new_data = []
-for seedi, seed in enumerate(tqdm(unknown_seeds, desc="seed for cubic", position=0)):
-    leave = seedi == len(unknown_seeds) - 1
+cubic_data = {
+    seed: cubic_results[cubic_results["seed"] == seed].iloc[0].to_dict()
+    for seed in known_seeds
+}
+
+
+def get_cubic_row(seed: int) -> dict:
     cfg = cfgs[seed]
     cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
@@ -508,8 +523,8 @@ for seedi, seed in enumerate(tqdm(unknown_seeds, desc="seed for cubic", position
     )() as verify_proof:
         cubic_proof_results = verify_proof(cubic_proof_args)
 
-    largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]
-    row = {
+    # largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]
+    return {
         "seed": seed,
         "accuracy-bound": cubic_proof_results["accuracy_lower_bound"],
         "correct-count-lower-bound": cubic_proof_results["correct_count_lower_bound"],
@@ -517,23 +532,23 @@ for seedi, seed in enumerate(tqdm(unknown_seeds, desc="seed for cubic", position
         "duration": cubic_proof_results["prooftime"],
     }
 
-    new_data.append(row)
 
-for seed in known_seeds:
-    row = cubic_results[cubic_results["seed"] == seed].iloc[0]
-    new_data.append(row)
+def _handle_cubic(seed: int, *, pbar: tqdm):
+    try:
+        cubic_data[seed] = get_cubic_row(seed)
+        pbar.update(1)
+    except Exception as e:
+        print(f"Error computing cubic proof for seed {seed}: {e}")
+        traceback.print_exc()
 
-if os.path.exists(CUBIC_CSV_PATH):
-    cubic_results = pd.read_csv(CUBIC_CSV_PATH)
 
-new_data = pd.DataFrame(new_data, columns=cubic_columns)
-if cubic_results.empty:
-    cubic_results = new_data
-else:
-    cubic_results = pd.concat(
-        [cubic_results, new_data], ignore_index=True
-    ).drop_duplicates(subset="seed", keep="last")
-cubic_results.to_csv(CUBIC_CSV_PATH, index=False)
+with tqdm(
+    total=len(runtime_models.keys()), desc="batches for cubic", position=0
+) as pbar:
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_cubic, pbar=pbar), runtime_models.keys())
+
+update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
 # %% [markdown]
 # # Sub-cubic Proofs
@@ -548,10 +563,9 @@ else:
     all_configs = [LargestWrongLogitQuadraticConfig.OFF]
 # %%
 # %%
-cubic_columns = [
+subcubic_columns = [
     "seed",
     "accuracy-bound",
-    "correct-count-lower-bound",
     "duration-proof-search",
     "duration",
     "tricks",
@@ -560,17 +574,26 @@ cubic_columns = [
     "total-sequences",
     "dropped-sequences",
     "dropped-sequences-frac",
+    "most-gap-below-value",
+    "most-gap-below-value-frac",
+    "most-gap-below-value-num-std",
+    "max-gap",
 ]
-if os.path.exists(CUBIC_CSV_PATH):
-    cubic_results = pd.read_csv(CUBIC_CSV_PATH)
+if os.path.exists(SUBCUBIC_CSV_PATH):
+    subcubic_results = pd.read_csv(SUBCUBIC_CSV_PATH)
 else:
-    cubic_results = pd.DataFrame(columns=cubic_columns)
+    subcubic_results = pd.DataFrame(columns=subcubic_columns)
 
-unknown_seeds = set(runtime_models.keys()) - set(cubic_results["seed"])
+unknown_seeds = set(runtime_models.keys()) - set(subcubic_results["seed"])
 known_seeds = set(runtime_models.keys()) - unknown_seeds
-new_data = []
-for seedi, seed in enumerate(tqdm(unknown_seeds, desc="seed for subcubic", position=0)):
-    leave0 = seedi == len(unknown_seeds) - 1
+subcubic_data = {
+    seed: subcubic_results[subcubic_results["seed"] == seed].iloc[0].to_dict()
+    for seed in known_seeds
+}
+
+
+@torch.no_grad()
+def try_all_proofs_subcubic(seed: int, *, pbar: tqdm) -> list[dict]:
     cfg = cfgs[seed]
     cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
@@ -579,168 +602,172 @@ for seedi, seed in enumerate(tqdm(unknown_seeds, desc="seed for subcubic", posit
     assert cfg.experiment.model_config.seed is not None
 
     min_gaps_lists = {}
-    with torch.no_grad():
-        shared_proof_search_duration = 0.0
-        start = time.time()
-        W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(
-            model
-        )
-        find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
-        size_and_query_directions_kwargs = (
-            analysis_quadratic.find_EKQE_error_directions(model)
-        )
-        shared_proof_search_duration += time.time() - start
-        for use_exact_EQKE in (False, True):
-            # for svd_EUPU in (False, True):
-            descr = "exact-EQKE" if use_exact_EQKE else ""
-            filedescr = "-exact-EQKE--" if use_exact_EQKE else ""
-            latexdescr = "ExactEQKE" if use_exact_EQKE else ""
-            with memoshelve(
-                (
-                    lambda cfg: (
-                        cfg,
-                        *analysis_subcubic.find_min_gaps_with_EQKE(
-                            model=model,
-                            **find_min_gaps_kwargs,  # type: ignore
-                            **size_and_query_directions_kwargs,
-                            tricks=cfg,
-                            use_exact_EQKE=use_exact_EQKE,
-                            position=1,
-                            leave=(cfg is all_configs[-1]),
-                            desc=cfg.short_description(),
-                            record_time=True,
-                        ),
-                    )
-                ),
-                # cache={},
-                filename=cache_dir
-                / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}",
-            )() as find_min_gaps_for:
-                min_gaps_lists[use_exact_EQKE] = [
-                    find_min_gaps_for(cfg)
-                    for cfg in tqdm(
-                        all_configs,
-                        position=1,
-                        desc=f"trick cfg {descr}".strip(),
-                        leave=leave0,
-                    )
-                    if cfg.attention_error_handling == "max_diff_exact"
-                    or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway
-                ]
 
-            for tricks, min_gaps, proof_search_duration in min_gaps_lists[
+    rows = []
+
+    shared_proof_search_duration = 0.0
+    start = time.time()
+    W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(model)
+    find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
+    size_and_query_directions_kwargs = analysis_quadratic.find_EKQE_error_directions(
+        model
+    )
+    shared_proof_search_duration += time.time() - start
+    for use_exact_EQKE in (False, True):
+        # for svd_EUPU in (False, True):
+        descr = "exact-EQKE" if use_exact_EQKE else ""
+        filedescr = "-exact-EQKE--" if use_exact_EQKE else ""
+        latexdescr = "ExactEQKE" if use_exact_EQKE else ""
+        with memoshelve(
+            (
+                lambda cfg: (
+                    cfg,
+                    *analysis_subcubic.find_min_gaps_with_EQKE(
+                        model=model,
+                        **find_min_gaps_kwargs,  # type: ignore
+                        **size_and_query_directions_kwargs,
+                        tricks=cfg,
+                        use_exact_EQKE=use_exact_EQKE,
+                        pbar=pbar,
+                        record_time=True,
+                    ),
+                )
+            ),
+            # cache={},
+            filename=cache_dir
+            / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}",
+        )() as find_min_gaps_for:
+            min_gaps_lists[use_exact_EQKE] = [
+                find_min_gaps_for(cfg)
+                for cfg in all_configs
+                if cfg.attention_error_handling == "max_diff_exact"
+                or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway
+            ]
+
+        for tricks, min_gaps, proof_search_duration in min_gaps_lists[use_exact_EQKE]:
+            proof_search_duration += shared_proof_search_duration
+            # print(
+            #     f"==========={descr}=============================\nTricks: {tricks}"
+            # )
+            # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
+            start = time.time()
+            W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
+                **W_EP_direction_kwargs, tricks=tricks
+            )
+            proof_search_duration += time.time() - start
+            proof_results = subcubic.verify_proof(
+                model,
+                W_EP_direction=W_EP_direction,
+                **size_and_query_directions_kwargs,  # type: ignore
+                use_exact_EQKE=use_exact_EQKE,
+                min_gaps=min_gaps,
+                tricks=tricks,
+                sanity_check=False,
+            )
+            err_upper_bound = proof_results["err_upper_bound"]
+            prooftime = proof_results["prooftime"]
+            accuracy_bound = proof_results["accuracy_lower_bound"]
+            total_sequences = proof_results["total_sequences"]
+            left_behind = proof_results["left_behind"]
+
+            try:
+                # err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+                err_upper_bound_value = err_upper_bound.item()
+                err_upper_bound_is_max = False
+                # print(f"err_upper_bound: {err_upper_bound_value}")
+            except Exception:
+                # print(f"err_upper_bound: {err_upper_bound}")
+                # err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+                err_upper_bound_value = err_upper_bound.max().item()
+                err_upper_bound_is_max = True
+                # print(f"err_upper_bound.max(): {err_upper_bound_value}")
+
+            # if DISPLAY_PLOTS:
+            d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[
                 use_exact_EQKE
-            ]:
-                proof_search_duration += shared_proof_search_duration
-                print(
-                    f"==========={descr}=============================\nTricks: {tricks}"
-                )
-                # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
-                start = time.time()
-                W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
-                    **W_EP_direction_kwargs, tricks=tricks
-                )
-                proof_search_duration += time.time() - start
-                proof_results = subcubic.verify_proof(
-                    model,
-                    W_EP_direction=W_EP_direction,
-                    **size_and_query_directions_kwargs,  # type: ignore
-                    use_exact_EQKE=use_exact_EQKE,
-                    min_gaps=min_gaps,
-                    tricks=tricks,
-                    sanity_check=False,
-                )
-                err_upper_bound = proof_results["err_upper_bound"]
-                prooftime = proof_results["prooftime"]
-                accuracy_bound = proof_results["accuracy_lower_bound"]
-                total_sequences = proof_results["total_sequences"]
-                left_behind = proof_results["left_behind"]
-
-                try:
-                    # err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
-                    err_upper_bound_value = err_upper_bound.item()
-                    err_upper_bound_is_max = False
-                    # print(f"err_upper_bound: {err_upper_bound_value}")
-                except Exception:
-                    # print(f"err_upper_bound: {err_upper_bound}")
-                    # err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
-                    err_upper_bound_value = err_upper_bound.max().item()
-                    err_upper_bound_is_max = True
-                    # print(f"err_upper_bound.max(): {err_upper_bound_value}")
-
-                # if DISPLAY_PLOTS:
-                d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[
-                    use_exact_EQKE
-                ][0][1].shape
-                weights = torch.zeros(
-                    (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
-                )
-                for q_tok in range(d_vocab_q):
-                    for max_tok in range(d_vocab_max):
-                        for n_copies_nonmax in range(n_ctx_nonmax_copies):
-                            if (
-                                (q_tok > max_tok)
-                                or (
-                                    n_copies_nonmax == n_ctx_nonmax_copies - 1
-                                    and max_tok != q_tok
-                                )
-                                or (max_tok == 0 and n_copies_nonmax > 0)
-                            ):
-                                continue
-                            if max_tok == 0:
-                                assert q_tok == max_tok
-                                assert n_copies_nonmax == 0
-                                weights[q_tok, max_tok, n_copies_nonmax] = 1
-                            weights[q_tok, max_tok, n_copies_nonmax] = (
-                                max_tok - 1
-                            ) ** n_copies_nonmax * math.comb(
-                                model.cfg.n_ctx - 1, n_copies_nonmax
+            ][0][1].shape
+            weights = torch.zeros(
+                (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
+            )
+            for q_tok in range(d_vocab_q):
+                for max_tok in range(d_vocab_max):
+                    for n_copies_nonmax in range(n_ctx_nonmax_copies):
+                        if (
+                            (q_tok > max_tok)
+                            or (
+                                n_copies_nonmax == n_ctx_nonmax_copies - 1
+                                and max_tok != q_tok
                             )
+                            or (max_tok == 0 and n_copies_nonmax > 0)
+                        ):
+                            continue
+                        if max_tok == 0:
+                            assert q_tok == max_tok
+                            assert n_copies_nonmax == 0
+                            weights[q_tok, max_tok, n_copies_nonmax] = 1
+                        weights[q_tok, max_tok, n_copies_nonmax] = (
+                            max_tok - 1
+                        ) ** n_copies_nonmax * math.comb(
+                            model.cfg.n_ctx - 1, n_copies_nonmax
+                        )
 
-                    v = min_gaps.flatten().detach().cpu()
-                    mean = np.average(v.numpy(), weights=weights.flatten().numpy())
-                    std = np.average(
-                        (v - mean).numpy() ** 2,
-                        weights=weights.flatten().numpy(),
-                    )
-                    num_std = 1.5
-                    most_below_value = int(math.ceil(mean + num_std * std))
-                    frac_below = (
-                        weights.flatten()[v <= most_below_value].sum() / weights.sum()
-                    ).item()
+                v = min_gaps.flatten().detach().cpu()
+                mean = np.average(v.numpy(), weights=weights.flatten().numpy())
+                std = np.average(
+                    (v - mean).numpy() ** 2,
+                    weights=weights.flatten().numpy(),
+                )
+                num_std = 1.5
+                most_below_value = int(math.ceil(mean + num_std * std))
+                frac_below = (
+                    weights.flatten()[v <= most_below_value].sum() / weights.sum()
+                ).item()
 
-                    row = {
-                        "seed": seed,
-                        "accuracy-bound": accuracy_bound,
-                        "duration-proof-search": proof_search_duration,
-                        "duration": prooftime,
-                        "tricks": latexdescr + tricks.short_description(latex=True),
-                        "err-upper-bound": err_upper_bound_value,
-                        "err-upper-bound-is-max": err_upper_bound_is_max,
-                        "total-sequences": total_sequences,
-                        "dropped-sequences": left_behind,
-                        "dropped-sequences-frac": left_behind / total_sequences,
-                        "most-gap-below-value": most_below_value,
-                        "most-gap-below-value-frac": frac_below,
-                        "most-gap-below-value-num-std": num_std,
-                        "max-gap": v.max().item(),
-                    }
+                row = {
+                    "seed": seed,
+                    "accuracy-bound": accuracy_bound,
+                    "duration-proof-search": proof_search_duration,
+                    "duration": prooftime,
+                    "tricks": latexdescr + tricks.short_description(latex=True),
+                    "err-upper-bound": err_upper_bound_value,
+                    "err-upper-bound-is-max": err_upper_bound_is_max,
+                    "total-sequences": total_sequences,
+                    "dropped-sequences": left_behind,
+                    "dropped-sequences-frac": left_behind / total_sequences,
+                    "most-gap-below-value": most_below_value,
+                    "most-gap-below-value-frac": frac_below,
+                    "most-gap-below-value-num-std": num_std,
+                    "max-gap": v.max().item(),
+                }
 
-                    new_data.append(row)
+                rows.append(row)
+                pbar.update(1)
+    return rows
 
-for seed in known_seeds:
-    row = cubic_results[cubic_results["seed"] == seed].iloc[0]
-    new_data.append(row)
 
-if os.path.exists(SUBCUBIC_CSV_PATH):
-    cubic_results = pd.read_csv(SUBCUBIC_CSV_PATH)
+def _handle_subcubic(seed: int, *, pbar: tqdm):
+    try:
+        subcubic_data[seed] = try_all_proofs_subcubic(seed, pbar=pbar)
+    except Exception as e:
+        print(f"Error computing subcubic proof for seed {seed}: {e}")
+        traceback.print_exc()
 
-new_data = pd.DataFrame(new_data, columns=cubic_columns)
-if cubic_results.empty:
-    cubic_results = new_data
-else:
-    cubic_results = pd.concat(
-        [cubic_results, new_data], ignore_index=True
-    ).drop_duplicates(subset="seed", keep="last")
 
-cubic_results.to_csv(SUBCUBIC_CSV_PATH, index=False)
+total_count = sum(
+    (1 + model.cfg.d_vocab)
+    * sum(
+        2 if cfg.attention_error_handling == "max_diff_exact" else 1
+        for cfg in all_configs
+    )
+    for _runtime, model in runtime_models.values()
+)
+
+with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_subcubic, pbar=pbar), runtime_models.keys())
+
+new_data = []
+for seed in sorted(subcubic_data.keys()):
+    new_data.extend(subcubic_data[seed])
+
+update_csv_with_rows(csv_path, new_data, subcubic_columns)

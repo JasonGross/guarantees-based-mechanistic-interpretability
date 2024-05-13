@@ -280,7 +280,7 @@ def train_seed(seed: int, pbar: Iterator):
     train_total_samples[seed] = 0
 
     datamodule = datamodules[seed]
-    datamodule.setup("train")
+    # datamodule.setup("train")
     dataloader = datamodule.train_dataloader()
     dataloader_iter = iter(dataloader)
     with memoshelve(
@@ -312,6 +312,9 @@ def _handle_train_seed(seed: int, *, pbar: Iterator):
         print(f"Error training seed {seed}: {e}")
         traceback.print_exc()
 
+
+for datamodule in datamodules.values():
+    datamodule.setup("train")
 
 total_batches = sum(
     len(datamodules[seed].train_dataloader()) for seed in runtime_models.keys()

@@ -323,7 +323,7 @@ total_batches = sum(
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
     pbari = iter(pbar)
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_train_seed, pbar=pbari), cfgs.values())
+        executor.map(partial(_handle_train_seed, pbar=pbari), runtime_models.keys())
 
 # %%
 # load csv
@@ -492,9 +492,7 @@ with tqdm(total=total_batches, desc="batches for brute force", position=0) as pb
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(partial(_handle_brute_force_for, pbar=pbari), cfgs.values())
 
-new_data = []
-for seed in sorted(runtime_models.keys()):
-    new_data.append(brute_force_data[seed])
+new_data = [brute_force_data[seed] for seed in sorted(brute_force_data.keys())]
 
 if os.path.exists(BRUTE_FORCE_CSV_PATH):
     brute_force_results = pd.read_csv(BRUTE_FORCE_CSV_PATH)

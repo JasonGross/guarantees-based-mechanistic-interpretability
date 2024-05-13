@@ -274,13 +274,13 @@ def _run_train_batch_loss_accuracy(
     return loss, accuracy, batch_size
 
 
-def train_seed(seed: int, pbar: Iterator):
+def train_seed(seed: int, *, pbar: tqdm):
     train_total_loss[seed] = 0.0
     train_total_accuracy[seed] = 0.0
     train_total_samples[seed] = 0
 
     datamodule = datamodules[seed]
-    # datamodule.setup("train")
+    datamodule.setup("train")
     dataloader = datamodule.train_dataloader()
     dataloader_iter = iter(dataloader)
     with memoshelve(
@@ -296,7 +296,7 @@ def train_seed(seed: int, pbar: Iterator):
             train_total_loss[seed] += loss * size
             train_total_accuracy[seed] += accuracy * size
             train_total_samples[seed] += size
-            next(pbar)
+            pbar.update(1)
 
     # Calculate average loss and accuracy
     train_average_loss[seed] = train_total_loss[seed] / train_total_samples[seed]
@@ -305,7 +305,7 @@ def train_seed(seed: int, pbar: Iterator):
     )
 
 
-def _handle_train_seed(seed: int, *, pbar: Iterator):
+def _handle_train_seed(seed: int, *, pbar: tqdm):
     try:
         return train_seed(seed, pbar=pbar)
     except Exception as e:
@@ -321,9 +321,8 @@ total_batches = sum(
 )
 
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
-    pbari = iter(pbar)
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_train_seed, pbar=pbari), runtime_models.keys())
+        executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
 
 # %%
 # load csv
@@ -384,7 +383,7 @@ brute_force_data = {
 }
 
 
-def get_brute_force_for(seed: int, *, pbar: Iterator):
+def get_brute_force_for(seed: int, *, pbar: tqdm):
     cfg = cfgs[seed]
     cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
@@ -442,7 +441,7 @@ def get_brute_force_for(seed: int, *, pbar: Iterator):
             total_samples += size
             total_duration += time.time() - start
             # all_incorrect_sequences.append(incorrect_sequences)
-            next(pbar)
+            pbar.update(batch_size)
 
     # Calculate average loss and accuracy
     average_loss = total_loss / total_samples
@@ -463,7 +462,7 @@ def get_brute_force_for(seed: int, *, pbar: Iterator):
     return row
 
 
-def _handle_brute_force_for(seed: int, *, pbar: Iterator):
+def _handle_brute_force_for(seed: int, *, pbar: tqdm):
     try:
         brute_force_data[seed] = get_brute_force_for(seed, pbar=pbar)
     except Exception as e:
@@ -471,26 +470,24 @@ def _handle_brute_force_for(seed: int, *, pbar: Iterator):
         traceback.print_exc()
 
 
-total_batches = sum(
-    1
-    + (
-        len(
-            SequenceDataset(
-                seq_len=runtime_models[seed][1].cfg.n_ctx,
-                vocab_size=runtime_models[seed][1].cfg.d_vocab,
-            )
+lengths = [
+    len(
+        SequenceDataset(
+            seq_len=runtime_models[seed][1].cfg.n_ctx,
+            vocab_size=runtime_models[seed][1].cfg.d_vocab,
         )
-        - 1
     )
-    // batch_size
     for seed in runtime_models.keys()
+]
+
+total_batches = sum(
+    length - length % batch_size + (batch_size if length % batch_size != 0 else 0)
+    for length in lengths
 )
 
-
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
-    pbari = iter(pbar)
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_brute_force_for, pbar=pbari), cfgs.values())
+        executor.map(partial(_handle_brute_force_for, pbar=pbar), runtime_models.keys())
 
 new_data = [brute_force_data[seed] for seed in sorted(brute_force_data.keys())]
 

@@ -228,7 +228,8 @@ cfgs = {
 }
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
 cfg_hashes_for_filename = {
-    seed: cfg_hash.replace("/", "__SLASH__") for seed, cfg_hash in cfg_hashes.items()
+    seed: f"{seed}_{cfg_hashes[seed].replace('/', '__SLASH__')}"
+    for seed, cfg in cfgs.items()
 }
 datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
 # %%
@@ -371,6 +372,7 @@ latex_values["BruteForceNumBatches"] = int(
 total_loss = 0.0
 total_accuracy = 0.0
 total_samples = 0
+total_duration = 0.0
 all_incorrect_sequences = []
 
 brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
@@ -381,11 +383,15 @@ latex_values["BruteForceCPU"] = brute_force_proof_deterministic
 @torch.no_grad()
 def _run_batch_loss_accuracy(
     i: int, batch_size: int, return_incorrect_sequences: bool = True
-) -> Union[Tuple[float, float, int], Tuple[Tuple[float, float, int], Tensor]]:
+) -> Tuple[
+    Union[Tuple[float, float, int], Tuple[Tuple[float, float, int], Tensor]], float
+]:
     batch = all_tokens_dataset[i : i + batch_size]
     size = batch.shape[0]
     device = default_device(deterministic=brute_force_proof_deterministic)
     batch.to(device)
+    duration = 0.0
+    start = time.time()
     labels = training_wrapper.config.experiment.get_ground_truth(batch)
     xs, ys, y_preds = training_wrapper.compute_batch((batch, labels), device=device)
     loss = training_wrapper.loss_fn(
@@ -393,9 +399,10 @@ def _run_batch_loss_accuracy(
     ).item()
     full_accuracy = training_wrapper.acc_fn_per_seq(y_preds, ys)
     accuracy = full_accuracy.float().mean().item()
+    duration += time.time() - start
     if return_incorrect_sequences:
-        return (loss, accuracy, size), xs[~full_accuracy]
-    return loss, accuracy, size
+        return ((loss, accuracy, size), xs[~full_accuracy]), duration
+    return (loss, accuracy, size), duration
 
 
 with memoshelve(
@@ -406,11 +413,14 @@ with memoshelve(
     get_hash=str,
 )() as run_batch_loss_accuracy:
     for i in tqdm(range(0, len(all_tokens_dataset), batch_size)):
-        (loss, accuracy, size), incorrect_sequences = run_batch_loss_accuracy(i, batch_size)  # type: ignore
+        ((loss, accuracy, size), incorrect_sequences), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
+        total_duration += duration
         # Accumulate loss and accuracy
+        start = time.time()
         total_loss += loss * size
         total_accuracy += accuracy * size
         total_samples += size
+        total_duration += time.time() - start
         all_incorrect_sequences.append(incorrect_sequences)
 
 # Calculate average loss and accuracy
@@ -423,6 +433,7 @@ latex_values["BruteForceLossFloat"] = average_loss
 latex_values["BruteForceAccuracyFloat"] = average_accuracy
 latex_values["BruteForceNumCorrect"] = num_correct_sequences
 latex_values["BruteForceNumIncorrect"] = num_incorrect_sequences
+latex_values["BruteForceTimeFloat"] = total_duration
 # %%
 print(f"Brute force proof:")
 print(f"Model Accuracy: {average_accuracy * 100}%")
@@ -2198,7 +2209,7 @@ with torch.no_grad():
             (
                 lambda cfg: (
                     cfg,
-                    analysis_subcubic.find_min_gaps_with_EQKE(
+                    *analysis_subcubic.find_min_gaps_with_EQKE(
                         model=model,
                         **find_min_gaps_kwargs,  # type: ignore
                         **size_and_query_directions_kwargs,
@@ -2207,6 +2218,7 @@ with torch.no_grad():
                         position=1,
                         leave=(cfg is all_configs[-1]),
                         desc=cfg.short_description(),
+                        record_time=True,
                     ),
                 )
             ),
@@ -2225,7 +2237,7 @@ with torch.no_grad():
                 or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway
             ]
 
-        for tricks, min_gaps in min_gaps_lists[use_exact_EQKE]:
+        for tricks, min_gaps, _proof_search_duration in min_gaps_lists[use_exact_EQKE]:
             postkey = latexdescr + tricks.short_description(latex=True)
             print(f"==========={descr}=============================\nTricks: {tricks}")
             # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
@@ -2302,7 +2314,7 @@ with torch.no_grad():
                         ) ** n_copies_nonmax * math.comb(
                             model.cfg.n_ctx - 1, n_copies_nonmax
                         )
-            for tricks, v in min_gaps_lists[use_exact_EQKE]:
+            for tricks, v, _proof_search_time in min_gaps_lists[use_exact_EQKE]:
                 postkey = filedescr + tricks.short_description(latex=False)
                 postlatexkey = latexdescr + tricks.short_description(latex=True)
                 v = v.flatten().detach().cpu()

@@ -1,4 +1,5 @@
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
+import time
 from functools import reduce
 import torch
 from jaxtyping import Float, Integer
@@ -40,7 +41,16 @@ def find_min_gaps_with_EQKE(
     position: Optional[int] = None,
     leave: Optional[bool] = None,
     desc: Optional[str] = None,
-) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+    record_time: bool = False,
+) -> Union[
+    Tuple[
+        Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"],  # noqa: F722
+        float,
+    ],
+    Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"],  # noqa: F722
+]:
+    duration = 0.0
+    start = time.time()
     if EVOU is None:
         EVOU = all_EVOU(model)
     if PVOU is None:
@@ -79,7 +89,7 @@ def find_min_gaps_with_EQKE(
     # cur_EUPU_high_rank = torch.zeros_like(EUPU) if svd_EUPU else EUPU
     # cur_EUPU_max_err = torch.tensor(0) if not svd_EUPU else EUPU_err_upper_bound
 
-    return find_min_gaps(
+    result = find_min_gaps(
         EQKE=cur_EQKE,
         EQKE_err_upper_bound=EQKE_err_upper_bound,
         EQKE_pos_err=EQKE_pos_err,
@@ -94,6 +104,10 @@ def find_min_gaps_with_EQKE(
         W_U=W_U,
         W_EP_direction=W_EP_direction,
     )
+    duration += time.time() - start
+    if record_time:
+        return result, duration
+    return result
 
 
 @torch.no_grad()

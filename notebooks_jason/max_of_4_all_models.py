@@ -139,7 +139,7 @@ GIT_SHA_SHORT_PATH = (
     Path(__file__).with_suffix("") / "all-models-values-git-sha-short.txt"
 )
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
-N_THREADS: Optional[int] = 2
+N_THREADS: Optional[int] = 32
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
 # %%
 for name, (args, kwargs) in [
@@ -258,13 +258,12 @@ train_total_samples = {}
 train_measurement_deterministic: bool = False  # @param {type:"boolean"}
 train_average_loss = {}
 train_average_accuracy = {}
-dataloader_iter: Iterator
 
 
 # loop for computing overall loss and accuracy
 @torch.no_grad()
 def _run_train_batch_loss_accuracy(
-    seed: int, i: int, batch_size: int
+    seed: int, i: int, batch_size: int, *, dataloader_iter: Iterator
 ) -> Tuple[float, float, int]:
     xs, ys = next(dataloader_iter)
     device = default_device(deterministic=train_measurement_deterministic)
@@ -275,8 +274,7 @@ def _run_train_batch_loss_accuracy(
     return loss, accuracy, batch_size
 
 
-for seedi, seed in enumerate(tqdm(runtime_models.keys(), desc="seed", position=0)):
-    leave = seedi == len(runtime_models.keys()) - 1
+def train_seed(seed: int, pbar: Iterator):
     train_total_loss[seed] = 0.0
     train_total_accuracy[seed] = 0.0
     train_total_samples[seed] = 0
@@ -286,29 +284,44 @@ for seedi, seed in enumerate(tqdm(runtime_models.keys(), desc="seed", position=0
     dataloader = datamodule.train_dataloader()
     dataloader_iter = iter(dataloader)
     with memoshelve(
-        _run_train_batch_loss_accuracy,
+        partial(_run_train_batch_loss_accuracy, dataloader_iter=dataloader_iter),
         filename=cache_dir
         / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-{cfg_hashes_for_filename[seed]}-{train_measurement_deterministic}",
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     )() as run_batch_loss_accuracy:
-        for i in tqdm(
-            range(0, len(dataloader)),
-            desc=f"batches",
-            position=1,
-            leave=leave,
-        ):
+        for i in range(0, len(dataloader)):
             loss, accuracy, size = run_batch_loss_accuracy(seed, i, cfgs[seed].batch_size)  # type: ignore
             # Accumulate loss and accuracy
             train_total_loss[seed] += loss * size
             train_total_accuracy[seed] += accuracy * size
             train_total_samples[seed] += size
+            next(pbar)
 
     # Calculate average loss and accuracy
     train_average_loss[seed] = train_total_loss[seed] / train_total_samples[seed]
     train_average_accuracy[seed] = (
         train_total_accuracy[seed] / train_total_samples[seed]
     )
+
+
+def _handle_train_seed(seed: int, *, pbar: Iterator):
+    try:
+        return train_seed(seed, pbar=pbar)
+    except Exception as e:
+        print(f"Error training seed {seed}: {e}")
+        traceback.print_exc()
+
+
+total_batches = sum(
+    len(datamodules[seed].train_dataloader()) for seed in runtime_models.keys()
+)
+
+with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
+    pbari = iter(pbar)
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_train_seed, pbar=pbari), cfgs.values())
+
 # %%
 # load csv
 train_columns = ["seed", "loss", "accuracy", "model-seed", "dataset-seed"]
@@ -362,11 +375,13 @@ batch_size = 4096  # 16_384 # 8182
 
 unknown_seeds = set(runtime_models.keys()) - set(brute_force_results["seed"])
 known_seeds = set(runtime_models.keys()) - unknown_seeds
-new_data = []
-for seedi, seed in enumerate(
-    tqdm(unknown_seeds, desc="seed for brute force", position=0)
-):
-    leave = seedi == len(unknown_seeds) - 1
+brute_force_data = {
+    seed: brute_force_results[brute_force_results["seed"] == seed].iloc[0].to_dict()
+    for seed in known_seeds
+}
+
+
+def get_brute_force_for(seed: int, *, pbar: Iterator):
     cfg = cfgs[seed]
     cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
@@ -414,12 +429,7 @@ for seedi, seed in enumerate(
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     )() as run_batch_loss_accuracy:
-        for i in tqdm(
-            range(0, len(all_tokens_dataset), batch_size),
-            desc=f"batch for {seed}",
-            position=1,
-            leave=leave,
-        ):
+        for i in range(0, len(all_tokens_dataset), batch_size):
             ((loss, accuracy, size), incorrect_sequences), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
             total_duration += duration
             # Accumulate loss and accuracy
@@ -429,6 +439,7 @@ for seedi, seed in enumerate(
             total_samples += size
             total_duration += time.time() - start
             # all_incorrect_sequences.append(incorrect_sequences)
+            next(pbar)
 
     # Calculate average loss and accuracy
     average_loss = total_loss / total_samples
@@ -446,11 +457,41 @@ for seedi, seed in enumerate(
         "num_incorrect": num_incorrect_sequences,
         "duration": total_duration,
     }
-    new_data.append(row)
+    return row
 
-for seed in known_seeds:
-    row = brute_force_results[brute_force_results["seed"] == seed].iloc[0]
-    new_data.append(row)
+
+def _handle_brute_force_for(seed: int, *, pbar: Iterator):
+    try:
+        brute_force_data[seed] = get_brute_force_for(seed, pbar=pbar)
+    except Exception as e:
+        print(f"Error computing brute force proof for seed {seed}: {e}")
+        traceback.print_exc()
+
+
+total_batches = sum(
+    1
+    + (
+        len(
+            SequenceDataset(
+                seq_len=runtime_models[seed][1].cfg.n_ctx,
+                vocab_size=runtime_models[seed][1].cfg.d_vocab,
+            )
+        )
+        - 1
+    )
+    // batch_size
+    for seed in runtime_models.keys()
+)
+
+
+with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
+    pbari = iter(pbar)
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_brute_force_for, pbar=pbari), cfgs.values())
+
+new_data = []
+for seed in sorted(runtime_models.keys()):
+    new_data.append(brute_force_data[seed])
 
 if os.path.exists(BRUTE_FORCE_CSV_PATH):
     brute_force_results = pd.read_csv(BRUTE_FORCE_CSV_PATH)

@@ -88,7 +88,7 @@ GIT_SHA_SHORT_PATH = (
     Path(__file__).with_suffix("") / "all-models-values-git-sha-short.txt"
 )
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
-N_THREADS: Optional[int] = 64
+N_THREADS: Optional[int] = 80
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
 # %%
 for name, (args, kwargs) in [

@@ -16,57 +16,23 @@ else:
 import traceback
 import sys
 import os
-import re
 import time
 import subprocess
 import pandas as pd
-from functools import reduce, partial
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 import math
-from scipy import stats
-from contextlib import contextmanager
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.figure
-import tikzplotlib
 import matplotlib
 from typing import (
-    Literal,
     Optional,
     Tuple,
     Union,
     Iterator,
 )
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
 
-from gbmi.exp_max_of_n.plot import (
-    scatter_attention_difference_vs_gap,
-    hist_attention_difference_over_gap,
-    hist_EVOU_max_minus_diag_logit_diff,
-)
-from gbmi.analysis_tools.plot import (
-    hist_EVOU_max_logit_diff,
-    weighted_histogram,
-    Colorscale,
-    colorscale_to_cmap,
-    imshow,
-    line,
-)
-from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-from gbmi.analysis_tools.utils import pm_round, pm_mean_std
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
-from gbmi.utils.lowrank import LowRankTensor
-import gbmi.utils.ein as ein
-import gbmi.utils.images as image_utils
-from gbmi.utils.images import trim_plotly_figure
 from gbmi.utils.memoshelve import memoshelve
-from gbmi.exp_max_of_n.analysis import (
-    find_second_singular_contributions,
-    find_size_and_query_direction,
-)
-from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
     IterableDatasetCfg,
     MaxOfN,
@@ -78,33 +44,18 @@ from gbmi.model import Config
 import torch
 from tqdm.auto import tqdm
 import numpy as np
-from jaxtyping import Float, Integer
 from torch import Tensor
-import plotly.express as px
-from transformer_lens import HookedTransformerConfig, HookedTransformer
+from transformer_lens import HookedTransformerConfig
 from pathlib import Path
-from gbmi.utils import default_device, shuffle_tensor
+from gbmi.utils import default_device
 from gbmi.utils.sequences import (
     SequenceDataset,
 )
-from gbmi.verification_tools.decomp import (
-    factor_contribution,
-    bound_max_row_diff_by_SVD,
-)
 
-from gbmi.verification_tools.general import EU_PU
-from gbmi.verification_tools.l1h1 import (
-    all_EQKE,
-    all_EQKP,
-    all_EVOU,
-    all_PVOU,
-)
-from gbmi.verification_tools.utils import complexity_of
 from gbmi.utils.hashing import get_hash_ascii
 import gbmi.utils.git as git
 import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
-import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 
@@ -139,7 +90,7 @@ GIT_SHA_SHORT_PATH = (
     Path(__file__).with_suffix("") / "all-models-values-git-sha-short.txt"
 )
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
-N_THREADS: Optional[int] = 32
+N_THREADS: Optional[int] = 64
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
 # %%
 for name, (args, kwargs) in [

@@ -439,8 +439,6 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
                 total_duration += time.time() - start
                 # all_incorrect_sequences.append(incorrect_sequences)
                 pbar.update(batch_size)
-                if random.random() < 0.01:
-                    gc.collect()
 
     # Calculate average loss and accuracy
     average_loss = total_loss / total_samples

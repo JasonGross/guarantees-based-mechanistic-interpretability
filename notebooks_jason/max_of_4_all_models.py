@@ -212,11 +212,12 @@ def update_csv_with_rows(
     *,
     subset: str = "seed",
 ):
+    results = None
     if os.path.exists(csv_path):
         results = pd.read_csv(csv_path)
 
     new_df = pd.DataFrame(new_data, columns=columns)
-    if results.empty:
+    if results is None or results.empty:
         results = new_df
     else:
         results = pd.concat([results, new_df], ignore_index=True).drop_duplicates(

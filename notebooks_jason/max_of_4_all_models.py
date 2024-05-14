@@ -192,6 +192,7 @@ with memoshelve(
 
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
+        executor.shutdown(wait=True)
 
 # %%
 training_wrappers = {
@@ -307,6 +308,7 @@ total_batches = sum(
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
+        executor.shutdown(wait=True)
 
 # %%
 # load csv
@@ -465,6 +467,7 @@ total_batches = sum(
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
+        executor.shutdown(wait=True)
 
 update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
@@ -550,6 +553,7 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
 with tqdm(total=len(relevant_seeds), desc="batches for cubic", position=0) as pbar:
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
+        executor.shutdown(wait=True)
 
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
@@ -770,6 +774,7 @@ total_count = sum(
 with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
+        executor.shutdown(wait=True)
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):

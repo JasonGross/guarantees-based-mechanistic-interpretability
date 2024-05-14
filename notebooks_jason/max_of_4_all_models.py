@@ -415,9 +415,8 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
     )() as run_batch_loss_accuracy_heavy:
 
         def _run_batch_loss_accuracy_lightweight(*args):
-            ((loss, accuracy, size), incorrect_sequences), duration = (
-                run_batch_loss_accuracy_heavy(*args, return_incorrect_sequences=False)
-            )
+            res = run_batch_loss_accuracy_heavy(*args)
+            ((loss, accuracy, size), incorrect_sequences), duration = res
             return (loss, accuracy, size), duration
 
         with memoshelve(

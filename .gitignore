@@ -179,6 +179,7 @@ notebooks_jason/max_of_4/values.tex
 notebooks_jason/max_of_4/tikzplotlib-preamble.tex
 notebooks_jason/max_of_4_all_models/*.csv
 notebooks_jason/max_of_4_all_models/*.txt
+notebooks_jason/max_of_4_all_models/*git-diff-info.diff
 .DS_Store
 *.key
 

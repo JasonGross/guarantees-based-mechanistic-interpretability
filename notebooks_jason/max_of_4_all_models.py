@@ -412,20 +412,34 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
         / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
-    )() as run_batch_loss_accuracy:
-        for i in range(0, len(all_tokens_dataset), batch_size):
-            ((loss, accuracy, size), incorrect_sequences), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
-            total_duration += duration
-            # Accumulate loss and accuracy
-            start = time.time()
-            total_loss += loss * size
-            total_accuracy += accuracy * size
-            total_samples += size
-            total_duration += time.time() - start
-            # all_incorrect_sequences.append(incorrect_sequences)
-            pbar.update(batch_size)
-            if random.random() < 0.01:
-                gc.collect()
+    )() as run_batch_loss_accuracy_heavy:
+
+        def _run_batch_loss_accuracy_lightweight(*args):
+            ((loss, accuracy, size), incorrect_sequences), duration = (
+                run_batch_loss_accuracy_heavy(*args, return_incorrect_sequences=False)
+            )
+            return (loss, accuracy, size), duration
+
+        with memoshelve(
+            _run_batch_loss_accuracy_lightweight,
+            filename=cache_dir
+            / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-lightweight-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+            get_hash_mem=(lambda x: x[0]),
+            get_hash=str,
+        )() as run_batch_loss_accuracy:
+            for i in range(0, len(all_tokens_dataset), batch_size):
+                (loss, accuracy, size), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
+                total_duration += duration
+                # Accumulate loss and accuracy
+                start = time.time()
+                total_loss += loss * size
+                total_accuracy += accuracy * size
+                total_samples += size
+                total_duration += time.time() - start
+                # all_incorrect_sequences.append(incorrect_sequences)
+                pbar.update(batch_size)
+                if random.random() < 0.01:
+                    gc.collect()
 
     # Calculate average loss and accuracy
     average_loss = total_loss / total_samples

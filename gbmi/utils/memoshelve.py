@@ -40,7 +40,7 @@ def memoshelve(
                             print(f"Cache miss (disk): {key}")
                         mem_db[mkey] = db[key] = value(*args, **kwargs)
                     except Exception as e:
-                        print(f"Error in {value.__name__} ({filename}) with key {key}")
+                        print(f"Error in {filename} with key {key}")
                         if isinstance(e, (KeyboardInterrupt, SystemExit)):
                             raise e
                         elif isinstance(e, (AttributeError,)):

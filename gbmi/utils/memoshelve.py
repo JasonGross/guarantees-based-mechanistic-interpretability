@@ -35,19 +35,17 @@ def memoshelve(
                     key = get_hash((args, kwargs))
                     try:
                         mem_db[mkey] = db[key]
-                    except KeyError:
-                        if print_cache_miss:
-                            print(f"Cache miss (disk): {key}")
-                        mem_db[mkey] = db[key] = value(*args, **kwargs)
                     except Exception as e:
-                        print(f"Error in {filename} with key {key}")
+                        if isinstance(e, KeyError):
+                            if print_cache_miss:
+                                print(f"Cache miss (disk): {key}")
+                        else:
+                            print(f"Error in {filename} with key {key}")
                         if isinstance(e, (KeyboardInterrupt, SystemExit)):
                             raise e
-                        elif isinstance(e, (AttributeError,)):
-                            del mem_db[mkey]
+                        elif not isinstance(e, (KeyError, AttributeError)):
                             raise e
-                        else:
-                            raise e
+                        mem_db[mkey] = db[key] = value(*args, **kwargs)
                     return mem_db[mkey]
 
             yield delegate

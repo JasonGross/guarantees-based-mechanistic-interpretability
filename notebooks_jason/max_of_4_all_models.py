@@ -15,6 +15,7 @@ else:
 # %%
 import traceback
 import gc
+import random
 import sys
 import os
 import time
@@ -52,7 +53,7 @@ from gbmi.utils import default_device
 from gbmi.utils.sequences import (
     SequenceDataset,
 )
-
+from gbmi.utils.gc import PeriodicGarbageCollector
 from gbmi.utils.hashing import get_hash_ascii
 import gbmi.utils.git as git
 import gbmi.exp_max_of_n.verification.cubic as cubic
@@ -423,6 +424,8 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
             total_duration += time.time() - start
             # all_incorrect_sequences.append(incorrect_sequences)
             pbar.update(batch_size)
+            if random.random() < 0.01:
+                gc.collect()
 
     # Calculate average loss and accuracy
     average_loss = total_loss / total_samples
@@ -467,10 +470,10 @@ total_batches = sum(
 )
 
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
-        executor.shutdown(wait=True)
-gc.collect()
+    with PeriodicGarbageCollector(60):
+        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+            executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
+            executor.shutdown(wait=True)
 update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
 # %% [markdown]
@@ -553,10 +556,10 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
 
 
 with tqdm(total=len(relevant_seeds), desc="batches for cubic", position=0) as pbar:
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
-        executor.shutdown(wait=True)
-gc.collect()
+    with PeriodicGarbageCollector(60):
+        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+            executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
+            executor.shutdown(wait=True)
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
 # %% [markdown]
@@ -774,10 +777,10 @@ total_count = sum(
 )
 
 with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
-        executor.shutdown(wait=True)
-gc.collect()
+    with PeriodicGarbageCollector(60):
+        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+            executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
+            executor.shutdown(wait=True)
 new_data = []
 for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])

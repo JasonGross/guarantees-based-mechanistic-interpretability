@@ -308,10 +308,10 @@ total_batches = sum(
 )
 
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
-        executor.shutdown(wait=True)
-gc.collect()
+    with PeriodicGarbageCollector(60):
+        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+            executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
+            executor.shutdown(wait=True)
 
 # %%
 # load csv

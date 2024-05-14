@@ -92,8 +92,6 @@ GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = 80
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
 # %%
-executor = ThreadPoolExecutor(max_workers=N_THREADS)
-# %%
 for name, (args, kwargs) in [
     ("lscpu", (("lscpu",), {})),
     ("cat-proc-cpuinfo", (("cat", "/proc/cpuinfo"), {})),
@@ -192,9 +190,8 @@ with memoshelve(
         except Exception as e:
             print(f"Error loading model for seed {seed}: {e}")
 
-    res = executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
-    for _ in res:
-        pass
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
 
 # %%
 training_wrappers = {
@@ -308,10 +305,8 @@ total_batches = sum(
 )
 
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
-    # with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-    res = executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
-    for _ in res:
-        pass
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
 
 # %%
 # load csv
@@ -468,10 +463,8 @@ total_batches = sum(
 )
 
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
-    # with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-    res = executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
-    for _ in res:
-        pass
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
 
 update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
@@ -555,10 +548,8 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
 
 
 with tqdm(total=len(relevant_seeds), desc="batches for cubic", position=0) as pbar:
-    # with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-    res = executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
-    for _ in res:
-        pass
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
 
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
@@ -777,11 +768,8 @@ total_count = sum(
 )
 
 with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
-    # with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-    res = executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
-    for _ in res:
-        pass
-
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):

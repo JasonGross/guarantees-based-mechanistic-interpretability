@@ -412,6 +412,7 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
         / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
+        cache={},
     )() as run_batch_loss_accuracy_heavy:
 
         def _run_batch_loss_accuracy_lightweight(*args, **kwargs):

@@ -414,8 +414,8 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
         get_hash=str,
     )() as run_batch_loss_accuracy_heavy:
 
-        def _run_batch_loss_accuracy_lightweight(*args):
-            res = run_batch_loss_accuracy_heavy(*args)
+        def _run_batch_loss_accuracy_lightweight(*args, **kwargs):
+            res = run_batch_loss_accuracy_heavy(*args, **kwargs)
             ((loss, accuracy, size), incorrect_sequences), duration = res
             return (loss, accuracy, size), duration
 

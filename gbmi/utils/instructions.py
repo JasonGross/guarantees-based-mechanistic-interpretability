@@ -474,6 +474,21 @@ class CountTensor:
             parents=(self, *idx_parents),
         )
 
+    def gather(
+        self, dim: int, index: Union["CountTensor", torch.Tensor]
+    ) -> "CountTensor":
+        index = CountTensor.from_numpy(index)
+        return CountTensor(
+            shape=index.shape,
+            count=InstructionCount(),
+            parents=(self, index),
+        )
+
+    def unsqueeze(self, dim: int) -> "CountTensor":
+        shape = list(self.shape)
+        shape.insert(dim, 1)
+        return CountTensor(shape=shape, count=InstructionCount(), parents=(self,))
+
     @property
     def device(self):
         return torch.device("cpu")
@@ -591,3 +606,5 @@ class CountHookedTransformer(HookedTransformer):
 # # %%
 # for i in range(10):
 #     print(cmodel(torch.zeros((i, 6))).full_count().flop)
+
+# %%

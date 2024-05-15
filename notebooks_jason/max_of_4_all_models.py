@@ -545,7 +545,7 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
         filename=cache_dir
         / f"{SHARED_CACHE_STEM}.cubic_verify_proof-{cfg_hash_for_filename}",
         get_hash_mem=(lambda x: 0),
-        get_hash=(lambda x: 0),
+        get_hash=(lambda x: "0"),
     )() as verify_proof:
         cubic_proof_results = verify_proof(cubic_proof_args)
 

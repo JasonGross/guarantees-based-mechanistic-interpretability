@@ -196,7 +196,6 @@ with memoshelve(
 
     with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
         executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
-        executor.shutdown(wait=True)
 gc.collect()
 # %%
 training_wrappers = {
@@ -311,11 +310,10 @@ total_batches = sum(
 )
 
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
-    with PeriodicGarbageCollector(60):
-        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-            executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
-            executor.shutdown(wait=True)
-
+    # with PeriodicGarbageCollector(60):
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
+gc.collect()
 # %%
 # load csv
 train_columns = ["seed", "loss", "accuracy", "model-seed", "dataset-seed"]
@@ -485,10 +483,10 @@ total_batches = sum(
 )
 
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
-    with PeriodicGarbageCollector(60):
-        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-            executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
-            executor.shutdown(wait=True)
+    # with PeriodicGarbageCollector(60):
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
+gc.collect()
 update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
 # %% [markdown]
@@ -579,10 +577,10 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
 ks = [cfgs[seed].experiment.model_config.d_vocab for seed in relevant_seeds]
 total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
 with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
-    with PeriodicGarbageCollector(60):
-        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-            executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
-            executor.shutdown(wait=True)
+    # with PeriodicGarbageCollector(60):
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
+gc.collect()
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
 # %% [markdown]
@@ -800,10 +798,10 @@ total_count = sum(
 )
 
 with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
-    with PeriodicGarbageCollector(60):
-        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-            executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
-            executor.shutdown(wait=True)
+    # with PeriodicGarbageCollector(60):
+    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+        executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
+gc.collect()
 new_data = []
 for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])

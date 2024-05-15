@@ -265,7 +265,20 @@ class CountTensor:
     __rdiv__ = binary
     __truediv__ = binary
     __rtruediv__ = binary
+    __floordiv__ = binary
+    __rfloordiv__ = binary
+    __mod__ = binary
+    __rmod__ = binary
+    __or__ = binary
+    __ror__ = binary
+    __and__ = binary
+    __rand__ = binary
+    __xor__ = binary
+    __rxor__ = binary
 
+    __abs__ = unary
+    __neg__ = unary
+    __pos__ = unary
     sqrt = unary
     exp = unary
     log = unary

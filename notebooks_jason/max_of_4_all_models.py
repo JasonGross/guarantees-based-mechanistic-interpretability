@@ -139,6 +139,8 @@ seeds = (
     if compute_expensive_average_across_many_models
     else []
 )
+if 123 in seeds:
+    seeds = [123] + [s for s in seeds if s != 123]
 cfgs = {
     seed: Config(
         experiment=MaxOfN(
@@ -169,7 +171,7 @@ cfgs = {
         batch_size=128,
         train_for=(3000, "steps"),
     )
-    for seed in [123] + list(seeds)
+    for seed in seeds
 }
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
 datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}

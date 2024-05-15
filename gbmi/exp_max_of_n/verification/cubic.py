@@ -19,6 +19,8 @@ def compute_extreme_softmaxed_right_attention_cubic_simple(
     EQKP: Float[Tensor, "d_vocab_q n_ctx_k"],  # noqa: F722
     attn_scale: Union[Float[Tensor, ""], float],  # noqa F722
     position: Optional[int] = None,
+    *,
+    pbar: Optional[tqdm] = None,
 ) -> Float[
     Tensor,
     "minmax=2 attn=3 d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_copies_nonmax",  # noqa: F722
@@ -78,10 +80,15 @@ def compute_extreme_softmaxed_right_attention_cubic_simple(
     # we sort EQKP so that higher-attention positions are at the back, so we can put the max token at the front.
     EQKP, EQKPm1 = EQKP[:, :-1].sort(dim=-1).values, EQKP[:, -1]
 
-    for max_tok in tqdm(range(d_vocab), desc="max_tok", position=position):
+    max_tok_range = range(d_vocab)
+    if pbar is not None:
+        max_tok_range = tqdm(max_tok_range, desc="max_tok", position=position)
+    for max_tok in max_tok_range:
         for q_tok in range(max_tok + 1):
             tmp[:, -1] = EQKE[q_tok, q_tok] + EQKPm1[q_tok]
             for k_tok in range(max_tok + 1):
+                if pbar is not None:
+                    pbar.update(1)
                 if k_tok == max_tok:
                     if q_tok == max_tok:
                         # only max tok, so we pay 100% attention to it
@@ -358,6 +365,7 @@ def verify_proof(
     print_complexity: Union[bool, Callable[[str], None]] = True,
     print_results: Union[bool, Callable[[str], None]] = True,
     sanity_check: bool = True,
+    pbar: Optional[tqdm] = None,
 ):
     if isinstance(print_complexity, bool):
         print_complexity = print if print_complexity else lambda x: None
@@ -401,6 +409,7 @@ def verify_proof(
         EQKE=EQKE,
         EQKP=EQKP,
         attn_scale=model.blocks[0].attn.attn_scale,
+        pbar=pbar,
     )
     print_complexity(
         f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"

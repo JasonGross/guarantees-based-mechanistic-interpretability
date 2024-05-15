@@ -515,7 +515,7 @@ cubic_data = {
 }
 
 
-def get_cubic_row(seed: int) -> dict:
+def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
     cfg = cfgs[seed]
     cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
@@ -541,7 +541,7 @@ def get_cubic_row(seed: int) -> dict:
         cubic_proof_args, duration_proof_search = find_proof()
 
     with memoshelve(
-        partial(cubic.verify_proof, model),
+        partial(cubic.verify_proof, model, pbar=pbar),
         filename=cache_dir
         / f"{SHARED_CACHE_STEM}.cubic_verify_proof-{cfg_hash_for_filename}",
         get_hash_mem=(lambda x: 0),
@@ -561,14 +561,16 @@ def get_cubic_row(seed: int) -> dict:
 
 def _handle_cubic(seed: int, *, pbar: tqdm):
     try:
-        cubic_data[seed] = get_cubic_row(seed)
-        pbar.update(1)
+        cubic_data[seed] = get_cubic_row(seed, pbar=pbar)
     except Exception as e:
         print(f"Error computing cubic proof for seed {seed}: {e}")
         traceback.print_exc()
 
 
-with tqdm(total=len(relevant_seeds), desc="batches for cubic", position=0) as pbar:
+# \sum_{i=0}^{k} i^2 = k * (k+1) * (k*2+1) // 6
+ks = [cfgs[seed].experiment.model_config.d_vocab for seed in relevant_seeds]
+total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
+with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     with PeriodicGarbageCollector(60):
         with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
             executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)

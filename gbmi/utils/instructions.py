@@ -474,9 +474,14 @@ class CountTensor:
         )
 
     @staticmethod
-    def zeros(*args, **kwargs) -> "CountTensor":
+    def zeros(*size: Union[int, Sequence[int]]) -> "CountTensor":
+        if all(isinstance(s, int) for s in size):
+            return CountTensor(
+                shape=tuple(size),
+            )
+        assert len(size) == 1, size
         return CountTensor(
-            shape=torch.empty(*args, **kwargs).shape, count=InstructionCount()
+            shape=tuple(size[0]),
         )
 
     ones = zeros
@@ -660,25 +665,36 @@ class DefaultCountTensorWrapper:
 
 
 class PatchTorch:
-    torch_patches = (
-        ("where", True),
-        ("isnan", False),
-        ("triu", False),
-        ("tril", False),
-        ("zeros", True),
-        ("ones", True),
-        ("zeros_like", True),
-        ("ones_like", True),
-        ("stack", True),
-        ("cat", True),
-    )
+    _torch_is_static = {
+        "where": True,
+        "isnan": False,
+        "triu": False,
+        "tril": False,
+        "zeros": True,
+        "ones": True,
+        "zeros_like": True,
+        "ones_like": True,
+        "stack": True,
+        "cat": True,
+    }
+
+    def __init__(self, **kwargs: bool):
+        self.torch_patches = tuple(
+            name for name in PatchTorch._torch_is_static if kwargs.get(name, True)
+        )
 
     def __enter__(self):
-        for name, static in PatchTorch.torch_patches:
-            setattr(torch, name, DefaultCountTensorWrapper(torch, name, static=static))
+        for name in self.torch_patches:
+            setattr(
+                torch,
+                name,
+                DefaultCountTensorWrapper(
+                    torch, name, static=PatchTorch._torch_is_static[name]
+                ),
+            )
 
     def __exit__(self, exc_type, exc_value, traceback):
-        for name, _static in PatchTorch.torch_patches:
+        for name in self.torch_patches:
             getattr(torch, name).unwrap()
 
 
@@ -695,7 +711,7 @@ class CountHookedTransformer(HookedTransformer):
                     )
 
     def forward(self, *args, **kwargs):
-        with PatchTorch():
+        with PatchTorch(triu=False, tril=False):
             return super().forward(*args, **kwargs)
 
 

@@ -822,10 +822,11 @@ import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 
+# must be outside PatchTorch to avoid triu, tril
+cmodel = CountHookedTransformer(model)
 with PatchTorch():
-    print(torch.zeros)
     cubic_proof_instruction_count_results = cubic.verify_proof(
-        CountHookedTransformer(model),
+        cmodel,
         cubic_proof_args,
         print_complexity=False,
         print_results=False,

@@ -626,18 +626,13 @@ class CountHookedTransformer(HookedTransformer):
     def __init__(self, model: HookedTransformer):
         super().__init__(model.cfg)
 
-        for mod in model.modules():
-            print(f"Patching {mod}")
+        for mod in self.modules():
+            # print(f"Patching {mod}")
             for name, value in mod.named_parameters():
                 if "." not in name:
                     mod.__dict__[name] = mod._parameters[name] = CountTensor.from_numpy(
                         value
                     )
-                    print(getattr(mod, name))
-                    # print(isinstance(nn.Parameter(CountTensor.from_numpy(value)), nn.Parameter))
-                    # mod.register_parameter(name, nn.Parameter(CountTensor.from_numpy(value)))
-                    # setattr(mod, name, nn.Parameter(CountTensor.from_numpy(value)))
-                    # mod.__dict__[name] = CountTensor.from_numpy(value)
 
     def forward(self, *args, **kwargs):
         with PatchTorch():
@@ -651,7 +646,9 @@ class CountHookedTransformer(HookedTransformer):
 #     )
 # )
 # cmodel = CountHookedTransformer(model)
-# ## %%
+# # %%
+# getattr(cmodel.embed,"W_E")
+# # %%
 # # CountEmbed.count_forward(model.embed, CountTensor([1, 6]))
 # # %%
 # for i in range(10):

@@ -376,6 +376,9 @@ class CountTensor:
             parents=(self,),
         )
 
+    def T(self) -> "CountTensor":
+        return self.transpose(-2, -1)
+
     @staticmethod
     def einsum(equation: str, *args: "CountTensor") -> "CountTensor":
         assert "..." not in equation, "Ellipsis not yet supported"

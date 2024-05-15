@@ -130,6 +130,7 @@ import gbmi.utils.instructions as instructions
 from gbmi.utils.instructions import (
     InstructionCount,
     CountTensor,
+    PatchTorch,
     CountHookedTransformer,
 )
 
@@ -816,13 +817,14 @@ from gbmi.utils.instructions import (
 )
 import gbmi.verification_tools.general
 
-cubic_proof_instruction_count_results = cubic.verify_proof(
-    CountHookedTransformer(model),
-    cubic_proof_args,
-    print_complexity=False,
-    print_results=False,
-    sanity_check=False,
-)
+with PatchTorch():
+    cubic_proof_instruction_count_results = cubic.verify_proof(
+        CountHookedTransformer(model),
+        cubic_proof_args,
+        print_complexity=False,
+        print_results=False,
+        sanity_check=False,
+    )
 # HERE
 # %%
 largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]

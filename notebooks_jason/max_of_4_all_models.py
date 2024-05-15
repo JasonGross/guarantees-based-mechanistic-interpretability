@@ -707,6 +707,8 @@ def try_all_proofs_subcubic(seed: int, *, pbar: tqdm) -> list[dict]:
                 min_gaps=min_gaps,
                 tricks=tricks,
                 sanity_check=False,
+                print_complexity=False,
+                print_results=False,
             )
             err_upper_bound = proof_results["err_upper_bound"]
             prooftime = proof_results["prooftime"]

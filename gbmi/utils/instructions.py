@@ -468,12 +468,18 @@ class CountTensor:
         )
 
     @staticmethod
-    def zeros_like(other: "CountTensor") -> "CountTensor":
-        return CountTensor(shape=other.shape, count=InstructionCount())
+    def zeros(*args, **kwargs) -> "CountTensor":
+        return CountTensor(
+            shape=torch.empty(*args, **kwargs).shape, count=InstructionCount()
+        )
+
+    ones = zeros
 
     @staticmethod
-    def ones_like(other: "CountTensor") -> "CountTensor":
-        return CountTensor(shape=other.shape, count=InstructionCount())
+    def zeros_like(other: "CountTensor") -> "CountTensor":
+        return CountTensor.zeros(other.shape)
+
+    ones_like = zeros_like
 
     @staticmethod
     def stack(
@@ -651,7 +657,10 @@ class PatchTorch:
     torch_patches = (
         ("where", True),
         ("isnan", False),
+        ("zeros", True),
+        ("ones", True),
         ("zeros_like", True),
+        ("ones_like", True),
         ("stack", True),
         ("cat", True),
     )

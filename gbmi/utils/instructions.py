@@ -3,7 +3,6 @@
 # %%
 from __future__ import annotations
 from dataclasses import dataclass
-from collections import defaultdict
 from typing import (
     Sequence,
     Literal,
@@ -21,20 +20,11 @@ from typing import (
 from types import EllipsisType
 import numpy as np
 import torch
-import torch.nn as nn
-from transformer_lens import HookedTransformer, HookedTransformerConfig
-from transformer_lens.components import (
-    Embed,
-    PosEmbed,
-    Unembed,
-    LayerNorm,
-    Attention,
-    LayerNormPre,
-)
+from torch import empty as torch_zeros  # for stability under hot patching
+from transformer_lens import HookedTransformer
 import fancy_einsum
 import einops
 import einops._backends
-import transformer_lens.utils
 
 
 @dataclass
@@ -165,6 +155,9 @@ TensorOrCountTensorIndexType = Union[
 class count_values_indices(NamedTuple):
     values: CountTensor
     indices: CountTensor
+
+
+mode: Literal["verify", "search"] = "verify"
 
 
 @dataclass
@@ -474,15 +467,12 @@ class CountTensor:
         )
 
     @staticmethod
-    def zeros(*size: Union[int, Sequence[int]]) -> "CountTensor":
-        if all(isinstance(s, int) for s in size):
-            return CountTensor(
-                shape=tuple(size),
-            )
-        assert len(size) == 1, size
-        return CountTensor(
-            shape=tuple(size[0]),
-        )
+    def zeros(*sizes: Union[int, Sequence[int]]) -> "CountTensor":
+        if len(sizes) == 0:
+            return CountTensor(shape=())
+        if len(sizes) == 1 and isinstance(sizes[0], Sequence):
+            return CountTensor.zeros(*sizes[0])
+        return CountTensor(shape=tuple(sizes))
 
     ones = zeros
 
@@ -526,7 +516,7 @@ class CountTensor:
         indices: TensorOrCountTensorIndexType,
     ) -> Tuple[list["CountTensor"], TensorIndexType]:
         if isinstance(indices, CountTensor):
-            return [indices], torch.zeros(indices.shape, dtype=torch.long)
+            return [indices], torch_zeros(indices.shape, dtype=torch.long)
         elif isinstance(indices, torch.Tensor):
             return CountTensor.accumulate_indices(CountTensor.from_numpy(indices))
         elif isinstance(indices, tuple):
@@ -558,7 +548,7 @@ class CountTensor:
             isinstance(idx, CountTensor) for idx in idx_parents
         ), f"Expected CountTensor, got {idx_parents} ({[type(idx) for idx in idx_parents]})"
         return CountTensor(
-            shape=torch.zeros(self.shape)[tindices].shape,
+            shape=torch_zeros(self.shape)[tindices].shape,
             count=InstructionCount(),
             parents=(self, *idx_parents),
         )
@@ -595,6 +585,23 @@ class CountTensor:
         if dim is None:
             return self.shape
         return self.shape[dim]
+
+    def sort(self, dim: int = -1, *args, **kwargs) -> count_values_indices:
+        idxs_to_sort = list(self.shape)
+        idxs_to_sort.pop(dim)
+        arrays_to_sort = int(np.prod(idxs_to_sort))
+        n = self.shape[dim]
+        match mode:
+            case "verify":
+                flops_to_sort = n - 1
+            case "search":
+                raise NotImplementedError("Search mode not yet implemented for sort")
+        result = CountTensor(
+            shape=self.shape,
+            count=InstructionCount(flop=arrays_to_sort * flops_to_sort),
+            parents=(self,),
+        )
+        return count_values_indices(result, result)
 
     def __hash__(self) -> int:
         return hash((tuple(self.shape), self.count, tuple(self.parents)))

@@ -126,6 +126,12 @@ import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
+import gbmi.utils.instructions as instructions
+from gbmi.utils.instructions import (
+    InstructionCount,
+    CountTensor,
+    CountHookedTransformer,
+)
 
 
 try:
@@ -365,6 +371,44 @@ latex_values["BruteForceBatchSize"] = batch_size
 latex_values["BruteForceNumBatches"] = int(
     math.ceil(len(all_tokens_dataset) / batch_size)
 )
+
+
+# %%
+@torch.no_grad()
+def single_batch_instruction_count(
+    model: HookedTransformer, batch_size: int
+) -> InstructionCount:
+    batch = CountTensor.from_numpy(all_tokens_dataset[:batch_size])
+    size = batch.shape[0]
+    labels: CountTensor = training_wrapper.config.experiment.get_ground_truth(batch)
+    xs, ys = batch, labels
+    y_preds: CountTensor = CountHookedTransformer(model)(xs)
+    loss: CountTensor = training_wrapper.loss_fn(
+        y_preds, ys, log_softmax=CountTensor.log_softmax
+    )
+    full_accuracy: CountTensor = training_wrapper.acc_fn_per_seq(y_preds, ys)
+    accuracy: CountTensor = full_accuracy.float().mean()
+    result: CountTensor = loss + accuracy
+    return result.full_count()
+
+
+def brute_force_instruction_count(
+    model: HookedTransformer, batch_size: int
+) -> InstructionCount:
+    n_full_batches = len(all_tokens_dataset) // batch_size
+    final_batch_size = len(all_tokens_dataset) % batch_size
+    single_batch = single_batch_instruction_count(model, batch_size)
+    result = single_batch * n_full_batches
+    if final_batch_size != 0:
+        result += single_batch_instruction_count(model, final_batch_size)
+    return result
+
+
+latex_values["BruteForceInstructionCount"] = brute_force_instruction_count(
+    model, batch_size
+).flop
+# %%
+# %%
 # Resetting the DataLoader without shuffle for consistent processing
 # data_loader = DataLoader(all_tokens_dataset, batch_size=batch_size, shuffle=False)
 

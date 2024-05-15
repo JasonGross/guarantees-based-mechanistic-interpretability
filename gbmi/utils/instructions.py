@@ -3,6 +3,10 @@
 # %%
 from __future__ import annotations
 from dataclasses import dataclass
+from contextlib import contextmanager
+from functools import partial
+from types import NoneType
+from ctypes import c_uint64
 from typing import (
     Sequence,
     Literal,
@@ -12,10 +16,12 @@ from typing import (
     Union,
     Tuple,
     Collection,
+    Callable,
     Iterator,
     Any,
     Protocol,
     TypeVar,
+    overload,
 )
 from types import EllipsisType
 import numpy as np
@@ -25,7 +31,86 @@ from transformer_lens import HookedTransformer
 import fancy_einsum
 import einops
 import einops._backends
+# %%
+try:
+    import cirron
+    import cirron.cirron
+    HAS_CIRRON = True
 
+except Exception as e:
+    print(f"Warning: perf cpu instruction counting not available ({e})")
+    HAS_CIRRON = False
+    class _cirron:
+        FAKE = True
+        class Collector:
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc_value, traceback):
+                pass
+        class cirron:
+            class Counter:
+                pass
+    cirron = _cirron
+# from cirron import Collector
+# from cirron.cirron import Counter
+
+class PerfCounter(cirron.cirron.Counter):
+    @staticmethod
+    def lift(f: Callable[..., int], *args, **kwargs) -> "PerfCounter":
+        if hasattr(cirron, "FAKE"):
+            return PerfCounter()
+        apply_f = lambda attr: c_uint64(f(*[getattr(c, attr).value if isinstance(c, PerfCounter) else c for c in args],
+                                    **{k: getattr(c, attr).value if isinstance(c, PerfCounter) else c for k, c in kwargs.items()}))
+        return PerfCounter(
+            time_enabled_ns=apply_f("time_enabled_ns"),
+            instruction_count=apply_f("instruction_count"),
+            branch_misses=apply_f("branch_misses"),
+            page_faults=apply_f("page_faults"),
+        )
+
+    def __add__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
+        return PerfCounter.lift(int.__add__, self, other)
+    def __radd__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
+        return PerfCounter.lift(int.__radd__, self, other)
+    def __sub__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
+        return PerfCounter.lift(int.__sub__, self, other)
+    def __rsub__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
+        return PerfCounter.lift(int.__rsub__, self, other)
+    def __abs__(self) -> "PerfCounter":
+        return PerfCounter.lift(int.__abs__, self)
+    def __neg__(self) -> "PerfCounter":
+        return PerfCounter.lift(int.__neg__, self)
+    def __pos__(self) -> "PerfCounter":
+        return PerfCounter.lift(int.__pos__, self)
+    def __mul__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__mul__, self, other)
+    def __rmul__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__rmul__, self, other)
+    def __floordiv__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__floordiv__, self, other)
+    def __rfloordiv__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__rfloordiv__, self, other)
+    def __mod__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__mod__, self, other)
+    def __rmod__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__rmod__, self, other)
+    def __lshift__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__lshift__, self, other)
+    def __rlshift__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__rlshift__, self, other)
+    def __rshift__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__rshift__, self, other)
+    def __rrshift__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__rrshift__, self, other)
+    def __pow__(self, other: int) -> "PerfCounter":
+        return PerfCounter.lift(int.__pow__, self, other)
+    def __round__(self, *args, **kwargs) -> "PerfCounter":
+        return PerfCounter.lift(int.__round__, self, *args, **kwargs)
+
+class PerfCollector(cirron.Collector):
+    def __init__(self):
+        super().__init__()
+        self.counters = PerfCounter()
 
 @dataclass
 class InstructionCount:

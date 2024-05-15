@@ -541,7 +541,13 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
         cubic_proof_args, duration_proof_search = find_proof()
 
     with memoshelve(
-        partial(cubic.verify_proof, model, pbar=pbar, print_complexity=False),
+        partial(
+            cubic.verify_proof,
+            model,
+            pbar=pbar,
+            print_complexity=False,
+            print_results=False,
+        ),
         filename=cache_dir
         / f"{SHARED_CACHE_STEM}.cubic_verify_proof-{cfg_hash_for_filename}",
         get_hash_mem=(lambda x: 0),

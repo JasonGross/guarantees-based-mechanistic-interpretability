@@ -105,6 +105,19 @@ GIT_SHA_SHORT_PATH = (
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = cli_args.n_threads
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
+
+
+# %%
+def maybe_parallel_map(func, *args):
+    if N_THREADS is None or N_THREADS <= 1:
+        result = list(map(func, *args))
+    else:
+        with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
+            result = executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
+    gc.collect()
+    return result
+
+
 # %%
 for name, (args, kwargs) in [
     ("lscpu", (("lscpu",), {})),
@@ -197,9 +210,7 @@ with memoshelve(
         except Exception as e:
             print(f"Error loading model for seed {seed}: {e}")
 
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
-gc.collect()
+    maybe_parallel_map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
 # %%
 training_wrappers = {
     seed: MaxOfNTrainingWrapper(cfgs[seed], model)
@@ -314,9 +325,7 @@ total_batches = sum(
 
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
-gc.collect()
+    maybe_parallel_map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
 # %%
 # load csv
 train_columns = ["seed", "loss", "accuracy", "model-seed", "dataset-seed"]
@@ -487,9 +496,8 @@ total_batches = sum(
 
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
-gc.collect()
+    maybe_parallel_map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
+
 update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
 # %% [markdown]
@@ -581,9 +589,7 @@ ks = [cfgs[seed].experiment.model_config.d_vocab for seed in relevant_seeds]
 total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
 with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
-gc.collect()
+    maybe_parallel_map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
 # %% [markdown]
@@ -802,9 +808,8 @@ total_count = sum(
 
 with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-        executor.map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
-gc.collect()
+    maybe_parallel_map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
+
 new_data = []
 for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])

@@ -321,11 +321,12 @@ class CountTensor:
         if not isinstance(other, CountTensor):
             other = CountTensor.from_numpy(other)
         x_shape = torch.broadcast_shapes(self.shape, other.shape[:-1])
-        # at each index, we do y_shape[-1] multiplications and y_shape[-1] - 1 additions
+        # at each index, we do x_shape[-1] multiplications and x_shape[-1] - 1 additions
+        out_shape = (*x_shape[:-1], other.shape[-1])
         return CountTensor(
-            shape=(*x_shape, other.shape[-1]),
+            shape=out_shape,
             count=InstructionCount(
-                flop=int(np.prod(x_shape)) * (other.shape[-1] * 2 - 1)
+                flop=int(np.prod(out_shape)) * (x_shape[-1] * 2 - 1)
             ),
             parents=(self, other),
         )

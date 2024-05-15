@@ -20,11 +20,13 @@ def EU_PU(
         model.cfg.d_vocab,
         model.cfg.d_vocab_out,
     )
-    assert W_E.shape == (d_vocab, d_model)
-    assert W_pos.shape == (n_ctx, d_model)
-    assert W_U.shape == (d_model, d_vocab_out)
+    assert W_E.shape == (d_vocab, d_model), W_E.shape
+    assert W_pos.shape == (n_ctx, d_model), W_pos.shape
+    assert W_U.shape == (d_model, d_vocab_out), W_U.shape
 
+    assert W_pos[pos].shape == (d_model,), W_pos[pos].shape
+    assert W_pos[pos][None, :].shape == (1, d_model), W_pos[pos][None, :].shape
     result = (W_E + W_pos[pos][None, :]) @ W_U
-    assert result.shape == (d_vocab, d_vocab_out)
+    assert result.shape == (d_vocab, d_vocab_out), result.shape
 
     return result

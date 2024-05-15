@@ -807,15 +807,21 @@ with memoshelve(
     cubic_proof_args = cubic.find_proof(model)
     cubic_proof_results = verify_proof(cubic_proof_args)
 # %%
-# import gbmi.utils.instructions as instructions
-# from gbmi.utils.instructions import (
-#     InstructionCount,
-#     CountTensor,
-#     CountHookedTransformer,
-# )
-# cubic_proof_instruction_count_results = cubic.verify_proof(CountHookedTransformer(model), cubic_proof_args, print_complexity=False,
-#     print_results=False,
-#     sanity_check=False)
+import gbmi.utils.instructions as instructions
+from gbmi.utils.instructions import (
+    InstructionCount,
+    CountTensor,
+    CountHookedTransformer,
+)
+import gbmi.verification_tools.general
+
+cubic_proof_instruction_count_results = cubic.verify_proof(
+    CountHookedTransformer(model),
+    cubic_proof_args,
+    print_complexity=False,
+    print_results=False,
+    sanity_check=False,
+)
 # HERE
 # %%
 largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]

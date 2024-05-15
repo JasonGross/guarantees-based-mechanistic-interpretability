@@ -376,6 +376,7 @@ class CountTensor:
             parents=(self,),
         )
 
+    @property
     def T(self) -> "CountTensor":
         return self.transpose(-2, -1)
 

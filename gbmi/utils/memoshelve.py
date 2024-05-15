@@ -39,11 +39,11 @@ def memoshelve(
                         if isinstance(e, KeyError):
                             if print_cache_miss:
                                 print(f"Cache miss (disk): {key}")
-                        else:
-                            print(f"Error in {filename} with key {key}")
-                        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                        elif isinstance(e, (KeyboardInterrupt, SystemExit)):
                             raise e
-                        elif not isinstance(e, (KeyError, AttributeError)):
+                        else:
+                            print(f"Error {e} in {filename} with key {key}")
+                        if not isinstance(e, (KeyError, AttributeError)):
                             raise e
                         mem_db[mkey] = db[key] = value(*args, **kwargs)
                     return mem_db[mkey]

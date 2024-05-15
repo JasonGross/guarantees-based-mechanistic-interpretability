@@ -630,7 +630,10 @@ class DefaultCountTensorWrapper:
 
     def __call__(self, arg, *args, **kwargs):
         # print(f"dispatching {self.name} to {type(arg)}")
-        if isinstance(arg, torch.Tensor) or isinstance(arg, CountTensor):
+        if isinstance(arg, (torch.Tensor, CountTensor)) or (
+            isinstance(arg, (tuple, list))
+            and any(isinstance(a, (torch.Tensor, CountTensor)) for a in arg)
+        ):
             if self.static:
                 return getattr(CountTensor, self.name)(arg, *args, **kwargs)
             else:

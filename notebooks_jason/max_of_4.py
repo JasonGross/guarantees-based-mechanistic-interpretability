@@ -812,6 +812,7 @@ from gbmi.utils.instructions import (
     InstructionCount,
     CountTensor,
     CountHookedTransformer,
+    PatchTorch,
 )
 import gbmi.verification_tools.general
 

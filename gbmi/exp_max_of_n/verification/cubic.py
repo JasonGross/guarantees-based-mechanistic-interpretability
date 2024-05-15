@@ -81,7 +81,7 @@ def compute_extreme_softmaxed_right_attention_cubic_simple(
     EQKP, EQKPm1 = EQKP[:, :-1].sort(dim=-1).values, EQKP[:, -1]
 
     max_tok_range = range(d_vocab)
-    if pbar is not None:
+    if pbar is None:
         max_tok_range = tqdm(max_tok_range, desc="max_tok", position=position)
     for max_tok in max_tok_range:
         for q_tok in range(max_tok + 1):

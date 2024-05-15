@@ -585,7 +585,7 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
 
 
 # \sum_{i=0}^{k} i^2 = k * (k+1) * (k*2+1) // 6
-ks = [cfgs[seed].experiment.model_config.d_vocab for seed in relevant_seeds]
+ks = [cfgs[seed].experiment.model_config.d_vocab - 2 for seed in relevant_seeds]
 total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
 with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
@@ -801,6 +801,7 @@ def _handle_subcubic(seed: int, *, pbar: tqdm):
 
 total_count = sum(
     (1 + runtime_models[seed][1].cfg.d_vocab)
+    * (runtime_models[seed][1].cfg.d_vocab - 1)
     * sum(
         2 if cfg.attention_error_handling == "max_diff_exact" else 1
         for cfg in all_configs

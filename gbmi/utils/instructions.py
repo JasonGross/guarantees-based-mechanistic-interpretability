@@ -308,6 +308,8 @@ class CountTensor:
         )
 
     sum = fold_reduce
+    argmax = fold_reduce
+    argmin = fold_reduce
     max = fold_reduce_values_indices
     min = fold_reduce_values_indices
     prod = fold_reduce

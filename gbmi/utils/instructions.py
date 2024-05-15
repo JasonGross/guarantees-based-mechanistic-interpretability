@@ -87,6 +87,9 @@ class InstructionCount:
     def __repr__(self) -> str:
         return f"InstructionCount(flop={self.flop!r}, int_op={self.int_op!r}, branch={self.branch!r})"
 
+    def __hash__(self) -> int:
+        return hash((self.flop, self.int_op, self.branch))
+
 
 _T_co = TypeVar("_T_co", covariant=True)
 
@@ -542,6 +545,9 @@ class CountTensor:
             return self.shape
         return self.shape[dim]
 
+    def __hash__(self) -> int:
+        return hash((tuple(self.shape), self.count, tuple(self.parents)))
+
 
 class CountTensorBackend(
     fancy_einsum.AbstractBackend, einops._backends.AbstractBackend
@@ -621,9 +627,17 @@ class CountHookedTransformer(HookedTransformer):
         super().__init__(model.cfg)
 
         for mod in model.modules():
+            print(f"Patching {mod}")
             for name, value in mod.named_parameters():
                 if "." not in name:
-                    mod.__dict__[name] = CountTensor.from_numpy(value)
+                    mod.__dict__[name] = mod._parameters[name] = CountTensor.from_numpy(
+                        value
+                    )
+                    print(getattr(mod, name))
+                    # print(isinstance(nn.Parameter(CountTensor.from_numpy(value)), nn.Parameter))
+                    # mod.register_parameter(name, nn.Parameter(CountTensor.from_numpy(value)))
+                    # setattr(mod, name, nn.Parameter(CountTensor.from_numpy(value)))
+                    # mod.__dict__[name] = CountTensor.from_numpy(value)
 
     def forward(self, *args, **kwargs):
         with PatchTorch():

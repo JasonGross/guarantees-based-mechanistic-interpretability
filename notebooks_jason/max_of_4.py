@@ -794,8 +794,29 @@ def count_unaccounted_for_by_old_cubic_convexity_sequences(
 
 
 # %%
-cubic_proof_args = cubic.find_proof(model)
-cubic_proof_results = cubic.verify_proof(model, cubic_proof_args)
+with memoshelve(
+    partial(
+        cubic.verify_proof,
+        model,
+    ),
+    filename=cache_dir
+    / f"{Path(__file__).name}.cubic_verify_proof-{cfg_hash_for_filename}",
+    get_hash_mem=(lambda x: 0),
+    get_hash=(lambda x: "0"),
+)() as verify_proof:
+    cubic_proof_args = cubic.find_proof(model)
+    cubic_proof_results = verify_proof(cubic_proof_args)
+# %%
+# import gbmi.utils.instructions as instructions
+# from gbmi.utils.instructions import (
+#     InstructionCount,
+#     CountTensor,
+#     CountHookedTransformer,
+# )
+# cubic_proof_instruction_count_results = cubic.verify_proof(CountHookedTransformer(model), cubic_proof_args, print_complexity=False,
+#     print_results=False,
+#     sanity_check=False)
+# HERE
 # %%
 largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]
 total_sequences = cubic_proof_results["total_sequences"]

@@ -627,6 +627,17 @@ files = [
 ]
 
 [[package]]
+name = "cirron"
+version = "0.2.1"
+description = "Cirron measures how many CPU instructions and system calls a piece of Python code executes."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "Cirron-0.2.1-py3-none-any.whl", hash = "sha256:dff675d947a19128ad414f68706a756826f676820a1e3fbdb7ecc2542d9f1253"},
+    {file = "cirron-0.2.1.tar.gz", hash = "sha256:382a53468c89176bde889e4ddc0535b1efffc2d55d7c3387be6f24d59c03b7cf"},
+]
+
+[[package]]
 name = "click"
 version = "8.1.7"
 description = "Composable command line interface toolkit"
@@ -5528,4 +5539,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "2f56de5eb82774b6949987fa19ec69799e654f52ff91d3a35f3a814620c24864"
+content-hash = "ab5aafc15d234c984d30cea4f21d2d88d2cff440ca1eb34488430d2506b2e24e"

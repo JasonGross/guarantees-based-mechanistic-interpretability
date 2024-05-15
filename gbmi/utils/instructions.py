@@ -663,6 +663,8 @@ class PatchTorch:
     torch_patches = (
         ("where", True),
         ("isnan", False),
+        ("triu", False),
+        ("tril", False),
         ("zeros", True),
         ("ones", True),
         ("zeros_like", True),

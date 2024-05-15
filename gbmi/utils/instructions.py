@@ -553,6 +553,22 @@ class CountTensor:
             parents=(self, *idx_parents),
         )
 
+    def __setitem__(
+        self,
+        indices: CountTensorIndexType,
+        other: Union[float, int, "CountTensor", torch.Tensor],
+    ) -> "CountTensor":
+        # cheap hack
+        idx_parents, tindices = CountTensor.accumulate_indices(indices)
+        assert all(
+            isinstance(idx, CountTensor) for idx in idx_parents
+        ), f"Expected CountTensor, got {idx_parents} ({[type(idx) for idx in idx_parents]})"
+        self.count += InstructionCount(
+            flop=int(np.prod(torch_zeros(self.shape)[tindices].shape))
+        )
+        self.parents = (self, *idx_parents, CountTensor.from_numpy(other))
+        return self
+
     def gather(
         self, dim: int, index: Union["CountTensor", torch.Tensor]
     ) -> "CountTensor":

@@ -1,16 +1,17 @@
 import math
 import time
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union, overload
 import torch
 from jaxtyping import Float
 from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
-from gbmi.utils.sequences import count_sequences
+from gbmi.utils.sequences import count_sequences, count_sequences_instructions
 from gbmi.verification_tools.general import EU_PU
 from gbmi.verification_tools.l1h1 import all_EQKE, all_EQKP, all_EVOU, all_PVOU
 from gbmi.verification_tools.utils import complexity_of
+from gbmi.utils.instructions import InstructionCount, CountTensor
 
 
 @torch.no_grad()
@@ -286,14 +287,36 @@ def compute_largest_wrong_logit_cubic(
     return results
 
 
-@torch.no_grad()
+@overload
 def count_correct_sequences_cubic(
     largest_wrong_logit: Float[
         Tensor, "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies"  # noqa: F722
     ],
-) -> int:
+) -> int: ...
+
+
+@overload
+def count_correct_sequences_cubic(
+    largest_wrong_logit: CountTensor,
+) -> InstructionCount: ...
+
+
+@torch.no_grad()
+def count_correct_sequences_cubic(
+    largest_wrong_logit: Union[
+        Float[
+            Tensor,
+            "d_vocab_q d_vocab_max d_vocab_nonmax n_ctx_nonmax_copies",  # noqa: F722
+        ],
+        CountTensor,
+    ],
+) -> Union[int, InstructionCount]:
     d_vocab_q, d_vocab_max, d_vocab_nonmax, n_ctx = largest_wrong_logit.shape
-    correct_count: int = 0
+    correct_count: Union[int, CountTensor] = (
+        0
+        if not isinstance(largest_wrong_logit, CountTensor)
+        else CountTensor(shape=(0,))
+    )
     for q_tok in range(d_vocab_q):
         for max_tok in range(d_vocab_max):
             for n_copies_nonmax in range(n_ctx):
@@ -305,38 +328,49 @@ def count_correct_sequences_cubic(
                     cur_largest_wrong_logit = largest_wrong_logit[
                         q_tok, max_tok, max_tok, 0
                     ]
-                    correct_count += int((cur_largest_wrong_logit < 0).sum().item())
+                    correct_count += (cur_largest_wrong_logit < 0).sum().item()
                 else:
                     cur_largest_wrong_logit = largest_wrong_logit[
                         q_tok, max_tok, :max_tok, n_copies_nonmax
                     ]  # consider wrong logits only when non-max token is less than max token
-                    num_nonmax_tok_choices = cur_largest_wrong_logit[
+                    nonmax_tok_choices = cur_largest_wrong_logit[
                         ~cur_largest_wrong_logit.isnan() & (cur_largest_wrong_logit < 0)
-                    ].size(0)
-                    cur_count = count_sequences(
-                        n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
-                    )
-                    if n_copies_nonmax > 0 and max_tok == 0:
-                        assert (
-                            cur_count == 0
-                        ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices})"
-                    else:
-                        max_possible_count = max_tok**n_copies_nonmax * math.comb(
-                            n_ctx - 1, n_copies_nonmax
+                    ]
+                    num_nonmax_tok_choices = nonmax_tok_choices.size(0)
+                    if isinstance(largest_wrong_logit, CountTensor):
+                        cur_count = count_sequences_instructions(
+                            n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
                         )
-                        assert (
-                            cur_count <= max_possible_count
-                        ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices}) > {max_possible_count}"
-                    # cur_largest_wrong_logit < 0 -> the model gets it right (and the non-nan just ensures its valid)
-                    # N.B. Here, n_copies_nonmax does NOT include the query token
-                    correct_count += cur_count
-                    # consider the space where there's one dimension for each input token that controls "do we use this or not"
-                    # we consider a subspace where "did the model get it right" is convex in this space
-                    # i.e. if you get it for non-max token = x and non-max token = y, you get it for all sequences
-                    # that contain any combination of x and y (note that there can only be 1, 2, or 3 non-max tokens in
-                    # the sequence (where 3 occurs only when the query token is the max token))
-                    # You can extend this to 3 non-max token choices by induction
+                        correct_count += nonmax_tok_choices.reshape((0,)) + CountTensor(
+                            shape=(0,), count=cur_count
+                        )
+                    else:
+                        cur_count = count_sequences(
+                            n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
+                        )
+                        if n_copies_nonmax > 0 and max_tok == 0:
+                            assert (
+                                cur_count == 0
+                            ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices})"
+                        else:
+                            max_possible_count = max_tok**n_copies_nonmax * math.comb(
+                                n_ctx - 1, n_copies_nonmax
+                            )
+                            assert (
+                                cur_count <= max_possible_count
+                            ), f"count: {cur_count} == count_sequences({n_ctx - 1}, {n_copies_nonmax}, {num_nonmax_tok_choices}) > {max_possible_count}"
+                        # cur_largest_wrong_logit < 0 -> the model gets it right (and the non-nan just ensures its valid)
+                        # N.B. Here, n_copies_nonmax does NOT include the query token
+                        correct_count += cur_count
+                        # consider the space where there's one dimension for each input token that controls "do we use this or not"
+                        # we consider a subspace where "did the model get it right" is convex in this space
+                        # i.e. if you get it for non-max token = x and non-max token = y, you get it for all sequences
+                        # that contain any combination of x and y (note that there can only be 1, 2, or 3 non-max tokens in
+                        # the sequence (where 3 occurs only when the query token is the max token))
+                        # You can extend this to 3 non-max token choices by induction
 
+    if isinstance(largest_wrong_logit, CountTensor):
+        return correct_count.full_count()
     return correct_count
 
 

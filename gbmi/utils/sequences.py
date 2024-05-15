@@ -4,6 +4,7 @@ import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from torch.utils.data import Dataset
+from gbmi.utils.instructions import InstructionCount
 
 
 import itertools
@@ -86,6 +87,18 @@ def count_sequences(
     return combinations * token_variations
 
 
+def count_sequences_instructions(
+    sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
+) -> InstructionCount:
+    """
+    Count the number of sequences of length sequence_length with exactly nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    """
+    # math.comb(sequence_length, nonmax_count)
+    combinations = InstructionCount(int_op=sequence_length)
+    token_variations = InstructionCount(int_op=2, branch=1)
+    return combinations + token_variations + InstructionCount(int_op=1)
+
+
 def count_sequences_relaxed(
     sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
 ) -> int:
@@ -95,6 +108,23 @@ def count_sequences_relaxed(
     total_count = 0
     for i in range(nonmax_count + 1):
         total_count += count_sequences(
+            sequence_length=sequence_length,
+            nonmax_count=i,
+            num_nonmax_tok_choices=num_nonmax_tok_choices,
+        )
+
+    return total_count
+
+
+def count_sequences_relaxed_instructions(
+    sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
+) -> InstructionCount:
+    """
+    Count the number of sequences of length sequence_length with at most nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    """
+    total_count = InstructionCount()
+    for i in range(nonmax_count + 1):
+        total_count += count_sequences_instructions(
             sequence_length=sequence_length,
             nonmax_count=i,
             num_nonmax_tok_choices=num_nonmax_tok_choices,

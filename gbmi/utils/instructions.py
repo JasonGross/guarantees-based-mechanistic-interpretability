@@ -71,6 +71,27 @@ class InstructionCount:
 
     __rmul__ = __mul__
 
+    def __div__(self, other: int) -> "InstructionCount":
+        return InstructionCount(
+            flop=self.flop // other,
+            int_op=self.int_op // other,
+            branch=self.branch // other,
+        )
+
+    def __truediv__(self, other: int) -> "InstructionCount":
+        return InstructionCount(
+            flop=self.flop // other,
+            int_op=self.int_op // other,
+            branch=self.branch // other,
+        )
+
+    def __floordiv__(self, other: int) -> "InstructionCount":
+        return InstructionCount(
+            flop=self.flop // other,
+            int_op=self.int_op // other,
+            branch=self.branch // other,
+        )
+
     def __str__(self) -> str:
         return f"InstructionCount(flop={self.flop}, int_op={self.int_op}, branch={self.branch})"
 
@@ -293,6 +314,7 @@ class CountTensor:
     __abs__ = unary
     __neg__ = unary
     __pos__ = unary
+    __invert__ = unary
     sqrt = unary
     exp = unary
     log = unary
@@ -593,6 +615,9 @@ class CountTensor:
     @property
     def device(self):
         return torch.device("cpu")
+
+    def item(self) -> "CountTensor":
+        return self
 
     def to(self, *args, **kwargs) -> "CountTensor":
         return self

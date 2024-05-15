@@ -816,8 +816,14 @@ from gbmi.utils.instructions import (
     PatchTorch,
 )
 import gbmi.verification_tools.general
+import gbmi.exp_max_of_n.verification.cubic as cubic
+import gbmi.exp_max_of_n.verification.subcubic as subcubic
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
+import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
+import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 
 with PatchTorch():
+    print(torch.zeros)
     cubic_proof_instruction_count_results = cubic.verify_proof(
         CountHookedTransformer(model),
         cubic_proof_args,

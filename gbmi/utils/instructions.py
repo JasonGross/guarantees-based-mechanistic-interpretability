@@ -308,6 +308,12 @@ class CountTensor:
     pow = binary_only_scalar
     float = unary
     long = unary
+    bool = unary
+
+    def tril(self, diagonal: int = 0) -> "CountTensor":
+        return self.unary()
+
+    triu = tril
 
     def reshape(self, new_shape: Sequence[int]) -> "CountTensor":
         return CountTensor(shape=new_shape, parents=(self,))
@@ -640,17 +646,17 @@ class DefaultCountTensorWrapper:
 
     def __call__(self, arg, *args, **kwargs):
         # print(f"dispatching {self.name} to {type(arg)}")
-        if isinstance(arg, (torch.Tensor, CountTensor)) or (
-            isinstance(arg, (tuple, list))
-            and any(isinstance(a, (torch.Tensor, CountTensor)) for a in arg)
-        ):
-            if self.static:
-                return getattr(CountTensor, self.name)(arg, *args, **kwargs)
-            else:
-                return getattr(CountTensor.from_numpy(arg), self.name)(*args, **kwargs)
-        if hasattr(arg, self.name):
-            return getattr(arg, self.name)(arg, *args, **kwargs)
-        return self.func(arg, *args, **kwargs)
+        # if isinstance(arg, (torch.Tensor, CountTensor)) or (
+        #     isinstance(arg, (tuple, list))
+        #     and any(isinstance(a, (torch.Tensor, CountTensor)) for a in arg)
+        # ):
+        if self.static:
+            return getattr(CountTensor, self.name)(arg, *args, **kwargs)
+        else:
+            return getattr(CountTensor.from_numpy(arg), self.name)(*args, **kwargs)
+        # if hasattr(arg, self.name):
+        #     return getattr(arg, self.name)(arg, *args, **kwargs)
+        # return self.func(arg, *args, **kwargs)
 
 
 class PatchTorch:

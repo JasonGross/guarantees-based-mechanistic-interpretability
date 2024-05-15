@@ -43,12 +43,19 @@ class InstructionCount:
     int_op: int = 0
     branch: int = 0
 
-    def __add__(self, other: "InstructionCount") -> "InstructionCount":
-        return InstructionCount(
-            flop=self.flop + other.flop,
-            int_op=self.int_op + other.int_op,
-            branch=self.branch + other.branch,
-        )
+    def __add__(
+        self, other: Union["InstructionCount", Literal[0]]
+    ) -> "InstructionCount":
+        if isinstance(other, InstructionCount):
+            return InstructionCount(
+                flop=self.flop + other.flop,
+                int_op=self.int_op + other.int_op,
+                branch=self.branch + other.branch,
+            )
+        assert other == 0, f"other == {other} != 0"
+        return self
+
+    __radd__ = __add__
 
     def add_flop(self, flop: int = 1) -> "InstructionCount":
         return InstructionCount(
@@ -72,8 +79,7 @@ class InstructionCount:
             branch=self.branch * other,
         )
 
-    def __rmul__(self, other: int) -> "InstructionCount":
-        return self.__mul__(other)
+    __rmul__ = __mul__
 
     def __str__(self) -> str:
         return f"InstructionCount(flop={self.flop}, int_op={self.int_op}, branch={self.branch})"
@@ -275,6 +281,18 @@ class CountTensor:
     __rand__ = binary
     __xor__ = binary
     __rxor__ = binary
+    __eq__ = binary
+    __ne__ = binary
+    __lt__ = binary
+    __le__ = binary
+    __gt__ = binary
+    __ge__ = binary
+    __req__ = binary
+    __rne__ = binary
+    __rlt__ = binary
+    __rle__ = binary
+    __rgt__ = binary
+    __rge__ = binary
 
     __abs__ = unary
     __neg__ = unary
@@ -285,6 +303,8 @@ class CountTensor:
     log1p = unary
     isnan = unary
     pow = binary_only_scalar
+    float = unary
+    long = unary
 
     def reshape(self, new_shape: Sequence[int]) -> "CountTensor":
         return CountTensor(shape=new_shape, parents=(self,))

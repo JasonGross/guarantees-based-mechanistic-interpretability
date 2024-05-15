@@ -369,6 +369,12 @@ class CountTensor:
         adjusted_log_sum_exp = adjusted.exp().sum(dim=dim, keepdim=True).log()
         return adjusted - adjusted_log_sum_exp
 
+    def flip(self, *args, **kwargs) -> "CountTensor":
+        return CountTensor(
+            shape=torch.empty(self.shape).flip(*args, **kwargs).shape,
+            parents=(self,),
+        )
+
     def transpose(self, *args, **kwargs) -> "CountTensor":
         return CountTensor(
             shape=torch.empty(self.shape).transpose(*args, **kwargs).shape,

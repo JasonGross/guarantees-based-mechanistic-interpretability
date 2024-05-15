@@ -8,6 +8,7 @@ from typing import (
     Sequence,
     Literal,
     Optional,
+    NamedTuple,
     SupportsIndex,
     Union,
     Tuple,
@@ -152,6 +153,11 @@ TensorOrCountTensorIndexType = Union[
 ]
 
 
+class count_values_indices(NamedTuple):
+    values: CountTensor
+    indices: CountTensor
+
+
 @dataclass
 class CountTensor:
     shape: Sequence[int]
@@ -238,6 +244,17 @@ class CountTensor:
             parents=(self,),
         )
 
+    def fold_reduce_values_indices(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+    ) -> Union["CountTensor", count_values_indices]:
+        result = self.fold_reduce(self, dim=dim, axis=axis, keepdim=keepdim)
+        if dim is None and axis is None:
+            return result
+        return count_values_indices(result, result)
+
     __add__ = binary
     __radd__ = binary
     __sub__ = binary
@@ -278,8 +295,8 @@ class CountTensor:
         )
 
     sum = fold_reduce
-    max = fold_reduce
-    min = fold_reduce
+    max = fold_reduce_values_indices
+    min = fold_reduce_values_indices
     prod = fold_reduce
 
     def mean(

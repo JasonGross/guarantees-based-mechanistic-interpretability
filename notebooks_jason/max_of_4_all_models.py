@@ -800,8 +800,7 @@ def _handle_subcubic(seed: int, *, pbar: tqdm):
 
 
 total_count = sum(
-    (1 + runtime_models[seed][1].cfg.d_vocab)
-    * (runtime_models[seed][1].cfg.d_vocab - 1)
+    (2 * runtime_models[seed][1].cfg.d_vocab - 1)
     * sum(
         2 if cfg.attention_error_handling == "max_diff_exact" else 1
         for cfg in all_configs

@@ -472,6 +472,35 @@ class CountTensor:
         return CountTensor(shape=other.shape, count=InstructionCount())
 
     @staticmethod
+    def stack(
+        tensors: Sequence[Union["CountTensor", torch.Tensor]], dim: int = 0
+    ) -> "CountTensor":
+        shape = list(torch.broadcast_shapes(*[t.shape for t in tensors]))
+        shape.insert(dim, len(tensors))
+        return CountTensor(
+            shape=tuple(shape),
+            count=InstructionCount(),
+            parents=tuple(CountTensor.from_numpy(t) for t in tensors),
+        )
+
+    @staticmethod
+    def cat(
+        tensors: Sequence[Union["CountTensor", torch.Tensor]], dim: int = 0
+    ) -> "CountTensor":
+        parents = tuple(
+            CountTensor.from_numpy(t) for t in tensors if tuple(t.shape) != (0,)
+        )
+        shapes = [list(t.shape) for t in parents]
+        new_index = [sh.pop(dim) for sh in shapes]
+        shape = list(torch.broadcast_shapes(*shapes))
+        shape.insert(dim, sum(new_index))
+        return CountTensor(
+            shape=tuple(shape),
+            count=InstructionCount(),
+            parents=parents,
+        )
+
+    @staticmethod
     def accumulate_indices(
         indices: TensorOrCountTensorIndexType,
     ) -> Tuple[list["CountTensor"], TensorIndexType]:
@@ -612,7 +641,13 @@ class DefaultCountTensorWrapper:
 
 
 class PatchTorch:
-    torch_patches = (("where", True), ("isnan", False), ("zeros_like", True))
+    torch_patches = (
+        ("where", True),
+        ("isnan", False),
+        ("zeros_like", True),
+        ("stack", True),
+        ("cat", True),
+    )
 
     def __enter__(self):
         for name, static in PatchTorch.torch_patches:

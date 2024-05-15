@@ -239,7 +239,7 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         logits: Float[Tensor, "batch n_ctx d_vocab"],  # noqa: F722, F821
         labels: Integer[Tensor, "batch"],  # noqa: F821
     ) -> Bool[Tensor, "batch"]:  # noqa: F821
-        pred_tokens = torch.argmax(logits[:, -1, :], dim=-1)
+        pred_tokens = logits[:, -1, :].argmax(dim=-1)
         return pred_tokens == labels
 
     @staticmethod

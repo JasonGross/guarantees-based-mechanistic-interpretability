@@ -321,6 +321,16 @@ class CountTensor:
         adjusted_exp = adjusted.exp()
         return adjusted_exp / adjusted_exp.sum(dim=dim, keepdim=True)
 
+    def log_softmax(
+        self, dim: Optional[int] = None, axis: Optional[int] = None
+    ) -> "CountTensor":
+        if axis is not None:
+            assert dim is None, "Cannot specify both dim and axis"
+            dim = axis
+        adjusted = self - self.max(dim=dim, keepdim=True)
+        adjusted_log_sum_exp = adjusted.exp().sum(dim=dim, keepdim=True).log()
+        return adjusted - adjusted_log_sum_exp
+
     def transpose(self, *args, **kwargs) -> "CountTensor":
         return CountTensor(
             shape=torch.empty(self.shape).transpose(*args, **kwargs).shape,

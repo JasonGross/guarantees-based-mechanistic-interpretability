@@ -250,7 +250,7 @@ class CountTensor:
         axis: Optional[int] = None,
         keepdim: bool = False,
     ) -> Union["CountTensor", count_values_indices]:
-        result = self.fold_reduce(self, dim=dim, axis=axis, keepdim=keepdim)
+        result = self.fold_reduce(dim=dim, axis=axis, keepdim=keepdim)
         if dim is None and axis is None:
             return result
         return count_values_indices(result, result)

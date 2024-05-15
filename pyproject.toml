@@ -53,7 +53,7 @@ cirron = "^0.2.1"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"
-black = { extras = ["jupyter"], version = "^24.0.0" }
+black = { extras = ["jupyter"], version = "^24.4.2" }
 flake8 = "^7.0.0"
 
 [build-system]

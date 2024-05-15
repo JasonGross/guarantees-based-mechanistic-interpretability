@@ -619,10 +619,11 @@ class PatchTorch:
 class CountHookedTransformer(HookedTransformer):
     def __init__(self, model: HookedTransformer):
         super().__init__(model.cfg)
-        for mod, keys in ((self.embed, ("W_E",)),):
-            for key in keys:
-                mod.__dict__[key] = CountTensor.from_numpy(getattr(mod, key))
-        # self.
+
+        for mod in model.modules():
+            for name, value in mod.named_parameters():
+                if "." not in name:
+                    mod.__dict__[name] = CountTensor.from_numpy(value)
 
     def forward(self, *args, **kwargs):
         with PatchTorch():

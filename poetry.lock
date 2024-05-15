@@ -4940,6 +4940,24 @@ slack = ["slack-sdk"]
 telegram = ["requests"]
 
 [[package]]
+name = "tqdm-multiprocess"
+version = "0.0.11"
+description = "Easy multiprocessing with tqdm and logging redirected to main process."
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "tqdm-multiprocess-0.0.11.tar.gz", hash = "sha256:a74002a1222ea9cbe8cdc9bd460108c6009be359621fbee9b92d0515d4d180f7"},
+    {file = "tqdm_multiprocess-0.0.11-py3-none-any.whl", hash = "sha256:3ebdf03e7a675150fa0bbceaa9c3c64b8cb556e9ffafa4fe6c078e51820524aa"},
+]
+
+[package.dependencies]
+colorama = "*"
+tqdm = "*"
+
+[package.extras]
+dev = ["twine"]
+
+[[package]]
 name = "traitlets"
 version = "5.14.2"
 description = "Traitlets Python configuration system"
@@ -5510,4 +5528,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "80ccc28999783fb1ee487c42c273ed7342070182e1d5fa1dc577520ce849c9a0"
+content-hash = "2f56de5eb82774b6949987fa19ec69799e654f52ff91d3a35f3a814620c24864"

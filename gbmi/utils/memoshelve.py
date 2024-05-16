@@ -27,7 +27,7 @@ def memoshelve(
         with shelve.open(filename) as db:
 
             def delegate(*args, **kwargs):
-                mkey = get_hash_mem((args, frozendict(kwargs)))
+                mkey = get_hash_mem((args, kwargs))
                 try:
                     return mem_db[mkey]
                 except KeyError:

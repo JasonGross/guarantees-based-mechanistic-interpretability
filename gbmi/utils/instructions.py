@@ -632,6 +632,16 @@ class CountTensor:
             parents=(self, other),
         )
 
+    def __rmatmul__(
+        self, other: Union["CountTensor", np.ndarray, torch.Tensor]
+    ) -> "CountTensor":
+        assert hasattr(
+            other, "shape"
+        ), f"Expected CountTensor, ndarray, or Tensor, got {type(other)} ({other})"
+        if not isinstance(other, CountTensor):
+            other = CountTensor.from_numpy(other)
+        return other.__matmul__(self)
+
     sum = fold_reduce
     argmax = fold_reduce
     argmin = fold_reduce
@@ -978,6 +988,8 @@ class CountTensor:
 
     def unsqueeze(self, dim: int) -> "CountTensor":
         shape = list(self.shape)
+        if dim < 0:
+            dim = dim + len(shape) + 1
         shape.insert(dim, 1)
         return CountTensor(shape=shape, count=InstructionCount(), parents=(self,))
 

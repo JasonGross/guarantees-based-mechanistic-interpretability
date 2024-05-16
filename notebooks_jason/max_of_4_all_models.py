@@ -637,7 +637,9 @@ subcubic_data = {
 
 
 @torch.no_grad()
-def try_all_proofs_subcubic(seed: int, *, pbar: tqdm) -> list[dict]:
+def try_all_proofs_subcubic(
+    seed: int, *, subcfg_pbar: tqdm, cfg_pbar: tqdm, proof_pbar: tqdm
+) -> list[dict]:
     cfg = cfgs[seed]
     cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
@@ -672,7 +674,8 @@ def try_all_proofs_subcubic(seed: int, *, pbar: tqdm) -> list[dict]:
                         **size_and_query_directions_kwargs,
                         tricks=cfg,
                         use_exact_EQKE=use_exact_EQKE,
-                        pbar=pbar,
+                        sub_pbar=subcfg_pbar,
+                        pbar=cfg_pbar,
                         record_time=True,
                     ),
                 )
@@ -757,60 +760,81 @@ def try_all_proofs_subcubic(seed: int, *, pbar: tqdm) -> list[dict]:
                             model.cfg.n_ctx - 1, n_copies_nonmax
                         )
 
-                v = min_gaps.flatten().detach().cpu()
-                mean = np.average(v.numpy(), weights=weights.flatten().numpy())
-                std = np.average(
-                    (v - mean).numpy() ** 2,
-                    weights=weights.flatten().numpy(),
-                )
-                num_std = 1.5
-                most_below_value = int(math.ceil(mean + num_std * std))
-                frac_below = (
-                    weights.flatten()[v <= most_below_value].sum() / weights.sum()
-                ).item()
+            v = min_gaps.flatten().detach().cpu()
+            mean = np.average(v.numpy(), weights=weights.flatten().numpy())
+            std = np.average(
+                (v - mean).numpy() ** 2,
+                weights=weights.flatten().numpy(),
+            )
+            num_std = 1.5
+            most_below_value = int(math.ceil(mean + num_std * std))
+            frac_below = (
+                weights.flatten()[v <= most_below_value].sum() / weights.sum()
+            ).item()
 
-                row = {
-                    "seed": seed,
-                    "accuracy-bound": accuracy_bound,
-                    "duration-proof-search": proof_search_duration,
-                    "duration": prooftime,
-                    "tricks": latexdescr + tricks.short_description(latex=True),
-                    "err-upper-bound": err_upper_bound_value,
-                    "err-upper-bound-is-max": err_upper_bound_is_max,
-                    "total-sequences": total_sequences,
-                    "dropped-sequences": left_behind,
-                    "dropped-sequences-frac": left_behind / total_sequences,
-                    "most-gap-below-value": most_below_value,
-                    "most-gap-below-value-frac": frac_below,
-                    "most-gap-below-value-num-std": num_std,
-                    "max-gap": v.max().item(),
-                }
+            row = {
+                "seed": seed,
+                "accuracy-bound": accuracy_bound,
+                "duration-proof-search": proof_search_duration,
+                "duration": prooftime,
+                "tricks": latexdescr + tricks.short_description(latex=True),
+                "err-upper-bound": err_upper_bound_value,
+                "err-upper-bound-is-max": err_upper_bound_is_max,
+                "total-sequences": total_sequences,
+                "dropped-sequences": left_behind,
+                "dropped-sequences-frac": left_behind / total_sequences,
+                "most-gap-below-value": most_below_value,
+                "most-gap-below-value-frac": frac_below,
+                "most-gap-below-value-num-std": num_std,
+                "max-gap": v.max().item(),
+            }
 
-                rows.append(row)
-                pbar.update(1)
+            rows.append(row)
+            proof_pbar.update(1)
     return rows
 
 
-def _handle_subcubic(seed: int, *, pbar: tqdm):
+def _handle_subcubic(seed: int, *, subcfg_pbar: tqdm, cfg_pbar: tqdm, proof_pbar: tqdm):
     try:
-        subcubic_data[seed] = try_all_proofs_subcubic(seed, pbar=pbar)
+        subcubic_data[seed] = try_all_proofs_subcubic(
+            seed, subcfg_pbar=subcfg_pbar, cfg_pbar=cfg_pbar, proof_pbar=proof_pbar
+        )
     except Exception as e:
         print(f"Error computing subcubic proof for seed {seed}: {e}")
         traceback.print_exc()
 
 
-total_count = sum(
-    (2 * runtime_models[seed][1].cfg.d_vocab - 1)
-    * sum(
+cfg_counts = {
+    seed: sum(
         2 if cfg.attention_error_handling == "max_diff_exact" else 1
         for cfg in all_configs
     )
     for seed in relevant_seeds
-)
+}
+sub_cfg_counts = {
+    seed: runtime_models[seed][1].cfg.d_vocab * num_cfgs
+    for seed, num_cfgs in cfg_counts.items()
+}
 
-with tqdm(total=total_count, desc="configurations for subcubic", position=0) as pbar:
-    # with PeriodicGarbageCollector(60):
-    maybe_parallel_map(partial(_handle_subcubic, pbar=pbar), relevant_seeds)
+with tqdm(
+    total=sum(cfg_counts.values()), desc="configurations for subcubic", position=0
+) as cfg_pbar:
+    with tqdm(
+        total=sum(sub_cfg_counts.values()), desc="subconfig progress", position=1
+    ) as subcfg_pbar:
+        with tqdm(
+            total=sum(cfg_counts.values()), desc="proofs for subcubic", position=2
+        ) as proof_pbar:
+            # with PeriodicGarbageCollector(60):
+            maybe_parallel_map(
+                partial(
+                    _handle_subcubic,
+                    subcfg_pbar=subcfg_pbar,
+                    cfg_pbar=cfg_pbar,
+                    proof_pbar=proof_pbar,
+                ),
+                relevant_seeds,
+            )
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):

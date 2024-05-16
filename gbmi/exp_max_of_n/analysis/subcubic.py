@@ -42,6 +42,7 @@ def find_min_gaps_with_EQKE(
     position: Optional[int] = None,
     leave: Optional[bool] = None,
     desc: Optional[str] = None,
+    sub_pbar: Optional[tqdm] = None,
     pbar: Optional[tqdm] = None,
     record_time: bool = False,
 ) -> Union[
@@ -51,6 +52,8 @@ def find_min_gaps_with_EQKE(
     ],
     Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"],  # noqa: F722
 ]:
+    if pbar is not None:
+        pbar.update(1)
     duration = 0.0
     start = time.time()
     if EVOU is None:
@@ -102,7 +105,7 @@ def find_min_gaps_with_EQKE(
         position=position,
         leave=leave,
         desc=desc,
-        pbar=pbar,
+        pbar=sub_pbar,
         W_EP=W_EP,
         W_U=W_U,
         W_EP_direction=W_EP_direction,

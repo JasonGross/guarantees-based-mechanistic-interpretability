@@ -702,17 +702,31 @@ def try_all_proofs_subcubic(
                 **W_EP_direction_kwargs, tricks=tricks
             )
             proof_search_duration += time.time() - start
-            proof_results = subcubic.verify_proof(
-                model,
-                W_EP_direction=W_EP_direction,
-                **size_and_query_directions_kwargs,  # type: ignore
-                use_exact_EQKE=use_exact_EQKE,
-                min_gaps=min_gaps,
-                tricks=tricks,
-                sanity_check=False,
-                print_complexity=False,
-                print_results=False,
-            )
+
+            def _verify_proof(
+                tricks: LargestWrongLogitQuadraticConfig, use_exact_EQKE: bool
+            ):
+                return subcubic.verify_proof(
+                    model,
+                    W_EP_direction=W_EP_direction,
+                    **size_and_query_directions_kwargs,  # type: ignore
+                    use_exact_EQKE=use_exact_EQKE,
+                    min_gaps=min_gaps,
+                    tricks=tricks,
+                    sanity_check=False,
+                    print_complexity=False,
+                    print_results=False,
+                )
+
+            with memoshelve(
+                _verify_proof,
+                filename=cache_dir
+                / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
+                get_hash_mem=(lambda x: x[0]),
+                get_hash=str,
+            )() as verify_proof:
+                proof_results = verify_proof(tricks, use_exact_EQKE)
+
             err_upper_bound = proof_results["err_upper_bound"]
             prooftime = proof_results["prooftime"]
             accuracy_bound = proof_results["accuracy_lower_bound"]

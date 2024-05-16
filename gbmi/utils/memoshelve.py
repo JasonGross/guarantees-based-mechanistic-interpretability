@@ -1,4 +1,5 @@
 import shelve
+from frozendict import frozendict
 from pathlib import Path
 from typing import Union, TypeVar, Any, Callable, Dict, Optional
 from contextlib import contextmanager
@@ -26,7 +27,7 @@ def memoshelve(
         with shelve.open(filename) as db:
 
             def delegate(*args, **kwargs):
-                mkey = get_hash_mem((args, kwargs))
+                mkey = get_hash_mem((args, frozendict(kwargs)))
                 try:
                     return mem_db[mkey]
                 except KeyError:

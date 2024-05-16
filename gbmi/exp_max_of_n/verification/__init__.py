@@ -858,3 +858,6 @@ class LargestWrongLogitQuadraticConfig:
             return f"EUPU{transform(self.EUPU_handling)}Attn{transform(self.attention_handling)}AttnErr{transform(self.attention_error_handling)}"
         else:
             return f"EUPU-{transform(self.EUPU_handling)}--attn-{transform(self.attention_handling)}--attn-err-{transform(self.attention_error_handling)}"
+
+    def __str__(self) -> str:
+        return self.short_description()

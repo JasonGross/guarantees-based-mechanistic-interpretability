@@ -890,7 +890,9 @@ class CountTensor:
             and isinstance(tindices[0], torch.Tensor)
             and tindices[0].dtype == torch.bool
         ):
-            shape = tuple(tindices[0].shape)  # worst case if all true
+            init_shape = list(tindices[0].shape)  # worst case if all true
+            mid_shape = []
+            post_shape = list(self.shape[len(init_shape) :])
         else:
             if len(tindices) > 1:
                 assert not any(
@@ -899,19 +901,27 @@ class CountTensor:
                     if isinstance(idx, torch.Tensor)
                 ), f"Why are you doing this sort of indexing? ({tindices}) ({indices})"
             init_shapes = []
-            shape = []
+            mid_shape = []
+            post_shape = list(self.shape)
             for i, idx in enumerate(tindices):
                 if isinstance(idx, slice):
                     start, stop, stride = idx.indices(self.shape[i])
-                    shape.append(int(np.ceil((stop - start) / stride)))
+                    mid_shape.append(int(np.ceil((stop - start) / stride)))
+                    post_shape.pop(0)
                 elif isinstance(idx, torch.Tensor):
                     init_shapes.append(idx.shape[:-1])
-                    shape.append(idx.shape[-1])
+                    mid_shape.append(idx.shape[-1])
+                    post_shape.pop(0)
+                elif isinstance(idx, EllipsisType):
+                    non_ellipsis = len(tindices) - i - 1
+                    mid_shape.extend(post_shape[:non_ellipsis])
+                    post_shape = post_shape[non_ellipsis:]
                 else:
                     assert not hasattr(
                         idx, "__iter__"
                     ), f"Why is {idx} iterable in {tindices}, {indices}"
-            shape = tuple(list(torch.broadcast_shapes(*init_shapes)) + shape)
+            init_shape = list(torch.broadcast_shapes(*init_shapes))
+        shape = tuple(init_shape + mid_shape + post_shape)
         if sanity_check:
             assert (
                 shape == torch_empty(self.shape)[tindices].shape

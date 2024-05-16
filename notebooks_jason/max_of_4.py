@@ -35,6 +35,7 @@ import seaborn as sns
 import tikzplotly
 import tikzplotlib
 import matplotlib
+from types import NoneType
 from typing import (
     Callable,
     ClassVar,
@@ -132,6 +133,9 @@ from gbmi.utils.instructions import (
     CountTensor,
     PatchTorch,
     CountHookedTransformer,
+    PerfCounter,
+    PerfCollector,
+    PERF_WORKING,
 )
 
 
@@ -141,6 +145,8 @@ try:
     IN_COLAB = True
 except:
     IN_COLAB = False
+
+
 # %%
 DISPLAY_PLOTS: bool = True  # @param {type:"boolean"}
 RENDERER: Optional[str] = "png"  # @param ["png", None]
@@ -366,65 +372,8 @@ print(f"Model Loss: {train_average_loss[seed]}")
 all_tokens_dataset = SequenceDataset(
     seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab
 )
-# %%
-batch_size = 4096  # 16_384 # 8182
-latex_values["BruteForceBatchSize"] = batch_size
-latex_values["BruteForceNumBatches"] = int(
-    math.ceil(len(all_tokens_dataset) / batch_size)
-)
 
 
-# %%
-@torch.no_grad()
-def single_batch_instruction_count(
-    model: HookedTransformer, batch_size: int
-) -> InstructionCount:
-    batch = CountTensor.from_numpy(all_tokens_dataset[:batch_size])
-    size = batch.shape[0]
-    labels: CountTensor = training_wrapper.config.experiment.get_ground_truth(batch)
-    xs, ys = batch, labels
-    y_preds: CountTensor = CountHookedTransformer(model)(xs)
-    loss: CountTensor = training_wrapper.loss_fn(
-        y_preds, ys, log_softmax=CountTensor.log_softmax
-    )
-    full_accuracy: CountTensor = training_wrapper.acc_fn_per_seq(y_preds, ys)
-    accuracy: CountTensor = full_accuracy.float().mean()
-    result: CountTensor = loss + accuracy
-    return result.full_count()
-
-
-def brute_force_instruction_count(
-    model: HookedTransformer, batch_size: int
-) -> InstructionCount:
-    n_full_batches = len(all_tokens_dataset) // batch_size
-    final_batch_size = len(all_tokens_dataset) % batch_size
-    single_batch = single_batch_instruction_count(model, batch_size)
-    result = single_batch * n_full_batches
-    if final_batch_size != 0:
-        result += single_batch_instruction_count(model, final_batch_size)
-    return result
-
-
-latex_values["BruteForceInstructionCount"] = brute_force_instruction_count(
-    model, batch_size
-).flop
-# %%
-# %%
-# Resetting the DataLoader without shuffle for consistent processing
-# data_loader = DataLoader(all_tokens_dataset, batch_size=batch_size, shuffle=False)
-
-# Variables to accumulate total loss and accuracy
-total_loss = 0.0
-total_accuracy = 0.0
-total_samples = 0
-total_duration = 0.0
-all_incorrect_sequences = []
-
-brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
-latex_values["BruteForceCPU"] = brute_force_proof_deterministic
-
-
-# loop for computing overall loss and accuracy
 @torch.no_grad()
 def _run_batch_loss_accuracy(
     i: int, batch_size: int, return_incorrect_sequences: bool = True
@@ -448,6 +397,80 @@ def _run_batch_loss_accuracy(
     if return_incorrect_sequences:
         return ((loss, accuracy, size), xs[~full_accuracy]), duration
     return (loss, accuracy, size), duration
+
+
+# %%
+batch_size = 4096  # 16_384 # 8182
+brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
+latex_values["BruteForceCPU"] = brute_force_proof_deterministic
+latex_values["BruteForceBatchSize"] = batch_size
+latex_values["BruteForceNumBatches"] = int(
+    math.ceil(len(all_tokens_dataset) / batch_size)
+)
+
+
+# %%
+@torch.no_grad()
+def single_batch_instruction_count(
+    model: HookedTransformer, batch_size: int
+) -> Tuple[InstructionCount, PerfCounter]:
+    with PerfCollector() as collector:
+        if PERF_WORKING is not None:
+            _run_batch_loss_accuracy(0, batch_size, return_incorrect_sequences=False)
+    perf_instruction_count = collector.counters
+
+    batch = CountTensor.from_numpy(all_tokens_dataset[:batch_size])
+    size = batch.shape[0]
+    labels: CountTensor = training_wrapper.config.experiment.get_ground_truth(batch)  # type: ignore
+    xs, ys = batch, labels
+    y_preds: CountTensor = CountHookedTransformer(model)(xs)
+    loss: CountTensor = training_wrapper.loss_fn(
+        y_preds, ys, log_softmax=CountTensor.log_softmax  # type: ignore
+    )  # type: ignore
+    full_accuracy: CountTensor = training_wrapper.acc_fn_per_seq(y_preds, ys)  # type: ignore
+    accuracy: CountTensor = full_accuracy.float().mean()
+    result: CountTensor = loss + accuracy
+    return result.full_count(), perf_instruction_count
+
+
+def brute_force_instruction_count(
+    model: HookedTransformer, batch_size: int
+) -> Tuple[InstructionCount, PerfCounter]:
+    n_full_batches = len(all_tokens_dataset) // batch_size
+    final_batch_size = len(all_tokens_dataset) % batch_size
+    single_batch, single_batch_perf = single_batch_instruction_count(model, batch_size)
+    result = single_batch * n_full_batches
+    result_perf = single_batch_perf * n_full_batches
+    if final_batch_size != 0:
+        final_batch, final_batch_perf = single_batch_instruction_count(
+            model, final_batch_size
+        )
+        result += final_batch
+        result_perf += final_batch_perf
+    return result, result_perf
+
+
+brute_force_count, brute_force_perf = brute_force_instruction_count(model, batch_size)
+latex_values["BruteForceInstructionCount"] = brute_force_count.flop
+for attr, latex_attr in (
+    ("time_enabled_ns", "TimeEnabledNS"),
+    ("instruction_count", "InstructionCount"),
+    ("branch_misses", "BranchMisses"),
+    ("page_faults", "PageFaults"),
+):
+    if hasattr(brute_force_perf, attr):
+        latex_values[f"BruteForcePerf{latex_attr}"] = getattr(brute_force_perf, attr)
+# %%
+# %%
+# Resetting the DataLoader without shuffle for consistent processing
+# data_loader = DataLoader(all_tokens_dataset, batch_size=batch_size, shuffle=False)
+
+# Variables to accumulate total loss and accuracy
+total_loss = 0.0
+total_accuracy = 0.0
+total_samples = 0
+total_duration = 0.0
+all_incorrect_sequences = []
 
 
 with memoshelve(

@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from contextlib import contextmanager
 from functools import partial
+from itertools import zip_longest
 from types import NoneType
 from ctypes import c_uint64
 from typing import (
+    cast,
     Sequence,
     Literal,
     Optional,
@@ -26,41 +28,62 @@ from typing import (
 from types import EllipsisType
 import numpy as np
 import torch
-from torch import empty as torch_zeros  # for stability under hot patching
+from torch import empty as torch_empty  # for stability under hot patching
+from torch import ones as torch_ones  # for stability under hot patching
 from transformer_lens import HookedTransformer
 import fancy_einsum
 import einops
 import einops._backends
+
 # %%
 try:
     import cirron
     import cirron.cirron
+
     HAS_CIRRON = True
+    PERF_WORKING = True
 
 except Exception as e:
     print(f"Warning: perf cpu instruction counting not available ({e})")
     HAS_CIRRON = False
+    PERF_WORKING = False
+
     class _cirron:
         FAKE = True
+
         class Collector:
             def __enter__(self):
                 return self
+
             def __exit__(self, exc_type, exc_value, traceback):
                 pass
+
         class cirron:
             class Counter:
                 pass
+
     cirron = _cirron
 # from cirron import Collector
 # from cirron.cirron import Counter
 
-class PerfCounter(cirron.cirron.Counter):
+
+class PerfCounter(cirron.cirron.Counter):  # type: ignore
     @staticmethod
     def lift(f: Callable[..., int], *args, **kwargs) -> "PerfCounter":
         if hasattr(cirron, "FAKE"):
             return PerfCounter()
-        apply_f = lambda attr: c_uint64(f(*[getattr(c, attr).value if isinstance(c, PerfCounter) else c for c in args],
-                                    **{k: getattr(c, attr).value if isinstance(c, PerfCounter) else c for k, c in kwargs.items()}))
+        apply_f = lambda attr: c_uint64(
+            f(
+                *[
+                    getattr(c, attr).value if isinstance(c, PerfCounter) else c
+                    for c in args
+                ],
+                **{
+                    k: getattr(c, attr).value if isinstance(c, PerfCounter) else c
+                    for k, c in kwargs.items()
+                },
+            )
+        )
         return PerfCounter(
             time_enabled_ns=apply_f("time_enabled_ns"),
             instruction_count=apply_f("instruction_count"),
@@ -70,47 +93,67 @@ class PerfCounter(cirron.cirron.Counter):
 
     def __add__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
         return PerfCounter.lift(int.__add__, self, other)
+
     def __radd__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
         return PerfCounter.lift(int.__radd__, self, other)
+
     def __sub__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
         return PerfCounter.lift(int.__sub__, self, other)
+
     def __rsub__(self, other: Union[int, "PerfCounter"]) -> "PerfCounter":
         return PerfCounter.lift(int.__rsub__, self, other)
+
     def __abs__(self) -> "PerfCounter":
         return PerfCounter.lift(int.__abs__, self)
+
     def __neg__(self) -> "PerfCounter":
         return PerfCounter.lift(int.__neg__, self)
+
     def __pos__(self) -> "PerfCounter":
         return PerfCounter.lift(int.__pos__, self)
+
     def __mul__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__mul__, self, other)
+
     def __rmul__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__rmul__, self, other)
+
     def __floordiv__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__floordiv__, self, other)
+
     def __rfloordiv__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__rfloordiv__, self, other)
+
     def __mod__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__mod__, self, other)
+
     def __rmod__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__rmod__, self, other)
+
     def __lshift__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__lshift__, self, other)
+
     def __rlshift__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__rlshift__, self, other)
+
     def __rshift__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__rshift__, self, other)
+
     def __rrshift__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__rrshift__, self, other)
+
     def __pow__(self, other: int) -> "PerfCounter":
         return PerfCounter.lift(int.__pow__, self, other)
+
     def __round__(self, *args, **kwargs) -> "PerfCounter":
         return PerfCounter.lift(int.__round__, self, *args, **kwargs)
 
-class PerfCollector(cirron.Collector):
+
+class PerfCollector(cirron.Collector):  # type: ignore
     def __init__(self):
         super().__init__()
         self.counters = PerfCounter()
+
 
 @dataclass
 class InstructionCount:
@@ -207,6 +250,29 @@ class _NestedSequence(Protocol[_T_co]):
     def index(self, value: Any, /) -> int: ...
 
 
+def nested_sequence_empty(seq: _NestedSequence) -> bool:
+    try:
+        iter(seq)
+        return len(seq) == 0
+    except TypeError:
+        return True
+
+
+def tensor_of_nested_sequence(seq: _NestedSequence) -> torch.Tensor:
+    if isinstance(seq, torch.Tensor):
+        return seq
+    if nested_sequence_empty(seq):
+        return torch.tensor(seq)
+    return torch.stack([tensor_of_nested_sequence(s) for s in seq], dim=0)
+
+
+def index_nested_sequence(seq: _NestedSequence, index: Tuple[int, ...]) -> Any:
+    """Index a nested sequence."""
+    for i in index:
+        seq = seq[i]
+    return seq
+
+
 TensorIndexType = Union[
     Union[
         SupportsIndex,
@@ -264,6 +330,7 @@ class count_values_indices(NamedTuple):
 
 
 mode: Literal["verify", "search"] = "verify"
+default_sanity_check: bool = True
 
 
 @dataclass
@@ -271,15 +338,19 @@ class CountTensor:
     shape: Sequence[int]
     count: InstructionCount = InstructionCount()
     parents: Collection["CountTensor"] = tuple()
+    is_bool: bool = False
 
     @staticmethod
-    def from_numpy(x: Union[np.ndarray, torch.Tensor, "CountTensor"]) -> "CountTensor":
+    def from_numpy(
+        x: Union[np.ndarray, torch.Tensor, int, float, "CountTensor"]
+    ) -> "CountTensor":
         if isinstance(x, CountTensor):
             return x
-        elif hasattr(x, "shape"):
-            return CountTensor(shape=x.shape)
-        else:
-            return CountTensor(shape=torch.tensor(x).shape)
+        elif not isinstance(x, torch.Tensor):
+            x = torch.tensor(x)
+        return CountTensor(
+            shape=x.shape, is_bool=x.dtype == torch.bool or x.dtype == bool
+        )
 
     def _full_count(
         self,
@@ -296,17 +367,40 @@ class CountTensor:
     def full_count(self) -> InstructionCount:
         return self._full_count()[0]
 
-    def unary(self) -> "CountTensor":
+    def _unary(self, is_bool: Optional[bool] = None) -> "CountTensor":
         return CountTensor(
             shape=self.shape,
             count=InstructionCount(flop=int(np.prod(self.shape))),
+            is_bool=is_bool if is_bool is not None else self.is_bool,
             parents=(self,),
         )
 
-    def binary_only_scalar(self, other: Union[int, float]) -> "CountTensor":
-        return self.unary()
+    def unary(self) -> "CountTensor":
+        return self._unary(is_bool=None)
 
-    def _binary(self, other: "CountTensor") -> "CountTensor":
+    def unary_bool(self) -> "CountTensor":
+        return self._unary(is_bool=True)
+
+    def unary_arith(self) -> "CountTensor":
+        return self._unary(is_bool=False)
+
+    def _binary_only_scalar(
+        self, other: Union[int, float], is_bool: Optional[bool] = None
+    ) -> "CountTensor":
+        return self._unary(is_bool=is_bool)
+
+    def binary_only_scalar(self, other: Union[int, float]) -> "CountTensor":
+        return self._binary_only_scalar(other, is_bool=None)
+
+    def binary_only_scalar_bool(self, other: Union[int, float]) -> "CountTensor":
+        return self._binary_only_scalar(other, is_bool=True)
+
+    def binary_only_scalar_arith(self, other: Union[int, float]) -> "CountTensor":
+        return self._binary_only_scalar(other, is_bool=False)
+
+    def _binary_only(
+        self, other: "CountTensor", is_bool: Optional[bool] = None
+    ) -> "CountTensor":
         shape = torch.broadcast_shapes(self.shape, other.shape)
         assert isinstance(
             other, CountTensor
@@ -314,23 +408,44 @@ class CountTensor:
         return CountTensor(
             shape=shape,
             count=InstructionCount(flop=int(np.prod(shape))),
+            is_bool=(
+                is_bool if is_bool is not None else (self.is_bool and other.is_bool)
+            ),
             parents=(self, other),
         )
+
+    def _binary(
+        self,
+        other: Union[int, float, "CountTensor", np.ndarray, torch.Tensor],
+        is_bool: Optional[bool] = None,
+    ) -> "CountTensor":
+        if isinstance(other, CountTensor):
+            return self._binary_only(other, is_bool=is_bool)
+        elif hasattr(other, "shape"):
+            return self._binary_only(CountTensor.from_numpy(other), is_bool=is_bool)
+        return self._unary(is_bool=is_bool)
 
     def binary(
         self, other: Union[int, float, "CountTensor", np.ndarray, torch.Tensor]
     ) -> "CountTensor":
-        if isinstance(other, CountTensor):
-            return self._binary(other)
-        elif hasattr(other, "shape"):
-            return self._binary(CountTensor.from_numpy(other))
-        return self.unary()
+        return self._binary(other, is_bool=None)
 
-    def fold_reduce(
+    def binary_bool(
+        self, other: Union[int, float, "CountTensor", np.ndarray, torch.Tensor]
+    ) -> "CountTensor":
+        return self._binary(other, is_bool=True)
+
+    def binary_arith(
+        self, other: Union[int, float, "CountTensor", np.ndarray, torch.Tensor]
+    ) -> "CountTensor":
+        return self._binary(other, is_bool=False)
+
+    def _fold_reduce(
         self,
         dim: Optional[int] = None,
         axis: Optional[int] = None,
         keepdim: bool = False,
+        is_bool: Optional[bool] = None,
     ) -> "CountTensor":
         if axis is not None:
             assert dim is None, "Cannot specify both dim and axis"
@@ -340,6 +455,7 @@ class CountTensor:
             return CountTensor(
                 shape=[],
                 count=InstructionCount(flop=int(np.prod(shape)) - 1),
+                is_bool=is_bool if is_bool is not None else self.is_bool,
                 parents=(self,),
             )
         shape_without_dim = list(shape)
@@ -349,8 +465,45 @@ class CountTensor:
             count=InstructionCount(
                 flop=int(np.prod(shape_without_dim)) * (shape[dim] - 1)
             ),
+            is_bool=is_bool if is_bool is not None else self.is_bool,
             parents=(self,),
         )
+
+    def fold_reduce(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+    ) -> "CountTensor":
+        return self._fold_reduce(dim=dim, axis=axis, keepdim=keepdim, is_bool=None)
+
+    def fold_reduce_bool(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+    ) -> "CountTensor":
+        return self._fold_reduce(dim=dim, axis=axis, keepdim=keepdim, is_bool=True)
+
+    def fold_reduce_arith(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+    ) -> "CountTensor":
+        return self._fold_reduce(dim=dim, axis=axis, keepdim=keepdim, is_bool=False)
+
+    def _fold_reduce_values_indices(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+        is_bool: Optional[bool] = None,
+    ) -> Union["CountTensor", count_values_indices]:
+        result = self._fold_reduce(dim=dim, axis=axis, keepdim=keepdim, is_bool=is_bool)
+        if dim is None and axis is None:
+            return result
+        return count_values_indices(result, result)
 
     def fold_reduce_values_indices(
         self,
@@ -358,10 +511,29 @@ class CountTensor:
         axis: Optional[int] = None,
         keepdim: bool = False,
     ) -> Union["CountTensor", count_values_indices]:
-        result = self.fold_reduce(dim=dim, axis=axis, keepdim=keepdim)
-        if dim is None and axis is None:
-            return result
-        return count_values_indices(result, result)
+        return self._fold_reduce_values_indices(
+            dim=dim, axis=axis, keepdim=keepdim, is_bool=None
+        )
+
+    def fold_reduce_values_indices_bool(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+    ) -> Union["CountTensor", count_values_indices]:
+        return self._fold_reduce_values_indices(
+            dim=dim, axis=axis, keepdim=keepdim, is_bool=True
+        )
+
+    def fold_reduce_values_indices_arith(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+    ) -> Union["CountTensor", count_values_indices]:
+        return self._fold_reduce_values_indices(
+            dim=dim, axis=axis, keepdim=keepdim, is_bool=False
+        )
 
     __add__ = binary
     __radd__ = binary
@@ -377,46 +549,51 @@ class CountTensor:
     __rfloordiv__ = binary
     __mod__ = binary
     __rmod__ = binary
-    __or__ = binary
-    __ror__ = binary
-    __and__ = binary
-    __rand__ = binary
-    __xor__ = binary
-    __rxor__ = binary
-    __eq__ = binary
-    __ne__ = binary
-    __lt__ = binary
-    __le__ = binary
-    __gt__ = binary
-    __ge__ = binary
-    __req__ = binary
-    __rne__ = binary
-    __rlt__ = binary
-    __rle__ = binary
-    __rgt__ = binary
-    __rge__ = binary
+    __or__ = binary_bool
+    __ror__ = binary_bool
+    __and__ = binary_bool
+    __rand__ = binary_bool
+    __xor__ = binary_bool
+    __rxor__ = binary_bool
+    __eq__ = binary_bool  # type: ignore
+    __ne__ = binary_bool  # type: ignore
+    __lt__ = binary_bool
+    __le__ = binary_bool
+    __gt__ = binary_bool
+    __ge__ = binary_bool
+    __req__ = binary_bool
+    __rne__ = binary_bool
+    __rlt__ = binary_bool
+    __rle__ = binary_bool
+    __rgt__ = binary_bool
+    __rge__ = binary_bool
 
+    clone = unary
     __abs__ = unary
     __neg__ = unary
     __pos__ = unary
-    __invert__ = unary
-    sqrt = unary
-    exp = unary
-    log = unary
-    log1p = unary
-    isnan = unary
-    pow = binary_only_scalar
-    float = unary
-    long = unary
-    bool = unary
+    __invert__ = unary_bool
+    sqrt = unary_arith
+    exp = unary_arith
+    log = unary_arith
+    log1p = unary_arith
+    isnan = unary_bool
+    pow = binary_only_scalar_arith
+    float = unary_arith
+    long = unary_arith
+    bool = unary_bool
 
     def tril(self, diagonal: int = 0) -> "CountTensor":
         return self.unary()
 
     triu = tril
 
+    def _reshape(self, new_shape: Sequence[int]) -> "CountTensor":
+        """explicitly does not check the number of elements"""
+        return CountTensor(shape=new_shape, parents=(self,), is_bool=self.is_bool)
+
     def reshape(self, new_shape: Sequence[int]) -> "CountTensor":
-        return CountTensor(shape=new_shape, parents=(self,))
+        return self._reshape(new_shape)
 
     def __matmul__(
         self, other: Union["CountTensor", np.ndarray, torch.Tensor]
@@ -434,6 +611,7 @@ class CountTensor:
             count=InstructionCount(
                 flop=int(np.prod(out_shape)) * (x_shape[-1] * 2 - 1)
             ),
+            is_bool=self.is_bool and other.is_bool,
             parents=(self, other),
         )
 
@@ -442,7 +620,22 @@ class CountTensor:
     argmin = fold_reduce
     max = fold_reduce_values_indices
     min = fold_reduce_values_indices
+    amin = fold_reduce
+    amax = fold_reduce
     prod = fold_reduce
+    any = fold_reduce_bool
+    all = fold_reduce_bool
+
+    def repeat(self, *reps: Union[Sequence[int], int]):
+        if len(reps) == 1 and hasattr(reps[0], "__iter__"):
+            return self.repeat(*reps[0])
+        shape_reps0 = [
+            (s, r)
+            for s, r in zip_longest(reversed(self.shape), reversed(reps), fillvalue=1)
+        ]
+        shape_reps = cast(list[Tuple[int, int]], shape_reps0)
+        shape = tuple(reversed([s * r for s, r in shape_reps]))
+        return self._reshape(shape)
 
     def mean(
         self,
@@ -478,14 +671,28 @@ class CountTensor:
 
     def flip(self, *args, **kwargs) -> "CountTensor":
         return CountTensor(
-            shape=torch.empty(self.shape).flip(*args, **kwargs).shape,
+            shape=self.shape,
+            count=InstructionCount(flop=int(np.prod(self.shape))),
+            is_bool=self.is_bool,
             parents=(self,),
         )
 
+    def permute(self, *args, **kwargs) -> "CountTensor":
+        return self._reshape(
+            tuple(
+                torch.tensor(self.shape, dtype=torch.long)
+                .permute(*args, **kwargs)
+                .tolist()
+            )
+        )
+
     def transpose(self, *args, **kwargs) -> "CountTensor":
-        return CountTensor(
-            shape=torch.empty(self.shape).transpose(*args, **kwargs).shape,
-            parents=(self,),
+        return self._reshape(
+            tuple(
+                torch.tensor(self.shape, dtype=torch.long)
+                .transpose(*args, **kwargs)
+                .tolist()
+            )
         )
 
     @property
@@ -519,6 +726,7 @@ class CountTensor:
         return CountTensor(
             shape=tuple(shape_map[idx] for idx in rhs),
             count=InstructionCount(flop=flops),
+            is_bool=False,
             parents=tuple(arg for arg in args if isinstance(arg, CountTensor)),
         )
 
@@ -550,6 +758,7 @@ class CountTensor:
         return CountTensor(
             shape=tuple(shape_map[idx] for idx in rhs),
             count=InstructionCount(flop=flops),
+            is_bool=False,
             parents=tuple(arg for arg in args if isinstance(arg, CountTensor)),
         )
 
@@ -576,6 +785,7 @@ class CountTensor:
         return CountTensor(
             shape=shape,
             count=InstructionCount(flop=int(np.prod(shape))),
+            is_bool=x.is_bool and y.is_bool,
             parents=(cond, x, y),
         )
 
@@ -591,7 +801,7 @@ class CountTensor:
 
     @staticmethod
     def zeros_like(other: "CountTensor") -> "CountTensor":
-        return CountTensor.zeros(other.shape)
+        return CountTensor.zeros(other.shape).to(other)
 
     ones_like = zeros_like
 
@@ -599,12 +809,14 @@ class CountTensor:
     def stack(
         tensors: Sequence[Union["CountTensor", torch.Tensor]], dim: int = 0
     ) -> "CountTensor":
+        tensors = [CountTensor.from_numpy(t) for t in tensors]
         shape = list(torch.broadcast_shapes(*[t.shape for t in tensors]))
         shape.insert(dim, len(tensors))
         return CountTensor(
             shape=tuple(shape),
             count=InstructionCount(),
-            parents=tuple(CountTensor.from_numpy(t) for t in tensors),
+            is_bool=all(t.is_bool for t in tensors),
+            parents=tuple(tensors),
         )
 
     @staticmethod
@@ -620,6 +832,7 @@ class CountTensor:
         shape.insert(dim, sum(new_index))
         return CountTensor(
             shape=tuple(shape),
+            is_bool=all(t.is_bool for t in parents),
             count=InstructionCount(),
             parents=parents,
         )
@@ -629,9 +842,11 @@ class CountTensor:
         indices: TensorOrCountTensorIndexType,
     ) -> Tuple[list["CountTensor"], TensorIndexType]:
         if isinstance(indices, CountTensor):
-            return [indices], torch_zeros(indices.shape, dtype=torch.long)
+            return [indices], torch_ones(
+                indices.shape, dtype=torch.long if not indices.is_bool else torch.bool
+            )
         elif isinstance(indices, torch.Tensor):
-            return CountTensor.accumulate_indices(CountTensor.from_numpy(indices))
+            return [], indices
         elif isinstance(indices, tuple):
             tensors, new_indices = zip(
                 *[CountTensor.accumulate_indices(idx) for idx in indices]
@@ -645,7 +860,11 @@ class CountTensor:
         else:  # any(isinstance(indices, ty) for ty in [int, slice, bool, type(None)]) or hasattr(indices, "__index__"):
             return [], indices
 
-    def __getitem__(self, indices: CountTensorIndexType) -> "CountTensor":
+    def __getitem__(
+        self, indices: CountTensorIndexType, sanity_check: Optional[bool] = None
+    ) -> "CountTensor":
+        if sanity_check is None:
+            sanity_check = default_sanity_check
         # cheap hack
         # if isinstance(indices, slice):
         #     start, stop, stride = indices.indices(self.shape[0])
@@ -660,8 +879,45 @@ class CountTensor:
         assert all(
             isinstance(idx, CountTensor) for idx in idx_parents
         ), f"Expected CountTensor, got {idx_parents} ({[type(idx) for idx in idx_parents]})"
+        orig_tindices = tindices
+        if not isinstance(tindices, tuple):
+            tindices = (tindices,)
+        assert not any(
+            isinstance(idx, bool) for idx in tindices
+        ), f"Why are you doing this sort of indexing? ({tindices}) ({indices})"
+        if (
+            len(tindices) == 1
+            and isinstance(tindices[0], torch.Tensor)
+            and tindices[0].dtype == torch.bool
+        ):
+            shape = tuple(tindices[0].shape)  # worst case if all true
+        else:
+            if len(tindices) > 1:
+                assert not any(
+                    idx.dtype == torch.bool
+                    for idx in tindices
+                    if isinstance(idx, torch.Tensor)
+                ), f"Why are you doing this sort of indexing? ({tindices}) ({indices})"
+            init_shapes = []
+            shape = []
+            for i, idx in enumerate(tindices):
+                if isinstance(idx, slice):
+                    start, stop, stride = idx.indices(self.shape[i])
+                    shape.append(int(np.ceil((stop - start) / stride)))
+                elif isinstance(idx, torch.Tensor):
+                    init_shapes.append(idx.shape[:-1])
+                    shape.append(idx.shape[-1])
+                else:
+                    assert not hasattr(
+                        idx, "__iter__"
+                    ), f"Why is {idx} iterable in {tindices}, {indices}"
+            shape = tuple(list(torch.broadcast_shapes(*init_shapes)) + shape)
+        if sanity_check:
+            assert (
+                shape == torch_empty(self.shape)[tindices].shape
+            ), f"{shape} != {torch_empty(self.shape)[tindices].shape} == torch.zeros({self.shape})[{tindices}].shape"
         return CountTensor(
-            shape=torch_zeros(self.shape)[tindices].shape,
+            shape=shape,
             count=InstructionCount(),
             parents=(self, *idx_parents),
         )
@@ -677,7 +933,7 @@ class CountTensor:
             isinstance(idx, CountTensor) for idx in idx_parents
         ), f"Expected CountTensor, got {idx_parents} ({[type(idx) for idx in idx_parents]})"
         self.count += InstructionCount(
-            flop=int(np.prod(torch_zeros(self.shape)[tindices].shape))
+            flop=int(np.prod(torch_empty(self.shape)[tindices].shape))
         )
         self.parents = (self, *idx_parents, CountTensor.from_numpy(other))
         return self
@@ -701,10 +957,21 @@ class CountTensor:
     def device(self):
         return torch.device("cpu")
 
+    def cpu(self) -> "CountTensor":
+        return self
+
     def item(self) -> "CountTensor":
         return self
 
     def to(self, *args, **kwargs) -> "CountTensor":
+        if "dtype" in kwargs:
+            if kwargs["dtype"] == bool or kwargs["dtype"] == torch.bool:
+                return self.bool()
+            return self
+        if isinstance(args[0], type) or isinstance(args[0], torch.dtype):
+            if args[0] == bool or args[0] == torch.bool:
+                return self.bool()
+            return self
         return self
 
     def detach(self) -> "CountTensor":
@@ -758,11 +1025,34 @@ class CountTensorBackend(
     # def eval_symbol(self, symbol, input_dict):
     # def arange(self, start, stop):
     # def stack_on_zeroth_dimension(self, tensors: list):
-    # def add_axis(self, x, new_position):
-    # def tile(self, x, repeats):
-    # def concat(self, tensors, axis: int):
+    def add_axis(self, x, new_position):
+        return x.unsqueeze(new_position)
+
+    def tile(self, x, repeats):
+        return x.repeat(repeats)
+
+    def concat(self, tensors, axis: int):
+        return CountTensor.cat(tensors, dim=axis)
+
     def is_float_type(self, x):
         return True
+
+    def reduce(self, x, operation, reduced_axes):
+        if operation == "min":
+            return x.amin(dim=reduced_axes)
+        elif operation == "max":
+            return x.amax(dim=reduced_axes)
+        elif operation == "sum":
+            return x.sum(dim=reduced_axes)
+        elif operation == "mean":
+            return x.mean(dim=reduced_axes)
+        elif operation in ("any", "all", "prod"):
+            # pytorch supports reducing only one operation at a time
+            for i in list(sorted(reduced_axes))[::-1]:
+                x = getattr(x, operation)(dim=i)
+            return x
+        else:
+            raise NotImplementedError("Unknown reduction ", operation)
 
     # def layers(self):
 

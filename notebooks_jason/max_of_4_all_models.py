@@ -816,25 +816,23 @@ sub_cfg_counts = {
     for seed, num_cfgs in cfg_counts.items()
 }
 
-with tqdm(
-    total=sum(cfg_counts.values()), desc="configurations for subcubic", position=0
-) as cfg_pbar:
-    with tqdm(
-        total=sum(sub_cfg_counts.values()), desc="subconfig progress", position=1
-    ) as subcfg_pbar:
-        with tqdm(
-            total=sum(cfg_counts.values()), desc="proofs for subcubic", position=2
-        ) as proof_pbar:
-            # with PeriodicGarbageCollector(60):
-            maybe_parallel_map(
-                partial(
-                    _handle_subcubic,
-                    subcfg_pbar=subcfg_pbar,
-                    cfg_pbar=cfg_pbar,
-                    proof_pbar=proof_pbar,
-                ),
-                relevant_seeds,
-            )
+n_cfgs = sum(cfg_counts.values())
+n_subcfgs = sum(sub_cfg_counts.values())
+with (
+    tqdm(total=n_cfgs, desc="configurations for subcubic", position=0) as cfg_pbar,
+    tqdm(total=n_subcfgs, desc="subconfig progress", position=1) as subcfg_pbar,
+    tqdm(total=n_cfgs, desc="proofs for subcubic", position=2) as proof_pbar,
+):
+    # with PeriodicGarbageCollector(60):
+    maybe_parallel_map(
+        partial(
+            _handle_subcubic,
+            subcfg_pbar=subcfg_pbar,
+            cfg_pbar=cfg_pbar,
+            proof_pbar=proof_pbar,
+        ),
+        relevant_seeds,
+    )
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):

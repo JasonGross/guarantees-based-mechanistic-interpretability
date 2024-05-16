@@ -861,3 +861,8 @@ class LargestWrongLogitQuadraticConfig:
 
     def __str__(self) -> str:
         return self.short_description()
+
+    def __hash__(self):
+        return hash(
+            (self.EUPU_handling, self.attention_handling, self.attention_error_handling)
+        )

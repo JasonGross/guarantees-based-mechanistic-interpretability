@@ -920,6 +920,7 @@ class CountTensor:
                     assert not hasattr(
                         idx, "__iter__"
                     ), f"Why is {idx} iterable in {tindices}, {indices}"
+                    post_shape.pop(0)
             init_shape = list(torch.broadcast_shapes(*init_shapes))
         shape = tuple(init_shape + mid_shape + post_shape)
         if sanity_check:

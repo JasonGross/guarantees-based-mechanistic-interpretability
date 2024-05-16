@@ -333,12 +333,29 @@ mode: Literal["verify", "search"] = "verify"
 default_sanity_check: bool = True
 
 
+@contextmanager
+def set_sanity_check(sanity_check: bool):
+    global default_sanity_check
+    old_sanity_check = default_sanity_check
+    default_sanity_check = sanity_check
+    try:
+        yield
+    finally:
+        default_sanity_check = old_sanity_check
+
+
 @dataclass
 class CountTensor:
     shape: Sequence[int]
     count: InstructionCount = InstructionCount()
     parents: Collection["CountTensor"] = tuple()
     is_bool: bool = False
+
+    def __str__(self):
+        return f"CountTensor(shape={self.shape}, count={self.count}, is_bool={self.is_bool}, parents=<{len(self.parents)} parents>)"
+
+    def __repr__(self):
+        return f"CountTensor(shape={self.shape!r}, count={self.count!r}, is_bool={self.is_bool!r}, parents={self.parents!r})"
 
     @staticmethod
     def from_numpy(
@@ -686,14 +703,10 @@ class CountTensor:
             )
         )
 
-    def transpose(self, *args, **kwargs) -> "CountTensor":
-        return self._reshape(
-            tuple(
-                torch.tensor(self.shape, dtype=torch.long)
-                .transpose(*args, **kwargs)
-                .tolist()
-            )
-        )
+    def transpose(self, dim0: int, dim1: int) -> "CountTensor":
+        new_shape = list(self.shape)
+        new_shape[dim0], new_shape[dim1] = new_shape[dim1], new_shape[dim0]
+        return self._reshape(tuple(new_shape))
 
     @property
     def T(self) -> "CountTensor":
@@ -903,19 +916,23 @@ class CountTensor:
             init_shapes = []
             mid_shape = []
             post_shape = list(self.shape)
-            for i, idx in enumerate(tindices):
-                if isinstance(idx, slice):
-                    start, stop, stride = idx.indices(self.shape[i])
+            for remaining, idx in reversed(list(enumerate(reversed(list(tindices))))):
+                if idx is None:
+                    mid_shape.append(1)
+                elif isinstance(idx, slice):
+                    start, stop, stride = idx.indices(post_shape.pop(0))
                     mid_shape.append(int(np.ceil((stop - start) / stride)))
-                    post_shape.pop(0)
                 elif isinstance(idx, torch.Tensor):
                     init_shapes.append(idx.shape[:-1])
                     mid_shape.append(idx.shape[-1])
                     post_shape.pop(0)
                 elif isinstance(idx, EllipsisType):
-                    non_ellipsis = len(tindices) - i - 1
-                    mid_shape.extend(post_shape[:non_ellipsis])
-                    post_shape = post_shape[non_ellipsis:]
+                    if remaining == 0:
+                        mid_shape.extend(post_shape)
+                        post_shape = []
+                    else:
+                        mid_shape.extend(post_shape[:-remaining])
+                        post_shape = post_shape[-remaining:]
                 else:
                     assert not hasattr(
                         idx, "__iter__"

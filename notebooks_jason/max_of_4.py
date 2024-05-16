@@ -191,6 +191,22 @@ default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
 latex_figures: dict[str, Union[go.Figure, matplotlib.figure.Figure]] = {}
+
+
+# %%
+def latex_values_of_counter(prefix: str, counters: PerfCounter) -> dict[str, int]:
+    return {
+        f"{prefix}Perf{latex_attr}": getattr(counters, attr)
+        for attr, latex_attr in (
+            ("time_enabled_ns", "TimeEnabledNS"),
+            ("instruction_count", "InstructionCount"),
+            ("branch_misses", "BranchMisses"),
+            ("page_faults", "PageFaults"),
+        )
+        if hasattr(counters, attr)
+    }
+
+
 # %%
 # hack around newlines of black formatting
 seeds = (
@@ -452,14 +468,7 @@ def brute_force_instruction_count(
 
 brute_force_count, brute_force_perf = brute_force_instruction_count(model, batch_size)
 latex_values["BruteForceInstructionCount"] = brute_force_count.flop
-for attr, latex_attr in (
-    ("time_enabled_ns", "TimeEnabledNS"),
-    ("instruction_count", "InstructionCount"),
-    ("branch_misses", "BranchMisses"),
-    ("page_faults", "PageFaults"),
-):
-    if hasattr(brute_force_perf, attr):
-        latex_values[f"BruteForcePerf{latex_attr}"] = getattr(brute_force_perf, attr)
+latex_values |= latex_values_of_counter("BruteForce", brute_force_perf)
 # %%
 # %%
 # Resetting the DataLoader without shuffle for consistent processing
@@ -831,6 +840,18 @@ with memoshelve(
     cubic_proof_args = cubic.find_proof(model)
     cubic_proof_results = verify_proof(cubic_proof_args)
 # %%
+with PerfCollector() as cubic_collector:
+    if PERF_WORKING is not None:
+        cubic.verify_proof(
+            model,
+            cubic_proof_args,
+            print_complexity=False,
+            print_results=False,
+            sanity_check=False,
+        )
+latex_values |= latex_values_of_counter("Cubic", cubic_collector.counters)
+
+# %%
 import gbmi.utils.instructions as instructions
 from gbmi.utils.instructions import (
     InstructionCount,
@@ -844,17 +865,24 @@ import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
+import traceback
 
 # must be outside PatchTorch to avoid triu, tril
 cmodel = CountHookedTransformer(model)
-with PatchTorch():
-    cubic_proof_instruction_count_results = cubic.verify_proof(
-        cmodel,
-        cubic_proof_args,
-        print_complexity=False,
-        print_results=False,
-        sanity_check=False,
-    )
+try:
+    with PatchTorch():
+        with instructions.set_sanity_check(False):
+            cubic_proof_instruction_count_results = cubic.verify_proof(
+                cmodel,
+                cubic_proof_args,
+                print_complexity=False,
+                print_results=False,
+                sanity_check=False,
+            )
+except Exception as ex:
+    tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
+    print("".join(tb.format()))
+    raise ex
 # HERE
 # %%
 largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]

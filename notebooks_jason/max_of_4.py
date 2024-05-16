@@ -885,6 +885,11 @@ except Exception as ex:
     raise ex
 # HERE
 # %%
+cubic_proof_instruction_count_results_counts = {
+    k: v.full_count() if isinstance(v, CountTensor) else v
+    for k, v in cubic_proof_instruction_count_results.items()
+}
+# %%
 largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]
 total_sequences = cubic_proof_results["total_sequences"]
 accuracy_bound_cubic = cubic_proof_results["accuracy_lower_bound"]

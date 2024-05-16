@@ -369,6 +369,21 @@ class CountTensor:
             shape=x.shape, is_bool=x.dtype == torch.bool or x.dtype == bool
         )
 
+    def _full_count_nonrec(
+        self,
+        count: InstructionCount = InstructionCount(),
+        seen: Collection["CountTensor"] = tuple(),
+    ) -> Tuple[InstructionCount, Collection["CountTensor"]]:
+        # avoid RecursionError: maximum recursion depth exceeded
+        # by using a non-recursive implementation
+        # TODO FIXME HERE
+        seen = tuple(seen) + (self,)
+        for parent in self.parents:
+            if any(parent is s for s in seen):
+                continue
+            count, seen = parent._full_count(count, seen)
+        return count + self.count, seen
+
     def _full_count(
         self,
         count: InstructionCount = InstructionCount(),

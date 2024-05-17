@@ -449,11 +449,17 @@ def decompose_EQKE_error_quadratic(
     W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
     W_E_pos_q = W_E + W_pos[-1][None, :]
     W_E_key, W_E_key_err = factor_contribution(
-        W_E_pos_k, key_direction.squeeze(), sanity_check=sanity_check
+        W_E_pos_k,
+        key_direction.squeeze(),
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
     )  # O(d_vocab * d_model)
     W_E_key.setcheckparams(atol=atol)
     W_E_query, W_E_query_err = factor_contribution(
-        W_E_pos_q, query_direction.squeeze(), sanity_check=sanity_check
+        W_E_pos_q,
+        query_direction.squeeze(),
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
     )  # O(d_vocab * d_model)
     W_E_query.setcheckparams(atol=atol)
     EQKE_query_key = (W_E_query @ W_Q[layer, head]) @ (

@@ -2364,6 +2364,26 @@ else:
 # %% [markdown]
 # # Sub-cubic Proofs
 # %%
+import gbmi.utils.instructions as instructions
+from gbmi.utils.instructions import (
+    InstructionCount,
+    CountTensor,
+    CountHookedTransformer,
+    PatchTorch,
+    CountHookedTransformer,
+    PerfCounter,
+    PerfCollector,
+    PERF_WORKING,
+)
+import gbmi.verification_tools.general
+import gbmi.exp_max_of_n.verification.cubic as cubic
+import gbmi.exp_max_of_n.verification.subcubic as subcubic
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
+import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
+import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
+import traceback
+import gbmi.exp_max_of_n.verification.cubic as cubic
+
 # must be outside PatchTorch to avoid triu, tril
 cmodel = CountHookedTransformer(model)
 # err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
@@ -2470,25 +2490,6 @@ with torch.no_grad():
                         )
 
             ## %%
-            # import gbmi.utils.instructions as instructions
-            # from gbmi.utils.instructions import (
-            #     InstructionCount,
-            #     CountTensor,
-            #     CountHookedTransformer,
-            #     PatchTorch,
-            #     CountHookedTransformer,
-            #     PerfCounter,
-            #     PerfCollector,
-            #     PERF_WORKING,
-            # )
-            # import gbmi.verification_tools.general
-            # import gbmi.exp_max_of_n.verification.cubic as cubic
-            # import gbmi.exp_max_of_n.verification.subcubic as subcubic
-            # import gbmi.exp_max_of_n.verification.quadratic as quadratic
-            # import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
-            # import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-            # import traceback
-            # import gbmi.exp_max_of_n.verification.cubic as cubic
 
             # try:
             #     pass

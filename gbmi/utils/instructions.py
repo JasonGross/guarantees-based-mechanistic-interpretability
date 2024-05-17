@@ -427,6 +427,10 @@ class CountTensor:
     def __repr__(self):
         return f"CountTensor(shape={self.shape!r}, count={self.count!r}, is_bool={self.is_bool!r}"
 
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
     # @staticmethod
     # def _parents_of_tuple(parents: Iterable["CountTensor"]) -> dict[int, "CountTensor"]:
     #     return OrderedDict((id(p), p) for p in parents)
@@ -701,6 +705,21 @@ class CountTensor:
 
     def reshape(self, new_shape: Sequence[int]) -> "CountTensor":
         return self._reshape(new_shape)
+
+    def expand(self, *sizes: Union[int, Sequence[int]]) -> "CountTensor":
+        if len(sizes) == 0:
+            return self
+        if len(sizes) == 1 and isinstance(sizes[0], Sequence):
+            return self.expand(*sizes[0])
+        sizes = list(sizes)
+        for d, (i, sz) in zip(reversed(self.shape), reversed(list(enumerate(sizes)))):
+            if sz == -1:
+                sizes[i] = d
+        shape = torch.broadcast_shapes(self.shape, sizes)
+        return self._reshape(shape)
+
+    def broadcast_to(self, shape: Sequence[int]) -> "CountTensor":
+        return self.expand(*shape)
 
     def __matmul__(
         self, other: Union["CountTensor", np.ndarray, torch.Tensor]

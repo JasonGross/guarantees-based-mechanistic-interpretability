@@ -298,7 +298,7 @@ def count_correct_sequences_cubic(
 @overload
 def count_correct_sequences_cubic(
     largest_wrong_logit: CountTensor,
-) -> InstructionCount: ...
+) -> CountTensor: ...
 
 
 @torch.no_grad()
@@ -310,7 +310,7 @@ def count_correct_sequences_cubic(
         ],
         CountTensor,
     ],
-) -> Union[int, InstructionCount]:
+) -> Union[int, CountTensor]:
     d_vocab_q, d_vocab_max, d_vocab_nonmax, n_ctx = largest_wrong_logit.shape
     correct_count: Union[int, CountTensor] = (
         0
@@ -341,9 +341,9 @@ def count_correct_sequences_cubic(
                         cur_count = count_sequences_instructions(
                             n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
                         )
-                        correct_count += nonmax_tok_choices.reshape((0,)) + CountTensor(
-                            shape=(0,), count=cur_count
-                        )
+                        correct_count += nonmax_tok_choices._reshape(
+                            (0,)
+                        ) + CountTensor(shape=(0,), count=cur_count)
                     else:
                         cur_count = count_sequences(
                             n_ctx - 1, n_copies_nonmax, num_nonmax_tok_choices
@@ -369,8 +369,8 @@ def count_correct_sequences_cubic(
                         # the sequence (where 3 occurs only when the query token is the max token))
                         # You can extend this to 3 non-max token choices by induction
 
-    if isinstance(largest_wrong_logit, CountTensor):
-        return correct_count.full_count()
+    # if isinstance(largest_wrong_logit, CountTensor):
+    #     return correct_count.full_count
     return correct_count
 
 
@@ -385,7 +385,15 @@ def compute_accuracy_lower_bound_from_cubic(
     d_vocab_q, d_vocab_max, _, n_ctx = largest_wrong_logit.shape
     correct_count = count_correct_sequences_cubic(largest_wrong_logit)
     total_sequences = d_vocab_max**n_ctx
-    return correct_count / total_sequences, (correct_count, total_sequences)
+    if isinstance(correct_count, InstructionCount):
+        correct_fraction = correct_count.add_int_op(1).add_flop(1)
+    elif isinstance(correct_count, CountTensor):
+        correct_fraction = correct_count + CountTensor(
+            shape=(0,), count=InstructionCount(int_op=1, flop=1)
+        )
+    else:
+        correct_fraction = correct_count / total_sequences
+    return correct_fraction, (correct_count, total_sequences)
 
 
 def find_proof(model: HookedTransformer):
@@ -398,6 +406,7 @@ def verify_proof(
     *,
     print_complexity: Union[bool, Callable[[str], None]] = True,
     print_results: Union[bool, Callable[[str], None]] = True,
+    print_types: Union[bool, Callable[[str], None]] = False,
     sanity_check: bool = True,
     pbar: Optional[tqdm] = None,
 ):
@@ -405,6 +414,8 @@ def verify_proof(
         print_complexity = print if print_complexity else lambda x: None
     if isinstance(print_results, bool):
         print_results = print if print_results else lambda x: None
+    if isinstance(print_types, bool):
+        print_types = print if print_types else lambda x: None
 
     prooftimes = []
 
@@ -415,22 +426,27 @@ def verify_proof(
         return result
 
     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = add_time(EU_PU, model)  # noqa: F722
+    print_types(f"type(EUPU) == {type(EUPU)}")
     print_complexity(
         f"Complexity of EU_PU: {complexity_of(EU_PU)}"
     )  # O(d_vocab^2 * d_model)
     EVOU: Float[Tensor, "d_vocab d_vocab_out"] = add_time(all_EVOU, model)  # noqa: F722
+    print_types(f"type(EVOU) == {type(EVOU)}")
     print_complexity(
         f"Complexity of EVOU: {complexity_of(all_EVOU)}"
     )  # O(d_vocab^2 * d_model)
     PVOU: Float[Tensor, "n_ctx d_vocab_out"] = add_time(all_PVOU, model)  # noqa: F722
+    print_types(f"type(PVOU) == {type(PVOU)}")
     print_complexity(
         f"Complexity of PVOU: {complexity_of(all_PVOU)}"
     )  # O(n_ctx * d_vocab * d_model)
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"] = add_time(all_EQKE, model)  # noqa: F722
+    print_types(f"type(EQKE) == {type(EQKE)}")
     print_complexity(
         f"Complexity of EQKE: {complexity_of(all_EQKE)}"
     )  # O(d_vocab^2 * d_model)
     EQKP: Float[Tensor, "d_vocab_q n_ctx_k"] = add_time(all_EQKP, model)  # noqa: F722
+    print_types(f"type(EQKP) == {type(EQKP)}")
     print_complexity(
         f"Complexity of EQKP: {complexity_of(all_EQKP)}"
     )  # O(d_vocab * d_model * n_ctx)
@@ -444,6 +460,9 @@ def verify_proof(
         EQKP=EQKP,
         attn_scale=model.blocks[0].attn.attn_scale,
         pbar=pbar,
+    )
+    print_types(
+        f"type(extreme_right_attention_softmaxed_cubic) == {type(extreme_right_attention_softmaxed_cubic)}"
     )
     print_complexity(
         f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
@@ -470,6 +489,7 @@ def verify_proof(
         EVOU=EVOU,
         PVOU=PVOU,
     )
+    print_types(f"type(largest_wrong_logit_cubic) == {type(largest_wrong_logit_cubic)}")
     print_complexity(
         f"Complexity of compute_largest_wrong_logit_cubic: {complexity_of(compute_largest_wrong_logit_cubic)}"
     )  # O(d_vocab^3 * n_ctx^2)
@@ -478,6 +498,9 @@ def verify_proof(
         correct_count_cubic,
         total_sequences,
     ) = add_time(compute_accuracy_lower_bound_from_cubic, largest_wrong_logit_cubic)
+    print_types(f"type(accuracy_bound_cubic) == {type(accuracy_bound_cubic)}")
+    print_types(f"type(correct_count_cubic) == {type(correct_count_cubic)}")
+    print_types(f"type(total_sequences) == {type(total_sequences)}")
     print_results(
         f"Cubic Accuracy lower bound: {accuracy_bound_cubic} ({correct_count_cubic} correct sequences of {total_sequences})"
     )

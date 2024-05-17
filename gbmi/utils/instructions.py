@@ -4,7 +4,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from contextlib import contextmanager
-from functools import partial
+from collections import OrderedDict
+from functools import partial, cache, cached_property
 from itertools import zip_longest
 from types import NoneType
 from ctypes import c_uint64
@@ -34,6 +35,7 @@ from transformer_lens import HookedTransformer
 import fancy_einsum
 import einops
 import einops._backends
+from gbmi.utils.idset import idset
 
 # %%
 try:
@@ -266,6 +268,14 @@ def tensor_of_nested_sequence(seq: _NestedSequence) -> torch.Tensor:
     return torch.stack([tensor_of_nested_sequence(s) for s in seq], dim=0)
 
 
+def CountTensor_of_nested_sequence(seq: _NestedSequence) -> CountTensor:
+    if isinstance(seq, torch.Tensor):
+        return CountTensor.from_numpy(seq)
+    if nested_sequence_empty(seq):
+        return CountTensor(shape=())
+    return CountTensor.stack([CountTensor_of_nested_sequence(s) for s in seq], dim=0)
+
+
 def index_nested_sequence(seq: _NestedSequence, index: Tuple[int, ...]) -> Any:
     """Index a nested sequence."""
     for i in index:
@@ -359,7 +369,7 @@ class CountTensor:
 
     @staticmethod
     def from_numpy(
-        x: Union[np.ndarray, torch.Tensor, int, float, "CountTensor"]
+        x: Union[np.ndarray, torch.Tensor, int, float, bool, "CountTensor"]
     ) -> "CountTensor":
         if isinstance(x, CountTensor):
             return x
@@ -369,35 +379,24 @@ class CountTensor:
             shape=x.shape, is_bool=x.dtype == torch.bool or x.dtype == bool
         )
 
-    def _full_count_nonrec(
-        self,
-        count: InstructionCount = InstructionCount(),
-        seen: Collection["CountTensor"] = tuple(),
-    ) -> Tuple[InstructionCount, Collection["CountTensor"]]:
-        # avoid RecursionError: maximum recursion depth exceeded
-        # by using a non-recursive implementation
-        # TODO FIXME HERE
-        seen = tuple(seen) + (self,)
-        for parent in self.parents:
-            if any(parent is s for s in seen):
+    @cached_property
+    def transitive_parents(self) -> Tuple["CountTensor", ...]:
+        all_parents = OrderedDict()
+        pending = list(self.parents)
+        while pending:
+            cur_parent = pending.pop(0)
+            if id(cur_parent) in all_parents:
                 continue
-            count, seen = parent._full_count(count, seen)
-        return count + self.count, seen
+            all_parents[id(cur_parent)] = cur_parent
+            pending.extend(cur_parent.parents)
+        return tuple(all_parents.values())
 
-    def _full_count(
-        self,
-        count: InstructionCount = InstructionCount(),
-        seen: Collection["CountTensor"] = tuple(),
-    ) -> Tuple[InstructionCount, Collection["CountTensor"]]:
-        seen = tuple(seen) + (self,)
-        for parent in self.parents:
-            if any(parent is s for s in seen):
-                continue
-            count, seen = parent._full_count(count, seen)
-        return count + self.count, seen
-
+    @cached_property
     def full_count(self) -> InstructionCount:
-        return self._full_count()[0]
+        count = self.count
+        for p in self.transitive_parents:
+            count += p.count
+        return count
 
     def _unary(self, is_bool: Optional[bool] = None) -> "CountTensor":
         return CountTensor(
@@ -898,9 +897,9 @@ class CountTensor:
         else:  # any(isinstance(indices, ty) for ty in [int, slice, bool, type(None)]) or hasattr(indices, "__index__"):
             return [], indices
 
-    def __getitem__(
-        self, indices: CountTensorIndexType, sanity_check: Optional[bool] = None
-    ) -> "CountTensor":
+    def parents_and_shape_of_slice(
+        self, indices: TensorOrCountTensorIndexType, sanity_check: Optional[bool] = None
+    ) -> Tuple[Sequence["CountTensor"], Sequence[int]]:
         if sanity_check is None:
             sanity_check = default_sanity_check
         # cheap hack
@@ -913,44 +912,45 @@ class CountTensor:
         # if isinstance(indices, tuple):
         #     t_shapes = [idx.shape[:-1] for idx in indices if isinstance(idx, CountTensor)]
         #     init_shape = torch.broadcast_shapes(*t_shapes)
-        idx_parents, tindices = CountTensor.accumulate_indices(indices)
-        assert all(
-            isinstance(idx, CountTensor) for idx in idx_parents
-        ), f"Expected CountTensor, got {idx_parents} ({[type(idx) for idx in idx_parents]})"
-        orig_tindices = tindices
-        if not isinstance(tindices, tuple):
-            tindices = (tindices,)
+        orig_indices = indices
+        if not isinstance(indices, tuple):
+            indices = (indices,)
         assert not any(
-            isinstance(idx, bool) for idx in tindices
-        ), f"Why are you doing this sort of indexing? ({tindices}) ({indices})"
+            isinstance(idx, bool) for idx in indices
+        ), f"Why are you doing this sort of indexing? ({indices}) ({orig_indices})"
+        indices = tuple(
+            CountTensor_of_nested_sequence(idx) if hasattr(idx, "__iter__") else idx
+            for idx in indices
+        )
         if (
-            len(tindices) == 1
-            and isinstance(tindices[0], torch.Tensor)
-            and tindices[0].dtype == torch.bool
+            len(indices) == 1
+            and isinstance(indices[0], CountTensor)
+            and indices[0].is_bool
         ):
-            init_shape = list(tindices[0].shape)  # worst case if all true
+            init_shape = list(indices[0].shape)  # worst case if all true
             mid_shape = []
             post_shape = list(self.shape[len(init_shape) :])
+            idx_parents = (indices[0],)
         else:
-            if len(tindices) > 1:
+            if len(indices) > 1:
                 assert not any(
-                    idx.dtype == torch.bool
-                    for idx in tindices
-                    if isinstance(idx, torch.Tensor)
-                ), f"Why are you doing this sort of indexing? ({tindices}) ({indices})"
+                    idx.is_bool for idx in indices if isinstance(idx, CountTensor)
+                ), f"Why are you doing this sort of indexing? ({indices}) ({orig_indices})"
             init_shapes = []
             mid_shape = []
             post_shape = list(self.shape)
-            for remaining, idx in reversed(list(enumerate(reversed(list(tindices))))):
+            idx_parents = []
+            for remaining, idx in reversed(list(enumerate(reversed(list(indices))))):
                 if idx is None:
                     mid_shape.append(1)
                 elif isinstance(idx, slice):
                     start, stop, stride = idx.indices(post_shape.pop(0))
                     mid_shape.append(int(np.ceil((stop - start) / stride)))
-                elif isinstance(idx, torch.Tensor):
+                elif isinstance(idx, CountTensor):
                     init_shapes.append(idx.shape[:-1])
                     mid_shape.append(idx.shape[-1])
                     post_shape.pop(0)
+                    idx_parents.append(idx)
                 elif isinstance(idx, EllipsisType):
                     if remaining == 0:
                         mid_shape.extend(post_shape)
@@ -961,14 +961,27 @@ class CountTensor:
                 else:
                     assert not hasattr(
                         idx, "__iter__"
-                    ), f"Why is {idx} iterable in {tindices}, {indices}"
+                    ), f"Why is {idx} ({remaining}) iterable in {indices} ({orig_indices})"
                     post_shape.pop(0)
             init_shape = list(torch.broadcast_shapes(*init_shapes))
+            idx_parents = tuple(idx_parents)
         shape = tuple(init_shape + mid_shape + post_shape)
         if sanity_check:
+            _idx_parents, tindices = CountTensor.accumulate_indices(orig_indices)
+            assert all(
+                isinstance(idx, CountTensor) for idx in _idx_parents
+            ), f"Expected CountTensor, got {_idx_parents} ({[type(idx) for idx in _idx_parents]})"
             assert (
                 shape == torch_empty(self.shape)[tindices].shape
             ), f"{shape} != {torch_empty(self.shape)[tindices].shape} == torch.zeros({self.shape})[{tindices}].shape"
+        return idx_parents, shape
+
+    def __getitem__(
+        self, indices: CountTensorIndexType, sanity_check: Optional[bool] = None
+    ) -> "CountTensor":
+        idx_parents, shape = self.parents_and_shape_of_slice(
+            indices, sanity_check=sanity_check
+        )
         return CountTensor(
             shape=shape,
             count=InstructionCount(),
@@ -979,16 +992,15 @@ class CountTensor:
         self,
         indices: CountTensorIndexType,
         other: Union[float, int, "CountTensor", torch.Tensor],
+        sanity_check: Optional[bool] = None,
     ) -> "CountTensor":
-        # cheap hack
-        idx_parents, tindices = CountTensor.accumulate_indices(indices)
-        assert all(
-            isinstance(idx, CountTensor) for idx in idx_parents
-        ), f"Expected CountTensor, got {idx_parents} ({[type(idx) for idx in idx_parents]})"
-        self.count += InstructionCount(
-            flop=int(np.prod(torch_empty(self.shape)[tindices].shape))
+        idx_parents, shape = self.parents_and_shape_of_slice(
+            indices, sanity_check=sanity_check
         )
-        self.parents = (self, *idx_parents, CountTensor.from_numpy(other))
+        self.count += InstructionCount(flop=int(np.prod(shape)))
+        self.parents = tuple(
+            idset([*self.parents, *idx_parents, CountTensor.from_numpy(other)])
+        )
         return self
 
     def gather(

@@ -446,7 +446,7 @@ def single_batch_instruction_count(
     full_accuracy: CountTensor = training_wrapper.acc_fn_per_seq(y_preds, ys)  # type: ignore
     accuracy: CountTensor = full_accuracy.float().mean()
     result: CountTensor = loss + accuracy
-    return result.full_count(), perf_instruction_count
+    return result.full_count, perf_instruction_count
 
 
 def brute_force_instruction_count(
@@ -866,27 +866,31 @@ import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 import traceback
+import gbmi.exp_max_of_n.verification.cubic as cubic
+
 
 # must be outside PatchTorch to avoid triu, tril
 cmodel = CountHookedTransformer(model)
-try:
-    with PatchTorch():
-        with instructions.set_sanity_check(False):
-            cubic_proof_instruction_count_results = cubic.verify_proof(
-                cmodel,
-                cubic_proof_args,
-                print_complexity=False,
-                print_results=False,
-                sanity_check=False,
-            )
-except Exception as ex:
-    tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
-    print("".join(tb.format()))
-    raise ex
+with PatchTorch():
+    with instructions.set_sanity_check(False):
+        cubic_proof_instruction_count_results = cubic.verify_proof(
+            cmodel,
+            cubic_proof_args,
+            print_complexity=False,
+            print_results=False,
+            sanity_check=False,
+            print_types=True,
+        )
+# try:
+#     pass
+# except Exception as ex:
+#     tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
+#     print("".join(tb.format()))
+#     raise ex
 # HERE
 # %%
 cubic_proof_instruction_count_results_counts = {
-    k: v.full_count() if isinstance(v, CountTensor) else v
+    k: v.full_count if isinstance(v, CountTensor) else v
     for k, v in cubic_proof_instruction_count_results.items()
 }
 # %%

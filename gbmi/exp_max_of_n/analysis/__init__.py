@@ -145,6 +145,7 @@ def find_second_singular_contributions(
     sanity_check: bool = True,
     plot_heatmaps: bool = False,
     renderer: Optional[str] = None,
+    checkparams: Optional[dict] = dict(atol=1e-4),
 ) -> Tuple[Tuple[torch.Tensor, float], Tuple[torch.Tensor, float]]:
     """
     Finds the most significant singualar contribution to W_E + W_pos.mean(dim=0), and to W_E + W_pos[-1], after size_direction and query_direction have been removed.
@@ -161,10 +162,10 @@ def find_second_singular_contributions(
     W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
     W_E_pos_q = W_E + W_pos[-1][None, :]
     _W_E_size, W_E_size_err = factor_contribution(
-        W_E_pos_k, size_direction, sanity_check=sanity_check
+        W_E_pos_k, size_direction, sanity_check=sanity_check, checkparams=checkparams
     )
     _W_E_query, W_E_query_err = factor_contribution(
-        W_E_pos_q, query_direction, sanity_check=sanity_check
+        W_E_pos_q, query_direction, sanity_check=sanity_check, checkparams=checkparams
     )
     if plot_heatmaps:
         analyze_svd(

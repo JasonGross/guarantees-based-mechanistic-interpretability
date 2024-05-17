@@ -325,7 +325,9 @@ total_batches = sum(
 
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    maybe_parallel_map(partial(_handle_train_seed, pbar=pbar), runtime_models.keys())
+    maybe_parallel_map(
+        partial(_handle_train_seed, pbar=pbar), sorted(runtime_models.keys())
+    )
 # %%
 # load csv
 train_columns = ["seed", "loss", "accuracy", "model-seed", "dataset-seed"]
@@ -496,7 +498,9 @@ total_batches = sum(
 
 with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    maybe_parallel_map(partial(_handle_brute_force_for, pbar=pbar), relevant_seeds)
+    maybe_parallel_map(
+        partial(_handle_brute_force_for, pbar=pbar), sorted(relevant_seeds)
+    )
 
 update_csv(csv_path, brute_force_data, columns=brute_force_columns)
 
@@ -589,7 +593,7 @@ ks = [cfgs[seed].experiment.model_config.d_vocab - 2 for seed in relevant_seeds]
 total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
 with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    maybe_parallel_map(partial(_handle_cubic, pbar=pbar), relevant_seeds)
+    maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
 # %% [markdown]
@@ -845,7 +849,7 @@ with (
             cfg_pbar=cfg_pbar,
             proof_pbar=proof_pbar,
         ),
-        relevant_seeds,
+        sorted(relevant_seeds),
     )
 
 new_data = []

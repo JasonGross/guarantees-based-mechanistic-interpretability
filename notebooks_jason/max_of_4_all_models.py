@@ -757,7 +757,7 @@ def try_all_proofs_subcubic(
                 (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
             )
             for q_tok in range(d_vocab_q):
-                for max_tok in range(d_vocab_max):
+                for max_tok in range(q_tok, d_vocab_max):
                     for n_copies_nonmax in range(n_ctx_nonmax_copies):
                         if (
                             (q_tok > max_tok)

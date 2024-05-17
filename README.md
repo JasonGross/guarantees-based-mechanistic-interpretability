@@ -19,6 +19,9 @@ poetry install
 Notes
 - On some systems you may need to set the environment variable `PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` to avoid keyring-based errors.
 - The first line tells poetry to create the virtual environment in the project directory, which allows VS Code to find the virtual environment.
+- If you are using caches from other machines, if you see errors like "dbm.error: db type is dbm.gnu, but the module is not available", you can probably solve the issue by following instructions from [StackOverflow](https://stackoverflow.com/a/49597001/377022):
+    - `sudo apt-get install libgdbm-dev python3-gdbm`
+    - If you are using `conda` or some other Python version management, you can inspect the output of `dpkg -L python3-gdbm` and copy the `lib-dynload/_gdbm.cpython-*-x86_64-linux-gnu.so` file to the corresponding `lib/` directory associated to the python you are using.
 
 ## Running notebooks
 

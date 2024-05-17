@@ -45,8 +45,8 @@ class FactoredMatrix:
 
     def __init__(
         self,
-        A: Float[torch.Tensor, "... ldim mdim"],
-        B: Float[torch.Tensor, "... mdim rdim"],
+        A: Float[torch.Tensor, "... ldim mdim"],  # noqa: F722
+        B: Float[torch.Tensor, "... mdim rdim"],  # noqa: F722
     ):
         self.A = A
         self.B = B
@@ -68,27 +68,25 @@ class FactoredMatrix:
     def __matmul__(
         self,
         other: Union[
-            Float[torch.Tensor, "... rdim new_rdim"],
+            Float[torch.Tensor, "... rdim new_rdim"],  # noqa: F722
             "FactoredMatrix",
         ],
-    ) -> "FactoredMatrix":
-        ...
+    ) -> "FactoredMatrix": ...
 
     @overload
     def __matmul__(  # type: ignore
         self,
-        other: Float[torch.Tensor, "rdim"],
-    ) -> Float[torch.Tensor, "... ldim"]:
-        ...
+        other: Float[torch.Tensor, "rdim"],  # noqa: F821
+    ) -> Float[torch.Tensor, "... ldim"]: ...  # noqa: F722
 
     def __matmul__(
         self,
         other: Union[
-            Float[torch.Tensor, "... rdim new_rdim"],
-            Float[torch.Tensor, "rdim"],
+            Float[torch.Tensor, "... rdim new_rdim"],  # noqa: F722
+            Float[torch.Tensor, "rdim"],  # noqa: F821
             "FactoredMatrix",
         ],
-    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... ldim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... ldim"]]:  # noqa: F722
         if isinstance(other, torch.Tensor):
             if other.ndim < 2:
                 # It's a vector, so we collapse the factorisation and just return a vector
@@ -109,27 +107,25 @@ class FactoredMatrix:
     def __rmatmul__(  # type: ignore
         self,
         other: Union[
-            Float[torch.Tensor, "... new_rdim ldim"],
+            Float[torch.Tensor, "... new_rdim ldim"],  # noqa: F722
             "FactoredMatrix",
         ],
-    ) -> "FactoredMatrix":
-        ...
+    ) -> "FactoredMatrix": ...
 
     @overload
     def __rmatmul__(  # type: ignore
         self,
-        other: Float[torch.Tensor, "ldim"],
-    ) -> Float[torch.Tensor, "... rdim"]:
-        ...
+        other: Float[torch.Tensor, "ldim"],  # noqa: F821
+    ) -> Float[torch.Tensor, "... rdim"]: ...  # noqa: F722
 
     def __rmatmul__(  # type: ignore
         self,
         other: Union[
-            Float[torch.Tensor, "... new_rdim ldim"],
-            Float[torch.Tensor, "ldim"],
+            Float[torch.Tensor, "... new_rdim ldim"],  # noqa: F722
+            Float[torch.Tensor, "ldim"],  # noqa: F821
             "FactoredMatrix",
         ],
-    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... rdim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... rdim"]]:  # noqa: F722
         if isinstance(other, torch.Tensor):
             assert (
                 other.size(-1) == self.ldim
@@ -161,12 +157,12 @@ class FactoredMatrix:
         return self * scalar
 
     @property
-    def AB(self) -> Float[torch.Tensor, "*leading_dims ldim rdim"]:
+    def AB(self) -> Float[torch.Tensor, "*leading_dims ldim rdim"]:  # noqa: F722
         """The product matrix - expensive to compute, and can consume a lot of GPU memory"""
         return self.A @ self.B
 
     @property
-    def BA(self) -> Float[torch.Tensor, "*leading_dims rdim ldim"]:
+    def BA(self) -> Float[torch.Tensor, "*leading_dims rdim ldim"]:  # noqa: F722
         """The reverse product. Only makes sense when ldim==rdim"""
         assert (
             self.rdim == self.ldim
@@ -181,9 +177,9 @@ class FactoredMatrix:
     def svd(
         self,
     ) -> Tuple[
-        Float[torch.Tensor, "*leading_dims ldim mdim"],
-        Float[torch.Tensor, "*leading_dims mdim"],
-        Float[torch.Tensor, "*leading_dims rdim mdim"],
+        Float[torch.Tensor, "*leading_dims ldim mdim"],  # noqa: F722
+        Float[torch.Tensor, "*leading_dims mdim"],  # noqa: F722
+        Float[torch.Tensor, "*leading_dims rdim mdim"],  # noqa: F722
     ]:
         """
         Efficient algorithm for finding Singular Value Decomposition, a tuple (U, S, Vh) for matrix M st S is a vector and U, Vh are orthogonal matrices, and U @ S.diag() @ Vh.T == M
@@ -200,19 +196,19 @@ class FactoredMatrix:
         return U, S, Vh
 
     @property
-    def U(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:
+    def U(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:  # noqa: F722
         return self.svd()[0]
 
     @property
-    def S(self) -> Float[torch.Tensor, "*leading_dims mdim"]:
+    def S(self) -> Float[torch.Tensor, "*leading_dims mdim"]:  # noqa: F722
         return self.svd()[1]
 
     @property
-    def Vh(self) -> Float[torch.Tensor, "*leading_dims rdim mdim"]:
+    def Vh(self) -> Float[torch.Tensor, "*leading_dims rdim mdim"]:  # noqa: F722
         return self.svd()[2]
 
     @property
-    def eigenvalues(self) -> Float[torch.Tensor, "*leading_dims mdim"]:
+    def eigenvalues(self) -> Float[torch.Tensor, "*leading_dims mdim"]:  # noqa: F722
         """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
         return torch.linalg.eig(self.BA).eigenvalues
 
@@ -241,13 +237,15 @@ class FactoredMatrix:
         elif length == len(self.shape):
             idx = self._convert_to_slice(idx, -1)
             idx = self._convert_to_slice(idx, -2)
-            return FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
+            return FactoredMatrix(
+                self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])]
+            )
         else:
             raise ValueError(
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"
             )
 
-    def norm(self) -> Float[torch.Tensor, "*leading_dims"]:
+    def norm(self) -> Float[torch.Tensor, "*leading_dims"]:  # noqa: F821
         """
         Frobenius norm is sqrt(sum of squared singular values)
         """
@@ -272,13 +270,17 @@ class FactoredMatrix:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def collapse_l(self) -> Float[torch.Tensor, "*leading_dims mdim rdim"]:
+    def collapse_l(
+        self,
+    ) -> Float[torch.Tensor, "*leading_dims mdim rdim"]:  # noqa: F722
         """
         Collapses the left side of the factorization by removing the orthogonal factor (given by self.U). Returns a (..., mdim, rdim) tensor
         """
         return self.S[..., :, None] * utils.transpose(self.Vh)
 
-    def collapse_r(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:
+    def collapse_r(
+        self,
+    ) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:  # noqa: F722
         """
         Analogous to collapse_l, returns a (..., ldim, mdim) tensor
         """
@@ -291,7 +293,7 @@ class FactoredMatrix:
     def pair(
         self,
     ) -> Tuple[
-        Float[torch.Tensor, "*leading_dims ldim mdim"],
-        Float[torch.Tensor, "*leading_dims mdim rdim"],
+        Float[torch.Tensor, "*leading_dims ldim mdim"],  # noqa: F722
+        Float[torch.Tensor, "*leading_dims mdim rdim"],  # noqa: F722
     ]:
         return (self.A, self.B)

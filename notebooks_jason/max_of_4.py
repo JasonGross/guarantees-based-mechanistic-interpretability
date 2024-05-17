@@ -852,34 +852,38 @@ with PerfCollector() as cubic_collector:
 latex_values |= latex_values_of_counter("Cubic", cubic_collector.counters)
 
 # %%
-import gbmi.utils.instructions as instructions
-from gbmi.utils.instructions import (
-    InstructionCount,
-    CountTensor,
-    CountHookedTransformer,
-    PatchTorch,
-)
-import gbmi.verification_tools.general
-import gbmi.exp_max_of_n.verification.cubic as cubic
-import gbmi.exp_max_of_n.verification.subcubic as subcubic
-import gbmi.exp_max_of_n.verification.quadratic as quadratic
-import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
-import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-import traceback
-import gbmi.exp_max_of_n.verification.cubic as cubic
+# import gbmi.utils.instructions as instructions
+# from gbmi.utils.instructions import (
+#     InstructionCount,
+#     CountTensor,
+#     CountHookedTransformer,
+#     PatchTorch,
+#     CountHookedTransformer,
+#     PerfCounter,
+#     PerfCollector,
+#     PERF_WORKING,
+# )
+# import gbmi.verification_tools.general
+# import gbmi.exp_max_of_n.verification.cubic as cubic
+# import gbmi.exp_max_of_n.verification.subcubic as subcubic
+# import gbmi.exp_max_of_n.verification.quadratic as quadratic
+# import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
+# import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
+# import traceback
+# import gbmi.exp_max_of_n.verification.cubic as cubic
 
 
 # must be outside PatchTorch to avoid triu, tril
 cmodel = CountHookedTransformer(model)
 with PatchTorch():
-    with instructions.set_sanity_check(True):
+    with instructions.set_sanity_check(False):
         cubic_proof_instruction_count_results = cubic.verify_proof(
             cmodel,
             cubic_proof_args,
             print_complexity=False,
             print_results=False,
             sanity_check=False,
-            print_types=True,
+            # print_types=True,
         )
 # try:
 #     pass

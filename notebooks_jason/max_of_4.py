@@ -431,7 +431,7 @@ def single_batch_instruction_count(
     model: HookedTransformer, batch_size: int
 ) -> Tuple[InstructionCount, PerfCounter]:
     with PerfCollector() as collector:
-        if PERF_WORKING is not None:
+        if PERF_WORKING:
             _run_batch_loss_accuracy(0, batch_size, return_incorrect_sequences=False)
     perf_instruction_count = collector.counters
 
@@ -841,7 +841,7 @@ with memoshelve(
     cubic_proof_results = verify_proof(cubic_proof_args)
 # %%
 with PerfCollector() as cubic_collector:
-    if PERF_WORKING is not None:
+    if PERF_WORKING:
         cubic.verify_proof(
             model,
             cubic_proof_args,
@@ -872,7 +872,7 @@ import gbmi.exp_max_of_n.verification.cubic as cubic
 # must be outside PatchTorch to avoid triu, tril
 cmodel = CountHookedTransformer(model)
 with PatchTorch():
-    with instructions.set_sanity_check(False):
+    with instructions.set_sanity_check(True):
         cubic_proof_instruction_count_results = cubic.verify_proof(
             cmodel,
             cubic_proof_args,

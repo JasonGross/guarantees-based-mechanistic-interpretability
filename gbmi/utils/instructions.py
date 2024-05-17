@@ -848,6 +848,8 @@ class CountTensor:
     ) -> "CountTensor":
         tensors = [CountTensor.from_numpy(t) for t in tensors]
         shape = list(torch.broadcast_shapes(*[t.shape for t in tensors]))
+        if dim < 0:
+            dim = dim + len(shape) + 1
         shape.insert(dim, len(tensors))
         return CountTensor(
             shape=tuple(shape),
@@ -866,6 +868,8 @@ class CountTensor:
         shapes = [list(t.shape) for t in parents]
         new_index = [sh.pop(dim) for sh in shapes]
         shape = list(torch.broadcast_shapes(*shapes))
+        if dim < 0:
+            dim = dim + len(shape) + 1
         shape.insert(dim, sum(new_index))
         return CountTensor(
             shape=tuple(shape),

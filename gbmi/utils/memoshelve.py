@@ -52,3 +52,26 @@ def memoshelve(
             yield delegate
 
     return open_db
+
+
+def uncache(
+    *args,
+    filename: Union[Path, str],
+    cache: Dict[str, Dict[str, Any]] = memoshelve_cache,
+    get_hash: Callable = get_hash_ascii,
+    get_hash_mem: Optional[Callable] = None,
+    **kwargs,
+):
+    """Lightweight memoziation using shelve + in-memory cache"""
+    filename = str(Path(filename).absolute())
+    mem_db = cache.setdefault(filename, {})
+    if get_hash_mem is None:
+        get_hash_mem = get_hash
+
+    with shelve.open(filename) as db:
+        mkey = get_hash_mem((args, kwargs))
+        if mkey in mem_db:
+            del mem_db[mkey]
+        key = get_hash((args, kwargs))
+        if key in db:
+            del db[key]

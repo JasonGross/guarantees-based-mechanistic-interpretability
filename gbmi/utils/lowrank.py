@@ -106,6 +106,7 @@ class LowRankTensor(FactoredMatrix):
         show: Optional[bool] = None,
         descr: Optional[str] = None,
         renderer: Optional[str] = None,
+        do_assert: bool = False,
         **kwargs,
     ) -> bool:
         if show is None:
@@ -126,6 +127,8 @@ class LowRankTensor(FactoredMatrix):
                 (self - other).abs().cpu().numpy(),
                 title=f"difference{descr} ({self._checkparams})",
             ).show(renderer=renderer)
+        if do_assert:
+            assert False, f"{self.A} @ {self.B} == {self.AB} != {other} ({full_kwargs})"
         return False
 
     @torch.no_grad()

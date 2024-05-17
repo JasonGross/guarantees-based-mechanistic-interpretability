@@ -35,7 +35,8 @@ def factor_right_contribution(
     )
     if sanity_check:
         assert contrib.check(
-            torch.stack([(row @ v) @ v.transpose(-2, -1) for row in m], dim=0)
+            torch.stack([(row @ v) @ v.transpose(-2, -1) for row in m], dim=0),
+            do_assert=True,
         )
     return contrib, m - contrib
 

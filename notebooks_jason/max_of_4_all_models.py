@@ -825,7 +825,8 @@ def try_all_proofs_subcubic(
             num_std = 1.5
             most_below_value = int(math.ceil(mean + num_std * std))
             frac_below = (
-                weights.flatten()[v <= most_below_value].sum() / weights.sum()
+                weights.float().flatten()[v <= most_below_value].sum()
+                / weights.float().sum()
             ).item()
 
             row = {

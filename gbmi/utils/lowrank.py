@@ -128,7 +128,9 @@ class LowRankTensor(FactoredMatrix):
                 title=f"difference{descr} ({self._checkparams})",
             ).show(renderer=renderer)
         if do_assert:
-            assert False, f"{self.A} @ {self.B} == {self.AB} != {other} ({full_kwargs})"
+            assert (
+                False
+            ), f"{self.A} @ {self.B} == {self.AB} != {other} ({full_kwargs})\ndiff.abs() == {(self.AB - other).abs()}\natol={(self.AB - other).abs() / ((self.AB.abs() + other.abs())/2 + 1e-10)}"
         return False
 
     @torch.no_grad()

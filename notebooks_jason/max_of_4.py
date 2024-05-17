@@ -44,6 +44,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    Any,
     List,
     Iterator,
 )
@@ -839,78 +840,77 @@ def count_unaccounted_for_by_old_cubic_convexity_sequences(
 
 
 # %%
+
 with memoshelve(
-    partial(
-        cubic.verify_proof,
-        model,
-    ),
+    partial(cubic.verify_proof, model, include_perf=PERF_WORKING),
     filename=cache_dir
-    / f"{Path(__file__).name}.cubic_verify_proof-{cfg_hash_for_filename}",
+    / f"{Path(__file__).name}.cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
     get_hash_mem=(lambda x: 0),
     get_hash=(lambda x: "0"),
 )() as verify_proof:
     cubic_proof_args = cubic.find_proof(model)
     cubic_proof_results = verify_proof(cubic_proof_args)
 # %%
-with PerfCollector() as cubic_collector:
-    if PERF_WORKING:
-        cubic.verify_proof(
-            model,
-            cubic_proof_args,
-            print_complexity=False,
-            print_results=False,
-            sanity_check=False,
-        )
-latex_values |= latex_values_of_counter("Cubic", cubic_collector.counters)
+if PERF_WORKING:
+    latex_values |= latex_values_of_counter(
+        "Cubic", cubic_proof_results["proofinstructions"]
+    )
+
 
 # %%
-# import gbmi.utils.instructions as instructions
-# from gbmi.utils.instructions import (
-#     InstructionCount,
-#     CountTensor,
-#     CountHookedTransformer,
-#     PatchTorch,
-#     CountHookedTransformer,
-#     PerfCounter,
-#     PerfCollector,
-#     PERF_WORKING,
-# )
-# import gbmi.verification_tools.general
-# import gbmi.exp_max_of_n.verification.cubic as cubic
-# import gbmi.exp_max_of_n.verification.subcubic as subcubic
-# import gbmi.exp_max_of_n.verification.quadratic as quadratic
-# import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
-# import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-# import traceback
-# import gbmi.exp_max_of_n.verification.cubic as cubic
+def _cubic_count_verify_proof(
+    model: HookedTransformer,
+    proof_args: dict,
+    *,
+    sanity_check_instructions: bool = False,
+) -> Tuple[InstructionCount, dict[str, Any]]:
+    # must be outside PatchTorch to avoid triu, tril
+    cmodel = CountHookedTransformer(model)
+    with PatchTorch():
+        with instructions.set_sanity_check(sanity_check_instructions):
+            with CountTensorOperations() as cubic_instruction_count:
+                cubic_proof_instruction_count_results = cubic.verify_proof(
+                    cmodel,
+                    cubic_proof_args,
+                    print_complexity=False,
+                    print_results=False,
+                    sanity_check=False,
+                    # print_types=True,
+                )
+    return cubic_instruction_count, cubic_proof_instruction_count_results
 
 
-# must be outside PatchTorch to avoid triu, tril
-cmodel = CountHookedTransformer(model)
-with PatchTorch():
-    with instructions.set_sanity_check(False):
-        with CountTensorOperations() as cubic_instruction_count:
-            cubic_proof_instruction_count_results = cubic.verify_proof(
-                cmodel,
-                cubic_proof_args,
-                print_complexity=False,
-                print_results=False,
-                sanity_check=False,
-                # print_types=True,
-            )
+# with memoshelve(
+#     partial(
+#         _cubic_count_verify_proof,
+#         model,
+#         sanity_check_instructions=False
+#     ),
+#     filename=cache_dir
+#     / f"{Path(__file__).name}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+#     get_hash_mem=(lambda x: 0),
+#     get_hash=(lambda x: "0"),
+# )() as count_verify_proof:
+count_verify_proof = partial(
+    _cubic_count_verify_proof, model, sanity_check_instructions=False
+)
+cubic_instruction_count, cubic_proof_instruction_count_results = count_verify_proof(
+    cubic_proof_args
+)
+
+latex_values |= latex_values_of_instruction_count("Cubic", cubic_instruction_count)
+# %%
 # try:
 #     pass
 # except Exception as ex:
 #     tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
 #     print("".join(tb.format()))
 #     raise ex
-# HERE
 # %%
-cubic_proof_instruction_count_results_counts = {
-    k: v.global_count_at_creation if isinstance(v, CountTensor) else v
-    for k, v in cubic_proof_instruction_count_results.items()
-}
-latex_values |= latex_values_of_instruction_count("Cubic", cubic_instruction_count)
+# cubic_proof_instruction_count_results_counts = {
+#     k: v.global_count_at_creation if isinstance(v, CountTensor) else v
+#     for k, v in cubic_proof_instruction_count_results.items()
+# }
 # latex_values |= latex_values_of_instruction_count(
 #     "CubicLargestWrongLogit",
 #     cubic_proof_instruction_count_results_counts["largest_wrong_logit"],
@@ -2388,236 +2388,253 @@ import gbmi.exp_max_of_n.verification.cubic as cubic
 cmodel = CountHookedTransformer(model)
 # err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
 min_gaps_lists = {}
-with torch.no_grad():
-    W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(model)
-    find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
-    size_and_query_directions_kwargs = analysis_quadratic.find_EKQE_error_directions(
-        model
-    )
-    for use_exact_EQKE in (False, True):
-        # for svd_EUPU in (False, True):
-        descr = "exact-EQKE" if use_exact_EQKE else ""
-        filedescr = "-exact-EQKE--" if use_exact_EQKE else ""
-        latexdescr = "ExactEQKE" if use_exact_EQKE else ""
-        with memoshelve(
-            (
-                lambda cfg: (
-                    cfg,
-                    *analysis_subcubic.find_min_gaps_with_EQKE(
-                        model=model,
-                        **find_min_gaps_kwargs,  # type: ignore
-                        **size_and_query_directions_kwargs,
-                        tricks=cfg,
-                        use_exact_EQKE=use_exact_EQKE,
-                        position=1,
-                        leave=(cfg is all_configs[-1]),
-                        desc=cfg.short_description(),
-                        record_time=True,
-                    ),
-                )
-            ),
-            # cache={},
-            filename=cache_dir
-            / f"{Path(__file__).name}.find_min_gaps-{descr}-{cfg_hash_for_filename}",
-        )() as find_min_gaps_for:
-            min_gaps_lists[use_exact_EQKE] = [
-                find_min_gaps_for(cfg)
-                for cfg in tqdm(
-                    all_configs,
-                    position=0,
-                    desc=f"trick cfg {descr}".strip(),
-                )
-                if cfg.attention_error_handling == "max_diff_exact"
-                or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway
-            ]
-
-        for tricks, min_gaps, _proof_search_duration in min_gaps_lists[use_exact_EQKE]:
-            postkey = latexdescr + tricks.short_description(latex=True)
-            print(f"==========={descr}=============================\nTricks: {tricks}")
-            # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
-            W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
-                **W_EP_direction_kwargs, tricks=tricks
-            )
-
-            def _verify_proof(
-                tricks: LargestWrongLogitQuadraticConfig, use_exact_EQKE: bool
-            ):
-                return subcubic.verify_proof(
-                    model,
-                    W_EP_direction=W_EP_direction,
-                    **size_and_query_directions_kwargs,  # type: ignore
-                    use_exact_EQKE=use_exact_EQKE,
-                    min_gaps=min_gaps,
-                    tricks=tricks,
-                    sanity_check=False,
-                )
-
+try:
+    with torch.no_grad():
+        W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(
+            model
+        )
+        find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
+        size_and_query_directions_kwargs = (
+            analysis_quadratic.find_EKQE_error_directions(model)
+        )
+        for use_exact_EQKE in (False, True):
+            # for svd_EUPU in (False, True):
+            descr = "exact-EQKE" if use_exact_EQKE else ""
+            filedescr = "-exact-EQKE--" if use_exact_EQKE else ""
+            latexdescr = "ExactEQKE" if use_exact_EQKE else ""
             with memoshelve(
-                _verify_proof,
-                filename=cache_dir
-                / f"{Path(__file__).name}.subcubic_verify_proof-{cfg_hash_for_filename}",
-                get_hash_mem=(lambda x: x[0]),
-                get_hash=str,
-            )() as verify_proof:
-                proof_results = verify_proof(tricks, use_exact_EQKE)
-
-            with PerfCollector() as subcubic_collector:
-                if PERF_WORKING:
-                    _verify_proof(tricks, use_exact_EQKE)
-
-            latex_values |= latex_values_of_counter(
-                f"Subcubic{postkey}", subcubic_collector.counters
-            )
-
-            with PatchTorch():
-                with instructions.set_sanity_check(False):
-                    with CountTensorOperations() as subcubic_instruction_count:
-                        subcubic_proof_instruction_count_results = subcubic.verify_proof(
-                            cmodel,
-                            W_EP_direction=(
-                                CountTensor.from_numpy(W_EP_direction)
-                                if W_EP_direction is not None
-                                else W_EP_direction
-                            ),
-                            **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                (
+                    lambda cfg: (
+                        cfg,
+                        *analysis_subcubic.find_min_gaps_with_EQKE(
+                            model=model,
+                            **find_min_gaps_kwargs,  # type: ignore
+                            **size_and_query_directions_kwargs,
+                            tricks=cfg,
                             use_exact_EQKE=use_exact_EQKE,
-                            min_gaps=min_gaps,
-                            tricks=tricks,
-                            print_complexity=False,
-                            print_results=False,
-                            sanity_check=False,
-                            # print_types=True,
-                        )
-
-            ## %%
-
-            # try:
-            #     pass
-            # except Exception as ex:
-            #     tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
-            #     print("".join(tb.format()))
-            #     raise ex
-            # HERE
-            ## %%
-            # subcubic_proof_instruction_count_results_counts = {
-            #     k: v.global_count_at_creation if isinstance(v, CountTensor) else v
-            #     for k, v in subcubic_proof_instruction_count_results.items()
-            # }
-            latex_values |= latex_values_of_instruction_count(
-                f"Subcubic{postkey}", subcubic_instruction_count
-            )
-
-            err_upper_bound = proof_results["err_upper_bound"]
-            prooftime = proof_results["prooftime"]
-            accuracy_bound = proof_results["accuracy_lower_bound"]
-            total_sequences = proof_results["total_sequences"]
-            left_behind = proof_results["left_behind"]
-
-            try:
-                err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
-                err_upper_bound_value = err_upper_bound.item()
-                print(f"err_upper_bound: {err_upper_bound_value}")
-            except Exception:
-                # print(f"err_upper_bound: {err_upper_bound}")
-                err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
-                err_upper_bound_value = err_upper_bound.max().item()
-                print(f"err_upper_bound.max(): {err_upper_bound_value}")
-
-            if not use_exact_EQKE:
-                if (
-                    err_upper_bound_key in latex_values
-                    and latex_values[err_upper_bound_key] != err_upper_bound_value
-                ):
-                    print(
-                        f"Warning: overwriting {err_upper_bound_key} from {latex_values[err_upper_bound_key]} to {err_upper_bound_value}"
+                            position=1,
+                            leave=(cfg is all_configs[-1]),
+                            desc=cfg.short_description(),
+                            record_time=True,
+                        ),
                     )
-                latex_values[err_upper_bound_key] = err_upper_bound_value
+                ),
+                # cache={},
+                filename=cache_dir
+                / f"{Path(__file__).name}.find_min_gaps-{descr}-{cfg_hash_for_filename}",
+            )() as find_min_gaps_for:
+                min_gaps_lists[use_exact_EQKE] = [
+                    find_min_gaps_for(cfg)
+                    for cfg in tqdm(
+                        all_configs,
+                        position=0,
+                        desc=f"trick cfg {descr}".strip(),
+                    )
+                    if cfg.attention_error_handling == "max_diff_exact"
+                    or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway
+                ]
 
-            latex_values[f"SubcubicAccuracy{postkey}Float"] = accuracy_bound
-            latex_values[f"SubcubicProofTime{postkey}Float"] = prooftime
-            latex_values[f"SubcubicDroppedSequences{postkey}"] = left_behind
-            latex_values[f"SubcubicDroppedSequencesFrac{postkey}Float"] = (
-                left_behind / total_sequences
-            )
-
-        if DISPLAY_PLOTS:
-            d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[
+            for tricks, min_gaps, _proof_search_duration in min_gaps_lists[
                 use_exact_EQKE
-            ][0][1].shape
-            weights = torch.zeros(
-                (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
-            )
-            for q_tok in range(d_vocab_q):
-                for max_tok in range(d_vocab_max):
-                    for n_copies_nonmax in range(n_ctx_nonmax_copies):
-                        if (
-                            (q_tok > max_tok)
-                            or (
-                                n_copies_nonmax == n_ctx_nonmax_copies - 1
-                                and max_tok != q_tok
-                            )
-                            or (max_tok == 0 and n_copies_nonmax > 0)
-                        ):
-                            continue
-                        if max_tok == 0:
-                            assert q_tok == max_tok
-                            assert n_copies_nonmax == 0
-                            weights[q_tok, max_tok, n_copies_nonmax] = 1
-                        weights[q_tok, max_tok, n_copies_nonmax] = (
-                            max_tok - 1
-                        ) ** n_copies_nonmax * math.comb(
-                            model.cfg.n_ctx - 1, n_copies_nonmax
-                        )
-            for tricks, v, _proof_search_time in min_gaps_lists[use_exact_EQKE]:
-                postkey = filedescr + tricks.short_description(latex=False)
-                postlatexkey = latexdescr + tricks.short_description(latex=True)
-                v = v.flatten().detach().cpu()
-                mean = np.average(v.numpy(), weights=weights.flatten().numpy())
-                std = np.average(
-                    (v - mean).numpy() ** 2,
-                    weights=weights.flatten().numpy(),
-                )
-                num_std = 1.5
-                most_below_value = int(math.ceil(mean + num_std * std))
-                frac_below = (
-                    weights.flatten()[v <= most_below_value].sum() / weights.sum()
-                ).item()
-                latex_values[f"SubcubicGapMostBelowValue{postlatexkey}"] = (
-                    most_below_value
-                )
-                latex_values[f"SubcubicGapMostBelowValueNumStd{postlatexkey}Float"] = (
-                    num_std
-                )
-                latex_values[
-                    f"SubcubicGapMostBelowValueSequenceFrac{postlatexkey}Float"
-                ] = frac_below
+            ]:
+                postkey = latexdescr + tricks.short_description(latex=True)
                 print(
-                    f"{postlatexkey}: most ({frac_below*100}%) sequences are <= {most_below_value} (based on + {num_std} std)"
+                    f"==========={descr}=============================\nTricks: {tricks}"
                 )
-                if v.max().item() == 1:
-                    print(f"All gaps are: {set(v.numpy())}")
-                    continue
-                try:
-                    shash = "#" if PLOT_WITH == "plotly" else r"\#"
-                    fig = weighted_histogram(
-                        v.numpy(),
-                        weights.flatten().detach().numpy(),
-                        xaxis="gap",
-                        yaxis="count * {shash} sequences",
-                        num_bins=v.max().item(),
-                        plot_with=PLOT_WITH,
-                        renderer=RENDERER,
+                # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
+                W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
+                    **W_EP_direction_kwargs, tricks=tricks
+                )
+
+                def _verify_proof(
+                    tricks: LargestWrongLogitQuadraticConfig, use_exact_EQKE: bool
+                ):
+                    return subcubic.verify_proof(
+                        model,
+                        W_EP_direction=W_EP_direction,
+                        **size_and_query_directions_kwargs,  # type: ignore
+                        use_exact_EQKE=use_exact_EQKE,
+                        min_gaps=min_gaps,
+                        tricks=tricks,
+                        sanity_check=False,
                     )
-                    latex_figures[f"SubcubicGapHistogram{postkey}"] = fig
-                except Exception as e:
-                    etype, value, tb = sys.exc_info()
-                    if value is None:
-                        traceback.print_exception(e)
-                    else:
-                        for line in traceback.TracebackException(
-                            type(value), value, tb, capture_locals=True
-                        ).format():
-                            print(line, file=sys.stderr)
+
+                with memoshelve(
+                    _verify_proof,
+                    filename=cache_dir
+                    / f"{Path(__file__).name}.subcubic_verify_proof-{cfg_hash_for_filename}",
+                    get_hash_mem=(lambda x: x[0]),
+                    get_hash=str,
+                )() as verify_proof:
+                    proof_results = verify_proof(tricks, use_exact_EQKE)
+
+                with PerfCollector() as subcubic_collector:
+                    if PERF_WORKING:
+                        _verify_proof(tricks, use_exact_EQKE)
+
+                latex_values |= latex_values_of_counter(
+                    f"Subcubic{postkey}", subcubic_collector.counters
+                )
+
+                with PatchTorch():
+                    with instructions.set_sanity_check(False):
+                        with CountTensorOperations() as subcubic_instruction_count:
+                            subcubic_proof_instruction_count_results = subcubic.verify_proof(
+                                cmodel,
+                                W_EP_direction=(
+                                    CountTensor.from_numpy(W_EP_direction)
+                                    if W_EP_direction is not None
+                                    else W_EP_direction
+                                ),
+                                **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                                use_exact_EQKE=use_exact_EQKE,
+                                min_gaps=min_gaps,
+                                tricks=tricks,
+                                print_complexity=False,
+                                print_results=False,
+                                sanity_check=False,
+                                # print_types=True,
+                            )
+
+                ## %%
+
+                # try:
+                #     pass
+                # except Exception as ex:
+                #     tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
+                #     print("".join(tb.format()))
+                #     raise ex
+                # HERE
+                ## %%
+                # subcubic_proof_instruction_count_results_counts = {
+                #     k: v.global_count_at_creation if isinstance(v, CountTensor) else v
+                #     for k, v in subcubic_proof_instruction_count_results.items()
+                # }
+                latex_values |= latex_values_of_instruction_count(
+                    f"Subcubic{postkey}", subcubic_instruction_count
+                )
+
+                err_upper_bound = proof_results["err_upper_bound"]
+                prooftime = proof_results["prooftime"]
+                accuracy_bound = proof_results["accuracy_lower_bound"]
+                total_sequences = proof_results["total_sequences"]
+                left_behind = proof_results["left_behind"]
+
+                try:
+                    err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+                    err_upper_bound_value = err_upper_bound.item()
+                    print(f"err_upper_bound: {err_upper_bound_value}")
+                except Exception:
+                    # print(f"err_upper_bound: {err_upper_bound}")
+                    err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+                    err_upper_bound_value = err_upper_bound.max().item()
+                    print(f"err_upper_bound.max(): {err_upper_bound_value}")
+
+                if not use_exact_EQKE:
+                    if (
+                        err_upper_bound_key in latex_values
+                        and latex_values[err_upper_bound_key] != err_upper_bound_value
+                    ):
+                        print(
+                            f"Warning: overwriting {err_upper_bound_key} from {latex_values[err_upper_bound_key]} to {err_upper_bound_value}"
+                        )
+                    latex_values[err_upper_bound_key] = err_upper_bound_value
+
+                latex_values[f"SubcubicAccuracy{postkey}Float"] = accuracy_bound
+                latex_values[f"SubcubicProofTime{postkey}Float"] = prooftime
+                latex_values[f"SubcubicDroppedSequences{postkey}"] = left_behind
+                latex_values[f"SubcubicDroppedSequencesFrac{postkey}Float"] = (
+                    left_behind / total_sequences
+                )
+
+            if DISPLAY_PLOTS:
+                d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[
+                    use_exact_EQKE
+                ][0][1].shape
+                weights = torch.zeros(
+                    (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
+                )
+                for q_tok in range(d_vocab_q):
+                    for max_tok in range(d_vocab_max):
+                        for n_copies_nonmax in range(n_ctx_nonmax_copies):
+                            if (
+                                (q_tok > max_tok)
+                                or (
+                                    n_copies_nonmax == n_ctx_nonmax_copies - 1
+                                    and max_tok != q_tok
+                                )
+                                or (max_tok == 0 and n_copies_nonmax > 0)
+                            ):
+                                continue
+                            if max_tok == 0:
+                                assert q_tok == max_tok
+                                assert n_copies_nonmax == 0
+                                weights[q_tok, max_tok, n_copies_nonmax] = 1
+                            weights[q_tok, max_tok, n_copies_nonmax] = (
+                                max_tok - 1
+                            ) ** n_copies_nonmax * math.comb(
+                                model.cfg.n_ctx - 1, n_copies_nonmax
+                            )
+                for tricks, v, _proof_search_time in min_gaps_lists[use_exact_EQKE]:
+                    postkey = filedescr + tricks.short_description(latex=False)
+                    postlatexkey = latexdescr + tricks.short_description(latex=True)
+                    v = v.flatten().detach().cpu()
+                    mean = np.average(v.numpy(), weights=weights.flatten().numpy())
+                    std = np.average(
+                        (v - mean).numpy() ** 2,
+                        weights=weights.flatten().numpy(),
+                    )
+                    num_std = 1.5
+                    most_below_value = int(math.ceil(mean + num_std * std))
+                    frac_below = (
+                        weights.flatten()[v <= most_below_value].sum() / weights.sum()
+                    ).item()
+                    latex_values[f"SubcubicGapMostBelowValue{postlatexkey}"] = (
+                        most_below_value
+                    )
+                    latex_values[
+                        f"SubcubicGapMostBelowValueNumStd{postlatexkey}Float"
+                    ] = num_std
+                    latex_values[
+                        f"SubcubicGapMostBelowValueSequenceFrac{postlatexkey}Float"
+                    ] = frac_below
+                    print(
+                        f"{postlatexkey}: most ({frac_below*100}%) sequences are <= {most_below_value} (based on + {num_std} std)"
+                    )
+                    if v.max().item() == 1:
+                        print(f"All gaps are: {set(v.numpy())}")
+                        continue
+                    try:
+                        shash = "#" if PLOT_WITH == "plotly" else r"\#"
+                        fig = weighted_histogram(
+                            v.numpy(),
+                            weights.flatten().detach().numpy(),
+                            xaxis="gap",
+                            yaxis="count * {shash} sequences",
+                            num_bins=v.max().item(),
+                            plot_with=PLOT_WITH,
+                            renderer=RENDERER,
+                        )
+                        latex_figures[f"SubcubicGapHistogram{postkey}"] = fig
+                    except Exception as e:
+                        etype, value, tb = sys.exc_info()
+                        if value is None:
+                            traceback.print_exception(e)
+                        else:
+                            for line in traceback.TracebackException(
+                                type(value), value, tb, capture_locals=True
+                            ).format():
+                                print(line, file=sys.stderr)
+except Exception as e:
+    etype, value, tb = sys.exc_info()
+    if value is None:
+        traceback.print_exception(e)
+    else:
+        for line in traceback.TracebackException(
+            type(value), value, tb, capture_locals=True
+        ).format():
+            print(line, file=sys.stderr)
+    raise e
 # %%
 latex_values["HEADSHA"] = git.get_head_sha(short=False)
 latex_values["HEADSHASHORT"] = git.get_head_sha(short=True)

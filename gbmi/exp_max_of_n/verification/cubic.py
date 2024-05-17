@@ -1,6 +1,7 @@
 import math
 import time
 from typing import Callable, Optional, Tuple, Union, overload
+from functools import reduce
 import torch
 from jaxtyping import Float
 from torch import Tensor
@@ -11,7 +12,12 @@ from gbmi.utils.sequences import count_sequences, count_sequences_instructions
 from gbmi.verification_tools.general import EU_PU
 from gbmi.verification_tools.l1h1 import all_EQKE, all_EQKP, all_EVOU, all_PVOU
 from gbmi.verification_tools.utils import complexity_of
-from gbmi.utils.instructions import InstructionCount, CountTensor
+from gbmi.utils.instructions import (
+    InstructionCount,
+    CountTensor,
+    PerfCounter,
+    PerfCollector,
+)
 
 
 @torch.no_grad()
@@ -409,6 +415,7 @@ def verify_proof(
     print_types: Union[bool, Callable[[str], None]] = False,
     sanity_check: bool = True,
     pbar: Optional[tqdm] = None,
+    include_perf: bool = False,
 ):
     if isinstance(print_complexity, bool):
         print_complexity = print if print_complexity else lambda x: None
@@ -418,11 +425,15 @@ def verify_proof(
         print_types = print if print_types else lambda x: None
 
     prooftimes = []
+    proofcounters = []
 
     def add_time(f, *args, **kwargs):
-        starttime = time.time()
-        result = f(*args, **kwargs)
-        prooftimes.append(time.time() - starttime)
+        with PerfCollector() as collector:
+            starttime = time.time()
+            result = f(*args, **kwargs)
+            endtime = time.time()
+        prooftimes.append(endtime - starttime)
+        proofcounters.append(collector.counters)
         return result
 
     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = add_time(EU_PU, model)  # noqa: F722
@@ -505,6 +516,7 @@ def verify_proof(
         f"Cubic Accuracy lower bound: {accuracy_bound_cubic} ({correct_count_cubic} correct sequences of {total_sequences})"
     )
     prooftime = sum(prooftimes)
+    proofinstructions = reduce(PerfCounter.__add__, proofcounters)
     print_results(f"Cubic Proof time: {prooftime}s")
     return {
         "largest_wrong_logit": largest_wrong_logit_cubic,
@@ -512,4 +524,4 @@ def verify_proof(
         "correct_count_lower_bound": correct_count_cubic,
         "total_sequences": total_sequences,
         "prooftime": prooftime,
-    }
+    } | ({"proofinstructions": proofinstructions} if include_perf else {})

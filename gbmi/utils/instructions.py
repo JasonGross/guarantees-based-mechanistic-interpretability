@@ -36,6 +36,7 @@ from transformer_lens import HookedTransformer
 import fancy_einsum
 import einops
 import einops._backends
+from gbmi.utils.svd import compute_verify_svd_close_matrices
 
 # %%
 try:
@@ -680,6 +681,7 @@ class CountTensor:
     __neg__ = unary
     __pos__ = unary
     __invert__ = unary_bool
+    conj = unary
     sqrt = unary_arith
     exp = unary_arith
     log = unary_arith
@@ -824,7 +826,22 @@ class CountTensor:
 
     @property
     def T(self) -> "CountTensor":
+        return self._reshape(tuple(reversed(self.shape)))
+
+    @property
+    def mT(self) -> "CountTensor":
         return self.transpose(-2, -1)
+
+    def adjoint(self) -> "CountTensor":
+        return self.transpose(-2, -1).conj()
+
+    @property
+    def mH(self) -> "CountTensor":
+        return self.adjoint()
+
+    @property
+    def H(self) -> "CountTensor":
+        return self.mH
 
     @staticmethod
     def einsum(equation: str, *args: "CountTensor") -> "CountTensor":
@@ -1186,6 +1203,35 @@ class CountTensor:
         )
         return count_values_indices(result, result)
 
+    @staticmethod
+    def linalg_svd(
+        A: "CountTensor", full_matrices: bool = True
+    ) -> Tuple["CountTensor", "CountTensor", "CountTensor"]:
+        init_shape, (n, m) = tuple(A.shape[:-2]), A.shape[-2:]
+        min_nm = np.min([n, m])
+        if full_matrices:
+            Ushape, Sshape, Vhshape = (n, n), (min_nm,), (m, m)
+        else:
+            Ushape, Sshape, Vhshape = (n, min_nm), (min_nm,), (min_nm, m)
+        U = CountTensor(shape=init_shape + Ushape)
+        S = CountTensor(shape=init_shape + Sshape)
+        Vh = CountTensor(shape=init_shape + Vhshape)
+        match mode:
+            case "verify":
+                Sdiff, Udiff, Vhdiff = compute_verify_svd_close_matrices(A, U, S, Vh)
+                U.count = ((Udiff[1] - Udiff[0]).abs() == 0).count
+                S.count = ((Sdiff[1] - Sdiff[0]).abs() == 0).count
+                Vh.count = ((Vhdiff[1] - Vhdiff[0]).abs() == 0).count
+            case "search":
+                raise NotImplementedError("Search mode not yet implemented for svd")
+        return U, S, Vh
+
+    def svd(
+        self, some: bool = True, compute_uv: bool = True
+    ) -> Tuple["CountTensor", "CountTensor", "CountTensor"]:
+        U, S, Vh = CountTensor.linalg_svd(self, full_matrices=not some)
+        return U, S, Vh.mT  # TODO: use .mH when we track real vs complex
+
     def __hash__(self) -> int:
         return hash((tuple(self.shape), self.count, tuple(self.parents.values())))
 
@@ -1248,9 +1294,12 @@ einops._backends._loaded_backends[CountTensorBackend.framework_name] = (
 
 
 class DefaultCountTensorWrapper:
-    def __init__(self, mod, name, static: bool = False):
+    def __init__(
+        self, mod, name: str, count_name: Optional[str] = None, static: bool = False
+    ):
         self.mod = mod
         self.name = name
+        self.count_name = count_name or name
         self.static = static
         self.func = getattr(mod, name)
         if isinstance(self.func, DefaultCountTensorWrapper):
@@ -1269,9 +1318,11 @@ class DefaultCountTensorWrapper:
         #     and any(isinstance(a, (torch.Tensor, CountTensor)) for a in arg)
         # ):
         if self.static:
-            return getattr(CountTensor, self.name)(arg, *args, **kwargs)
+            return getattr(CountTensor, self.count_name)(arg, *args, **kwargs)
         else:
-            return getattr(CountTensor.from_numpy(arg), self.name)(*args, **kwargs)
+            return getattr(CountTensor.from_numpy(arg), self.count_name)(
+                *args, **kwargs
+            )
         # if hasattr(arg, self.name):
         #     return getattr(arg, self.name)(arg, *args, **kwargs)
         # return self.func(arg, *args, **kwargs)
@@ -1289,6 +1340,7 @@ class PatchTorch:
         "ones_like": True,
         "stack": True,
         "cat": True,
+        "svd": False,
     }
 
     def __init__(self, **kwargs: bool):
@@ -1305,10 +1357,14 @@ class PatchTorch:
                     torch, name, static=PatchTorch._torch_is_static[name]
                 ),
             )
+        torch.linalg.svd = DefaultCountTensorWrapper(
+            torch.linalg, "svd", count_name="linalg_svd", static=True
+        )
 
     def __exit__(self, exc_type, exc_value, traceback):
         for name in self.torch_patches:
             getattr(torch, name).unwrap()
+        torch.linalg.svd.unwrap()
 
 
 class CountHookedTransformer(HookedTransformer):

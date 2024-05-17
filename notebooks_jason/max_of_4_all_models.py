@@ -82,8 +82,10 @@ OVERWRITE_CSV_FROM_CACHE: bool = False  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
 TRAIN_CSV_PATH = Path(__file__).with_suffix("") / "all-models-train-values.csv"
 TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-csv_path = Path(__file__).with_suffix("") / "all-models-brute-force-values.csv"
-csv_path.parent.mkdir(exist_ok=True, parents=True)
+BRUTE_FORCE_CSV_PATH = (
+    Path(__file__).with_suffix("") / "all-models-brute-force-values.csv"
+)
+BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 CUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-cubic-values.csv"
 CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-subcubic-values.csv"
@@ -362,8 +364,8 @@ brute_force_columns = [
     "cpu",
     "duration",
 ]
-if os.path.exists(csv_path):
-    brute_force_results = pd.read_csv(csv_path)
+if os.path.exists(BRUTE_FORCE_CSV_PATH):
+    brute_force_results = pd.read_csv(BRUTE_FORCE_CSV_PATH)
 else:
     brute_force_results = pd.DataFrame(columns=brute_force_columns)
 
@@ -503,7 +505,7 @@ with tqdm(total=total_batches, desc="batches for brute force", position=0) as pb
         partial(_handle_brute_force_for, pbar=pbar), sorted(relevant_seeds)
     )
 
-update_csv(csv_path, brute_force_data, columns=brute_force_columns)
+update_csv(BRUTE_FORCE_CSV_PATH, brute_force_data, columns=brute_force_columns)
 
 # %% [markdown]
 # # Cubic proof
@@ -921,4 +923,4 @@ new_data = []
 for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])
 
-update_csv_with_rows(csv_path, new_data, subcubic_columns)
+update_csv_with_rows(SUBCUBIC_CSV_PATH, new_data, subcubic_columns)

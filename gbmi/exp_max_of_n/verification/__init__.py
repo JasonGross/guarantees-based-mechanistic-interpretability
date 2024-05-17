@@ -7,7 +7,8 @@ import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from functools import reduce
-from transformer_lens import HookedTransformer, FactoredMatrix
+from transformer_lens import HookedTransformer  # , FactoredMatrix
+from gbmi.utils.FactoredMatrix import FactoredMatrix
 
 from gbmi.utils import dropnan
 from gbmi.analysis_tools.plot import summarize

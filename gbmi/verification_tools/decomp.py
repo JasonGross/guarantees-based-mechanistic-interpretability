@@ -4,7 +4,9 @@ from torch import Tensor
 from jaxtyping import Float
 import torch
 import numpy as np
-from transformer_lens import FactoredMatrix
+
+# from transformer_lens import FactoredMatrix
+from gbmi.utils.FactoredMatrix import FactoredMatrix
 from gbmi.utils.lowrank import LowRankTensor
 
 

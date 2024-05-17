@@ -824,36 +824,35 @@ def try_all_proofs_subcubic(
             )
             num_std = 1.5
             most_below_value = int(math.ceil(mean + num_std * std))
-            print(v)
-            print(most_below_value)
-            print(list(sorted(v.tolist())))
-            print(f"max={(min_gaps==min_gaps.max()).nonzero()}")
-            if min_gaps.max() > 100:
-                print(f"big! {min_gaps.max()}")
-                args = (tricks,)
-                kwargs = dict(
-                    filename=cache_dir
-                    / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}"
-                )
-                print(f"memoshelve_uncache(*{args}, **{kwargs})")
-                memoshelve_uncache(*args, **kwargs)
-                args = (tricks, use_exact_EQKE)
-                kwargs = dict(
-                    filename=cache_dir
-                    / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
-                    get_hash_mem=(lambda x: x[0]),
-                    get_hash=str,
-                )
-                print(f"memoshelve_uncache(*{args}, **{kwargs})")
-                memoshelve_uncache(*args, **kwargs)
-            print(f"mean={mean}")
-            print(f"std={std}")
-            print(f"max={v.max().item()}")
-            print(f"min={v.min().item()}")
-            print(v <= most_below_value)
+            # print(v)
+            # print(most_below_value)
+            # print(list(sorted(v.tolist())))
+            # print(f"max={(min_gaps==min_gaps.max()).nonzero()}")
+            # if min_gaps.max() > 100:
+            #     print(f"big! {min_gaps.max()}")
+            #     args = (tricks,)
+            #     kwargs = dict(
+            #         filename=cache_dir
+            #         / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}"
+            #     )
+            #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
+            #     memoshelve_uncache(*args, **kwargs)
+            #     args = (tricks, use_exact_EQKE)
+            #     kwargs = dict(
+            #         filename=cache_dir
+            #         / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
+            #         get_hash_mem=(lambda x: x[0]),
+            #         get_hash=str,
+            #     )
+            #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
+            #     memoshelve_uncache(*args, **kwargs)
+            # print(f"mean={mean}")
+            # print(f"std={std}")
+            # print(f"max={v.max().item()}")
+            # print(f"min={v.min().item()}")
+            # print(v <= most_below_value)
             frac_below = (
-                weights.float().flatten()[v <= most_below_value].sum()
-                / weights.float().sum()
+                weights.flatten()[v <= most_below_value].sum() / weights.sum()
             ).item()
 
             row = {

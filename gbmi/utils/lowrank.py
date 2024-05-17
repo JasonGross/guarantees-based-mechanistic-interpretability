@@ -4,7 +4,9 @@ import torch
 from jaxtyping import Float
 from typing import TypeVar, Union, Optional, overload
 import plotly.express as px
-from transformer_lens import FactoredMatrix
+
+# from transformer_lens import FactoredMatrix
+from gbmi.utils.FactoredMatrix import FactoredMatrix
 
 
 T = TypeVar("T")

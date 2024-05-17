@@ -135,6 +135,7 @@ from gbmi.utils.instructions import (
     CountHookedTransformer,
     PerfCounter,
     PerfCollector,
+    CountTensorOperations,
     PERF_WORKING,
 )
 
@@ -204,6 +205,16 @@ def latex_values_of_counter(prefix: str, counters: PerfCounter) -> dict[str, int
             ("page_faults", "PageFaults"),
         )
         if hasattr(counters, attr)
+    }
+
+
+def latex_values_of_instruction_count(
+    prefix: str, count: InstructionCount
+) -> dict[str, int]:
+    return {
+        f"{prefix}InstructionCount": count.flop,
+        f"{prefix}InstructionCountInt": count.int_op,
+        f"{prefix}InstructionCountBranch": count.branch,
     }
 
 
@@ -435,18 +446,19 @@ def single_batch_instruction_count(
             _run_batch_loss_accuracy(0, batch_size, return_incorrect_sequences=False)
     perf_instruction_count = collector.counters
 
-    batch = CountTensor.from_numpy(all_tokens_dataset[:batch_size])
-    size = batch.shape[0]
-    labels: CountTensor = training_wrapper.config.experiment.get_ground_truth(batch)  # type: ignore
-    xs, ys = batch, labels
-    y_preds: CountTensor = CountHookedTransformer(model)(xs)
-    loss: CountTensor = training_wrapper.loss_fn(
-        y_preds, ys, log_softmax=CountTensor.log_softmax  # type: ignore
-    )  # type: ignore
-    full_accuracy: CountTensor = training_wrapper.acc_fn_per_seq(y_preds, ys)  # type: ignore
-    accuracy: CountTensor = full_accuracy.float().mean()
-    result: CountTensor = loss + accuracy
-    return result.full_count, perf_instruction_count
+    with CountTensorOperations() as result:
+        batch = CountTensor.from_numpy(all_tokens_dataset[:batch_size])
+        size = batch.shape[0]
+        labels: CountTensor = training_wrapper.config.experiment.get_ground_truth(batch)  # type: ignore
+        xs, ys = batch, labels
+        y_preds: CountTensor = CountHookedTransformer(model)(xs)
+        loss: CountTensor = training_wrapper.loss_fn(
+            y_preds, ys, log_softmax=CountTensor.log_softmax  # type: ignore
+        )  # type: ignore
+        full_accuracy: CountTensor = training_wrapper.acc_fn_per_seq(y_preds, ys)  # type: ignore
+        accuracy: CountTensor = full_accuracy.float().mean()
+
+    return result, perf_instruction_count
 
 
 def brute_force_instruction_count(
@@ -467,7 +479,7 @@ def brute_force_instruction_count(
 
 
 brute_force_count, brute_force_perf = brute_force_instruction_count(model, batch_size)
-latex_values["BruteForceInstructionCount"] = brute_force_count.flop
+latex_values |= latex_values_of_instruction_count("BruteForce", brute_force_count)
 latex_values |= latex_values_of_counter("BruteForce", brute_force_perf)
 # %%
 # %%
@@ -877,14 +889,15 @@ latex_values |= latex_values_of_counter("Cubic", cubic_collector.counters)
 cmodel = CountHookedTransformer(model)
 with PatchTorch():
     with instructions.set_sanity_check(False):
-        cubic_proof_instruction_count_results = cubic.verify_proof(
-            cmodel,
-            cubic_proof_args,
-            print_complexity=False,
-            print_results=False,
-            sanity_check=False,
-            # print_types=True,
-        )
+        with CountTensorOperations() as cubic_instruction_count:
+            cubic_proof_instruction_count_results = cubic.verify_proof(
+                cmodel,
+                cubic_proof_args,
+                print_complexity=False,
+                print_results=False,
+                sanity_check=False,
+                # print_types=True,
+            )
 # try:
 #     pass
 # except Exception as ex:
@@ -894,9 +907,23 @@ with PatchTorch():
 # HERE
 # %%
 cubic_proof_instruction_count_results_counts = {
-    k: v.full_count if isinstance(v, CountTensor) else v
+    k: v.global_count_at_creation if isinstance(v, CountTensor) else v
     for k, v in cubic_proof_instruction_count_results.items()
 }
+latex_values |= latex_values_of_instruction_count("Cubic", cubic_instruction_count)
+# latex_values |= latex_values_of_instruction_count(
+#     "CubicLargestWrongLogit",
+#     cubic_proof_instruction_count_results_counts["largest_wrong_logit"],
+# )
+# latex_values |= latex_values_of_instruction_count(
+#     "CubicCorrectCount",
+#     cubic_proof_instruction_count_results_counts["correct_count_lower_bound"],
+# )
+# latex_values |= latex_values_of_instruction_count(
+#     "CubicAccuracy",
+#     cubic_proof_instruction_count_results_counts["accuracy_lower_bound"],
+# )
+
 # %%
 largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]
 total_sequences = cubic_proof_results["total_sequences"]
@@ -2337,6 +2364,8 @@ else:
 # %% [markdown]
 # # Sub-cubic Proofs
 # %%
+# must be outside PatchTorch to avoid triu, tril
+cmodel = CountHookedTransformer(model)
 # err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
 min_gaps_lists = {}
 with torch.no_grad():
@@ -2411,6 +2440,71 @@ with torch.no_grad():
                 get_hash=str,
             )() as verify_proof:
                 proof_results = verify_proof(tricks, use_exact_EQKE)
+
+            with PerfCollector() as subcubic_collector:
+                if PERF_WORKING:
+                    _verify_proof(tricks, use_exact_EQKE)
+
+            latex_values |= latex_values_of_counter(
+                f"Subcubic{postkey}", subcubic_collector.counters
+            )
+
+            with PatchTorch():
+                with instructions.set_sanity_check(False):
+                    with CountTensorOperations() as subcubic_instruction_count:
+                        subcubic_proof_instruction_count_results = subcubic.verify_proof(
+                            cmodel,
+                            W_EP_direction=(
+                                CountTensor.from_numpy(W_EP_direction)
+                                if W_EP_direction is not None
+                                else W_EP_direction
+                            ),
+                            **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                            use_exact_EQKE=use_exact_EQKE,
+                            min_gaps=min_gaps,
+                            tricks=tricks,
+                            print_complexity=False,
+                            print_results=False,
+                            sanity_check=False,
+                            # print_types=True,
+                        )
+
+            ## %%
+            # import gbmi.utils.instructions as instructions
+            # from gbmi.utils.instructions import (
+            #     InstructionCount,
+            #     CountTensor,
+            #     CountHookedTransformer,
+            #     PatchTorch,
+            #     CountHookedTransformer,
+            #     PerfCounter,
+            #     PerfCollector,
+            #     PERF_WORKING,
+            # )
+            # import gbmi.verification_tools.general
+            # import gbmi.exp_max_of_n.verification.cubic as cubic
+            # import gbmi.exp_max_of_n.verification.subcubic as subcubic
+            # import gbmi.exp_max_of_n.verification.quadratic as quadratic
+            # import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
+            # import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
+            # import traceback
+            # import gbmi.exp_max_of_n.verification.cubic as cubic
+
+            # try:
+            #     pass
+            # except Exception as ex:
+            #     tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
+            #     print("".join(tb.format()))
+            #     raise ex
+            # HERE
+            ## %%
+            # subcubic_proof_instruction_count_results_counts = {
+            #     k: v.global_count_at_creation if isinstance(v, CountTensor) else v
+            #     for k, v in subcubic_proof_instruction_count_results.items()
+            # }
+            latex_values |= latex_values_of_instruction_count(
+                f"Subcubic{postkey}", subcubic_instruction_count
+            )
 
             err_upper_bound = proof_results["err_upper_bound"]
             prooftime = proof_results["prooftime"]

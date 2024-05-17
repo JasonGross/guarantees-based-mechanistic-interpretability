@@ -163,6 +163,19 @@ class InstructionCount:
     int_op: int = 0
     branch: int = 0
 
+    @property
+    def total(self) -> int:
+        return self.flop + self.int_op + self.branch
+
+    def copy(self) -> "InstructionCount":
+        return InstructionCount(flop=self.flop, int_op=self.int_op, branch=self.branch)
+
+    def update(self, other: "InstructionCount") -> "InstructionCount":
+        self.flop = other.flop
+        self.int_op = other.int_op
+        self.branch = other.branch
+        return self
+
     def __add__(
         self, other: Union["InstructionCount", Literal[0]]
     ) -> "InstructionCount":
@@ -176,6 +189,11 @@ class InstructionCount:
         return self
 
     __radd__ = __add__
+
+    def __iadd__(
+        self, other: Union["InstructionCount", Literal[0]]
+    ) -> "InstructionCount":
+        return self.update(self.__add__(other))
 
     def add_flop(self, flop: int = 1) -> "InstructionCount":
         return InstructionCount(
@@ -201,12 +219,18 @@ class InstructionCount:
 
     __rmul__ = __mul__
 
+    def __imul__(self, other: int) -> "InstructionCount":
+        return self.update(self.__mul__(other))
+
     def __div__(self, other: int) -> "InstructionCount":
         return InstructionCount(
             flop=self.flop // other,
             int_op=self.int_op // other,
             branch=self.branch // other,
         )
+
+    def __idiv__(self, other: int) -> "InstructionCount":
+        return self.update(self.__div__(other))
 
     def __truediv__(self, other: int) -> "InstructionCount":
         return InstructionCount(
@@ -215,12 +239,18 @@ class InstructionCount:
             branch=self.branch // other,
         )
 
+    def __itruediv__(self, other: int) -> "InstructionCount":
+        return self.update(self.__truediv__(other))
+
     def __floordiv__(self, other: int) -> "InstructionCount":
         return InstructionCount(
             flop=self.flop // other,
             int_op=self.int_op // other,
             branch=self.branch // other,
         )
+
+    def __ifloordiv__(self, other: int) -> "InstructionCount":
+        return self.update(self.__floordiv__(other))
 
     def __str__(self) -> str:
         return f"InstructionCount(flop={self.flop}, int_op={self.int_op}, branch={self.branch})"
@@ -354,22 +384,52 @@ def set_sanity_check(sanity_check: bool):
         default_sanity_check = old_sanity_check
 
 
+count_to_update: Optional[InstructionCount] = None
+
+
+@contextmanager
+def CountTensorOperations() -> Iterator[InstructionCount]:
+    global count_to_update
+    old_count_to_update = count_to_update
+    count_to_update = InstructionCount()
+    yield count_to_update
+    count_to_update = old_count_to_update
+
+
+def add_to_count(count: InstructionCount):
+    global count_to_update
+    if count_to_update is not None:
+        count_to_update += count
+
+
+def get_count() -> InstructionCount:
+    if count_to_update is None:
+        return None
+    return count_to_update.copy()
+
+
 @dataclass
 class CountTensor:
     shape: Sequence[int]
     count: InstructionCount = InstructionCount()
-    parents: dict[int, "CountTensor"] = field(default_factory=OrderedDict)
+    # parents: dict[int, "CountTensor"] = field(default_factory=OrderedDict)
     is_bool: bool = False
 
+    def __post_init__(self):
+        if count_to_update is None:
+            self.global_count_at_creation = None
+        else:
+            self.global_count_at_creation = count_to_update.copy()
+
     def __str__(self):
-        return f"CountTensor(shape={self.shape}, count={self.count}, is_bool={self.is_bool}, parents=<{len(self.parents)} parents>)"
+        return f"CountTensor(shape={self.shape}, count={self.count}, is_bool={self.is_bool}"
 
     def __repr__(self):
-        return f"CountTensor(shape={self.shape!r}, count={self.count!r}, is_bool={self.is_bool!r}, parents={self.parents!r})"
+        return f"CountTensor(shape={self.shape!r}, count={self.count!r}, is_bool={self.is_bool!r}"
 
-    @staticmethod
-    def _parents_of_tuple(parents: Iterable["CountTensor"]) -> dict[int, "CountTensor"]:
-        return OrderedDict((id(p), p) for p in parents)
+    # @staticmethod
+    # def _parents_of_tuple(parents: Iterable["CountTensor"]) -> dict[int, "CountTensor"]:
+    #     return OrderedDict((id(p), p) for p in parents)
 
     @staticmethod
     def from_numpy(
@@ -383,31 +443,33 @@ class CountTensor:
             shape=x.shape, is_bool=x.dtype == torch.bool or x.dtype == bool
         )
 
-    @cached_property
-    def transitive_parents(self) -> OrderedDict[int, "CountTensor"]:
-        all_parents = OrderedDict()
-        pending = list(self.parents.items())
-        while pending:
-            idp, cur_parent = pending.pop(0)
-            if idp in all_parents:
-                continue
-            all_parents[idp] = cur_parent
-            pending.extend(list(cur_parent.parents.items()))
-        return all_parents
+    # @cached_property
+    # def transitive_parents(self) -> OrderedDict[int, "CountTensor"]:
+    #     all_parents = OrderedDict()
+    #     pending = list(self.parents.items())
+    #     while pending:
+    #         idp, cur_parent = pending.pop(0)
+    #         if idp in all_parents:
+    #             continue
+    #         all_parents[idp] = cur_parent
+    #         pending.extend(list(cur_parent.parents.items()))
+    #     return all_parents
 
-    @cached_property
-    def full_count(self) -> InstructionCount:
-        count = self.count
-        for p in self.transitive_parents.values():
-            count += p.count
-        return count
+    # @cached_property
+    # def full_count(self) -> InstructionCount:
+    #     count = self.count
+    #     for p in self.transitive_parents.values():
+    #         count += p.count
+    #     return count
 
     def _unary(self, is_bool: Optional[bool] = None) -> "CountTensor":
+        count = InstructionCount(flop=int(np.prod(self.shape)))
+        add_to_count(count)
         return CountTensor(
             shape=self.shape,
-            count=InstructionCount(flop=int(np.prod(self.shape))),
+            count=count,
             is_bool=is_bool if is_bool is not None else self.is_bool,
-            parents=CountTensor._parents_of_tuple((self,)),
+            # parents=CountTensor._parents_of_tuple((self,)),
         )
 
     def unary(self) -> "CountTensor":
@@ -440,13 +502,15 @@ class CountTensor:
         assert isinstance(
             other, CountTensor
         ), f"Expected CountTensor, got {type(other)}"
+        count = InstructionCount(flop=int(np.prod(shape)))
+        add_to_count(count)
         return CountTensor(
             shape=shape,
-            count=InstructionCount(flop=int(np.prod(shape))),
+            count=count,
             is_bool=(
                 is_bool if is_bool is not None else (self.is_bool and other.is_bool)
             ),
-            parents=CountTensor._parents_of_tuple((self, other)),
+            # parents=CountTensor._parents_of_tuple((self, other)),
         )
 
     def _binary(
@@ -487,21 +551,25 @@ class CountTensor:
             dim = axis
         shape = list(self.shape)
         if dim is None:
+            count = InstructionCount(flop=int(np.prod(shape)) - 1)
+            add_to_count(count)
             return CountTensor(
                 shape=[],
-                count=InstructionCount(flop=int(np.prod(shape)) - 1),
+                count=count,
                 is_bool=is_bool if is_bool is not None else self.is_bool,
-                parents=CountTensor._parents_of_tuple((self,)),
+                # parents=CountTensor._parents_of_tuple((self,)),
             )
         shape_without_dim = list(shape)
         shape_without_dim.pop(dim)
+        count = InstructionCount(
+            flop=int(np.prod(shape_without_dim)) * (shape[dim] - 1)
+        )
+        add_to_count(count)
         return CountTensor(
             shape=shape_without_dim if not keepdim else shape,
-            count=InstructionCount(
-                flop=int(np.prod(shape_without_dim)) * (shape[dim] - 1)
-            ),
+            count=count,
             is_bool=is_bool if is_bool is not None else self.is_bool,
-            parents=CountTensor._parents_of_tuple((self,)),
+            # parents=CountTensor._parents_of_tuple((self,)),
         )
 
     def fold_reduce(
@@ -627,7 +695,7 @@ class CountTensor:
         """explicitly does not check the number of elements"""
         return CountTensor(
             shape=new_shape,
-            parents=CountTensor._parents_of_tuple((self,)),
+            # parents=CountTensor._parents_of_tuple((self,)),
             is_bool=self.is_bool,
         )
 
@@ -645,13 +713,13 @@ class CountTensor:
         x_shape = torch.broadcast_shapes(self.shape, other.shape[:-1])
         # at each index, we do x_shape[-1] multiplications and x_shape[-1] - 1 additions
         out_shape = (*x_shape[:-1], other.shape[-1])
+        count = InstructionCount(flop=int(np.prod(out_shape)) * (x_shape[-1] * 2 - 1))
+        add_to_count(count)
         return CountTensor(
             shape=out_shape,
-            count=InstructionCount(
-                flop=int(np.prod(out_shape)) * (x_shape[-1] * 2 - 1)
-            ),
+            count=count,
             is_bool=self.is_bool and other.is_bool,
-            parents=CountTensor._parents_of_tuple((self, other)),
+            # parents=CountTensor._parents_of_tuple((self, other)),
         )
 
     def __rmatmul__(
@@ -719,12 +787,7 @@ class CountTensor:
         return adjusted - adjusted_log_sum_exp
 
     def flip(self, *args, **kwargs) -> "CountTensor":
-        return CountTensor(
-            shape=self.shape,
-            count=InstructionCount(flop=int(np.prod(self.shape))),
-            is_bool=self.is_bool,
-            parents=CountTensor._parents_of_tuple((self,)),
-        )
+        return self.unary()
 
     def permute(self, *args, **kwargs) -> "CountTensor":
         return self._reshape(
@@ -768,13 +831,15 @@ class CountTensor:
         # num_output_elements * ((len(lhs) - 1) * num_contracted_indices + num_contracted_indices - 1)
         # = num_output_elements * (len(lhs) * num_contracted_indices - 1)
         flops = num_output_elements * (len(lhs) * num_contracted_indices - 1)
+        count = InstructionCount(flop=flops)
+        add_to_count(count)
         return CountTensor(
             shape=tuple(shape_map[idx] for idx in rhs),
-            count=InstructionCount(flop=flops),
+            count=count,
             is_bool=False,
-            parents=CountTensor._parents_of_tuple(
-                arg for arg in args if isinstance(arg, CountTensor)
-            ),
+            # parents=CountTensor._parents_of_tuple(
+            #     arg for arg in args if isinstance(arg, CountTensor)
+            # ),
         )
 
     @staticmethod
@@ -802,13 +867,15 @@ class CountTensor:
         # num_output_elements * ((len(lhs) - 1) * num_contracted_indices + num_contracted_indices - 1)
         # = num_output_elements * (len(lhs) * num_contracted_indices - 1)
         flops = num_output_elements * (len(lhs) * num_contracted_indices - 1)
+        count = InstructionCount(flop=flops)
+        add_to_count(count)
         return CountTensor(
             shape=tuple(shape_map[idx] for idx in rhs),
-            count=InstructionCount(flop=flops),
+            count=count,
             is_bool=False,
-            parents=CountTensor._parents_of_tuple(
-                arg for arg in args if isinstance(arg, CountTensor)
-            ),
+            # parents=CountTensor._parents_of_tuple(
+            #     arg for arg in args if isinstance(arg, CountTensor)
+            # ),
         )
 
     @staticmethod
@@ -831,11 +898,13 @@ class CountTensor:
             CountTensor.from_numpy(y),
         )
         shape = torch.broadcast_shapes(cond.shape, x.shape, y.shape)
+        count = InstructionCount(flop=int(np.prod(shape)))
+        add_to_count(count)
         return CountTensor(
             shape=shape,
-            count=InstructionCount(flop=int(np.prod(shape))),
+            count=count,
             is_bool=x.is_bool and y.is_bool,
-            parents=CountTensor._parents_of_tuple(cond, x, y),
+            # parents=CountTensor._parents_of_tuple(cond, x, y),
         )
 
     @staticmethod
@@ -867,7 +936,7 @@ class CountTensor:
             shape=tuple(shape),
             count=InstructionCount(),
             is_bool=all(t.is_bool for t in tensors),
-            parents=CountTensor._parents_of_tuple(tensors),
+            # parents=CountTensor._parents_of_tuple(tensors),
         )
 
     @staticmethod
@@ -887,7 +956,7 @@ class CountTensor:
             shape=tuple(shape),
             is_bool=all(t.is_bool for t in parents),
             count=InstructionCount(),
-            parents=CountTensor._parents_of_tuple(parents),
+            # parents=CountTensor._parents_of_tuple(parents),
         )
 
     @staticmethod
@@ -1001,7 +1070,7 @@ class CountTensor:
         return CountTensor(
             shape=shape,
             count=InstructionCount(),
-            parents=CountTensor._parents_of_tuple([self, *idx_parents]),
+            # parents=CountTensor._parents_of_tuple([self, *idx_parents]),
         )
 
     def __setitem__(
@@ -1013,14 +1082,17 @@ class CountTensor:
         idx_parents, shape = self.parents_and_shape_of_slice(
             indices, sanity_check=sanity_check
         )
-        self.count += InstructionCount(flop=int(np.prod(shape)))
-        phantom_parent = CountTensor(
-            shape=(),
-            parents=CountTensor._parents_of_tuple(
-                [*idx_parents, CountTensor.from_numpy(other)]
-            ),
-        )
-        self.parents[id(phantom_parent)] = phantom_parent
+        additional_count = InstructionCount(flop=int(np.prod(shape)))
+        add_to_count(additional_count)
+        self.count += additional_count
+        self.__post_init__()
+        # phantom_parent = CountTensor(
+        #     shape=(),
+        #     parents=CountTensor._parents_of_tuple(
+        #         [*idx_parents, CountTensor.from_numpy(other)]
+        #     ),
+        # )
+        # self.parents[id(phantom_parent)] = phantom_parent
         return self
 
     def gather(
@@ -1030,7 +1102,7 @@ class CountTensor:
         return CountTensor(
             shape=index.shape,
             count=InstructionCount(),
-            parents=CountTensor._parents_of_tuple(self, index),
+            # parents=CountTensor._parents_of_tuple(self, index),
         )
 
     def unsqueeze(self, dim: int) -> "CountTensor":
@@ -1041,7 +1113,7 @@ class CountTensor:
         return CountTensor(
             shape=shape,
             count=InstructionCount(),
-            parents=CountTensor._parents_of_tuple((self,)),
+            # parents=CountTensor._parents_of_tuple((self,)),
         )
 
     @property
@@ -1086,10 +1158,12 @@ class CountTensor:
                 flops_to_sort = n - 1
             case "search":
                 raise NotImplementedError("Search mode not yet implemented for sort")
+        count = InstructionCount(flop=arrays_to_sort * flops_to_sort)
+        add_to_count(count)
         result = CountTensor(
             shape=self.shape,
-            count=InstructionCount(flop=arrays_to_sort * flops_to_sort),
-            parents=CountTensor._parents_of_tuple((self,)),
+            count=count,
+            # parents=CountTensor._parents_of_tuple((self,)),
         )
         return count_values_indices(result, result)
 

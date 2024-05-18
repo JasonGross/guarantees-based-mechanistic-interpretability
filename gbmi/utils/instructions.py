@@ -1210,6 +1210,14 @@ class CountTensor:
             # parents=CountTensor._parents_of_tuple((self,)),
         )
 
+    def allclose(
+        self,
+        other: Union[int, float, "CountTensor", np.ndarray, torch.Tensor],
+        *args,
+        **kwargs,
+    ) -> "CountTensor":
+        return ((self - other) == 0).all()
+
     @property
     def device(self):
         return torch.device("cpu")
@@ -1396,6 +1404,7 @@ class PatchTorch:
     _torch_is_static = {
         "where": True,
         "isnan": False,
+        "allclose": False,
         "triu": False,
         "tril": False,
         "zeros": True,

@@ -410,19 +410,20 @@ def verify_proof(
     model: HookedTransformer,
     proof_args: dict,
     *,
-    print_complexity: Union[bool, Callable[[str], None]] = True,
-    print_results: Union[bool, Callable[[str], None]] = True,
-    print_types: Union[bool, Callable[[str], None]] = False,
+    print_complexity: Union[bool, Callable[[Callable[[], str]], None]] = True,
+    print_results: Union[bool, Callable[[Callable[[], str]], None]] = True,
+    print_types: Union[bool, Callable[[Callable[[], str]], None]] = False,
     sanity_check: bool = True,
     pbar: Optional[tqdm] = None,
     include_perf: bool = False,
 ):
+    print_thunk = lambda x: print(x())
     if isinstance(print_complexity, bool):
-        print_complexity = print if print_complexity else lambda x: None
+        print_complexity = print_thunk if print_complexity else lambda x: None
     if isinstance(print_results, bool):
-        print_results = print if print_results else lambda x: None
+        print_results = print_thunk if print_results else lambda x: None
     if isinstance(print_types, bool):
-        print_types = print if print_types else lambda x: None
+        print_types = print_thunk if print_types else lambda x: None
 
     prooftimes = []
     proofcounters = []
@@ -437,29 +438,29 @@ def verify_proof(
         return result
 
     EUPU: Float[Tensor, "d_vocab_q d_vocab_out"] = add_time(EU_PU, model)  # noqa: F722
-    print_types(f"type(EUPU) == {type(EUPU)}")
+    print_types(lambda: f"type(EUPU) == {type(EUPU)}")
     print_complexity(
-        f"Complexity of EU_PU: {complexity_of(EU_PU)}"
+        lambda: f"Complexity of EU_PU: {complexity_of(EU_PU)}"
     )  # O(d_vocab^2 * d_model)
     EVOU: Float[Tensor, "d_vocab d_vocab_out"] = add_time(all_EVOU, model)  # noqa: F722
-    print_types(f"type(EVOU) == {type(EVOU)}")
+    print_types(lambda: f"type(EVOU) == {type(EVOU)}")
     print_complexity(
-        f"Complexity of EVOU: {complexity_of(all_EVOU)}"
+        lambda: f"Complexity of EVOU: {complexity_of(all_EVOU)}"
     )  # O(d_vocab^2 * d_model)
     PVOU: Float[Tensor, "n_ctx d_vocab_out"] = add_time(all_PVOU, model)  # noqa: F722
-    print_types(f"type(PVOU) == {type(PVOU)}")
+    print_types(lambda: f"type(PVOU) == {type(PVOU)}")
     print_complexity(
-        f"Complexity of PVOU: {complexity_of(all_PVOU)}"
+        lambda: f"Complexity of PVOU: {complexity_of(all_PVOU)}"
     )  # O(n_ctx * d_vocab * d_model)
     EQKE: Float[Tensor, "d_vocab_q d_vocab_k"] = add_time(all_EQKE, model)  # noqa: F722
-    print_types(f"type(EQKE) == {type(EQKE)}")
+    print_types(lambda: f"type(EQKE) == {type(EQKE)}")
     print_complexity(
-        f"Complexity of EQKE: {complexity_of(all_EQKE)}"
+        lambda: f"Complexity of EQKE: {complexity_of(all_EQKE)}"
     )  # O(d_vocab^2 * d_model)
     EQKP: Float[Tensor, "d_vocab_q n_ctx_k"] = add_time(all_EQKP, model)  # noqa: F722
-    print_types(f"type(EQKP) == {type(EQKP)}")
+    print_types(lambda: f"type(EQKP) == {type(EQKP)}")
     print_complexity(
-        f"Complexity of EQKP: {complexity_of(all_EQKP)}"
+        lambda: f"Complexity of EQKP: {complexity_of(all_EQKP)}"
     )  # O(d_vocab * d_model * n_ctx)
 
     extreme_right_attention_softmaxed_cubic: Float[
@@ -473,10 +474,10 @@ def verify_proof(
         pbar=pbar,
     )
     print_types(
-        f"type(extreme_right_attention_softmaxed_cubic) == {type(extreme_right_attention_softmaxed_cubic)}"
+        lambda: f"type(extreme_right_attention_softmaxed_cubic) == {type(extreme_right_attention_softmaxed_cubic)}"
     )
     print_complexity(
-        f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
+        lambda: f"Complexity of compute_extreme_softmaxed_right_attention_cubic_simple: {complexity_of(compute_extreme_softmaxed_right_attention_cubic_simple)}"
     )  # O(d_vocab^3 * n_ctx^2)
     if sanity_check:
         sanity_check_diff = (
@@ -500,24 +501,26 @@ def verify_proof(
         EVOU=EVOU,
         PVOU=PVOU,
     )
-    print_types(f"type(largest_wrong_logit_cubic) == {type(largest_wrong_logit_cubic)}")
+    print_types(
+        lambda: f"type(largest_wrong_logit_cubic) == {type(largest_wrong_logit_cubic)}"
+    )
     print_complexity(
-        f"Complexity of compute_largest_wrong_logit_cubic: {complexity_of(compute_largest_wrong_logit_cubic)}"
+        lambda: f"Complexity of compute_largest_wrong_logit_cubic: {complexity_of(compute_largest_wrong_logit_cubic)}"
     )  # O(d_vocab^3 * n_ctx^2)
 
     accuracy_bound_cubic, (
         correct_count_cubic,
         total_sequences,
     ) = add_time(compute_accuracy_lower_bound_from_cubic, largest_wrong_logit_cubic)
-    print_types(f"type(accuracy_bound_cubic) == {type(accuracy_bound_cubic)}")
-    print_types(f"type(correct_count_cubic) == {type(correct_count_cubic)}")
-    print_types(f"type(total_sequences) == {type(total_sequences)}")
+    print_types(lambda: f"type(accuracy_bound_cubic) == {type(accuracy_bound_cubic)}")
+    print_types(lambda: f"type(correct_count_cubic) == {type(correct_count_cubic)}")
+    print_types(lambda: f"type(total_sequences) == {type(total_sequences)}")
     print_results(
-        f"Cubic Accuracy lower bound: {accuracy_bound_cubic} ({correct_count_cubic} correct sequences of {total_sequences})"
+        lambda: f"Cubic Accuracy lower bound: {accuracy_bound_cubic} ({correct_count_cubic} correct sequences of {total_sequences})"
     )
     prooftime = sum(prooftimes)
     proofinstructions = reduce(PerfCounter.__add__, proofcounters)
-    print_results(f"Cubic Proof time: {prooftime}s")
+    print_results(lambda: f"Cubic Proof time: {prooftime}s")
     return {
         "largest_wrong_logit": largest_wrong_logit_cubic,
         "accuracy_lower_bound": accuracy_bound_cubic,

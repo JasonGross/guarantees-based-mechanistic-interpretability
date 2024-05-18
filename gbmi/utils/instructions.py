@@ -1105,6 +1105,7 @@ class CountTensor:
                 ), f"Why are you doing this sort of indexing? ({indices}) ({orig_indices})"
             init_shapes = []
             mid_shape = []
+            print(self)
             post_shape = list(self.shape)
             idx_parents = []
             for remaining, idx in reversed(list(enumerate(reversed(list(indices))))):
@@ -1233,6 +1234,12 @@ class CountTensor:
         if dim is None:
             return self.shape
         return self.shape[dim]
+
+    @property
+    def dtype(self):
+        if self.is_bool:
+            return torch.bool
+        return torch.float
 
     def sort(self, dim: int = -1, *args, **kwargs) -> count_values_indices:
         idxs_to_sort = list(self.shape)

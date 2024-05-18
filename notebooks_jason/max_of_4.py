@@ -2477,7 +2477,7 @@ try:
                 )
 
                 with PatchTorch():
-                    with instructions.set_sanity_check(False):
+                    with instructions.set_sanity_check(True):
                         with CountTensorOperations() as subcubic_instruction_count:
                             subcubic_proof_instruction_count_results = subcubic.verify_proof(
                                 cmodel,

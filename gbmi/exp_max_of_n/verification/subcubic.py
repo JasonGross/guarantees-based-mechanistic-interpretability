@@ -260,7 +260,7 @@ def verify_proof(
     print_complexity(
         f"Complexity of compute_extreme_right_attention_quadratic: {complexity_of(quadratic.compute_extreme_right_attention_quadratic)}"
     )  # O(d_vocab^2)
-    if not isinstance(EQKE_err_upper_bound, Tensor):
+    if not hasattr(EQKE_err_upper_bound, "ndim"):
         EQKE_err_upper_bound = torch.tensor(EQKE_err_upper_bound)
     if EQKE_err_upper_bound.ndim < 1:
         EQKE_err_upper_bound = EQKE_err_upper_bound[None]

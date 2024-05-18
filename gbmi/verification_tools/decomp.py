@@ -40,6 +40,10 @@ def factor_right_contribution(
             torch.stack([(row @ v) @ v.transpose(-2, -1) for row in m], dim=0),
             do_assert=True,
         )
+    global gcontrib
+    global gm
+    gcontrib = contrib
+    gm = m
     return contrib, m - contrib
 
 

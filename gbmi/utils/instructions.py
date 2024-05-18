@@ -438,12 +438,18 @@ class CountTensor:
 
     @staticmethod
     def from_numpy(
-        x: Union[np.ndarray, torch.Tensor, int, float, bool, "CountTensor"]
+        x: Union[np.ndarray, torch.Tensor, int, float, bool, "CountTensor"],
+        return_not_implemented: bool = True,
     ) -> "CountTensor":
         if isinstance(x, CountTensor):
             return x
         elif not isinstance(x, torch.Tensor):
-            x = torch.tensor(x)
+            try:
+                x = torch.tensor(x)
+            except TypeError as e:
+                if return_not_implemented:
+                    return NotImplemented
+                raise e
         return CountTensor(
             shape=x.shape, is_bool=x.dtype == torch.bool or x.dtype == bool
         )
@@ -503,6 +509,8 @@ class CountTensor:
     def _binary_only(
         self, other: "CountTensor", is_bool: Optional[bool] = None
     ) -> "CountTensor":
+        if other is NotImplemented:
+            return NotImplemented
         shape = torch.broadcast_shapes(self.shape, other.shape)
         assert isinstance(
             other, CountTensor

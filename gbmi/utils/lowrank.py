@@ -12,9 +12,18 @@ from gbmi.utils.FactoredMatrix import FactoredMatrix
 T = TypeVar("T")
 
 
-def _via_tensor(attr: str):
+def _via_tensor(attr: str, rattr: Optional[str] = None):
     def delegate(self: LowRankTensor, *args, **kwargs):
-        return getattr(self.AB, attr)(*args, **kwargs)
+        AB = self.AB
+        try:
+            return getattr(AB, attr)(*args, **kwargs)
+        except TypeError as e:
+            if rattr is not None and len(args) > 0:
+                try:
+                    return getattr(args[0], rattr)(AB, *args, **kwargs)
+                except TypeError as er:
+                    raise TypeError(e, er)
+            raise e
 
     if hasattr(Tensor, attr):
         reference = getattr(Tensor, attr)
@@ -187,7 +196,7 @@ class LowRankTensor(FactoredMatrix):
     def numpy(self):
         return self.AB.cpu().numpy()
 
-    __add__ = _via_tensor("__add__")
-    __radd__ = _via_tensor("__radd__")
-    __sub__ = _via_tensor("__sub__")
-    __rsub__ = _via_tensor("__rsub__")
+    __add__ = _via_tensor("__add__", "__radd__")
+    __radd__ = _via_tensor("__radd__", "__add__")
+    __sub__ = _via_tensor("__sub__", "__rsub__")
+    __rsub__ = _via_tensor("__rsub__", "__sub__")

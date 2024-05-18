@@ -2385,6 +2385,33 @@ import traceback
 import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.quadratic
 
+
+def _subcubic_count_verify_proof(
+    model: HookedTransformer,
+    tricks: LargestWrongLogitQuadraticConfig,
+    use_exact_EQKE: bool,
+    *,
+    sanity_check_instructions: bool = False,
+    **kwargs,
+) -> Tuple[InstructionCount, dict[str, Any]]:
+    # must be outside PatchTorch to avoid triu, tril
+    cmodel = CountHookedTransformer(model)
+    with PatchTorch():
+        with instructions.set_sanity_check(sanity_check_instructions):
+            with CountTensorOperations() as subcubic_instruction_count:
+                results = subcubic.verify_proof(
+                    cmodel,
+                    tricks=tricks,
+                    use_exact_EQKE=use_exact_EQKE,
+                    **kwargs,
+                    print_complexity=False,
+                    print_results=False,
+                    sanity_check=False,
+                    # print_types=True,
+                )
+    return subcubic_instruction_count, results
+
+
 # must be outside PatchTorch to avoid triu, tril
 cmodel = CountHookedTransformer(model)
 # err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
@@ -2475,42 +2502,44 @@ try:
                         f"Subcubic{postkey}", proof_results["proofinstructions"]
                     )
 
-                with PatchTorch():
-                    with instructions.set_sanity_check(True):
-                        with CountTensorOperations() as subcubic_instruction_count:
-                            subcubic_proof_instruction_count_results = subcubic.verify_proof(
-                                cmodel,
-                                W_EP_direction=(
-                                    CountTensor.from_numpy(W_EP_direction)
-                                    if W_EP_direction is not None
-                                    else W_EP_direction
-                                ),
-                                **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
-                                use_exact_EQKE=use_exact_EQKE,
-                                min_gaps=min_gaps,
-                                tricks=tricks,
-                                print_complexity=False,
-                                print_results=False,
-                                sanity_check=False,
-                                # print_types=True,
-                            )
+                # with memoshelve(
+                #     partial(
+                #         _subcubic_count_verify_proof,
+                #         model,
+                #         W_EP_direction=(
+                #             CountTensor.from_numpy(W_EP_direction)
+                #             if W_EP_direction is not None
+                #             else W_EP_direction
+                #         ),
+                #         **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                #         use_exact_EQKE=use_exact_EQKE,
+                #         min_gaps=min_gaps,
+                #         tricks=tricks,
+                #         sanity_check_instructions=False
+                #     ),
+                #     filename=cache_dir
+                #     / f"{Path(__file__).name}.subcubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+                #     get_hash_mem=(lambda x: 0),
+                #     get_hash=(lambda x: "0"),
+                # )() as count_verify_proof:
+                count_verify_proof = partial(
+                    _subcubic_count_verify_proof,
+                    model,
+                    W_EP_direction=(
+                        CountTensor.from_numpy(W_EP_direction)
+                        if W_EP_direction is not None
+                        else W_EP_direction
+                    ),
+                    **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                    min_gaps=min_gaps,
+                    sanity_check_instructions=False,
+                )
+                subcubic_instruction_count, subcubic_proof_instruction_count_results = (
+                    count_verify_proof(tricks, use_exact_EQKE)
+                )
 
-                ## %%
-
-                # try:
-                #     pass
-                # except Exception as ex:
-                #     tb = traceback.TracebackException.from_exception(ex, capture_locals=True)
-                #     print("".join(tb.format()))
-                #     raise ex
-                # HERE
-                ## %%
-                # subcubic_proof_instruction_count_results_counts = {
-                #     k: v.global_count_at_creation if isinstance(v, CountTensor) else v
-                #     for k, v in subcubic_proof_instruction_count_results.items()
-                # }
                 latex_values |= latex_values_of_instruction_count(
-                    f"Subcubic{postkey}", subcubic_instruction_count
+                    "Subcubic{postkey}", subcubic_instruction_count
                 )
 
                 err_upper_bound = proof_results["err_upper_bound"]

@@ -837,7 +837,7 @@ class LargestWrongLogitQuadraticConfig:
         average_right_attention = (
             dropnan(extreme_softmaxed_right_attention).mean()
             if self.attention_handling == "mean_query+diff"
-            else torch.tensor(0.0).to(extreme_softmaxed_right_attention)
+            else torch.zeros([]).to(extreme_softmaxed_right_attention)
         )
         right_attention_adjustment = (
             extreme_softmaxed_right_attention - average_right_attention

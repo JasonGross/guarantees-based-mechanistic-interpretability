@@ -2579,27 +2579,29 @@ try:
                 weights = torch.zeros(
                     (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
                 )
-                for q_tok in range(d_vocab_q):
-                    for max_tok in range(d_vocab_max):
-                        for n_copies_nonmax in range(n_ctx_nonmax_copies):
-                            if (
-                                (q_tok > max_tok)
-                                or (
-                                    n_copies_nonmax == n_ctx_nonmax_copies - 1
-                                    and max_tok != q_tok
-                                )
-                                or (max_tok == 0 and n_copies_nonmax > 0)
-                            ):
-                                continue
-                            if max_tok == 0:
-                                assert q_tok == max_tok
-                                assert n_copies_nonmax == 0
-                                weights[q_tok, max_tok, n_copies_nonmax] = 1
-                            weights[q_tok, max_tok, n_copies_nonmax] = (
-                                max_tok - 1
-                            ) ** n_copies_nonmax * math.comb(
-                                model.cfg.n_ctx - 1, n_copies_nonmax
-                            )
+                for max_tok in range(d_vocab_max):
+                    cur_n_ctx_nonmax_copies = 1 if max_tok == 0 else n_ctx_nonmax_copies
+                    for n_copies_nonmax in range(cur_n_ctx_nonmax_copies):
+                        weights[: max_tok + 1, max_tok, n_copies_nonmax] = (
+                            max_tok - 1
+                        ) ** n_copies_nonmax * math.comb(
+                            model.cfg.n_ctx - 1, n_copies_nonmax
+                        )
+                    weights[:max_tok, max_tok, n_ctx_nonmax_copies - 1] = 0
+                    # for q_tok in range(max_tok+1):
+                    #     if (
+                    #         # (q_tok > max_tok) or
+                    #          (
+                    #             n_copies_nonmax == n_ctx_nonmax_copies - 1
+                    #             and max_tok != q_tok
+                    #         )
+                    #         # or (max_tok == 0 and n_copies_nonmax > 0)
+                    #     ):
+                    #         weights[q_tok, max_tok, n_copies_nonmax] = 0
+                    # if max_tok == 0:
+                    #     assert q_tok == max_tok
+                    #     assert n_copies_nonmax == 0
+                weights[1, 1, 0] = 1
                 for tricks, v, _proof_search_time in min_gaps_lists[use_exact_EQKE]:
                     postkey = filedescr + tricks.short_description(latex=False)
                     postlatexkey = latexdescr + tricks.short_description(latex=True)

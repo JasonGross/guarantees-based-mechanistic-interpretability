@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 import math
 import matplotlib
 from typing import (
+    Any,
     Optional,
     Tuple,
     Union,
@@ -47,7 +48,7 @@ import torch
 from tqdm.auto import tqdm
 import numpy as np
 from torch import Tensor
-from transformer_lens import HookedTransformerConfig
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 from pathlib import Path
 from gbmi.utils import default_device
 from gbmi.utils.sequences import (
@@ -62,6 +63,17 @@ import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 from argparse import ArgumentParser
 import gbmi.utils.ein as ein
+import gbmi.utils.instructions as instructions
+from gbmi.utils.instructions import (
+    InstructionCount,
+    CountTensor,
+    PatchTorch,
+    CountHookedTransformer,
+    PerfCounter,
+    PerfCollector,
+    CountTensorOperations,
+    PERF_WORKING,
+)
 
 # %%
 parser = ArgumentParser()
@@ -73,6 +85,13 @@ parser.add_argument(
 )
 parser.add_argument(
     "-j", dest="n_threads", type=int, default=30, help="number of threads"
+)
+parser.add_argument(
+    "--no-perf",
+    action="store_const",
+    const=True,
+    default=None,
+    help="Forcibly disable perf",
 )
 cli_args = parser.parse_args()
 # %%
@@ -108,6 +127,8 @@ GIT_SHA_SHORT_PATH = (
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = cli_args.n_threads
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
+if cli_args.no_perf:
+    PERF_WORKING = False
 
 
 # %%
@@ -611,6 +632,34 @@ elif use_tricks:
 else:
     all_configs = [LargestWrongLogitQuadraticConfig.OFF]
 # %%
+
+
+def _subcubic_count_verify_proof(
+    model: HookedTransformer,
+    tricks: LargestWrongLogitQuadraticConfig,
+    use_exact_EQKE: bool,
+    *,
+    sanity_check_instructions: bool = False,
+    **kwargs,
+) -> Tuple[InstructionCount, dict[str, Any]]:
+    # must be outside PatchTorch to avoid triu, tril
+    cmodel = CountHookedTransformer(model)
+    with PatchTorch():
+        with instructions.set_sanity_check(sanity_check_instructions):
+            with CountTensorOperations() as subcubic_instruction_count:
+                results = subcubic.verify_proof(
+                    cmodel,
+                    tricks=tricks,
+                    use_exact_EQKE=use_exact_EQKE,
+                    **kwargs,
+                    print_complexity=False,
+                    print_results=False,
+                    sanity_check=False,
+                    # print_types=True,
+                )
+    return subcubic_instruction_count, results
+
+
 # %%
 subcubic_columns = [
     "seed",
@@ -627,6 +676,13 @@ subcubic_columns = [
     "most-gap-below-value-frac",
     "most-gap-below-value-num-std",
     "max-gap",
+    "perf-time-enabled-ns",
+    "perf-instruction-count",
+    "perf-branch-misses",
+    "perf-page-faults",
+    "proof-flop-estimate",
+    "proof-int-op-estimate",
+    "proof-branch-estimate",
 ]
 if os.path.exists(SUBCUBIC_CSV_PATH):
     subcubic_results = pd.read_csv(SUBCUBIC_CSV_PATH)
@@ -645,7 +701,12 @@ subcubic_data = {
 
 @torch.no_grad()
 def try_all_proofs_subcubic(
-    seed: int, *, subcfg_pbar: tqdm, cfg_pbar: tqdm, proof_pbar: tqdm
+    seed: int,
+    *,
+    subcfg_pbar: tqdm,
+    cfg_pbar: tqdm,
+    proof_pbar: tqdm,
+    count_proof_pbar: tqdm,
 ) -> list[dict]:
     cfg = cfgs[seed]
     cfg_hash = cfg_hashes[seed]
@@ -723,12 +784,13 @@ def try_all_proofs_subcubic(
                     sanity_check=False,
                     print_complexity=False,
                     print_results=False,
+                    include_perf=PERF_WORKING,
                 )
 
             with memoshelve(
                 _verify_proof,
                 filename=cache_dir
-                / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
+                / f"{SHARED_CACHE_STEM}.subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
                 get_hash_mem=(lambda x: x[0]),
                 get_hash=str,
             )() as verify_proof:
@@ -739,6 +801,48 @@ def try_all_proofs_subcubic(
             accuracy_bound = proof_results["accuracy_lower_bound"]
             total_sequences = proof_results["total_sequences"]
             left_behind = proof_results["left_behind"]
+
+            if PERF_WORKING:
+                perf_results = {
+                    "perf-time-enabled-ns": proof_results[
+                        "proofinstructions"
+                    ].time_enabled_ns.value,
+                    "perf-instruction-count": proof_results[
+                        "proofinstructions"
+                    ].instruction_count.value,
+                    "perf-branch-misses": proof_results[
+                        "proofinstructions"
+                    ].branch_misses.value,
+                    "perf-page-faults": proof_results[
+                        "proofinstructions"
+                    ].page_faults.value,
+                }
+            else:
+                perf_results = {}
+
+            with memoshelve(
+                partial(
+                    _subcubic_count_verify_proof,
+                    model,
+                    W_EP_direction=(
+                        CountTensor.from_numpy(W_EP_direction)
+                        if W_EP_direction is not None
+                        else W_EP_direction
+                    ),
+                    **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                    min_gaps=min_gaps,
+                    sanity_check_instructions=False,
+                ),
+                filename=cache_dir
+                / f"{SHARED_CACHE_STEM}.subcubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+                get_hash_mem=(lambda x: x[0]),
+                get_hash=str,
+            )() as count_verify_proof:
+                (
+                    subcubic_instruction_count,
+                    subcubic_proof_instruction_count_results,
+                ) = count_verify_proof(tricks, use_exact_EQKE)
+            count_proof_pbar.update(1)
 
             try:
                 # err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
@@ -872,17 +976,31 @@ def try_all_proofs_subcubic(
                 "most-gap-below-value-frac": frac_below,
                 "most-gap-below-value-num-std": num_std,
                 "max-gap": v.max().item(),
-            }
+                "proof-flop-estimate": subcubic_instruction_count.flop,
+                "proof-int-op-estimate": subcubic_instruction_count.int_op,
+                "proof-branch-estimate": subcubic_instruction_count.branch,
+            } | perf_results
 
             rows.append(row)
             proof_pbar.update(1)
     return rows
 
 
-def _handle_subcubic(seed: int, *, subcfg_pbar: tqdm, cfg_pbar: tqdm, proof_pbar: tqdm):
+def _handle_subcubic(
+    seed: int,
+    *,
+    subcfg_pbar: tqdm,
+    cfg_pbar: tqdm,
+    proof_pbar: tqdm,
+    count_proof_pbar: tqdm,
+):
     try:
         subcubic_data[seed] = try_all_proofs_subcubic(
-            seed, subcfg_pbar=subcfg_pbar, cfg_pbar=cfg_pbar, proof_pbar=proof_pbar
+            seed,
+            subcfg_pbar=subcfg_pbar,
+            cfg_pbar=cfg_pbar,
+            proof_pbar=proof_pbar,
+            count_proof_pbar=count_proof_pbar,
         )
     except Exception as e:
         print(f"Error computing subcubic proof for seed {seed}: {e}")
@@ -907,6 +1025,9 @@ with (
     tqdm(total=n_cfgs, desc="configurations for subcubic", position=0) as cfg_pbar,
     tqdm(total=n_subcfgs, desc="subconfig progress", position=1) as subcfg_pbar,
     tqdm(total=n_cfgs, desc="proofs for subcubic", position=2) as proof_pbar,
+    tqdm(
+        total=n_cfgs, desc="instruction counts for subcubic", position=2
+    ) as count_proof_pbar,
 ):
     # with PeriodicGarbageCollector(60):
     maybe_parallel_map(
@@ -915,6 +1036,7 @@ with (
             subcfg_pbar=subcfg_pbar,
             cfg_pbar=cfg_pbar,
             proof_pbar=proof_pbar,
+            count_proof_pbar=count_proof_pbar,
         ),
         sorted(relevant_seeds),
     )
@@ -924,3 +1046,5 @@ for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])
 
 update_csv_with_rows(SUBCUBIC_CSV_PATH, new_data, subcubic_columns)
+
+# %%

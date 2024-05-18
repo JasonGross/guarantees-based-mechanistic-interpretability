@@ -681,6 +681,7 @@ class CountTensor:
     __neg__ = unary
     __pos__ = unary
     __invert__ = unary_bool
+    abs = __abs__
     conj = unary
     sqrt = unary_arith
     exp = unary_arith

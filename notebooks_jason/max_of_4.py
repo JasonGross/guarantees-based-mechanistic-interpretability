@@ -2664,7 +2664,11 @@ elif not SUBCUBIC_CSV_PATH.exists():
         f"Warning: {SUBCUBIC_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
     )
 else:
-    pass
+    brute_force_df = pd.read_csv(BRUTE_FORCE_CSV_PATH)
+    cubic_df = pd.read_csv(CUBIC_CSV_PATH)
+    subcubic_df = pd.read_csv(SUBCUBIC_CSV_PATH)
+# %%
+
 # TRAIN_CSV_PATH = ALL_MODELS_PATH / "all-models-train-values.csv"
 # TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 # BRUTE_FORCE_CSV_PATH = (

@@ -68,9 +68,9 @@ def to_latex_defs(values: dict[str, SupportedLaTeXType], sort: bool = True) -> s
         else:
             key, expand = key_to_command(key)
             expand = r"\expandafter" if expand else ""
-            if isinstance(value, int) or isinstance(value, str):
+            if isinstance(value, (str, int, np.integer)):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")
-            elif isinstance(value, float) or isinstance(value, np.floating):
+            elif isinstance(value, (float, np.floating)):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")
             else:
                 raise ValueError(f"Unsupported type {type(value)} for {key} ({value})")

@@ -880,23 +880,19 @@ def _cubic_count_verify_proof(
     return cubic_instruction_count, cubic_proof_instruction_count_results
 
 
-# with memoshelve(
-#     partial(
-#         _cubic_count_verify_proof,
-#         model,
-#         sanity_check_instructions=False
-#     ),
-#     filename=cache_dir
-#     / f"{Path(__file__).name}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
-#     get_hash_mem=(lambda x: 0),
-#     get_hash=(lambda x: "0"),
-# )() as count_verify_proof:
-count_verify_proof = partial(
-    _cubic_count_verify_proof, model, sanity_check_instructions=False
-)
-cubic_instruction_count, cubic_proof_instruction_count_results = count_verify_proof(
-    cubic_proof_args
-)
+with memoshelve(
+    partial(_cubic_count_verify_proof, model, sanity_check_instructions=False),
+    filename=cache_dir
+    / f"{Path(__file__).name}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+    get_hash_mem=(lambda x: 0),
+    get_hash=(lambda x: "0"),
+)() as count_verify_proof:
+    # count_verify_proof = partial(
+    #     _cubic_count_verify_proof, model, sanity_check_instructions=False
+    # )
+    cubic_instruction_count, cubic_proof_instruction_count_results = count_verify_proof(
+        cubic_proof_args
+    )
 
 latex_values |= latex_values_of_instruction_count("Cubic", cubic_instruction_count)
 # %%
@@ -2502,41 +2498,42 @@ try:
                         f"Subcubic{postkey}", proof_results["proofinstructions"]
                     )
 
-                # with memoshelve(
-                #     partial(
-                #         _subcubic_count_verify_proof,
-                #         model,
-                #         W_EP_direction=(
-                #             CountTensor.from_numpy(W_EP_direction)
-                #             if W_EP_direction is not None
-                #             else W_EP_direction
-                #         ),
-                #         **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
-                #         use_exact_EQKE=use_exact_EQKE,
-                #         min_gaps=min_gaps,
-                #         tricks=tricks,
-                #         sanity_check_instructions=False
-                #     ),
-                #     filename=cache_dir
-                #     / f"{Path(__file__).name}.subcubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
-                #     get_hash_mem=(lambda x: 0),
-                #     get_hash=(lambda x: "0"),
-                # )() as count_verify_proof:
-                count_verify_proof = partial(
-                    _subcubic_count_verify_proof,
-                    model,
-                    W_EP_direction=(
-                        CountTensor.from_numpy(W_EP_direction)
-                        if W_EP_direction is not None
-                        else W_EP_direction
+                with memoshelve(
+                    partial(
+                        _subcubic_count_verify_proof,
+                        model,
+                        W_EP_direction=(
+                            CountTensor.from_numpy(W_EP_direction)
+                            if W_EP_direction is not None
+                            else W_EP_direction
+                        ),
+                        **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                        use_exact_EQKE=use_exact_EQKE,
+                        min_gaps=min_gaps,
+                        tricks=tricks,
+                        sanity_check_instructions=False,
                     ),
-                    **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
-                    min_gaps=min_gaps,
-                    sanity_check_instructions=False,
-                )
-                subcubic_instruction_count, subcubic_proof_instruction_count_results = (
-                    count_verify_proof(tricks, use_exact_EQKE)
-                )
+                    filename=cache_dir
+                    / f"{Path(__file__).name}.subcubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+                    get_hash_mem=(lambda x: x[0]),
+                    get_hash=str,
+                )() as count_verify_proof:
+                    # count_verify_proof = partial(
+                    #     _subcubic_count_verify_proof,
+                    #     model,
+                    #     W_EP_direction=(
+                    #         CountTensor.from_numpy(W_EP_direction)
+                    #         if W_EP_direction is not None
+                    #         else W_EP_direction
+                    #     ),
+                    #     **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                    #     min_gaps=min_gaps,
+                    #     sanity_check_instructions=False,
+                    # )
+                    (
+                        subcubic_instruction_count,
+                        subcubic_proof_instruction_count_results,
+                    ) = count_verify_proof(tricks, use_exact_EQKE)
 
                 latex_values |= latex_values_of_instruction_count(
                     "Subcubic{postkey}", subcubic_instruction_count

@@ -2534,7 +2534,7 @@ with torch.no_grad():
                 subcubic_instruction_count
             )
             latex_values |= latex_values_of_instruction_count(
-                "Subcubic{postkey}", subcubic_instruction_count
+                f"Subcubic{postkey}", subcubic_instruction_count
             )
 
             err_upper_bound = proof_results["err_upper_bound"]

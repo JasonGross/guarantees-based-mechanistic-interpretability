@@ -94,6 +94,7 @@ from tqdm.auto import tqdm
 import numpy as np
 from jaxtyping import Float, Integer, Bool
 from torch import Tensor
+import pandas as pd
 import plotly.express as px
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 from pathlib import Path
@@ -168,6 +169,19 @@ LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_GIT_DIFF_PATH = Path(__file__).with_suffix("") / "git-diff-info.diff"
 LATEX_GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
+ALL_MODELS_PATH = (
+    Path(__file__)
+    .with_suffix("")
+    .with_name(f"{Path(__file__).with_suffix('').name}_all_models")
+)
+TRAIN_CSV_PATH = ALL_MODELS_PATH / "all-models-train-values.csv"
+TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+BRUTE_FORCE_CSV_PATH = ALL_MODELS_PATH / "all-models-brute-force-values.csv"
+BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+CUBIC_CSV_PATH = ALL_MODELS_PATH / "all-models-cubic-values.csv"
+CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+SUBCUBIC_CSV_PATH = ALL_MODELS_PATH / "all-models-subcubic-values.csv"
+SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = 2
 matplotlib.rcParams["text.usetex"] = True
 matplotlib.rcParams[
@@ -2639,9 +2653,11 @@ with torch.no_grad():
                         ).format():
                             print(line, file=sys.stderr)
 # %%
+
+# %%
 latex_values["HEADSHA"] = git.get_head_sha(short=False)
 latex_values["HEADSHASHORT"] = git.get_head_sha(short=True)
-torch.allclose
+
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))
 

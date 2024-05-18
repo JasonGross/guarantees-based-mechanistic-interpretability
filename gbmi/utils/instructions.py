@@ -1474,7 +1474,9 @@ class PatchTorch:
         "stack": True,
         "cat": True,
         "svd": False,
+        "matmul": False,
     }
+    _torch_count_name = {"matmul": "__matmul__"}
     _torch_linalg_is_static = {
         "matrix_norm": False,
         "svd": True,
@@ -1497,7 +1499,10 @@ class PatchTorch:
                 torch,
                 name,
                 DefaultCountTensorWrapper(
-                    torch, name, static=PatchTorch._torch_is_static[name]
+                    torch,
+                    name,
+                    count_name=PatchTorch._torch_count_name.get(name),
+                    static=PatchTorch._torch_is_static[name],
                 ),
             )
         for name in self.torch_linalg_patches:

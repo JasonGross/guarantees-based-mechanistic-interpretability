@@ -159,7 +159,7 @@ def decompose_EQKE_error(
             second_query_direction=second_query_direction,
             W_Q_U=W_Q_U,
             W_K_U=W_K_U,
-            sanity_check=True,
+            sanity_check=sanity_check,
             atol=atol,
             layer=layer,
             head=head,

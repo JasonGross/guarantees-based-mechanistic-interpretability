@@ -766,9 +766,13 @@ class CountTensor:
         ), f"Expected CountTensor, ndarray, or Tensor, got {type(other)} ({other})"
         if not isinstance(other, CountTensor):
             other = CountTensor.from_numpy(other)
-        x_shape = torch.broadcast_shapes(self.shape, other.shape[:-1])
+        if len(other.shape) == 1:
+            x_shape = tuple(self.shape)
+            out_shape = x_shape[:-1]
+        else:
+            x_shape = torch.broadcast_shapes(self.shape, other.shape[:-1])
+            out_shape = (*x_shape[:-1], other.shape[-1])
         # at each index, we do x_shape[-1] multiplications and x_shape[-1] - 1 additions
-        out_shape = (*x_shape[:-1], other.shape[-1])
         count = InstructionCount(flop=int(np.prod(out_shape)) * (x_shape[-1] * 2 - 1))
         add_to_count(count)
         return CountTensor(

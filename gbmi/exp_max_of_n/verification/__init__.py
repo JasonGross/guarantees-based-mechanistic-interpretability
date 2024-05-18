@@ -633,7 +633,7 @@ def worst_EVOU_gap_for(
                     + EVOU[max_tok, :] * attention_to_max_exp / attention_sum
                 )
         # subtract off the max_tok EVOU
-        print(EVOUs)
+        # print(EVOUs)
         EVOUs = EVOUs - EVOUs[:, max_tok][:, None]
         # return the worst EVOU
         return EVOUs.max(dim=0).values

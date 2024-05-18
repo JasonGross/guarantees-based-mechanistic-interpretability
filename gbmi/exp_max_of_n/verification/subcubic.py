@@ -171,6 +171,11 @@ def decompose_EQKE_error(
         )
         err_matrices = (EQKE_err.A, EQKE_err.B)
 
+    # global gtricks
+    # global gerr_matrices
+    # gtricks = tricks
+    # gerr_matrices=err_matrices
+    # print(f"{tricks}.bound_attention_error(*{err_matrices})")
     return (
         EQKE_query_key,
         EQKE_pos_err,
@@ -282,6 +287,10 @@ def verify_proof(
 
     def adjust_extreme_right_attention():
         extreme_right_attention_adjusted = extreme_right_attention.clone()
+        # global gextreme_right_attention_adjusted
+        # global gEQKE_err_upper_bound
+        # gextreme_right_attention_adjusted = extreme_right_attention_adjusted
+        # gEQKE_err_upper_bound = EQKE_err_upper_bound
         extreme_right_attention_adjusted[0] -= EQKE_err_upper_bound[:, None, None]
         extreme_right_attention_adjusted[1] += EQKE_err_upper_bound[:, None, None]
         return extreme_right_attention_adjusted

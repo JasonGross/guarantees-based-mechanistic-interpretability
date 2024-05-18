@@ -2627,15 +2627,15 @@ try:
                                 print(line, file=sys.stderr)
 except Exception as e:
     etype, value, tb = sys.exc_info()
-    if value is None:
-        traceback.print_exception(e)
-    else:
-        for line in traceback.TracebackException(
-            type(value), value, tb, capture_locals=True
-        ).format():
-            print(line, file=sys.stderr)
-    raise e
-    # pass
+    # if value is None:
+    #     traceback.print_exception(e)
+    # else:
+    #     for line in traceback.TracebackException(
+    #         type(value), value, tb, capture_locals=True
+    #     ).format():
+    #         print(line, file=sys.stderr)
+    # raise e
+    pass
 # %%
 latex_values["HEADSHA"] = git.get_head_sha(short=False)
 latex_values["HEADSHASHORT"] = git.get_head_sha(short=True)

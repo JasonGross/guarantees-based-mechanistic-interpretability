@@ -1105,7 +1105,7 @@ class CountTensor:
                 ), f"Why are you doing this sort of indexing? ({indices}) ({orig_indices})"
             init_shapes = []
             mid_shape = []
-            print(self)
+            # print(self)
             post_shape = list(self.shape)
             idx_parents = []
             for remaining, idx in reversed(list(enumerate(reversed(list(indices))))):

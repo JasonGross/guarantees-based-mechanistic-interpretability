@@ -2458,24 +2458,22 @@ try:
                         min_gaps=min_gaps,
                         tricks=tricks,
                         sanity_check=False,
+                        include_perf=PERF_WORKING,
                     )
 
                 with memoshelve(
                     _verify_proof,
                     filename=cache_dir
-                    / f"{Path(__file__).name}.subcubic_verify_proof-{cfg_hash_for_filename}",
+                    / f"{Path(__file__).name}.subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
                     get_hash_mem=(lambda x: x[0]),
                     get_hash=str,
                 )() as verify_proof:
                     proof_results = verify_proof(tricks, use_exact_EQKE)
 
-                with PerfCollector() as subcubic_collector:
-                    if PERF_WORKING:
-                        _verify_proof(tricks, use_exact_EQKE)
-
-                latex_values |= latex_values_of_counter(
-                    f"Subcubic{postkey}", subcubic_collector.counters
-                )
+                if PERF_WORKING:
+                    latex_values |= latex_values_of_counter(
+                        f"Subcubic{postkey}", proof_results["proofinstructions"]
+                    )
 
                 with PatchTorch():
                     with instructions.set_sanity_check(True):

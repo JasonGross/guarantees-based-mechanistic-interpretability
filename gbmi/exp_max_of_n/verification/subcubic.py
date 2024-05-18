@@ -16,6 +16,12 @@ from gbmi.verification_tools.l1h1 import (
     all_EVOU_nocache,
     all_PVOU_nocache,
 )
+from gbmi.utils.instructions import (
+    InstructionCount,
+    CountTensor,
+    PerfCounter,
+    PerfCollector,
+)
 
 
 @torch.no_grad()
@@ -208,6 +214,7 @@ def verify_proof(
     print_complexity: Union[bool, Callable[[Callable[[], str]], None]] = True,
     print_results: Union[bool, Callable[[Callable[[], str]], None]] = True,
     sanity_check: bool = True,
+    include_perf: bool = False,
 ):
     print_thunk = lambda x: print(x())
     if isinstance(print_complexity, bool):
@@ -216,11 +223,15 @@ def verify_proof(
         print_results = print_thunk if print_results else lambda x: None
 
     prooftimes = []
+    proofcounters = []
 
     def add_time(f, *args, **kwargs):
-        starttime = time.time()
-        result = f(*args, **kwargs)
-        prooftimes.append(time.time() - starttime)
+        with PerfCollector() as collector:
+            starttime = time.time()
+            result = f(*args, **kwargs)
+            endtime = time.time()
+        prooftimes.append(endtime - starttime)
+        proofcounters.append(collector.counters)
         return result
 
     (
@@ -352,6 +363,7 @@ def verify_proof(
     )
 
     prooftime = sum(prooftimes)
+    proofinstructions = reduce(PerfCounter.__add__, proofcounters)
     print_results(lambda: f"Subcubic Proof time: {prooftime}s")
 
     left_behind = quadratic.count_unaccounted_for_by_gap(min_gaps, collapse_n_ctx=False)
@@ -367,4 +379,4 @@ def verify_proof(
         "total_sequences": total_sequences,
         "prooftime": prooftime,
         "left_behind": left_behind,
-    }
+    } | ({"proofinstructions": proofinstructions} if include_perf else {})

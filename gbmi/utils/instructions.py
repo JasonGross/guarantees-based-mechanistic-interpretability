@@ -578,12 +578,15 @@ class CountTensor:
             flop=int(np.prod(shape_without_dim)) * (shape[dim] - 1)
         )
         add_to_count(count)
-        return CountTensor(
-            shape=shape_without_dim if not keepdim else shape,
+        result = CountTensor(
+            shape=shape_without_dim,
             count=count,
             is_bool=is_bool if is_bool is not None else self.is_bool,
             # parents=CountTensor._parents_of_tuple((self,)),
         )
+        if keepdim:
+            return result.unsqueeze(dim)
+        return result
 
     def fold_reduce(
         self,
@@ -700,6 +703,21 @@ class CountTensor:
     float = unary_arith
     long = unary_arith
     bool = unary_bool
+
+    def diag(self, diagonal: int = 0) -> "CountTensor":
+        if len(self.shape) < 2:
+            shape = (self.shape[0], self.shape[0])
+        else:
+            init_shape, (a, b) = tuple(self.shape[:-2]), self.shape[-2:]
+            # r = i, c = i + diagonal if diagonal > 0
+            # r = i - diagonal, c = i if diagonal < 0
+            if diagonal >= 0:
+                shape = init_shape + (min(a, b - diagonal),)
+            else:
+                shape = init_shape + (min(a - diagonal, b),)
+        count = InstructionCount(flop=int(np.prod(shape)))
+        add_to_count(count)
+        return CountTensor(shape=shape, count=count, is_bool=self.is_bool)
 
     def norm(
         self,

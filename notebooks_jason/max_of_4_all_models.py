@@ -247,8 +247,8 @@ training_wrappers = {
 def update_csv_with_rows(
     csv_path: Path,
     new_data: list[dict[str, Union[float, int, str]]],
-    columns: list[str],
     *,
+    columns: list[str],
     subset: str = "seed",
 ):
     results = None
@@ -273,7 +273,7 @@ def update_csv(
     subset: str = "seed",
 ):
     new_data = [data[seed] for seed in sorted(data.keys())]
-    update_csv_with_rows(csv_path, new_data, columns, subset=subset)
+    update_csv_with_rows(csv_path, new_data, columns=columns, subset=subset)
 
 
 # %% [markdown]
@@ -1026,7 +1026,7 @@ with (
     tqdm(total=n_subcfgs, desc="subconfig progress", position=1) as subcfg_pbar,
     tqdm(total=n_cfgs, desc="proofs for subcubic", position=2) as proof_pbar,
     tqdm(
-        total=n_cfgs, desc="instruction counts for subcubic", position=2
+        total=n_cfgs, desc="instruction counts for subcubic", position=3
     ) as count_proof_pbar,
 ):
     # with PeriodicGarbageCollector(60):
@@ -1043,8 +1043,8 @@ with (
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):
-    new_data.extend(subcubic_data[seed])
+    new_data.append(subcubic_data[seed])
 
-update_csv_with_rows(SUBCUBIC_CSV_PATH, new_data, subcubic_columns)
+update_csv_with_rows(SUBCUBIC_CSV_PATH, new_data, columns=subcubic_columns)
 
 # %%

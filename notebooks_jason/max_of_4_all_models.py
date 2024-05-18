@@ -71,6 +71,7 @@ from gbmi.utils.instructions import (
     CountHookedTransformer,
     PerfCounter,
     PerfCollector,
+    int_or_value,
     CountTensorOperations,
     PERF_WORKING,
 )
@@ -805,18 +806,18 @@ def try_all_proofs_subcubic(
 
             if PERF_WORKING:
                 perf_results = {
-                    "perf-time-enabled-ns": proof_results[
-                        "proofinstructions"
-                    ].time_enabled_ns.value,
-                    "perf-instruction-count": proof_results[
-                        "proofinstructions"
-                    ].instruction_count.value,
-                    "perf-branch-misses": proof_results[
-                        "proofinstructions"
-                    ].branch_misses.value,
-                    "perf-page-faults": proof_results[
-                        "proofinstructions"
-                    ].page_faults.value,
+                    "perf-time-enabled-ns": int_or_value(
+                        proof_results["proofinstructions"].time_enabled_ns
+                    ),
+                    "perf-instruction-count": int_or_value(
+                        proof_results["proofinstructions"].instruction_count
+                    ),
+                    "perf-branch-misses": int_or_value(
+                        proof_results["proofinstructions"].branch_misses
+                    ),
+                    "perf-page-faults": int_or_value(
+                        proof_results["proofinstructions"].page_faults
+                    ),
                 }
             else:
                 perf_results = {}

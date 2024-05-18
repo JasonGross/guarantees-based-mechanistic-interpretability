@@ -4,6 +4,9 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from contextlib import contextmanager
+from ctypes import (
+    c_uint64,
+)
 from collections import OrderedDict
 from functools import partial, cache, cached_property
 from itertools import zip_longest
@@ -38,13 +41,20 @@ import einops
 import einops._backends
 from gbmi.verification_tools.svd import compute_verify_svd_close_matrices
 
+
 # %%
+def int_or_value(obj: Union[int, c_uint64]) -> int:
+    if hasattr(obj, "value"):
+        return obj.value
+    return obj
+
+
 try:
     import cirron
     import cirron.cirron
 
     HAS_CIRRON = True
-    PERF_WORKING = cirron.cirron.overhead["instruction_count"] > 0
+    PERF_WORKING = int_or_value(cirron.cirron.overhead["instruction_count"]) > 0
 
 except Exception as e:
     print(f"Warning: perf cpu instruction counting not available ({e})")
@@ -78,11 +88,15 @@ class PerfCounter(cirron.cirron.Counter):  # type: ignore
         apply_f = lambda attr: c_uint64(
             f(
                 *[
-                    getattr(c, attr).value if isinstance(c, PerfCounter) else c
+                    int_or_value(getattr(c, attr)) if isinstance(c, PerfCounter) else c
                     for c in args
                 ],
                 **{
-                    k: getattr(c, attr).value if isinstance(c, PerfCounter) else c
+                    k: (
+                        int_or_value(getattr(c, attr))
+                        if isinstance(c, PerfCounter)
+                        else c
+                    )
                     for k, c in kwargs.items()
                 },
             )

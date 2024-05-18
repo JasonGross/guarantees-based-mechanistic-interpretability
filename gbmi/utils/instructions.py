@@ -554,8 +554,8 @@ class CountTensor:
 
     def _fold_reduce(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
         is_bool: Optional[bool] = None,
     ) -> "CountTensor":
@@ -573,9 +573,14 @@ class CountTensor:
                 # parents=CountTensor._parents_of_tuple((self,)),
             )
         shape_without_dim = list(shape)
-        shape_without_dim.pop(dim)
+        if not hasattr(dim, "__iter__"):
+            dim = (dim,)
+        shape_only_dim = []
+        dim = tuple(reversed(sorted([i % len(shape) for i in dim])))
+        for i in dim:
+            shape_only_dim.append(shape_without_dim.pop(i))
         count = InstructionCount(
-            flop=int(np.prod(shape_without_dim)) * (shape[dim] - 1)
+            flop=int(np.prod(shape_without_dim)) * (int(np.prod(shape_only_dim)) - 1)
         )
         add_to_count(count)
         result = CountTensor(
@@ -585,37 +590,38 @@ class CountTensor:
             # parents=CountTensor._parents_of_tuple((self,)),
         )
         if keepdim:
-            return result.unsqueeze(dim)
+            for i in dim:
+                result = result.unsqueeze(i)
         return result
 
     def fold_reduce(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> "CountTensor":
         return self._fold_reduce(dim=dim, axis=axis, keepdim=keepdim, is_bool=None)
 
     def fold_reduce_bool(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> "CountTensor":
         return self._fold_reduce(dim=dim, axis=axis, keepdim=keepdim, is_bool=True)
 
     def fold_reduce_arith(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> "CountTensor":
         return self._fold_reduce(dim=dim, axis=axis, keepdim=keepdim, is_bool=False)
 
     def _fold_reduce_values_indices(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
         is_bool: Optional[bool] = None,
     ) -> Union["CountTensor", count_values_indices]:
@@ -626,8 +632,8 @@ class CountTensor:
 
     def fold_reduce_values_indices(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> Union["CountTensor", count_values_indices]:
         return self._fold_reduce_values_indices(
@@ -636,8 +642,8 @@ class CountTensor:
 
     def fold_reduce_values_indices_bool(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> Union["CountTensor", count_values_indices]:
         return self._fold_reduce_values_indices(
@@ -646,8 +652,8 @@ class CountTensor:
 
     def fold_reduce_values_indices_arith(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> Union["CountTensor", count_values_indices]:
         return self._fold_reduce_values_indices(
@@ -721,8 +727,8 @@ class CountTensor:
 
     def norm(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> "CountTensor":
         return (self * self).fold_reduce_arith(dim=dim, axis=axis, keepdim=keepdim)
@@ -821,33 +827,41 @@ class CountTensor:
 
     def mean(
         self,
-        dim: Optional[int] = None,
-        axis: Optional[int] = None,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
         keepdim: bool = False,
     ) -> "CountTensor":
         if axis is not None:
             assert dim is None, "Cannot specify both dim and axis"
             dim = axis
-        total = int(np.prod(self.shape)) if dim is None else self.shape[dim]
+        if dim is not None and not hasattr(dim, "__iter__"):
+            dim = (dim,)
+        total = int(
+            np.prod(self.shape if dim is None else [self.shape[i] for i in dim])
+        )
         return self.sum(dim=dim, keepdim=keepdim) / total
 
     def softmax(
-        self, dim: Optional[int] = None, axis: Optional[int] = None
+        self,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
     ) -> "CountTensor":
         if axis is not None:
             assert dim is None, "Cannot specify both dim and axis"
             dim = axis
-        adjusted = self - self.max(dim=dim, keepdim=True)
+        adjusted = self - self.amax(dim=dim, keepdim=True)
         adjusted_exp = adjusted.exp()
         return adjusted_exp / adjusted_exp.sum(dim=dim, keepdim=True)
 
     def log_softmax(
-        self, dim: Optional[int] = None, axis: Optional[int] = None
+        self,
+        dim: Optional[Union[int, Sequence[int]]] = None,
+        axis: Optional[Union[int, Sequence[int]]] = None,
     ) -> "CountTensor":
         if axis is not None:
             assert dim is None, "Cannot specify both dim and axis"
             dim = axis
-        adjusted = self - self.max(dim=dim, keepdim=True)
+        adjusted = self - self.amax(dim=dim, keepdim=True)
         adjusted_log_sum_exp = adjusted.exp().sum(dim=dim, keepdim=True).log()
         return adjusted - adjusted_log_sum_exp
 
@@ -1306,8 +1320,51 @@ class CountTensor:
         U, S, Vh = CountTensor.linalg_svd(self, full_matrices=not some)
         return U, S, Vh.mT  # TODO: use .mH when we track real vs complex
 
+    def matrix_norm(
+        self,
+        ord: Union[Literal["fro", "nuc", 1, -1, 2, -2], float],
+        dim: Tuple[int, int] = (-2, -1),
+        keepdim: bool = False,
+    ) -> "CountTensor":
+        dim = tuple(i % len(self.shape) for i in dim)
+        dim = (int(np.min(dim)), int(np.max(dim)))
+        assert dim[0] != dim[1]
+        match ord:
+            case "fro":
+                return (
+                    self.pow(2)
+                    .sum(dim=dim[1], keepdim=keepdim)
+                    .sum(dim=dim[0], keepdim=keepdim)
+                    .sqrt()
+                )
+            case "nuc" | 2 | -2:
+                if dim != (-2, -1):
+                    raise NotImplementedError(
+                        f"General dim ({dim}) not yet implemented"
+                    )
+                _, S, _ = self.svd()
+                match ord:
+                    case "nuc":
+                        S = S.sum(dim=-1)
+                    case 2:
+                        S = S.amax(dim=-1)
+                    case -2:
+                        S = S.amin(dim=-1)
+                if keepdim:
+                    return S.unsqueeze(dim[0]).unsqueeze(dim[1])
+                return S
+            case _:
+                raise NotImplementedError(ord)
+
     def __hash__(self) -> int:
-        return hash((tuple(self.shape), self.count, tuple(self.parents.values())))
+        return hash(
+            (
+                tuple(self.shape),
+                self.count,
+                self.is_bool,
+                # tuple(self.parents.values()),
+            )
+        )
 
 
 class CountTensorBackend(
@@ -1418,10 +1475,20 @@ class PatchTorch:
         "cat": True,
         "svd": False,
     }
+    _torch_linalg_is_static = {
+        "matrix_norm": False,
+        "svd": True,
+    }
+    _torch_linalg_count_name = {"svd": "linalg_svd"}
 
     def __init__(self, **kwargs: bool):
         self.torch_patches = tuple(
             name for name in PatchTorch._torch_is_static if kwargs.get(name, True)
+        )
+        self.torch_linalg_patches = tuple(
+            name
+            for name in PatchTorch._torch_linalg_is_static
+            if kwargs.get(f"linalg_{name}", True)
         )
 
     def __enter__(self):
@@ -1433,14 +1500,23 @@ class PatchTorch:
                     torch, name, static=PatchTorch._torch_is_static[name]
                 ),
             )
-        torch.linalg.svd = DefaultCountTensorWrapper(
-            torch.linalg, "svd", count_name="linalg_svd", static=True
-        )
+        for name in self.torch_linalg_patches:
+            setattr(
+                torch.linalg,
+                name,
+                DefaultCountTensorWrapper(
+                    torch.linalg,
+                    name,
+                    count_name=PatchTorch._torch_linalg_count_name.get(name),
+                    static=PatchTorch._torch_linalg_is_static[name],
+                ),
+            )
 
     def __exit__(self, exc_type, exc_value, traceback):
         for name in self.torch_patches:
             getattr(torch, name).unwrap()
-        torch.linalg.svd.unwrap()
+        for name in self.torch_linalg_patches:
+            getattr(torch.linalg, name).unwrap()
 
 
 class CountHookedTransformer(HookedTransformer):

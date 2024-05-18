@@ -2651,6 +2651,7 @@ with torch.no_grad():
                         ).format():
                             print(line, file=sys.stderr)
 # %%
+HAS_CSVS = False
 if not BRUTE_FORCE_CSV_PATH.exists():
     print(
         f"Warning: {BRUTE_FORCE_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
@@ -2664,10 +2665,121 @@ elif not SUBCUBIC_CSV_PATH.exists():
         f"Warning: {SUBCUBIC_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
     )
 else:
+    HAS_CSVS = True
     brute_force_df = pd.read_csv(BRUTE_FORCE_CSV_PATH)
     cubic_df = pd.read_csv(CUBIC_CSV_PATH)
     subcubic_df = pd.read_csv(SUBCUBIC_CSV_PATH)
 # %%
+if HAS_CSVS:
+    subcubic_ext_df = subcubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
+    subcubic_ext_df["normalized-accuracy-bound"] = (
+        subcubic_ext_df["accuracy-bound"] / subcubic_ext_df["accuracy"]
+    )
+    subcubic_ext_df["group"] = "subcubic"
+
+    brute_force_ext_df = brute_force_df.copy()
+    brute_force_ext_df["proof-flop-estimate"] = 876123000832
+    brute_force_ext_df["normalized-accuracy-bound"] = (
+        brute_force_ext_df["accuracy"] / brute_force_ext_df["accuracy"]
+    )
+    brute_force_ext_df["accuracy-bound"] = brute_force_ext_df["accuracy"]
+    brute_force_ext_df["group"] = "brute-force"
+
+    cubic_ext_df = cubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
+    cubic_ext_df["proof-flop-estimate"] = 35181664
+    cubic_ext_df["normalized-accuracy-bound"] = (
+        cubic_ext_df["accuracy-bound"] / cubic_ext_df["accuracy"]
+    )
+    cubic_ext_df["group"] = "cubic"
+
+    # Combine all data into a single DataFrame
+    combined_df = pd.concat(
+        [
+            subcubic_ext_df[
+                [
+                    "proof-flop-estimate",
+                    "normalized-accuracy-bound",
+                    "accuracy-bound",
+                    "seed",
+                    "group",
+                ]
+            ],
+            brute_force_ext_df[
+                [
+                    "proof-flop-estimate",
+                    "normalized-accuracy-bound",
+                    "accuracy-bound",
+                    "seed",
+                    "group",
+                ]
+            ],
+            cubic_ext_df[
+                [
+                    "proof-flop-estimate",
+                    "normalized-accuracy-bound",
+                    "accuracy-bound",
+                    "seed",
+                    "group",
+                ]
+            ],
+        ],
+        ignore_index=True,
+    )
+
+    def is_frontier(row, df):
+        seed_group = df[df["seed"] == row["seed"]]
+        for _, other in seed_group.iterrows():
+            if (
+                other["normalized-accuracy-bound"] > row["normalized-accuracy-bound"]
+                and other["proof-flop-estimate"] < row["proof-flop-estimate"]
+            ):
+                return False
+        return True
+
+    combined_df["frontier"] = combined_df.apply(
+        is_frontier, args=(combined_df,), axis=1
+    )
+
+    for norm, normt in (("", ""), ("normalized-", "Normalized ")):
+        # Create scatter plot with logarithmic x-axis
+        fig = px.scatter(
+            combined_df,
+            x="proof-flop-estimate",
+            y=f"{norm}accuracy-bound",
+            color="group",
+            title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
+            log_x=True,
+        )
+        fig.update_layout(xaxis=dict(autorange="reversed"))
+        fig.show("png")
+
+        # Create scatter plot with logarithmic x-axis
+        fig = px.scatter(
+            combined_df[combined_df["frontier"] == True],
+            x="proof-flop-estimate",
+            y=f"{norm}accuracy-bound",
+            color="group",
+            title=f"Frontier Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
+            log_x=True,
+        )
+        fig.update_layout(xaxis=dict(autorange="reversed"))
+        fig.show("png")
+
+        fig = px.scatter(
+            combined_df,
+            x="proof-flop-estimate",
+            y=f"{norm}accuracy-bound",
+            color="group",
+            title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
+            log_x=True,
+            symbol="frontier",
+            symbol_map={True: "diamond", False: "circle"},
+        )
+
+        # Flip the x-axis
+        fig.update_layout(xaxis=dict(autorange="reversed"))
+
+        fig.show("png")
 
 # TRAIN_CSV_PATH = ALL_MODELS_PATH / "all-models-train-values.csv"
 # TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)

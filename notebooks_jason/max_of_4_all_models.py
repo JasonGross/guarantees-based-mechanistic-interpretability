@@ -127,6 +127,7 @@ GIT_SHA_SHORT_PATH = (
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = cli_args.n_threads
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
+# %%
 if cli_args.no_perf:
     PERF_WORKING = False
 

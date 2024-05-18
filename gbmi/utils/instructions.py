@@ -755,6 +755,9 @@ class CountTensor:
         shape = torch.broadcast_shapes(self.shape, sizes)
         return self._reshape(shape)
 
+    def squeeze(self) -> "CountTensor":
+        return self.reshape(tuple(idx for idx in self.shape if idx != 1))
+
     def broadcast_to(self, shape: Sequence[int]) -> "CountTensor":
         return self.expand(*shape)
 

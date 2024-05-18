@@ -693,6 +693,14 @@ class CountTensor:
     long = unary_arith
     bool = unary_bool
 
+    def norm(
+        self,
+        dim: Optional[int] = None,
+        axis: Optional[int] = None,
+        keepdim: bool = False,
+    ) -> "CountTensor":
+        return (self * self).fold_reduce_arith(dim=dim, axis=axis, keepdim=keepdim)
+
     def tril(self, diagonal: int = 0) -> "CountTensor":
         return self.unary()
 

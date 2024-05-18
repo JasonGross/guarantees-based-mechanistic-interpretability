@@ -44,7 +44,7 @@ try:
     import cirron.cirron
 
     HAS_CIRRON = True
-    PERF_WORKING = cirron.cirron.overhead["instruction_count"].value > 0
+    PERF_WORKING = cirron.cirron.overhead["instruction_count"] > 0
 
 except Exception as e:
     print(f"Warning: perf cpu instruction counting not available ({e})")

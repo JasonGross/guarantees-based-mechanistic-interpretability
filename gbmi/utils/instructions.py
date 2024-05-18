@@ -36,7 +36,7 @@ from transformer_lens import HookedTransformer
 import fancy_einsum
 import einops
 import einops._backends
-from gbmi.utils.svd import compute_verify_svd_close_matrices
+from gbmi.verification_tools.svd import compute_verify_svd_close_matrices
 
 # %%
 try:
@@ -960,6 +960,16 @@ class CountTensor:
     ones_like = zeros_like
 
     @staticmethod
+    def eye(n: int, m: Optional[int] = None, *, dtype=None):
+        if m is None:
+            m = n
+        count = InstructionCount(flop=m * n)
+        add_to_count(count)
+        return CountTensor(
+            shape=(n, m), count=count, is_bool=dtype in (bool, torch.bool)
+        )
+
+    @staticmethod
     def stack(
         tensors: Sequence[Union["CountTensor", torch.Tensor]], dim: int = 0
     ) -> "CountTensor":
@@ -1043,6 +1053,7 @@ class CountTensor:
             CountTensor_of_nested_sequence(idx) if hasattr(idx, "__iter__") else idx
             for idx in indices
         )
+        # print(indices)
         if (
             len(indices) == 1
             and isinstance(indices[0], CountTensor)
@@ -1067,18 +1078,21 @@ class CountTensor:
                 elif isinstance(idx, slice):
                     start, stop, stride = idx.indices(post_shape.pop(0))
                     mid_shape.append(int(np.ceil((stop - start) / stride)))
+                    # print(locals())
                 elif isinstance(idx, CountTensor):
                     init_shapes.append(idx.shape[:-1])
                     mid_shape.append(idx.shape[-1])
                     post_shape.pop(0)
                     idx_parents.append(idx)
                 elif isinstance(idx, EllipsisType):
+                    # print(f"idx={idx}, remaining={remaining}, init_shapes={init_shapes}, post_shape={post_shape}, mid_shape={mid_shape}, indices={indices}")
                     if remaining == 0:
                         mid_shape.extend(post_shape)
                         post_shape = []
                     else:
                         mid_shape.extend(post_shape[:-remaining])
                         post_shape = post_shape[-remaining:]
+                    # print(f"after: idx={idx}, remaining={remaining}, init_shapes={init_shapes}, post_shape={post_shape}, mid_shape={mid_shape}, indices={indices}")
                 else:
                     assert not hasattr(
                         idx, "__iter__"
@@ -1087,6 +1101,7 @@ class CountTensor:
             init_shape = list(torch.broadcast_shapes(*init_shapes))
             idx_parents = tuple(idx_parents)
         shape = tuple(init_shape + mid_shape + post_shape)
+        # print(f"shape={shape}")
         if sanity_check:
             _idx_parents, tindices = CountTensor.accumulate_indices(orig_indices)
             assert all(
@@ -1338,6 +1353,7 @@ class PatchTorch:
         "ones": True,
         "zeros_like": True,
         "ones_like": True,
+        "eye": True,
         "stack": True,
         "cat": True,
         "svd": False,

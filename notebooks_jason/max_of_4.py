@@ -2635,10 +2635,11 @@ except Exception as e:
         ).format():
             print(line, file=sys.stderr)
     raise e
+    # pass
 # %%
 latex_values["HEADSHA"] = git.get_head_sha(short=False)
 latex_values["HEADSHASHORT"] = git.get_head_sha(short=True)
-
+torch.allclose
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))
 

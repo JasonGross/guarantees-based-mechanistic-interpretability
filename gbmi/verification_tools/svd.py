@@ -14,28 +14,34 @@ def compute_verify_svd_close_matrices(
     result = []
     m, n = A.shape[-2:]
     min_mn = min(m, n)
-    U = U[..., m, :min_mn]
+    # print(f"m={m}, n={n}, U={U}, S={S}, Vh={Vh}")
+    U = U[..., :m, :min_mn]
     S = S[..., :min_mn]
-    Vh = Vh[..., :min_mn, n]
+    Vh = Vh[..., :min_mn, :n]
+    # print(f"m={m}, n={n}, U={U}, S={S}, Vh={Vh}")
     if m <= n:
+        # S2 = S.unsqueeze(-2)
+        # print(f"m={m}, n={n}, S={S}, U={U}, S2={S2}, U * S2 = {U * S2}")
         U = U * S.unsqueeze(-2)
     else:
+        # S2 = S.unsqueeze(-1)
+        # print(f"m={m}, n={n}, S={S}, Vh={Vh}, S2={S2}, Vh * S2 = {Vh * S2}")
         Vh = Vh * S.unsqueeze(-1)
     USVh = U @ Vh
     result.append((A, USVh))
 
     # vectors are orthogonal:
-    for m in (U, Vh):
-        mH = m.mH
-        if m.shape[-2] <= m.shape[-1]:
-            mmH = mH @ m
+    for mat in (U, Vh):
+        matH = mat.mH
+        if mat.shape[-2] <= mat.shape[-1]:
+            matmatH = mat @ matH
         else:
-            mmH = m @ mH
-        assert mmH.shape[-2:] == (
+            matmatH = matH @ mat
+        assert matmatH.shape[-2:] == (
             min_mn,
             min_mn,
-        ), f"mmH.shape[-2:] == {mmH.shape[-2:]} != ({min_mn}, {min_mn})"
-        result.append((mmH, torch.eye(min_mn).to(mmH)))
+        ), f"matmatH.shape[-2:] == {matmatH.shape[-2:]} != ({min_mn}, {min_mn})"
+        result.append((matmatH, torch.eye(min_mn).to(matmatH)))
 
     return result
 

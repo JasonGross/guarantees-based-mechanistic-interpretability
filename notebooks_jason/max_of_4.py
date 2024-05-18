@@ -2360,26 +2360,13 @@ else:
 # %% [markdown]
 # # Sub-cubic Proofs
 # %%
-import gbmi.utils.instructions as instructions
-from gbmi.utils.instructions import (
-    InstructionCount,
-    CountTensor,
-    CountHookedTransformer,
-    PatchTorch,
-    CountHookedTransformer,
-    PerfCounter,
-    PerfCollector,
-    PERF_WORKING,
-)
-import gbmi.verification_tools.general
-import gbmi.exp_max_of_n.verification.cubic as cubic
-import gbmi.exp_max_of_n.verification.subcubic as subcubic
-import gbmi.exp_max_of_n.verification.quadratic as quadratic
-import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
-import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-import traceback
-import gbmi.exp_max_of_n.verification.cubic as cubic
-import gbmi.exp_max_of_n.verification.quadratic
+
+subcubic_instruction_count_map: dict[
+    Tuple[LargestWrongLogitQuadraticConfig, bool], InstructionCount
+] = {}
+subcubic_perf_instruction_count_map: dict[
+    Tuple[LargestWrongLogitQuadraticConfig, bool], PerfCounter
+] = {}
 
 
 def _subcubic_count_verify_proof(
@@ -2487,6 +2474,9 @@ with torch.no_grad():
                 proof_results = verify_proof(tricks, use_exact_EQKE)
 
             if PERF_WORKING:
+                subcubic_perf_instruction_count_map[(tricks, use_exact_EQKE)] = (
+                    proof_results["proofinstructions"]
+                )
                 latex_values |= latex_values_of_counter(
                     f"Subcubic{postkey}", proof_results["proofinstructions"]
                 )
@@ -2528,6 +2518,9 @@ with torch.no_grad():
                     subcubic_proof_instruction_count_results,
                 ) = count_verify_proof(tricks, use_exact_EQKE)
 
+            subcubic_instruction_count_map[(tricks, use_exact_EQKE)] = (
+                subcubic_instruction_count
+            )
             latex_values |= latex_values_of_instruction_count(
                 "Subcubic{postkey}", subcubic_instruction_count
             )

@@ -2383,6 +2383,7 @@ import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 import traceback
 import gbmi.exp_max_of_n.verification.cubic as cubic
+import gbmi.exp_max_of_n.verification.quadratic
 
 # must be outside PatchTorch to avoid triu, tril
 cmodel = CountHookedTransformer(model)

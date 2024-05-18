@@ -769,6 +769,8 @@ class CountTensor:
         ), f"Expected CountTensor, ndarray, or Tensor, got {type(other)} ({other})"
         if not isinstance(other, CountTensor):
             other = CountTensor.from_numpy(other)
+            if other is NotImplemented:
+                return NotImplemented
         if len(other.shape) == 1:
             x_shape = tuple(self.shape)
             out_shape = x_shape[:-1]

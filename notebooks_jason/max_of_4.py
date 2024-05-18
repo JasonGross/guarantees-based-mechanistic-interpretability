@@ -2505,9 +2505,7 @@ with torch.no_grad():
                         else W_EP_direction
                     ),
                     **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
-                    use_exact_EQKE=use_exact_EQKE,
                     min_gaps=min_gaps,
-                    tricks=tricks,
                     sanity_check_instructions=False,
                 ),
                 filename=cache_dir
@@ -2653,7 +2651,30 @@ with torch.no_grad():
                         ).format():
                             print(line, file=sys.stderr)
 # %%
-
+if not BRUTE_FORCE_CSV_PATH.exists():
+    print(
+        f"Warning: {BRUTE_FORCE_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
+    )
+elif not CUBIC_CSV_PATH.exists():
+    print(
+        f"Warning: {CUBIC_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
+    )
+elif not SUBCUBIC_CSV_PATH.exists():
+    print(
+        f"Warning: {SUBCUBIC_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
+    )
+else:
+    pass
+# TRAIN_CSV_PATH = ALL_MODELS_PATH / "all-models-train-values.csv"
+# TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+# BRUTE_FORCE_CSV_PATH = (
+#     ALL_MODELS_PATH / "all-models-brute-force-values.csv"
+# )
+# BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+# CUBIC_CSV_PATH = ALL_MODELS_PATH / "all-models-cubic-values.csv"
+# CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+# SUBCUBIC_CSV_PATH = ALL_MODELS_PATH / "all-models-subcubic-values.csv"
+# SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 # %%
 latex_values["HEADSHA"] = git.get_head_sha(short=False)
 latex_values["HEADSHASHORT"] = git.get_head_sha(short=True)

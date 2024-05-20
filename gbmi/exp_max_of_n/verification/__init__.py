@@ -911,7 +911,7 @@ class LargestWrongLogitQuadraticConfig:
             ):
                 use_mean_row = self.attention_error_handling.startswith("mean")
                 use_mean_row_recursively = self.attention_error_handling.startswith(
-                    "mean_recursively"
+                    "mean_recursive"
                 )
                 return max_row_diffs_per_dim_no_multipy(
                     *matrices,
@@ -994,7 +994,7 @@ class LargestWrongLogitQuadraticConfig:
                 pass
             #     mean_count = cfg.d_vocab if self.attention_error_handling.startswith("mean") else 0
             #     use_mean_row_recursively = self.attention_error_handling.startswith(
-            #         "mean_recursively"
+            #         "mean_recursive"
             #     )
             #     return max_row_diffs_per_dim_no_multipy(
             #         *matrices,

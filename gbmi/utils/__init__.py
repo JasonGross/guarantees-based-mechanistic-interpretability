@@ -444,3 +444,17 @@ def zero_biases_of_HookedTransformer(
                 for module in model.modules():
                     if any(isinstance(module, cls) for cls in classes[name]):
                         zero_biases_of_module(module)
+
+
+def bits_of_type(dtype) -> int:
+    try:
+        return dtype.itemsize * 8
+    except AttributeError:
+        pass
+    try:
+        return np.dtype(dtype).itemsize * 8
+    except TypeError:
+        pass
+    raise TypeError(
+        f"Unsupported dtype {dtype}. Please provide a NumPy or PyTorch floating point type."
+    )

@@ -8,7 +8,10 @@ import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from functools import reduce, cache
-from transformer_lens import HookedTransformer  # , FactoredMatrix
+from transformer_lens import (
+    HookedTransformer,
+    HookedTransformerConfig,
+)  # , FactoredMatrix
 from gbmi.utils.FactoredMatrix import FactoredMatrix
 
 from gbmi.utils import dropnan
@@ -23,6 +26,7 @@ from gbmi.verification_tools.decomp import (
     bound_max_row_diff_by_SVD,
 )
 from gbmi.utils.dataclass import enumerate_dataclass_values
+from gbmi.utils import bits_of_type
 
 
 @torch.no_grad()
@@ -687,6 +691,29 @@ def all_worst_EVOU(
 
 
 @dataclasses.dataclass
+class EffectiveDimensionApproximation:
+    R_exponent: int = 0
+    multiplicand: int = 1
+    divisor: int = 1
+
+    def __add__(
+        self, other: "EffectiveDimensionApproximation"
+    ) -> "EffectiveDimensionApproximation":
+        return EffectiveDimensionApproximation(
+            R_exponent=self.R_exponent + other.R_exponent,
+            multiplicand=self.multiplicand * other.multiplicand,
+            divisor=self.divisor * other.divisor,
+        )
+
+    def __int__(self) -> int:
+        return self.R_exponent
+
+    def __float__(self, float_type) -> float:
+        nbits = bits_of_type(float_type)
+        return int(self) + (np.log2(self.multiplicand) - np.log2(self.divisor)) / nbits
+
+
+@dataclasses.dataclass
 class LargestWrongLogitQuadraticConfig:
     EUPU_handling: Literal[
         "mean_query+max_diff",
@@ -723,6 +750,15 @@ class LargestWrongLogitQuadraticConfig:
             self.EUPU_handling_subcubic
             and self.attention_handling_subcubic
             and self.attention_error_handling_subcubic
+        )
+
+    def effective_dimension_estimate(
+        self, cfg: HookedTransformerConfig
+    ) -> EffectiveDimensionApproximation:
+        return (
+            self.EUPU_handling_effective_dimension_estimate(cfg)
+            + self.attention_handling_effective_dimension_estimate(cfg)
+            + self.attention_error_handling_effective_dimension_estimate(cfg)
         )
 
     @classmethod
@@ -832,6 +868,24 @@ class LargestWrongLogitQuadraticConfig:
             return True
         return True
 
+    def EUPU_handling_effective_dimension_estimate(
+        self, cfg: HookedTransformerConfig
+    ) -> EffectiveDimensionApproximation:
+        match self.EUPU_handling:
+            case "global_max_diff_exact":
+                # we find just the max minus the min, so we have just dimension 1 (or 2)
+                return EffectiveDimensionApproximation(2, divisor=2)
+            case "max_diff_exact":
+                return EffectiveDimensionApproximation(cfg.d_vocab * 2, divisor=2)
+            case "mean_query+max_diff" | "svd_query+max_diff":
+                return EffectiveDimensionApproximation(
+                    cfg.d_vocab + cfg.d_vocab * cfg.d_model + 2, divisor=2 * 2
+                )  # TODO fix divisor from .abs() and max-min ordering
+            case "max_diff":
+                return EffectiveDimensionApproximation(
+                    cfg.d_vocab * cfg.d_model + 2, divisor=2 * 2
+                )  # TODO fix divisor from .abs() and max-min ordering
+
     def bound_attention_error(
         self, *matrices: Tensor
     ) -> Union[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]]:  # noqa F821
@@ -909,6 +963,55 @@ class LargestWrongLogitQuadraticConfig:
                 assert False  # handled by quadratic
             case "max_diff_exact" | "exact_EQKE+max_diff_exact":
                 return False  # involves full matmul
+
+    def attention_error_handling_handling_effective_dimension_estimate(
+        self, cfg: HookedTransformerConfig
+    ) -> EffectiveDimensionApproximation:
+        match self.attention_error_handling:
+            case "svd":
+                # d_vocab * 2 for principle components (singular value derived from those)
+                return EffectiveDimensionApproximation(cfg.d_vocab * 2)
+            case (
+                "max_diff"
+                | "max_diff_subproduct"
+                | "mean+max_diff"
+                | "mean+max_diff_subproduct"
+            ):
+                # we still do svd, but now we also keep some info about the error
+                mean_count = (
+                    cfg.d_vocab
+                    if self.attention_error_handling.startswith("mean")
+                    else 0
+                )
+                return EffectiveDimensionApproximation(
+                    cfg.d_vocab * 2 + mean_count + cfg.d_model * 2
+                )
+            case (
+                "max_diff_subproduct_recursive"
+                | "mean+max_diff_subproduct_recursive"
+                | "mean_recursive+max_diff_subproduct_recursive"
+            ):
+                pass
+            #     mean_count = cfg.d_vocab if self.attention_error_handling.startswith("mean") else 0
+            #     use_mean_row_recursively = self.attention_error_handling.startswith(
+            #         "mean_recursively"
+            #     )
+            #     return max_row_diffs_per_dim_no_multipy(
+            #         *matrices,
+            #         use_mean_row=use_mean_row,
+            #         use_mean_row_recursively=use_mean_row_recursively,
+            #     )
+            case "max_diff_exact":
+                pass
+            #     m = reduce(torch.matmul, matrices)
+            #     return m.max(dim=-1).values - m.min(dim=-1).values
+            case "exact_EQKE+max_diff_exact":
+                pass
+            #     for m in matrices:
+            #         assert torch.allclose(
+            #             m, torch.zeros_like(m)
+            #         ), f"matrices should be zero when passing {self.attention_error_handling}, not {m}"
+            #     return torch.tensor(0).to(matrices[0])
 
     def split_extreme_softmaxed_right_attention(
         self,

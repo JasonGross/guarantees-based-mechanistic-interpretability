@@ -1,4 +1,4 @@
-from typing import Optional, Literal, Union
+from typing import Optional, Literal, Union, Sequence, Collection
 import numpy as np
 from torch import Tensor
 from jaxtyping import Integer, Float

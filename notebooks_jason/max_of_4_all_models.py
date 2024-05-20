@@ -622,6 +622,11 @@ with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
+# # %% [markdown]
+# # Summary satistics for models
+# # %%
+
+# def summary_statistics(seed: int)
 # %% [markdown]
 # # Sub-cubic Proofs
 # %%

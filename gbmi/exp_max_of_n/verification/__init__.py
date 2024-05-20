@@ -1,12 +1,13 @@
 # N.B. DO NOT import annotations from __future__ or else enumerate_dataclass_values will break on LargestWrongLogitQuadraticConfig
 import dataclasses
 from typing import ClassVar, Literal, Tuple, Union, Dict, Any, Optional
+from enum import Enum
 
 import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from functools import reduce
+from functools import reduce, cache
 from transformer_lens import HookedTransformer  # , FactoredMatrix
 from gbmi.utils.FactoredMatrix import FactoredMatrix
 
@@ -21,6 +22,7 @@ from gbmi.verification_tools.decomp import (
     max_row_diffs_per_dim_no_multipy,
     bound_max_row_diff_by_SVD,
 )
+from gbmi.utils.dataclass import enumerate_dataclass_values
 
 
 @torch.no_grad()
@@ -714,13 +716,45 @@ class LargestWrongLogitQuadraticConfig:
     ] = "drop_average_query_per_output_logit_reasoning"
     attention_error_handling_OFF: ClassVar[Literal["svd"]] = "svd"
 
+    @property
+    def is_subcubic(self) -> bool:
+        return (
+            self.EUPU_handling_subcubic
+            and self.attention_handling_subcubic
+            and self.attention_error_handling_subcubic
+        )
+
     @classmethod
-    def OFF(cls):
+    def OFF(cls) -> "LargestWrongLogitQuadraticConfig":
         return cls(
             EUPU_handling=cls.EUPU_OFF,
             attention_handling=cls.attention_handling_OFF,
             attention_error_handling=cls.attention_error_handling_OFF,
         )
+
+    @classmethod
+    @cache
+    def all_values(cls) -> Tuple["LargestWrongLogitQuadraticConfig", ...]:
+        return tuple(enumerate_dataclass_values(cls))
+
+    @classmethod
+    @cache
+    def _parsing_dict(
+        cls, latex: bool = False
+    ) -> dict[str, "LargestWrongLogitQuadraticConfig"]:
+        all_values = [(v.short_description(latex=latex), v) for v in cls.all_values()]
+        result = dict(all_values)
+        NL = "\n"
+        assert len(result) == len(
+            all_values
+        ), f"The following values have equal descriptions (with latex={latex}): {NL.join(repr((k, v, result[k]) for k, v in result.items()))}"
+        return result
+
+    @classmethod
+    def parse(
+        cls, short_description: str, latex: bool = False
+    ) -> "LargestWrongLogitQuadraticConfig":
+        return cls._parsing_dict(latex=latex)[short_description]
 
     def split_EPU(
         self,
@@ -735,6 +769,8 @@ class LargestWrongLogitQuadraticConfig:
 
         Complexity: O(d_vocab_q * d_model + d_model * d_vocab_out) (+ d_vocab_q * d_model^2 if W_EP_mean_query is None and self.EUPU_handling == "svd_query+max_diff")
         """
+        if self.EUPU_handling in ("global_max_diff_exact", "max_diff_exact"):
+            return self.split_EUPU(W_EP @ W_U)
         if self.EUPU_handling == "mean_query+max_diff":
             W_EP_mean_query = W_EP.mean(dim=0)
         elif self.EUPU_handling == "svd_query+max_diff":
@@ -757,8 +793,6 @@ class LargestWrongLogitQuadraticConfig:
         EUPU_per_query_max_logit_diff: Float[Tensor, "d_vocab_q"] = (  # noqa F821
             W_EP_per_query.abs() @ W_U_per_query_max_logit_diff
         )
-        if self.EUPU_handling in ("global_max_diff_exact", "max_diff_exact"):
-            return self.split_EUPU(W_EP @ W_U)
         return EUPU_mean_query, EUPU_per_query_max_logit_diff
 
     def split_EUPU(
@@ -784,6 +818,18 @@ class LargestWrongLogitQuadraticConfig:
                 EUPU_per_query.max() - EUPU_per_query.min()
             )
         return EUPU_mean_query, EUPU_per_query_max_logit_diff
+
+    @property
+    def EUPU_handling_quadratic(self) -> bool:
+        if self.EUPU_handling in ("global_max_diff_exact", "max_diff"):
+            return False
+        return True
+
+    @property
+    def EUPU_handling_subcubic(self) -> bool:
+        if self.EUPU_handling_quadratic:
+            return True
+        return True
 
     def bound_attention_error(
         self, *matrices: Tensor
@@ -821,6 +867,42 @@ class LargestWrongLogitQuadraticConfig:
                 m = reduce(torch.matmul, matrices)
                 return m.max(dim=-1).values - m.min(dim=-1).values
 
+    @property
+    def attention_error_handling_quadratic(self) -> bool:
+        match self.attention_error_handling:
+            case (
+                "max_diff_subproduct_recursive"
+                | "mean+max_diff_subproduct_recursive"
+                | "mean_recursive+max_diff_subproduct_recursive"
+            ):
+                return True
+            case _:
+                return False
+
+    @property
+    def attention_error_handling_subcubic(self) -> bool:
+        if self.attention_error_handling_quadratic:
+            return True
+        match self.attention_error_handling:
+            case "svd":
+                # low rank svd is considered subcubic
+                return True
+            case (
+                "max_diff"
+                | "max_diff_subproduct"
+                | "mean+max_diff"
+                | "mean+max_diff_subproduct"
+            ):
+                return True
+            case (
+                "max_diff_subproduct_recursive"
+                | "mean+max_diff_subproduct_recursive"
+                | "mean_recursive+max_diff_subproduct_recursive"
+            ):
+                assert False  # handled by quadratic
+            case "max_diff_exact":
+                return False  # involves full matmul
+
     def split_extreme_softmaxed_right_attention(
         self,
         extreme_softmaxed_right_attention: Float[Tensor, "d_vocab_q"],  # noqa F821
@@ -843,6 +925,14 @@ class LargestWrongLogitQuadraticConfig:
             extreme_softmaxed_right_attention - average_right_attention
         )
         return average_right_attention, right_attention_adjustment
+
+    @property
+    def attention_handling_quadratic(self) -> bool:
+        return True
+
+    @property
+    def attention_handling_subcubic(self) -> bool:
+        return True
 
     @staticmethod
     def transform_description(description: str, *, latex: bool = False) -> str:

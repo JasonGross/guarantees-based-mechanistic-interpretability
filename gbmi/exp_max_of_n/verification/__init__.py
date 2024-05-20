@@ -926,7 +926,7 @@ class LargestWrongLogitQuadraticConfig:
                     assert torch.allclose(
                         m, torch.zeros_like(m)
                     ), f"matrices should be zero when passing {self.attention_error_handling}, not {m}"
-                return torch.tensor(0).to(matrices[0])
+                return torch.zeros(()).to(matrices[0])
 
     @property
     def attention_error_handling_quadratic(self) -> bool:

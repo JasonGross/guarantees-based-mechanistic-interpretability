@@ -707,6 +707,7 @@ class LargestWrongLogitQuadraticConfig:
         "mean+max_diff_subproduct",
         "mean+max_diff_subproduct_recursive",
         "mean_recursive+max_diff_subproduct_recursive",
+        "exact_EQKE+max_diff_exact",
         "max_diff_exact",
     ] = "max_diff"
 
@@ -866,6 +867,12 @@ class LargestWrongLogitQuadraticConfig:
             case "max_diff_exact":
                 m = reduce(torch.matmul, matrices)
                 return m.max(dim=-1).values - m.min(dim=-1).values
+            case "exact_EQKE+max_diff_exact":
+                for m in matrices:
+                    assert torch.allclose(
+                        m, torch.zeros_like(m)
+                    ), f"matrices should be zero when passing {self.attention_error_handling}, not {m}"
+                return torch.tensor(0).to(matrices[0])
 
     @property
     def attention_error_handling_quadratic(self) -> bool:
@@ -900,7 +907,7 @@ class LargestWrongLogitQuadraticConfig:
                 | "mean_recursive+max_diff_subproduct_recursive"
             ):
                 assert False  # handled by quadratic
-            case "max_diff_exact":
+            case "max_diff_exact" | "exact_EQKE+max_diff_exact":
                 return False  # involves full matmul
 
     def split_extreme_softmaxed_right_attention(

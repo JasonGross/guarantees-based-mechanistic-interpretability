@@ -41,10 +41,7 @@ def decompose_EQKE_error(
     approximation_rank: int = 1,
     tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
 ) -> Tuple[
-    Union[
-        Float[LowRankTensor, "d_vocab_q d_vocab_k"],  # noqa: F722
-        Float[Tensor, "d_vocab_q d_vocab_k"],  # noqa: F722
-    ],
+    Float[Union[LowRankTensor, Tensor], "d_vocab_q d_vocab_k"],  # noqa: F722
     Float[Tensor, "d_vocab_q n_ctx_k"],  # noqa: F722
     Tuple[
         Union[Float[Tensor, ""], Float[Tensor, "d_vocab_q"]],  # noqa: F722, F821
@@ -116,18 +113,6 @@ def decompose_EQKE_error(
 
     If tricks.attention_error_handling is "max_diff_subproduct" or "mean+max_diff_subproduct", then we use quadratic.decompose_EQKE_error_quadratic to compute the low-rank factorization.
     """
-    W_E, W_pos, W_Q, W_K = (
-        model.W_E,
-        model.W_pos,
-        model.W_Q[layer, head],
-        model.W_K[layer, head],
-    )
-
-    W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
-    W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
-    W_E_pos_q = W_E + W_pos[-1][None, :]
-    EQKE_pos_err = W_E_pos_q @ (W_Q @ (W_K.T @ W_pos_err.T))
-
     if "subproduct" in tricks.attention_error_handling:
         assert (
             key_direction is not None
@@ -166,16 +151,37 @@ def decompose_EQKE_error(
         )
         EQKE_query_key = EQKE_query_key + err_accumulator
     else:
-        EQKE_query_key, EQKE_err = split_SVD(
-            W_E_pos_q,
-            W_Q,
-            W_K.T,
-            W_E_pos_k.T,
-            n_principle_components=approximation_rank,
-            sanity_check=sanity_check,
-            checkparams=dict(atol=atol),
+        W_E, W_pos, W_Q, W_K = (
+            model.W_E,
+            model.W_pos,
+            model.W_Q[layer, head],
+            model.W_K[layer, head],
         )
-        err_matrices = (EQKE_err.A, EQKE_err.B)
+
+        W_E_pos_k = W_E + W_pos.mean(dim=0)[None, :]
+        W_pos_err = W_pos - W_pos.mean(dim=0)[None, :]
+        W_E_pos_q = W_E + W_pos[-1][None, :]
+        EQKE_pos_err = W_E_pos_q @ (W_Q @ (W_K.T @ W_pos_err.T))
+
+        if "exact_EQKE" in tricks.attention_error_handling:
+            EQKE_query_key = (W_E_pos_q @ W_Q) @ (W_K.T @ W_E_pos_k.T)
+            err_matrices = (
+                torch.zeros_like(W_E_pos_k),
+                torch.zeros_like(W_Q),
+                torch.zeros_like(W_K.T),
+                torch.zeros_like(W_pos_err.T),
+            )
+        else:
+            EQKE_query_key, EQKE_err = split_SVD(
+                W_E_pos_q,
+                W_Q,
+                W_K.T,
+                W_E_pos_k.T,
+                n_principle_components=approximation_rank,
+                sanity_check=sanity_check,
+                checkparams=dict(atol=atol),
+            )
+            err_matrices = (EQKE_err.A, EQKE_err.B)
 
     # global gtricks
     # global gerr_matrices
@@ -195,7 +201,6 @@ def decompose_EQKE_error(
 def verify_proof(
     model: HookedTransformer,
     *,
-    use_exact_EQKE: bool,
     W_EP_direction: Optional[Float[Tensor, "d_model"]],  # noqa: F821
     key_direction: Tensor,
     query_direction: Tensor,
@@ -237,7 +242,7 @@ def verify_proof(
     (
         EQKE_query_key,
         EQKE_pos_err,
-        (err_upper_bound, err_matrices),
+        (EQKE_err_upper_bound, err_matrices),
     ) = add_time(
         decompose_EQKE_error,
         model,
@@ -258,17 +263,15 @@ def verify_proof(
         lambda: f"Complexity of decompose_EQKE_error: {complexity_of(decompose_EQKE_error)}"
     )
 
-    if use_exact_EQKE:
+    if "exact_EQKE" in tricks.attention_error_handling:
         print_complexity(
             lambda: f"Complexity of using exact EQKE: O(d_vocab^2 d_model)"
         )
-        err_exact = add_time(reduce, torch.matmul, err_matrices)
-        cur_EQKE = add_time(lambda: EQKE_query_key + err_exact)
-        EQKE_err_upper_bound = torch.tensor(0)
+
     else:
         print_complexity(lambda: f"Complexity of using approximate EQKE: O(d_vocab^2)")
-        cur_EQKE = EQKE_query_key + 0.0
-        EQKE_err_upper_bound = err_upper_bound
+
+    cur_EQKE = EQKE_query_key + 0.0  # convert lowrank tensor to tensor
 
     extreme_right_attention = add_time(
         quadratic.compute_extreme_right_attention_quadratic,
@@ -372,7 +375,7 @@ def verify_proof(
     )
 
     return {
-        "err_upper_bound": err_upper_bound,
+        "err_upper_bound": EQKE_err_upper_bound,
         "largest_wrong_logit": largest_wrong_logit,
         "accuracy_lower_bound": accuracy_bound,
         "correct_count_lower_bound": correct_count,

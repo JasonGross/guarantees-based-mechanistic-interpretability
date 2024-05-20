@@ -36,7 +36,6 @@ def find_min_gaps_with_EQKE(
     sanity_check: bool = True,
     atol: float = 1e-4,
     tricks: LargestWrongLogitQuadraticConfig = LargestWrongLogitQuadraticConfig(),
-    use_exact_EQKE: bool = False,
     # svd_EUPU: bool = False,
     attn_scale: Optional[Union[Float[Tensor, ""], float]] = None,  # noqa: F722
     position: Optional[int] = None,
@@ -71,7 +70,7 @@ def find_min_gaps_with_EQKE(
     (
         EQKE_query_key,
         EQKE_pos_err,
-        (err_upper_bound, EQKE_err_matrices),
+        (EQKE_err_upper_bound, EQKE_err_matrices),
     ) = decompose_EQKE_error(
         model,
         key_direction=key_direction,
@@ -85,9 +84,7 @@ def find_min_gaps_with_EQKE(
         tricks=tricks,
     )
 
-    err_exact = reduce(torch.matmul, EQKE_err_matrices)
-    cur_EQKE = EQKE_query_key + (err_exact if use_exact_EQKE else 0)
-    EQKE_err_upper_bound = torch.tensor(0) if use_exact_EQKE else err_upper_bound
+    cur_EQKE = EQKE_query_key + 0.0  # convert to tensor from low-rank
 
     W_EP_direction = W_EP_direction_for_tricks(W_EP=W_EP, W_U=W_U, tricks=tricks)
     # cur_EUPU_low_rank = EUPU_lowrank if svd_EUPU else None

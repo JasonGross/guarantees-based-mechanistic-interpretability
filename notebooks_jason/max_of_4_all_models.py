@@ -644,7 +644,6 @@ else:
 def _subcubic_count_verify_proof(
     model: HookedTransformer,
     tricks: LargestWrongLogitQuadraticConfig,
-    use_exact_EQKE: bool,
     *,
     sanity_check_instructions: bool = False,
     **kwargs,
@@ -657,7 +656,6 @@ def _subcubic_count_verify_proof(
                 results = subcubic.verify_proof(
                     cmodel,
                     tricks=tricks,
-                    use_exact_EQKE=use_exact_EQKE,
                     **kwargs,
                     print_complexity=False,
                     print_results=False,
@@ -734,262 +732,244 @@ def try_all_proofs_subcubic(
         model
     )
     shared_proof_search_duration += time.time() - start
-    for use_exact_EQKE in (False, True):
-        # for svd_EUPU in (False, True):
-        descr = "exact-EQKE" if use_exact_EQKE else ""
-        filedescr = "-exact-EQKE--" if use_exact_EQKE else ""
-        latexdescr = "ExactEQKE" if use_exact_EQKE else ""
-        with memoshelve(
-            (
-                lambda cfg: (
-                    cfg,
-                    *analysis_subcubic.find_min_gaps_with_EQKE(
-                        model=model,
-                        **find_min_gaps_kwargs,  # type: ignore
-                        **size_and_query_directions_kwargs,
-                        tricks=cfg,
-                        use_exact_EQKE=use_exact_EQKE,
-                        sub_pbar=subcfg_pbar,
-                        pbar=cfg_pbar,
-                        record_time=True,
-                    ),
-                )
-            ),
-            # cache={},
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}",
-        )() as find_min_gaps_for:
-            min_gaps_lists[use_exact_EQKE] = [
-                find_min_gaps_for(cfg)
-                for cfg in all_configs
-                if cfg.attention_error_handling == "max_diff_exact"
-                or not use_exact_EQKE  # don't bother with other ways of handling attention when we're just going to be using exact attention error handling anyway
-            ]
-
-        for tricks, min_gaps, proof_search_duration in min_gaps_lists[use_exact_EQKE]:
-            proof_search_duration += shared_proof_search_duration
-            # print(
-            #     f"==========={descr}=============================\nTricks: {tricks}"
-            # )
-            # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
-            start = time.time()
-            W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
-                **W_EP_direction_kwargs, tricks=tricks
-            )
-            proof_search_duration += time.time() - start
-
-            def _verify_proof(
-                tricks: LargestWrongLogitQuadraticConfig, use_exact_EQKE: bool
-            ):
-                return subcubic.verify_proof(
-                    model,
-                    W_EP_direction=W_EP_direction,
-                    **size_and_query_directions_kwargs,  # type: ignore
-                    use_exact_EQKE=use_exact_EQKE,
-                    min_gaps=min_gaps,
-                    tricks=tricks,
-                    sanity_check=False,
-                    print_complexity=False,
-                    print_results=False,
-                    include_perf=PERF_WORKING,
-                )
-
-            with memoshelve(
-                _verify_proof,
-                filename=cache_dir
-                / f"{SHARED_CACHE_STEM}.subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
-                get_hash_mem=(lambda x: x[0]),
-                get_hash=str,
-            )() as verify_proof:
-                proof_results = verify_proof(tricks, use_exact_EQKE)
-
-            err_upper_bound = proof_results["err_upper_bound"]
-            prooftime = proof_results["prooftime"]
-            accuracy_bound = proof_results["accuracy_lower_bound"]
-            total_sequences = proof_results["total_sequences"]
-            left_behind = proof_results["left_behind"]
-
-            if PERF_WORKING:
-                perf_results = {
-                    "perf-time-enabled-ns": int_or_value(
-                        proof_results["proofinstructions"].time_enabled_ns
-                    ),
-                    "perf-instruction-count": int_or_value(
-                        proof_results["proofinstructions"].instruction_count
-                    ),
-                    "perf-branch-misses": int_or_value(
-                        proof_results["proofinstructions"].branch_misses
-                    ),
-                    "perf-page-faults": int_or_value(
-                        proof_results["proofinstructions"].page_faults
-                    ),
-                }
-            else:
-                perf_results = {}
-
-            with memoshelve(
-                partial(
-                    _subcubic_count_verify_proof,
-                    model,
-                    W_EP_direction=(
-                        CountTensor.from_numpy(W_EP_direction)
-                        if W_EP_direction is not None
-                        else W_EP_direction
-                    ),
-                    **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
-                    min_gaps=min_gaps,
-                    sanity_check_instructions=False,
+    with memoshelve(
+        (
+            lambda cfg: (
+                cfg,
+                *analysis_subcubic.find_min_gaps_with_EQKE(
+                    model=model,
+                    **find_min_gaps_kwargs,  # type: ignore
+                    **size_and_query_directions_kwargs,
+                    tricks=cfg,
+                    sub_pbar=subcfg_pbar,
+                    pbar=cfg_pbar,
+                    record_time=True,
                 ),
-                filename=cache_dir
-                / f"{SHARED_CACHE_STEM}.subcubic_count_verify_proof-{cfg_hash_for_filename}",
-                get_hash_mem=(lambda x: x[0]),
-                get_hash=str,
-            )() as count_verify_proof:
-                (
-                    subcubic_instruction_count,
-                    subcubic_proof_instruction_count_results,
-                ) = count_verify_proof(tricks, use_exact_EQKE)
-            count_proof_pbar.update(1)
-
-            try:
-                # err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
-                err_upper_bound_value = err_upper_bound.item()
-                err_upper_bound_is_max = False
-                # print(f"err_upper_bound: {err_upper_bound_value}")
-            except Exception:
-                # print(f"err_upper_bound: {err_upper_bound}")
-                # err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
-                err_upper_bound_value = err_upper_bound.max().item()
-                err_upper_bound_is_max = True
-                # print(f"err_upper_bound.max(): {err_upper_bound_value}")
-
-            # if DISPLAY_PLOTS:
-            d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[
-                use_exact_EQKE
-            ][0][1].shape
-            weights = torch.zeros((d_vocab_q, d_vocab_max, n_ctx_nonmax_copies))
-            # weights = ein.array(
-            #     (
-            #         lambda q_tok, max_tok, n_copies_nonmax: torch.tensor(
-            #             (max_tok - 1) ** n_copies_nonmax
-            #             * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
-            #         )
-            #     ),
-            #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
-            #     device=torch.tensor(0).device,
-            # )
-            # weights[:, 0, :] = 1
-            # weights[:, 0, 1:] = 0
-            # weights = ein.array(
-            #     (
-            #         lambda q_tok, max_tok, n_copies_nonmax: torch.where(
-            #             (
-            #                 (q_tok > max_tok)
-            #                 | ( # TypeError: unsupported operand type(s) for |: 'Tensor' and 'Tensor'
-            #                     (n_copies_nonmax == n_ctx_nonmax_copies - 1)
-            #                     & (max_tok != q_tok)
-            #                 )
-            #                 | ((max_tok == 0) & (n_copies_nonmax > 0))
-            #             ),
-            #             torch.tensor(0),
-            #             torch.where(
-            #                 max_tok == 0,
-            #                 torch.tensor(1),
-            #                 torch.tensor(
-            #                     (max_tok - 1) ** n_copies_nonmax
-            #                     * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
-            #                 ),
-            #             ),
-            #         )
-            #     ),
-            #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
-            #     device=torch.tensor(0).device,
-            # )
-            for max_tok in range(d_vocab_max):
-                cur_n_ctx_nonmax_copies = 1 if max_tok == 0 else n_ctx_nonmax_copies
-                for n_copies_nonmax in range(cur_n_ctx_nonmax_copies):
-                    weights[: max_tok + 1, max_tok, n_copies_nonmax] = (
-                        max_tok - 1
-                    ) ** n_copies_nonmax * math.comb(
-                        model.cfg.n_ctx - 1, n_copies_nonmax
-                    )
-                weights[:max_tok, max_tok, n_ctx_nonmax_copies - 1] = 0
-                # for q_tok in range(max_tok+1):
-                #     if (
-                #         # (q_tok > max_tok) or
-                #          (
-                #             n_copies_nonmax == n_ctx_nonmax_copies - 1
-                #             and max_tok != q_tok
-                #         )
-                #         # or (max_tok == 0 and n_copies_nonmax > 0)
-                #     ):
-                #         weights[q_tok, max_tok, n_copies_nonmax] = 0
-                # if max_tok == 0:
-                #     assert q_tok == max_tok
-                #     assert n_copies_nonmax == 0
-            weights[1, 1, 0] = 1
-
-            v = min_gaps.flatten().detach().cpu()
-            mean = np.average(v.numpy(), weights=weights.flatten().numpy())
-            std = np.average(
-                (v - mean).numpy() ** 2,
-                weights=weights.flatten().numpy(),
             )
-            num_std = 1.5
-            most_below_value = int(math.ceil(mean + num_std * std))
-            # print(v)
-            # print(most_below_value)
-            # print(list(sorted(v.tolist())))
-            # print(f"max={(min_gaps==min_gaps.max()).nonzero()}")
-            # if min_gaps.max() > 100:
-            #     print(f"big! {min_gaps.max()}")
-            #     args = (tricks,)
-            #     kwargs = dict(
-            #         filename=cache_dir
-            #         / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}"
-            #     )
-            #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
-            #     memoshelve_uncache(*args, **kwargs)
-            #     args = (tricks, use_exact_EQKE)
-            #     kwargs = dict(
-            #         filename=cache_dir
-            #         / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
-            #         get_hash_mem=(lambda x: x[0]),
-            #         get_hash=str,
-            #     )
-            #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
-            #     memoshelve_uncache(*args, **kwargs)
-            # print(f"mean={mean}")
-            # print(f"std={std}")
-            # print(f"max={v.max().item()}")
-            # print(f"min={v.min().item()}")
-            # print(v <= most_below_value)
-            frac_below = (
-                weights.flatten()[v <= most_below_value].sum() / weights.sum()
-            ).item()
+        ),
+        # cache={},
+        filename=cache_dir
+        / f"{SHARED_CACHE_STEM}.find_min_gaps-{cfg_hash_for_filename}",
+    )() as find_min_gaps_for:
+        min_gaps_lists = [find_min_gaps_for(cfg) for cfg in all_configs]
 
-            row = {
-                "seed": seed,
-                "accuracy-bound": accuracy_bound,
-                "duration-proof-search": proof_search_duration,
-                "duration": prooftime,
-                "tricks": latexdescr + tricks.short_description(latex=True),
-                "err-upper-bound": err_upper_bound_value,
-                "err-upper-bound-is-max": err_upper_bound_is_max,
-                "total-sequences": total_sequences,
-                "dropped-sequences": left_behind,
-                "dropped-sequences-frac": left_behind / total_sequences,
-                "most-gap-below-value": most_below_value,
-                "most-gap-below-value-frac": frac_below,
-                "most-gap-below-value-num-std": num_std,
-                "max-gap": v.max().item(),
-                "proof-flop-estimate": subcubic_instruction_count.flop,
-                "proof-int-op-estimate": subcubic_instruction_count.int_op,
-                "proof-branch-estimate": subcubic_instruction_count.branch,
-            } | perf_results
+    for tricks, min_gaps, proof_search_duration in min_gaps_lists:
+        proof_search_duration += shared_proof_search_duration
+        # print(
+        #     f"==========={descr}=============================\nTricks: {tricks}"
+        # )
+        # this is not part of the proof checking; the proof is correct regardless of what value is returned, so we don't count the complexity
+        start = time.time()
+        W_EP_direction = analysis_quadratic.W_EP_direction_for_tricks(
+            **W_EP_direction_kwargs, tricks=tricks
+        )
+        proof_search_duration += time.time() - start
 
-            rows.append(row)
-            proof_pbar.update(1)
+        def _verify_proof(tricks: LargestWrongLogitQuadraticConfig):
+            return subcubic.verify_proof(
+                model,
+                W_EP_direction=W_EP_direction,
+                **size_and_query_directions_kwargs,  # type: ignore
+                min_gaps=min_gaps,
+                tricks=tricks,
+                sanity_check=False,
+                print_complexity=False,
+                print_results=False,
+                include_perf=PERF_WORKING,
+            )
+
+        with memoshelve(
+            _verify_proof,
+            filename=cache_dir
+            / f"{SHARED_CACHE_STEM}.subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+            get_hash_mem=(lambda x: x[0]),
+            get_hash=str,
+        )() as verify_proof:
+            proof_results = verify_proof(tricks)
+
+        err_upper_bound = proof_results["err_upper_bound"]
+        prooftime = proof_results["prooftime"]
+        accuracy_bound = proof_results["accuracy_lower_bound"]
+        total_sequences = proof_results["total_sequences"]
+        left_behind = proof_results["left_behind"]
+
+        if PERF_WORKING:
+            perf_results = {
+                "perf-time-enabled-ns": int_or_value(
+                    proof_results["proofinstructions"].time_enabled_ns
+                ),
+                "perf-instruction-count": int_or_value(
+                    proof_results["proofinstructions"].instruction_count
+                ),
+                "perf-branch-misses": int_or_value(
+                    proof_results["proofinstructions"].branch_misses
+                ),
+                "perf-page-faults": int_or_value(
+                    proof_results["proofinstructions"].page_faults
+                ),
+            }
+        else:
+            perf_results = {}
+
+        with memoshelve(
+            partial(
+                _subcubic_count_verify_proof,
+                model,
+                W_EP_direction=(
+                    CountTensor.from_numpy(W_EP_direction)
+                    if W_EP_direction is not None
+                    else W_EP_direction
+                ),
+                **{k: CountTensor.from_numpy(v) if isinstance(v, torch.Tensor) else v for k, v in size_and_query_directions_kwargs.items()},  # type: ignore
+                min_gaps=min_gaps,
+                sanity_check_instructions=False,
+            ),
+            filename=cache_dir
+            / f"{SHARED_CACHE_STEM}.subcubic_count_verify_proof-{cfg_hash_for_filename}",
+            get_hash_mem=(lambda x: x[0]),
+            get_hash=str,
+        )() as count_verify_proof:
+            (
+                subcubic_instruction_count,
+                subcubic_proof_instruction_count_results,
+            ) = count_verify_proof(tricks)
+        count_proof_pbar.update(1)
+
+        try:
+            # err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+            err_upper_bound_value = err_upper_bound.item()
+            err_upper_bound_is_max = False
+            # print(f"err_upper_bound: {err_upper_bound_value}")
+        except Exception:
+            # print(f"err_upper_bound: {err_upper_bound}")
+            # err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+            err_upper_bound_value = err_upper_bound.max().item()
+            err_upper_bound_is_max = True
+            # print(f"err_upper_bound.max(): {err_upper_bound_value}")
+
+        # if DISPLAY_PLOTS:
+        d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[0][1].shape
+        weights = torch.zeros((d_vocab_q, d_vocab_max, n_ctx_nonmax_copies))
+        # weights = ein.array(
+        #     (
+        #         lambda q_tok, max_tok, n_copies_nonmax: torch.tensor(
+        #             (max_tok - 1) ** n_copies_nonmax
+        #             * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
+        #         )
+        #     ),
+        #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
+        #     device=torch.tensor(0).device,
+        # )
+        # weights[:, 0, :] = 1
+        # weights[:, 0, 1:] = 0
+        # weights = ein.array(
+        #     (
+        #         lambda q_tok, max_tok, n_copies_nonmax: torch.where(
+        #             (
+        #                 (q_tok > max_tok)
+        #                 | ( # TypeError: unsupported operand type(s) for |: 'Tensor' and 'Tensor'
+        #                     (n_copies_nonmax == n_ctx_nonmax_copies - 1)
+        #                     & (max_tok != q_tok)
+        #                 )
+        #                 | ((max_tok == 0) & (n_copies_nonmax > 0))
+        #             ),
+        #             torch.tensor(0),
+        #             torch.where(
+        #                 max_tok == 0,
+        #                 torch.tensor(1),
+        #                 torch.tensor(
+        #                     (max_tok - 1) ** n_copies_nonmax
+        #                     * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
+        #                 ),
+        #             ),
+        #         )
+        #     ),
+        #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
+        #     device=torch.tensor(0).device,
+        # )
+        for max_tok in range(d_vocab_max):
+            cur_n_ctx_nonmax_copies = 1 if max_tok == 0 else n_ctx_nonmax_copies
+            for n_copies_nonmax in range(cur_n_ctx_nonmax_copies):
+                weights[: max_tok + 1, max_tok, n_copies_nonmax] = (
+                    max_tok - 1
+                ) ** n_copies_nonmax * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
+            weights[:max_tok, max_tok, n_ctx_nonmax_copies - 1] = 0
+            # for q_tok in range(max_tok+1):
+            #     if (
+            #         # (q_tok > max_tok) or
+            #          (
+            #             n_copies_nonmax == n_ctx_nonmax_copies - 1
+            #             and max_tok != q_tok
+            #         )
+            #         # or (max_tok == 0 and n_copies_nonmax > 0)
+            #     ):
+            #         weights[q_tok, max_tok, n_copies_nonmax] = 0
+            # if max_tok == 0:
+            #     assert q_tok == max_tok
+            #     assert n_copies_nonmax == 0
+        weights[1, 1, 0] = 1
+
+        v = min_gaps.flatten().detach().cpu()
+        mean = np.average(v.numpy(), weights=weights.flatten().numpy())
+        std = np.average(
+            (v - mean).numpy() ** 2,
+            weights=weights.flatten().numpy(),
+        )
+        num_std = 1.5
+        most_below_value = int(math.ceil(mean + num_std * std))
+        # print(v)
+        # print(most_below_value)
+        # print(list(sorted(v.tolist())))
+        # print(f"max={(min_gaps==min_gaps.max()).nonzero()}")
+        # if min_gaps.max() > 100:
+        #     print(f"big! {min_gaps.max()}")
+        #     args = (tricks,)
+        #     kwargs = dict(
+        #         filename=cache_dir
+        #         / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}"
+        #     )
+        #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
+        #     memoshelve_uncache(*args, **kwargs)
+        #     args = (tricks, use_exact_EQKE)
+        #     kwargs = dict(
+        #         filename=cache_dir
+        #         / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
+        #         get_hash_mem=(lambda x: x[0]),
+        #         get_hash=str,
+        #     )
+        #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
+        #     memoshelve_uncache(*args, **kwargs)
+        # print(f"mean={mean}")
+        # print(f"std={std}")
+        # print(f"max={v.max().item()}")
+        # print(f"min={v.min().item()}")
+        # print(v <= most_below_value)
+        frac_below = (
+            weights.flatten()[v <= most_below_value].sum() / weights.sum()
+        ).item()
+
+        row = {
+            "seed": seed,
+            "accuracy-bound": accuracy_bound,
+            "duration-proof-search": proof_search_duration,
+            "duration": prooftime,
+            "tricks": tricks.short_description(latex=True),
+            "err-upper-bound": err_upper_bound_value,
+            "err-upper-bound-is-max": err_upper_bound_is_max,
+            "total-sequences": total_sequences,
+            "dropped-sequences": left_behind,
+            "dropped-sequences-frac": left_behind / total_sequences,
+            "most-gap-below-value": most_below_value,
+            "most-gap-below-value-frac": frac_below,
+            "most-gap-below-value-num-std": num_std,
+            "max-gap": v.max().item(),
+            "proof-flop-estimate": subcubic_instruction_count.flop,
+            "proof-int-op-estimate": subcubic_instruction_count.int_op,
+            "proof-branch-estimate": subcubic_instruction_count.branch,
+        } | perf_results
+
+        rows.append(row)
+        proof_pbar.update(1)
     return rows
 
 

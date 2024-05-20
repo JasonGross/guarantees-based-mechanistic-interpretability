@@ -841,7 +841,7 @@ def try_all_proofs_subcubic(
                     sanity_check_instructions=False,
                 ),
                 filename=cache_dir
-                / f"{SHARED_CACHE_STEM}.subcubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+                / f"{SHARED_CACHE_STEM}.subcubic_count_verify_proof-{cfg_hash_for_filename}",
                 get_hash_mem=(lambda x: x[0]),
                 get_hash=str,
             )() as count_verify_proof:

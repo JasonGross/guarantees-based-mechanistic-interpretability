@@ -209,6 +209,7 @@ default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 latex_values: dict[str, Union[int, float, str]] = {}
 latex_figures: dict[str, Union[go.Figure, matplotlib.figure.Figure]] = {}
 latex_externalize_tables: dict[str, bool] = {}
+latex_only_externalize_tables: dict[str, bool] = {}
 
 
 # %%
@@ -3100,12 +3101,19 @@ for k, fig in latex_figures.items():
                             errs.append(e)
     elif isinstance(fig, matplotlib.figure.Figure):
         p = LATEX_FIGURE_PATH / f"{k}.tex"
-        print(f"Saving {p}...")
         p.parent.mkdir(parents=True, exist_ok=True)
+        if latex_externalize_tables.get(k, False):
+            if not latex_only_externalize_tables.get(k, False):
+                p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
+            print(f"Saving {p}...")
+            with texify_matplotlib_title(fig) as fig:
+                tikzplotlib.save(
+                    p, fig, externalize_tables=latex_externalize_tables.get(k, False)
+                )
+        p = LATEX_FIGURE_PATH / f"{k}.tex"
+        print(f"Saving {p}...")
         with texify_matplotlib_title(fig) as fig:
-            tikzplotlib.save(
-                p, fig, externalize_tables=latex_externalize_tables.get(k, False)
-            )
+            tikzplotlib.save(p, fig, externalize_tables=False)
         for ext in (".pdf", ".svg"):
             p = LATEX_FIGURE_PATH / f"{k}{ext}"
             print(f"Saving {p}...")

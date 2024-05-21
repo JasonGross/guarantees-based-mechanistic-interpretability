@@ -18,6 +18,7 @@ import sys
 import re
 import time
 import subprocess
+from itertools import chain
 from functools import reduce, partial, cache
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
@@ -3093,7 +3094,9 @@ def texify_matplotlib_title(fig: matplotlib.figure.Figure, show: bool = False):
 
 
 errs = []
-for file_path in LATEX_FIGURE_PATH.glob("*.png"):
+for file_path in chain(
+    LATEX_FIGURE_PATH.glob("*.png"), LATEX_FIGURE_PATH.glob("*.dat")
+):
     file_path.unlink()
     print(f"Deleted: {file_path}")
 for k, fig in latex_figures.items():

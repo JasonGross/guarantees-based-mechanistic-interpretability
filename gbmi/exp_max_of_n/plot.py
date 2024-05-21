@@ -664,7 +664,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
             duplication_factors.numpy(),
             title=title,
             xaxis="logit - diag",
-            yaxis=f"count * {shash} sequences with given max",
+            yaxis=f"count × {shash} sequences with given max",
             renderer=renderer,
             plot_with=plot_with,
         )
@@ -798,7 +798,7 @@ def hist_attention_difference_over_gap(
             title=title,
             num_bins=num_bins,
             xaxis=xlabel,
-            yaxis=f"count * {shash} sequences with given max",
+            yaxis=f"count × {shash} sequences with given max",
             renderer=renderer,
             plot_with=plot_with,
         )

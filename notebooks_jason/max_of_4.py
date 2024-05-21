@@ -2617,7 +2617,7 @@ with torch.no_grad():
                     v.numpy(),
                     weights.flatten().detach().numpy(),
                     xaxis="gap",
-                    yaxis="count * {shash} sequences",
+                    yaxis=f"count × {shash} sequences",
                     num_bins=v.max().item(),
                     plot_with=PLOT_WITH,
                     renderer=RENDERER,
@@ -3008,8 +3008,23 @@ with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
 
 # %%
 # @title export LaTeX figures
+title_reps = {
+    "W_E": r"\WE ",
+    r"W_{\text{pos}}": r"\Wpos ",
+    r"W_Q": r"\WQ ",
+    r"W_K": r"\WK ",
+    r"d_{\text{head}}": r"\dhead ",
+    r"W_V": r"\WV ",
+    r"W_O": r"\WO",
+    r"W_U": r"\WU ",
+    r"\text{EQKE}": r"\EPQKE ",
+}
+
+
 @contextmanager
-def texify_title(fig: go.Figure, show: bool = False, renderer=None):
+def texify_title(
+    fig: go.Figure, replace_with_macros: bool = True, show: bool = False, renderer=None
+):
     orig_title = fig.layout.title.text  # type: ignore
     new_title = None
     if orig_title is not None and (
@@ -3049,6 +3064,9 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
             lines = [r"\text{%s: }%s" % (lines[0], ": ".join(lines[1:]))]
         new_title = r"\\".join(lines)
         new_title = f"${new_title}$"
+        for search, rep in title_reps.items():
+            new_title = new_title.replace(search, rep)
+
         print(new_title)
     try:
         if new_title is not None:
@@ -3062,35 +3080,56 @@ def texify_title(fig: go.Figure, show: bool = False, renderer=None):
 
 
 @contextmanager
-def texify_matplotlib_title(fig: matplotlib.figure.Figure, show: bool = False):
+def texify_matplotlib_title(
+    fig: matplotlib.figure.Figure, show: bool = False, replace_with_macros: bool = True
+):
     def texify(s: Optional[str]) -> Optional[str]:
         if s is None:
             return None
         orig_s = s
         s = s.replace("\n", "\\\\\n")
+        if replace_with_macros:
+            for search, rep in title_reps.items():
+                s = s.replace(search, rep)
         if s != orig_s:
             return s
         return None
 
     orig_suptitle = fig._suptitle.get_text() if fig._suptitle else None
     orig_titles = [ax.get_title() for ax in fig.axes if fig.axes]
+    orig_xlabels = [ax.get_xlabel() for ax in fig.axes if fig.axes]
+    orig_ylabels = [ax.get_ylabel() for ax in fig.axes if fig.axes]
     new_suptitle = texify(orig_suptitle)
     new_titles = [texify(t) for t in orig_titles]
+    new_xlabels = [texify(t) for t in orig_xlabels]
+    new_ylabels = [texify(t) for t in orig_ylabels]
     try:
         if new_suptitle is not None:
             fig.suptitle(new_suptitle)
         if fig.axes:
-            for ax, new_title in zip(fig.axes, new_titles):
+            for ax, new_title, new_xlabel, new_ylabel in zip(
+                fig.axes, new_titles, new_xlabels, new_ylabels
+            ):
                 if new_title is not None:
                     ax.set_title(new_title)
+                if new_xlabel is not None:
+                    ax.set_xlabel(new_xlabel)
+                if new_ylabel is not None:
+                    ax.set_ylabel(new_ylabel)
         yield fig
     finally:
         if new_suptitle is not None:
             fig.suptitle(orig_suptitle)
         if fig.axes:
-            for ax, orig_title in zip(fig.axes, orig_titles):
+            for ax, orig_title, orig_xlabel, orig_ylabel in zip(
+                fig.axes, orig_titles, orig_xlabels, orig_ylabels
+            ):
                 if orig_title is not None:
                     ax.set_title(orig_title)
+                if orig_xlabel is not None:
+                    ax.set_xlabel(orig_xlabel)
+                if orig_ylabel is not None:
+                    ax.set_ylabel(orig_ylabel)
 
 
 errs = []

@@ -3064,8 +3064,9 @@ def texify_title(
             lines = [r"\text{%s: }%s" % (lines[0], ": ".join(lines[1:]))]
         new_title = r"\\".join(lines)
         new_title = f"${new_title}$"
-        for search, rep in title_reps.items():
-            new_title = new_title.replace(search, rep)
+        if replace_with_macros:
+            for search, rep in title_reps.items():
+                new_title = new_title.replace(search, rep)
 
         print(new_title)
     try:
@@ -3149,7 +3150,7 @@ for k, fig in latex_figures.items():
         #     print(f"Saving {p}...")
         #     p.parent.mkdir(parents=True, exist_ok=True)
         #     tikzplotly.save(p, fig)
-        with texify_title(fig) as fig:
+        with texify_title(fig, replace_with_macros=False) as fig:
             if True or unsupported_by_tikzplotly:
                 for ext in (".pdf", ".svg"):
                     p = LATEX_FIGURE_PATH / f"{k}{ext}"
@@ -3175,7 +3176,7 @@ for k, fig in latex_figures.items():
                 )
         p = LATEX_FIGURE_PATH / f"{k}.tex"
         print(f"Saving {p}...")
-        with texify_matplotlib_title(fig) as fig:
+        with texify_matplotlib_title(fig, replace_with_macros=True) as fig:
             tikzplotlib.save(p, fig, externalize_tables=False)
         for ext in (".pdf", ".svg"):
             p = LATEX_FIGURE_PATH / f"{k}{ext}"

@@ -2873,12 +2873,28 @@ if HAS_CSVS:
                 f"{new_group_name} (rel acc: {pm_round(avg, std)})"
             )
 
+
+# %%
+def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
+    # hack around https://github.com/nschloe/tikzplotlib/issues/594
+    group_counts = data[column].value_counts()
+    single_row_groups = group_counts[group_counts == 1].index
+    for group in single_row_groups:
+        single_row = data[data[column] == group]
+        data = pd.concat([data, single_row], ignore_index=True)
+    return data
+
+
 # %%
 if HAS_CSVS:
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     data = combined_df[
         ["proof-flop-estimate", "effective-dimension-estimate", "group"]
     ].copy()
+    data = double_singleton_groups(data.drop_duplicates(), column="group")
+    data = data.sort_values(
+        by=["group", "proof-flop-estimate", "effective-dimension-estimate"]
+    )
     data["group"] = data["group"].map(category_name_remap)
     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
         data,
@@ -2910,6 +2926,10 @@ if HAS_CSVS:
             data = data[
                 ["proof-flop-estimate", f"{norm}accuracy-bound", "group"]
             ].copy()
+            data = double_singleton_groups(data.drop_duplicates(), column="group")
+            data = data.sort_values(
+                by=["group", f"{norm}accuracy-bound", "proof-flop-estimate"]
+            )
             data["group"] = data["group"].map(category_name_remap)
             latex_externalize_tables[key] = True
             latex_figures[key] = fig = scatter(
@@ -2917,7 +2937,7 @@ if HAS_CSVS:
                 x="proof-flop-estimate",
                 y=f"{norm}accuracy-bound",
                 color="group",
-                title="Pareto Frontier" if frontier_only else "",
+                title="",  # "Pareto Frontier" if frontier_only else "",
                 log_x=2,
                 reverse_xaxis=True,
                 xaxis="FLOPs to Verify Proof (approximate)",

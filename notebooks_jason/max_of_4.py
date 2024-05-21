@@ -18,7 +18,7 @@ import sys
 import re
 import time
 import subprocess
-from functools import reduce, partial
+from functools import reduce, partial, cache
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 import io
@@ -2629,6 +2629,8 @@ with torch.no_grad():
                     ).format():
                         print(line, file=sys.stderr)
 # %%
+
+# %%
 HAS_CSVS = False
 if not BRUTE_FORCE_CSV_PATH.exists():
     print(
@@ -2648,27 +2650,119 @@ else:
     cubic_df = pd.read_csv(CUBIC_CSV_PATH)
     subcubic_df = pd.read_csv(SUBCUBIC_CSV_PATH)
 # %%
+# Approximating effective dimensionality
+d_vocab, n_ctx = model.cfg.d_vocab, model.cfg.n_ctx
+latex_values["BruteForceEffectiveDimensionalityEstimate"] = brute_force_ed = (
+    d_vocab ** (n_ctx + 1)
+)
+EUPU_cost = d_vocab**2
+PVOU_cost = n_ctx * d_vocab
+EPQKE_cost = d_vocab**2
+EPQKP_cost = d_vocab * n_ctx
+EVOU_cost = d_vocab**2
+latex_values["CubicEffectiveDimensionalityEstimate"] = cubic_ed = (
+    EUPU_cost + PVOU_cost + EPQKE_cost + EPQKP_cost + EVOU_cost
+)
+# %%
 if HAS_CSVS:
-    subcubic_ext_df = subcubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
-    subcubic_ext_df["normalized-accuracy-bound"] = (
-        subcubic_ext_df["accuracy-bound"] / subcubic_ext_df["accuracy"]
-    )
-    subcubic_ext_df["group"] = "subcubic"
-
     brute_force_ext_df = brute_force_df.copy()
-    brute_force_ext_df["proof-flop-estimate"] = 876123000832
+    if "BruteForceInstructionCount" not in latex_values:
+        print("Warning: falling back on old value for BruteForceInstructionCount")
+    brute_force_ext_df["proof-flop-estimate"] = latex_values.get(
+        "BruteForceInstructionCount", 876123000832
+    )
     brute_force_ext_df["normalized-accuracy-bound"] = (
         brute_force_ext_df["accuracy"] / brute_force_ext_df["accuracy"]
     )
     brute_force_ext_df["accuracy-bound"] = brute_force_ext_df["accuracy"]
     brute_force_ext_df["group"] = "brute-force"
+    brute_force_ext_df["effective-dimension-estimate"] = brute_force_ed
+    brute_force_ext_df["leading-complexity"] = "brute-force"
 
     cubic_ext_df = cubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
-    cubic_ext_df["proof-flop-estimate"] = 35181664
+    if "CubicInstructionCount" not in latex_values:
+        print("Warning: falling back on old value for CubicInstructionCount")
+    cubic_ext_df["proof-flop-estimate"] = latex_values.get(
+        "CubicInstructionCount", 35181664
+    )
     cubic_ext_df["normalized-accuracy-bound"] = (
         cubic_ext_df["accuracy-bound"] / cubic_ext_df["accuracy"]
     )
     cubic_ext_df["group"] = "cubic"
+    cubic_ext_df["leading-complexity"] = "cubic"
+    cubic_ext_df["effective-dimension-estimate"] = cubic_ed
+
+    subcubic_PVOU_cost = d_vocab
+    subcubic_EPQKP_cost = 0
+
+    subcubic_ext_df = subcubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
+    subcubic_ext_df["normalized-accuracy-bound"] = (
+        subcubic_ext_df["accuracy-bound"] / subcubic_ext_df["accuracy"]
+    )
+    warned = False
+
+    @cache
+    def parse_tricks_legacy(tricks):
+        if tricks.startswith("ExactEQKE"):
+            global warned
+            if not warned:
+                print(f"Warning: legacy {tricks}")
+            warned = True
+            tricks = tricks[len("ExactEQKE") :]
+            assert tricks.endswith("AttnErrMaxDiffExact"), tricks
+            tricks = (
+                tricks[: -len("AttnErrMaxDiffExact")] + "AttnErrExactEqkeMaxDiffExact"
+            )
+        return LargestWrongLogitQuadraticConfig.parse(tricks, latex=True)
+
+    def subcubic_approx_effective_dimension(row, df):
+        _, model = runtime_models[row["seed"]]
+        tricks = parse_tricks_legacy(row["tricks"])
+        return (
+            int(tricks.effective_dimension_estimate(model.cfg))
+            + subcubic_PVOU_cost
+            + subcubic_EPQKP_cost
+            + EVOU_cost
+        )
+
+    def leading_complexity(row, df):
+        tricks = parse_tricks_legacy(row["tricks"])
+        return (
+            "almost-quadratic"
+            if tricks.is_quadratic
+            else "subcubic" if tricks.is_subcubic else "fake-cubic"
+        )
+
+    def subcubic_group(row, df):
+        tricks = parse_tricks_legacy(row["tricks"])
+        EUPU_str = (
+            "direct-quadratic"
+            if tricks.EUPU_handling_quadratic
+            else None if tricks.EUPU_handling_subcubic else "direct-cubic"
+        )
+        EPQKE_str = (
+            "attention-quadratic"
+            if tricks.attention_error_handling_quadratic
+            and tricks.attention_handling_quadratic
+            else (
+                None
+                if tricks.attention_error_handling_subcubic
+                and tricks.attention_handling_subcubic
+                else "attention-cubic-reference"
+            )
+        )
+        strs = [s for s in (EPQKE_str, EUPU_str) if s is not None]
+        return "subcubic" + (f" ({', '.join(strs)})" if strs else "")
+
+    subcubic_ext_df["group"] = subcubic_ext_df.apply(
+        subcubic_group, args=(subcubic_ext_df,), axis=1
+    )
+    subcubic_ext_df["effective-dimension-estimate"] = subcubic_ext_df.apply(
+        subcubic_approx_effective_dimension, args=(subcubic_ext_df,), axis=1
+    )
+    subcubic_ext_df["leading-complexity"] = subcubic_ext_df.apply(
+        leading_complexity, args=(subcubic_ext_df,), axis=1
+    )
 
     # Combine all data into a single DataFrame
     combined_df = pd.concat(
@@ -2679,6 +2773,8 @@ if HAS_CSVS:
                     "normalized-accuracy-bound",
                     "accuracy-bound",
                     "seed",
+                    "effective-dimension-estimate",
+                    "leading-complexity",
                     "group",
                 ]
             ],
@@ -2688,6 +2784,8 @@ if HAS_CSVS:
                     "normalized-accuracy-bound",
                     "accuracy-bound",
                     "seed",
+                    "effective-dimension-estimate",
+                    "leading-complexity",
                     "group",
                 ]
             ],
@@ -2697,6 +2795,8 @@ if HAS_CSVS:
                     "normalized-accuracy-bound",
                     "accuracy-bound",
                     "seed",
+                    "effective-dimension-estimate",
+                    "leading-complexity",
                     "group",
                 ]
             ],
@@ -2717,11 +2817,35 @@ if HAS_CSVS:
     combined_df["frontier"] = combined_df.apply(
         is_frontier, args=(combined_df,), axis=1
     )
-
+# %%
+if HAS_CSVS:
+    for descr, df in (
+        (
+            "all subcubic",
+            subcubic_ext_df[subcubic_ext_df["leading-complexity"] != "fake-cubic"][
+                "proof-flop-estimate"
+            ],
+        ),
+        (
+            "mainly subcubic",
+            subcubic_ext_df[subcubic_ext_df["leading-complexity"] == "subcubic"][
+                "proof-flop-estimate"
+            ],
+        ),
+        (
+            "almost quadratic",
+            subcubic_ext_df[
+                subcubic_ext_df["leading-complexity"] == "almost-quadratic"
+            ]["proof-flop-estimate"],
+        ),
+    ):
+        print(f"{descr}: {pm_mean_std(df)}")
+# %%
+if HAS_CSVS:
     for norm, normt in (("", ""), ("normalized-", "Normalized ")):
         # Create scatter plot with logarithmic x-axis
         fig = px.scatter(
-            combined_df,
+            combined_df[["proof-flop-estimate", f"{norm}accuracy-bound", "group"]],
             x="proof-flop-estimate",
             y=f"{norm}accuracy-bound",
             color="group",
@@ -2733,7 +2857,9 @@ if HAS_CSVS:
 
         # Create scatter plot with logarithmic x-axis
         fig = px.scatter(
-            combined_df[combined_df["frontier"] == True],
+            combined_df[combined_df["frontier"] == True][
+                ["proof-flop-estimate", f"{norm}accuracy-bound", "group"]
+            ],
             x="proof-flop-estimate",
             y=f"{norm}accuracy-bound",
             color="group",
@@ -2744,7 +2870,9 @@ if HAS_CSVS:
         fig.show("png")
 
         fig = px.scatter(
-            combined_df,
+            combined_df[
+                ["proof-flop-estimate", f"{norm}accuracy-bound", "group", "frontier"]
+            ],
             x="proof-flop-estimate",
             y=f"{norm}accuracy-bound",
             color="group",

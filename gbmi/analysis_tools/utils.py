@@ -5,6 +5,13 @@ from jaxtyping import Integer, Float
 import torch
 
 
+def _item(obj):
+    try:
+        return obj.item()
+    except AttributeError:
+        return obj
+
+
 def pm_round(
     mean: float,
     std: float,
@@ -15,18 +22,20 @@ def pm_round(
 ) -> str:
     if total_digits is None:
         total_digits = int(1 + extra_digits - np.log10(std))
+    if total_digits < 0:
+        mean, std = round(mean, total_digits), round(std, total_digits)
+        total_digits = 0
     return f"{mean:.{total_digits}{format_specifier}}{sep}{std:.{total_digits}{format_specifier}}"
 
 
 def pm_range(values, round: bool = True):
-    mid, half_range = (values.max().item() + values.min().item()) / 2.0, (
-        values.max().item() - values.min().item()
-    ) / 2.0
+    maxv, minv = _item(values.max()), _item(values.min())
+    mid, half_range = (maxv + minv) / 2.0, (maxv - minv) / 2.0
     return pm_round(mid, half_range) if round else f"{mid} ± {half_range}"
 
 
 def pm_mean_std(values, round: bool = True):
-    mean, std = values.mean().item(), values.std().item()
+    mean, std = _item(values.mean()), _item(values.std())
     return pm_round(mean, std) if round else f"{mean} ± {std}"
 
 

@@ -752,12 +752,20 @@ class LargestWrongLogitQuadraticConfig:
             and self.attention_error_handling_subcubic
         )
 
+    @property
+    def is_quadratic(self) -> bool:
+        return (
+            self.EUPU_handling_quadratic
+            and self.attention_handling_quadratic
+            and self.attention_error_handling_quadratic
+        )
+
     def effective_dimension_estimate(
         self, cfg: HookedTransformerConfig
     ) -> EffectiveDimensionApproximation:
         return (
             self.EUPU_handling_effective_dimension_estimate(cfg)
-            + self.attention_handling_effective_dimension_estimate(cfg)
+            # + self.attention_handling_effective_dimension_estimate(cfg)
             + self.attention_error_handling_effective_dimension_estimate(cfg)
         )
 
@@ -964,13 +972,19 @@ class LargestWrongLogitQuadraticConfig:
             case "max_diff_exact" | "exact_EQKE+max_diff_exact":
                 return False  # involves full matmul
 
-    def attention_error_handling_handling_effective_dimension_estimate(
+    def attention_error_handling_effective_dimension_estimate(
         self, cfg: HookedTransformerConfig
     ) -> EffectiveDimensionApproximation:
+        # d_vocab * 2 for principle components (singular value derived from those)
+        svd_cost = EffectiveDimensionApproximation(cfg.d_vocab * 2)
+        mean_count = EffectiveDimensionApproximation(
+            cfg.d_vocab if self.attention_error_handling.startswith("mean") else 0
+        )
+        # we store d_model row diffs on W_E_err on the K side
+        max_diff_count = EffectiveDimensionApproximation(2 * cfg.d_model)
         match self.attention_error_handling:
             case "svd":
-                # d_vocab * 2 for principle components (singular value derived from those)
-                return EffectiveDimensionApproximation(cfg.d_vocab * 2)
+                return svd_cost
             case (
                 "max_diff"
                 | "max_diff_subproduct"
@@ -978,40 +992,21 @@ class LargestWrongLogitQuadraticConfig:
                 | "mean+max_diff_subproduct"
             ):
                 # we still do svd, but now we also keep some info about the error
-                mean_count = (
-                    cfg.d_vocab
-                    if self.attention_error_handling.startswith("mean")
-                    else 0
-                )
-                return EffectiveDimensionApproximation(
-                    cfg.d_vocab * 2 + mean_count + cfg.d_model * 2
-                )
+                return svd_cost + mean_count + max_diff_count
             case (
                 "max_diff_subproduct_recursive"
                 | "mean+max_diff_subproduct_recursive"
                 | "mean_recursive+max_diff_subproduct_recursive"
             ):
-                pass
-            #     mean_count = cfg.d_vocab if self.attention_error_handling.startswith("mean") else 0
-            #     use_mean_row_recursively = self.attention_error_handling.startswith(
-            #         "mean_recursive"
-            #     )
-            #     return max_row_diffs_per_dim_no_multipy(
-            #         *matrices,
-            #         use_mean_row=use_mean_row,
-            #         use_mean_row_recursively=use_mean_row_recursively,
-            #     )
+                # TODO figure out what to do with recursive mean count
+                use_mean_row_recursively = self.attention_error_handling.startswith(
+                    "mean_recursive"
+                )
+                return svd_cost + mean_count + max_diff_count
             case "max_diff_exact":
-                pass
-            #     m = reduce(torch.matmul, matrices)
-            #     return m.max(dim=-1).values - m.min(dim=-1).values
+                return svd_cost + EffectiveDimensionApproximation(cfg.d_vocab * 2)
             case "exact_EQKE+max_diff_exact":
-                pass
-            #     for m in matrices:
-            #         assert torch.allclose(
-            #             m, torch.zeros_like(m)
-            #         ), f"matrices should be zero when passing {self.attention_error_handling}, not {m}"
-            #     return torch.tensor(0).to(matrices[0])
+                return EffectiveDimensionApproximation(cfg.d_vocab * cfg.d_vocab)
 
     def split_extreme_softmaxed_right_attention(
         self,

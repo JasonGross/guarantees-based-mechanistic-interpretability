@@ -3011,13 +3011,18 @@ with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
 title_reps = {
     "W_E": r"\WE ",
     r"W_{\text{pos}}": r"\Wpos ",
+    r"W_{\mathrm{pos}}": r"\Wpos ",
     r"W_Q": r"\WQ ",
     r"W_K": r"\WK ",
     r"d_{\text{head}}": r"\dhead ",
+    r"d_{\mathrm{head}}": r"\dhead ",
     r"W_V": r"\WV ",
     r"W_O": r"\WO",
     r"W_U": r"\WU ",
     r"\text{EQKE}": r"\EPQKE ",
+    r"\mathrm{EQKE}": r"\EPQKE ",
+    r"\text{EQKP}": r"\EPQKP ",
+    r"\mathrm{EQKP}": r"\EPQKP ",
 }
 
 

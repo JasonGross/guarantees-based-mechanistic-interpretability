@@ -297,6 +297,8 @@ def scatter_plotly(
     show: bool = True,
     renderer: Optional[str] = None,
     legend_at_bottom: bool = False,
+    reverse_xaxis: bool = False,
+    reverse_yaxis: bool = False,
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -314,6 +316,10 @@ def scatter_plotly(
                 x=0.5,
             )
         )
+    if reverse_yaxis:
+        fig.update_layout(yaxis=dict(autorange="reversed"))
+    if reverse_xaxis:
+        fig.update_layout(xaxis=dict(autorange="reversed"))
     if show:
         fig.show(renderer)
     return fig
@@ -336,6 +342,10 @@ def scatter_matplotlib(
     title: Optional[str] = None,
     legend_at_bottom: bool = False,
     renderer: Optional[str] = None,
+    log_x: Union[bool, int] = False,
+    log_y: Union[bool, int] = False,
+    reverse_xaxis: bool = False,
+    reverse_yaxis: bool = False,
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -357,11 +367,29 @@ def scatter_matplotlib(
         if not legend_at_bottom:
             ax.legend()
     else:
+        sns_remap = {"color": "hue", "color_order": "hue_order"}
+        for k in list(kwargs.keys()):
+            if k in sns_remap and sns_remap[k] not in kwargs:
+                kwargs[sns_remap[k]] = kwargs.pop(k)
         sns.scatterplot(*data, ax=ax, **kwargs)
     if legend_at_bottom:
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
+    if log_x:
+        if isinstance(log_x, bool):
+            ax.set_xscale("log")
+        else:
+            ax.set_xscale("log", base=log_x)
+    if log_y:
+        if isinstance(log_y, bool):
+            ax.set_yscale("log")
+        else:
+            ax.set_yscale("log", base=log_y)
+    if reverse_xaxis:
+        ax.invert_xaxis()
+    if reverse_yaxis:
+        ax.invert_yaxis()
     if title is not None:
         fig.suptitle(title)
     plt.tight_layout()

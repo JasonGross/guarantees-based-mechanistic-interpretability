@@ -66,6 +66,7 @@ from gbmi.analysis_tools.plot import (
 )
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.utils import pm_round, pm_mean_std
+from gbmi.analysis_tools.plot import scatter
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.lowrank import LowRankTensor
@@ -207,6 +208,7 @@ default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
 latex_figures: dict[str, Union[go.Figure, matplotlib.figure.Figure]] = {}
+latex_externalize_tables: dict[str, bool] = {}
 
 
 # %%
@@ -2839,49 +2841,94 @@ if HAS_CSVS:
             ]["proof-flop-estimate"],
         ),
     ):
+        prekey = (
+            f"ProofFlopEstimate{''.join([s.capitalize() for s in descr.split(' ')])}"
+        )
+        latex_values[f"{prekey}Mean"] = df.mean()
+        latex_values[f"{prekey}StdDev"] = df.std()
         print(f"{descr}: {pm_mean_std(df)}")
 # %%
 if HAS_CSVS:
-    fig = px.scatter(
-        combined_df[["proof-flop-estimate", "effective-dimension-estimate", "group"]],
+    df_sorted = combined_df.sort_values(by="normalized-accuracy-bound", ascending=False)
+    category_order = df_sorted["group"].unique().tolist()
+    category_name_remap = {
+        "brute-force": f"brute force (acc: {pm_mean_std(brute_force_df['accuracy'])})",
+        "cubic": f"cubic (rel acc: {pm_mean_std(cubic_ext_df['normalized-accuracy-bound'])})",
+    }
+    max_rows = subcubic_ext_df.loc[
+        subcubic_ext_df.groupby(["seed", "group"])["normalized-accuracy-bound"].idxmax()
+    ]
+    result = (
+        max_rows.groupby("group")["normalized-accuracy-bound"]
+        .agg(["mean", "std"])
+        .reset_index()
+    )
+    for group_name in category_order:
+        if group_name not in category_name_remap:
+            avg, std = result[result["group"] == group_name][["mean", "std"]].iloc[0]
+            new_group_name = group_name[len("subcubic (") : -1]
+            new_group_name = "subcubic" if not new_group_name else new_group_name
+            category_name_remap[group_name] = (
+                f"{new_group_name} (rel acc: {pm_round(avg, std)})"
+            )
+
+# %%
+if HAS_CSVS:
+    latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
+    data = combined_df[
+        ["proof-flop-estimate", "effective-dimension-estimate", "group"]
+    ].copy()
+    data["group"] = data["group"].map(category_name_remap)
+    latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
+        data,
         x="proof-flop-estimate",
         y="effective-dimension-estimate",
         color="group",
-        title=f"Scatter Plot of Effective Dimension Estimate vs Proof Flop Estimate (Logarithmic X&Y-Axis)",
-        log_x=True,
-        log_y=True,
+        title="",
+        log_x=2,
+        log_y=2,
+        reverse_xaxis=True,
+        color_order=[category_name_remap[c] for c in category_order],
+        xaxis="FLOPs to Verify Proof (approximate)",
+        yaxis="Effective Residual Dimensionality (Estimated)",
+        plot_with=PLOT_WITH,
+        renderer=RENDERER,
     )
-    fig.update_layout(xaxis=dict(autorange="reversed"))
-    fig.show("png")
+
+# %%
+if HAS_CSVS:
+    for frontier_only in (True, False):
+        for norm, normt in (("", ""), ("normalized-", "Normalized ")):
+            key = f"{normt.strip()}AccuracyBoundVsFLOPs{'FrontierOnly' if frontier_only else ''}"
+            data = (
+                combined_df[combined_df["frontier"] == True]
+                if frontier_only
+                else combined_df
+            )
+            data = data[
+                ["proof-flop-estimate", f"{norm}accuracy-bound", "group"]
+            ].copy()
+            data["group"] = data["group"].map(category_name_remap)
+            latex_externalize_tables[key] = True
+            latex_figures[key] = fig = scatter(
+                data,
+                x="proof-flop-estimate",
+                y=f"{norm}accuracy-bound",
+                color="group",
+                title="Pareto Frontier" if frontier_only else "",
+                log_x=2,
+                reverse_xaxis=True,
+                xaxis="FLOPs to Verify Proof (approximate)",
+                yaxis=f"{normt}Accuracy Bound",
+                color_order=[category_name_remap[c] for c in category_order],
+                plot_with=PLOT_WITH,
+                renderer=RENDERER,
+            )
+
 
 # %%
 if HAS_CSVS:
     for norm, normt in (("", ""), ("normalized-", "Normalized ")):
-        # Create scatter plot with logarithmic x-axis
-        fig = px.scatter(
-            combined_df[["proof-flop-estimate", f"{norm}accuracy-bound", "group"]],
-            x="proof-flop-estimate",
-            y=f"{norm}accuracy-bound",
-            color="group",
-            title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
-            log_x=True,
-        )
-        fig.update_layout(xaxis=dict(autorange="reversed"))
-        fig.show("png")
-
-        # Create scatter plot with logarithmic x-axis
-        fig = px.scatter(
-            combined_df[combined_df["frontier"] == True][
-                ["proof-flop-estimate", f"{norm}accuracy-bound", "group"]
-            ],
-            x="proof-flop-estimate",
-            y=f"{norm}accuracy-bound",
-            color="group",
-            title=f"Frontier Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
-            log_x=True,
-        )
-        fig.update_layout(xaxis=dict(autorange="reversed"))
-        fig.show("png")
 
         fig = px.scatter(
             combined_df[
@@ -3056,7 +3103,9 @@ for k, fig in latex_figures.items():
         print(f"Saving {p}...")
         p.parent.mkdir(parents=True, exist_ok=True)
         with texify_matplotlib_title(fig) as fig:
-            tikzplotlib.save(p, fig, externalize_tables=False)
+            tikzplotlib.save(
+                p, fig, externalize_tables=latex_externalize_tables.get(k, False)
+            )
         for ext in (".pdf", ".svg"):
             p = LATEX_FIGURE_PATH / f"{k}{ext}"
             print(f"Saving {p}...")

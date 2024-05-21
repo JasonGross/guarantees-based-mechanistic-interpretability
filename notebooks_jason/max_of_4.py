@@ -2842,6 +2842,20 @@ if HAS_CSVS:
         print(f"{descr}: {pm_mean_std(df)}")
 # %%
 if HAS_CSVS:
+    fig = px.scatter(
+        combined_df[["proof-flop-estimate", "effective-dimension-estimate", "group"]],
+        x="proof-flop-estimate",
+        y="effective-dimension-estimate",
+        color="group",
+        title=f"Scatter Plot of Effective Dimension Estimate vs Proof Flop Estimate (Logarithmic X&Y-Axis)",
+        log_x=True,
+        log_y=True,
+    )
+    fig.update_layout(xaxis=dict(autorange="reversed"))
+    fig.show("png")
+
+# %%
+if HAS_CSVS:
     for norm, normt in (("", ""), ("normalized-", "Normalized ")):
         # Create scatter plot with logarithmic x-axis
         fig = px.scatter(

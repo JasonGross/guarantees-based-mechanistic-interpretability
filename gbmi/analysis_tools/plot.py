@@ -346,6 +346,7 @@ def scatter_matplotlib(
     log_y: Union[bool, int] = False,
     reverse_xaxis: bool = False,
     reverse_yaxis: bool = False,
+    legend: Optional[bool] = None,
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -366,6 +367,32 @@ def scatter_matplotlib(
             plt.scatter(x, v, label=k, marker=marker)
         if not legend_at_bottom:
             ax.legend()
+    elif (
+        len(data) == 1
+        and isinstance(data[0], pd.DataFrame)
+        and "x" in kwargs
+        and "y" in kwargs
+    ):
+        data = data[0]
+        if "color" in kwargs:
+            groups = kwargs.get("color_order", data[kwargs["color"]].unique())
+            if legend is None:
+                legend = True
+            for group, marker in zip(groups, better_unique_markers(len(groups))):
+                subset = data[data[kwargs["color"]] == group]
+                ax.scatter(
+                    subset[kwargs["x"]],
+                    subset[kwargs["y"]],
+                    label=group,
+                    # color=
+                )
+        else:
+            ax.scatter(
+                data[kwargs["x"]],
+                data[kwargs["y"]],
+                # label=group,
+                # color=
+            )
     else:
         sns_remap = {"color": "hue", "color_order": "hue_order"}
         for k in list(kwargs.keys()):
@@ -374,6 +401,8 @@ def scatter_matplotlib(
         sns.scatterplot(*data, ax=ax, **kwargs)
     if legend_at_bottom:
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
+    elif legend:
+        ax.legend()
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
     if log_x:

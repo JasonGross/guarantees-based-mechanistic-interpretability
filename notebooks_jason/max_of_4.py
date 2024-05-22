@@ -2844,7 +2844,7 @@ if HAS_CSVS:
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
-            ).attention_error_handling
+            ).attention_error_handling.replace("_", "-")
         ),
         axis=1,
     )
@@ -2852,7 +2852,7 @@ if HAS_CSVS:
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
-            ).attention_handling
+            ).attention_handling.replace("_", "-")
         ),
         axis=1,
     )
@@ -2860,7 +2860,7 @@ if HAS_CSVS:
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
-            ).EUPU_handling
+            ).EUPU_handling.replace("_", "-")
         ),
         axis=1,
     )
@@ -2906,7 +2906,7 @@ if HAS_CSVS:
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
-            ).attention_error_handling
+            ).attention_error_handling.replace("_", "-")
         ),
         axis=1,
     )
@@ -2914,7 +2914,7 @@ if HAS_CSVS:
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
-            ).attention_handling
+            ).attention_handling.replace("_", "-")
         ),
         axis=1,
     )
@@ -2922,7 +2922,7 @@ if HAS_CSVS:
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
-            ).EUPU_handling
+            ).EUPU_handling.replace("_", "-")
         ),
         axis=1,
     )

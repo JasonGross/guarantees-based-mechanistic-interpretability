@@ -1578,7 +1578,9 @@ new_data = []
 for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])
 
-update_csv_with_rows(SUBCUBIC_CSV_PATH, new_data, columns=subcubic_columns)
+update_csv_with_rows(
+    SUBCUBIC_CSV_PATH, new_data, columns=subcubic_columns, subset=["seed", "tricks"]
+)
 
 # %%
 # %% [markdown]

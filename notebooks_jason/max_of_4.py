@@ -75,7 +75,11 @@ import gbmi.utils.ein as ein
 import gbmi.utils.images as image_utils
 from gbmi.utils.images import trim_plotly_figure
 from gbmi.utils.memoshelve import memoshelve
-from gbmi.utils.latex_export import to_latex_defs
+from gbmi.utils.latex_export import (
+    to_latex_defs,
+    latex_values_of_counter,
+    latex_values_of_instruction_count,
+)
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
@@ -214,27 +218,6 @@ latex_only_externalize_tables: dict[str, bool] = {}
 
 
 # %%
-def latex_values_of_counter(prefix: str, counters: PerfCounter) -> dict[str, int]:
-    return {
-        f"{prefix}Perf{latex_attr}": getattr(counters, attr)
-        for attr, latex_attr in (
-            ("time_enabled_ns", "TimeEnabledNS"),
-            ("instruction_count", "InstructionCount"),
-            ("branch_misses", "BranchMisses"),
-            ("page_faults", "PageFaults"),
-        )
-        if hasattr(counters, attr)
-    }
-
-
-def latex_values_of_instruction_count(
-    prefix: str, count: InstructionCount
-) -> dict[str, int]:
-    return {
-        f"{prefix}InstructionCount": count.flop,
-        f"{prefix}InstructionCountInt": count.int_op,
-        f"{prefix}InstructionCountBranch": count.branch,
-    }
 
 
 # %%
@@ -1690,6 +1673,7 @@ def display_EQKE_SVD_analysis(
     results_float["EQKEFirstSingularFloat"] = S[0].item()
     results_float["EQKESecondSingularFloat"] = S[1].item()
     results_float["EQKEThirdSingularFloat"] = S[2].item()
+    results_float["EQKERatioFirstTwoSingularFloat"] = (S[0] / S[1]).item()
 
     fig = imshow(
         EQKE_exact,

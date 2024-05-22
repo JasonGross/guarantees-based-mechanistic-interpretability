@@ -15,27 +15,45 @@ else:
 # %%
 import traceback
 import gc
+from collections import defaultdict
 import random
 import sys
 import os
 import time
 import subprocess
 import pandas as pd
-from functools import partial
+from functools import partial, reduce
 from concurrent.futures import ThreadPoolExecutor
 import math
 import matplotlib
+import scipy.stats as stats
 from typing import (
     Any,
+    Literal,
     Optional,
     Tuple,
     Union,
     Iterator,
+    Callable,
 )
 
+from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.memoshelve import memoshelve, uncache as memoshelve_uncache
+from gbmi.analysis_tools.plot import (
+    EVOU_max_logit_diff,
+)
+from gbmi.exp_max_of_n.plot import (
+    EVOU_max_minus_diag_logit_diff,
+    attention_difference_over_gap,
+)
+from gbmi.exp_max_of_n.analysis import (
+    find_second_singular_contributions,
+    find_size_and_query_direction,
+)
+
 from gbmi.exp_max_of_n.train import (
     IterableDatasetCfg,
     MaxOfN,
@@ -54,6 +72,12 @@ from gbmi.utils import default_device
 from gbmi.utils.sequences import (
     SequenceDataset,
 )
+from gbmi.utils.latex_export import (
+    to_latex_defs,
+    latex_values_of_counter,
+    latex_values_of_instruction_count,
+)
+from gbmi.utils import default_device, dropnan, shuffle_tensors, shuffle_tensor
 from gbmi.utils.gc import PeriodicGarbageCollector
 from gbmi.utils.hashing import get_hash_ascii
 import gbmi.utils.git as git
@@ -61,7 +85,7 @@ import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 import gbmi.utils.ein as ein
 import gbmi.utils.instructions as instructions
 from gbmi.utils.instructions import (
@@ -85,7 +109,7 @@ parser.add_argument(
     help="Comma-separated list of seeds to use",
 )
 parser.add_argument(
-    "-j", dest="n_threads", type=int, default=30, help="number of threads"
+    "-j", dest="n_threads", type=int, default=1, help="number of threads"
 )
 parser.add_argument(
     "--no-perf",
@@ -94,11 +118,18 @@ parser.add_argument(
     default=None,
     help="Forcibly disable perf",
 )
-cli_args = parser.parse_args()
+parser.add_argument(
+    "--ignore-csv",
+    action="store_const",
+    const=True,
+    default=None,
+    help="Recompute seeds that appear in csvs",
+)
+cli_args = parser.parse_args(None if ipython is None else [])
 # %%
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
-OVERWRITE_CSV_FROM_CACHE: bool = False  # @param {type:"boolean"}
+OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
 TRAIN_CSV_PATH = Path(__file__).with_suffix("") / "all-models-train-values.csv"
 TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
@@ -126,11 +157,15 @@ GIT_SHA_SHORT_PATH = (
     Path(__file__).with_suffix("") / "all-models-values-git-sha-short.txt"
 )
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
-N_THREADS: Optional[int] = cli_args.n_threads
+LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "all-models-values.tex"
+LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
+N_THREADS: Optional[int] = cli_args.n_threads
 # %%
 if cli_args.no_perf:
     PERF_WORKING = False
+# %%
+latex_values: dict[str, Union[int, float, str]] = {}
 
 
 # %%
@@ -139,8 +174,38 @@ def maybe_parallel_map(func, *args):
         result = list(map(func, *args))
     else:
         with ThreadPoolExecutor(max_workers=N_THREADS) as executor:
-            result = executor.map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
+            result = executor.map(func, *args)
     gc.collect()
+    return result
+
+
+# %%
+def data_summary(
+    data, prefix: str = "", float_postfix: str = "Float", int_postfix: str = ""
+):
+    if isinstance(data, torch.Tensor):
+        data = data.cpu().numpy()
+    elif not isinstance(data, np.ndarray):
+        data = np.array(data)
+    wf = lambda k: f"{prefix}{k}{float_postfix}"
+    result = {
+        wf("Mean"): data.mean(),
+        wf("StdDev"): data.std(),
+        f"{prefix}Len{int_postfix}": len(data.flatten()),
+        wf("Min"): data.min(),
+        wf("Max"): data.max(),
+    }
+    s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
+    percentiles = stats.norm.cdf([-3 * s, -2 * s, -s, 0, s, 2 * s, 3 * s])
+    (
+        result[wf("LowerWhiskerBottomEnd")],
+        result[wf("LowerWhiskerCrosshatch")],
+        result[wf("QuartileOne")],
+        result[wf("Median")],
+        result[wf("QuartileThree")],
+        result[wf("UpperWhiskerCrosshatch")],
+        result[wf("UpperWhiskerTopEnd")],
+    ) = np.percentile(data, percentiles)
     return result
 
 
@@ -260,7 +325,7 @@ def update_csv_with_rows(
     new_df = pd.DataFrame(new_data, columns=columns)
     if results is None or results.empty:
         results = new_df
-    else:
+    elif not new_df.empty:
         results = pd.concat([results, new_df], ignore_index=True).drop_duplicates(
             subset=subset, keep="last"
         )
@@ -357,10 +422,6 @@ with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
 # %%
 # load csv
 train_columns = ["seed", "loss", "accuracy", "model-seed", "dataset-seed"]
-if os.path.exists(TRAIN_CSV_PATH):
-    train_results = pd.read_csv(TRAIN_CSV_PATH)
-else:
-    train_results = pd.DataFrame(columns=train_columns)
 
 train_data = {
     seed: {
@@ -375,8 +436,25 @@ train_data = {
 
 update_csv(TRAIN_CSV_PATH, train_data, columns=train_columns)
 
+# %%
+num_seeds = len(train_average_loss)
+avg_train_average_loss = sum(train_average_loss.values()) / num_seeds
+avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
+std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
+std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
+latex_values["NumSeeds"] = num_seeds
+latex_values["AvgTrainAccuracyFloat"] = avg_train_average_accuracy
+latex_values["StdDevTrainAccuracyFloat"] = std_dev_train_average_accuracy
+latex_values["AvgTrainLossFloat"] = avg_train_average_loss
+latex_values["StdDevTrainLossFloat"] = std_dev_train_average_loss
+
 # %% [markdown]
 # # Brute Force Proof
+# %%
+all_tokens_datasets = {
+    seed: SequenceDataset(seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab)
+    for seed, (_runtime, model) in runtime_models.items()
+}
 # %%
 brute_force_columns = [
     "seed",
@@ -413,9 +491,7 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
     runtime, model = runtime_models[seed]
     training_wrapper = training_wrappers[seed]
     assert cfg.experiment.model_config.seed is not None
-    all_tokens_dataset = SequenceDataset(
-        seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab
-    )
+    all_tokens_dataset = all_tokens_datasets[seed]
     total_loss = 0.0
     total_accuracy = 0.0
     total_samples = 0
@@ -530,6 +606,31 @@ with tqdm(total=total_batches, desc="batches for brute force", position=0) as pb
 
 update_csv(BRUTE_FORCE_CSV_PATH, brute_force_data, columns=brute_force_columns)
 
+# %%
+assert len(brute_force_data) == len(
+    runtime_models
+), f"len(brute_force_data) == {len(brute_force_data)} != {len(runtime_models)} == len(runtime_models)"
+all_tokens_datasets_lens = {seed: len(d) for seed, d in all_tokens_datasets.items()}
+assert (
+    len(set(all_tokens_datasets_lens.values())) == 1
+), f"Multiple dataset lengths! {set(all_tokens_datasets_lens.values())}"
+latex_values["BruteForceCPU"] = brute_force_proof_deterministic
+latex_values["BruteForceBatchSize"] = batch_size
+latex_values["BruteForceNumBatches"] = int(
+    math.ceil(list(all_tokens_datasets_lens.values())[0] / batch_size)
+)
+
+for key, latex_key in (
+    ("loss", "BruteForceLoss"),
+    ("accuracy", "BruteForceAccuracy"),
+    ("num_correct", "BruteForceNumCorrect"),
+    ("num_incorrect", "BruteForceNumIncorrect"),
+    ("duration", "BruteForceTime"),
+):
+    latex_values |= data_summary(
+        [d[key] for d in brute_force_data.values()], prefix=latex_key
+    )
+
 # %% [markdown]
 # # Cubic proof
 
@@ -622,11 +723,266 @@ with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
 update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
-# # %% [markdown]
-# # Summary satistics for models
-# # %%
+# %% [markdown]
+# Summary satistics cubic
+# %%
+assert len(cubic_data) == len(
+    brute_force_data
+), f"len(cubic_data) == {len(cubic_data)} != {len(brute_force_data)} == len(brute_force_data)"
+for key, latex_key in (
+    # ("loss", "CubicLoss"),
+    ("accuracy-bound", "CubicAccuracy"),
+    ("correct-count-lower-bound", "CubicCorrectCount"),
+    ("duration", "CubicProofTime"),
+):
+    latex_values |= data_summary(
+        [d[key] for d in cubic_data.values()], prefix=latex_key
+    )
 
-# def summary_statistics(seed: int)
+latex_values |= data_summary(
+    [
+        cubic_data[seed]["accuracy-bound"] / brute_force_data[seed]["accuracy"]
+        for seed in cubic_data.keys()
+    ],
+    prefix="CubicNormalizedAccuracy",
+)
+
+# %% [markdown]
+# # Intermediate interp values for export
+# %%
+max_logit_diffs = {
+    seed: EVOU_max_logit_diff(model)
+    for seed, (_runtime, model) in runtime_models.items()
+}
+latex_values |= data_summary(
+    [max_logit_diff.mean().item() for max_logit_diff in max_logit_diffs.values()],
+    prefix="EVOUMeanMaxRowDiff",
+)
+
+# hold some data before summarizing it
+latex_values_tmp_data = defaultdict(dict)
+for seed, (_runtime, model) in runtime_models.items():
+    for duplicate_by_sequence_count in [False, True]:
+        key = "EVOU-hist-min-above-diag"
+        if duplicate_by_sequence_count:
+            key += "-dup-by-seq-count"
+        (max_logit_minus_diag, duplication_factors) = EVOU_max_minus_diag_logit_diff(
+            model,
+            duplicate_by_sequence_count=duplicate_by_sequence_count,
+        )
+        mean = np.average(
+            max_logit_minus_diag.numpy(), weights=duplication_factors.numpy()
+        )
+        std = np.average(
+            (max_logit_minus_diag - mean).numpy() ** 2,
+            weights=duplication_factors.numpy(),
+        )
+        num_std = 1
+        most_below_value = int(mean + num_std * std)
+        frac_below = (
+            duplication_factors[max_logit_minus_diag <= most_below_value].sum()
+            / duplication_factors.sum()
+        ).item()
+        value_key = "".join(
+            v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
+        )
+        latex_values_tmp_data[value_key + "MostBelowValue"][seed] = most_below_value
+        latex_values_tmp_data[value_key + "MostBelowValueNumStd"][seed] = num_std
+        latex_values_tmp_data[value_key + "MostBelowValueSequenceFrac"][
+            seed
+        ] = frac_below
+
+    for duplicate_by_sequence_count in [False, True]:
+        flat_diffs, duplication_factors = attention_difference_over_gap(
+            model,
+            duplicate_by_sequence_count=duplicate_by_sequence_count,
+        )
+        key = "EQKE-hist-attention-difference-over-gap" + (
+            "-dup-by-seq-count" if duplicate_by_sequence_count else ""
+        )
+        mean = np.average(flat_diffs.numpy(), weights=duplication_factors.numpy())
+        std = np.average(
+            (flat_diffs - mean).numpy() ** 2,
+            weights=duplication_factors.numpy(),
+        )
+        value_key = "".join(
+            v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
+        )
+        latex_values_tmp_data[value_key + "Mean"][seed] = mean
+        latex_values_tmp_data[value_key + "Std"][seed] = std
+
+for k, v in latex_values_tmp_data.items():
+    latex_values |= data_summary(v.values(), prefix=k)
+
+
+# %% [markdown]
+# # SVD analysis
+# %%
+# random resampling of EQKE_err
+@torch.no_grad()
+def resample_EQKE_err(
+    *ms: torch.Tensor,
+    # QK_colorscale: Colorscale = "Plasma",
+    # QK_SVD_colorscale: Colorscale = "Picnic_r",
+    seed: int = 1234,
+    nsamples: int = 100,
+) -> dict[str, float]:
+    results_float = {}
+    # what if we randomize the order of all matrices without replacement?
+    torch.manual_seed(seed)
+    results_float["ResampleEQKEErrSeed"] = seed
+    results_float["ResampleEQKEErrNumSamples"] = nsamples
+    row_diffs = []
+    max_row_diffs = []
+    for _ in range(nsamples):
+        ms_no_replacement = [shuffle_tensor(m) for m in ms]
+        result = reduce(torch.matmul, ms_no_replacement)
+        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
+        max_row_diffs.append(
+            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
+        )
+    row_diffs = torch.stack(row_diffs)
+    results_float |= data_summary(max_row_diffs, prefix="ResampleEQKEErr")
+    # print(f"row diff: {pm_mean_std(row_diffs)}")
+    # sampling from normal
+    row_diffs = []
+    max_row_diffs = []
+    for _ in range(nsamples):
+        ms_normal = [torch.randn_like(m) * m.std() + m.mean() for m in ms]
+        result = reduce(torch.matmul, ms_normal)
+        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
+        max_row_diffs.append(
+            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
+        )
+    row_diffs = torch.stack(row_diffs)
+    results_float |= data_summary(max_row_diffs, prefix="ResampleNormalEQKEErr")
+    # print(f"row diff: {pm_mean_std(row_diffs)}")
+    return results_float
+
+
+# %%
+@torch.no_grad()
+def compute_EQKE_SVD_analysis(
+    model: HookedTransformer,
+) -> dict[str, float]:
+    results_float = {}
+    (
+        size_direction,
+        query_direction,
+        size_query_singular_value,
+    ), _ = find_size_and_query_direction(model)
+    (second_key_direction, second_key_singular_value), (
+        second_query_direction,
+        second_query_singular_value,
+    ) = find_second_singular_contributions(model, size_direction, query_direction)
+    (W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
+        model.W_Q[0, 0]
+    )
+    (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
+        model.W_K[0, 0]
+    )
+    (
+        (EQKE_query_key, err_accumulator),
+        EQKE_pos_err,
+        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
+    ) = quadratic.decompose_EQKE_error_quadratic(
+        model,
+        key_direction=size_direction,
+        query_direction=query_direction,
+        second_key_direction=second_key_direction,
+        second_query_direction=second_query_direction,
+        W_Q_U=W_Q_U,
+        W_K_U=W_K_U,
+        sanity_check=False,
+    )
+    EQKE_exact = (
+        EQKE_query_key
+        + err_accumulator
+        + W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    )
+    U, S, Vh = torch.linalg.svd(EQKE_exact)
+    results_float["EQKEFirstSingularFloat"] = S[0].item()
+    results_float["EQKESecondSingularFloat"] = S[1].item()
+    results_float["EQKEThirdSingularFloat"] = S[2].item()
+    results_float["EQKERatioFirstTwoSingularFloat"] = (S[0] / S[1]).item()
+    mindim = np.min(model.W_Q[0, 0].shape)
+    results_float |= data_summary(S[:mindim], prefix="EQKESingular")
+    size_direction_diffs = size_direction.squeeze()[1:] - size_direction.squeeze()[:-1]
+    results_float |= data_summary(size_direction, prefix="EQKESizeDirection")
+    results_float |= data_summary(size_direction_diffs, prefix="EQKESizeDirectionDiffs")
+    results_float |= data_summary(query_direction, prefix="EQKEQueryDirection")
+
+    EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    results_float["EQKEErrMaxRowDiffFloat"] = (
+        (EQKE_err.max(dim=-1).values - EQKE_err.min(dim=-1).values).max().item()
+    )
+    results_float["EQKEErrMaxAbsFloat"] = EQKE_err.abs().max().item()
+    results_float["EQKEErrMeanDimZeroNormFloat"] = EQKE_err.mean(dim=0).norm().item()
+    s1 = torch.linalg.matrix_norm(
+        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord=2
+    )
+    results_float["EQKEErrFirstSingularFloat"] = s1.item()
+    results_float["EQKEErrFirstSingularSqrtTwoFloat"] = (s1 * np.sqrt(2)).item()
+    ss = [
+        torch.linalg.matrix_norm(m, ord=2).item()
+        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    ]
+    (
+        results_float["WEqqPerpFirstSingularFloat"],
+        results_float["WQqPerpFirstSingularFloat"],
+        results_float["WKkPerpFirstSingularFloat"],
+        results_float["WEkkPerpFirstSingularFloat"],
+    ) = ss
+    results_float["EQKEErrProdFirstSingularFloat"] = np.prod(ss)
+    results_float["EQKEErrProdFirstSingularSqrtTwoFloat"] = np.prod(ss) * np.sqrt(2)
+    sf1 = torch.linalg.matrix_norm(EQKE_err, ord="fro")
+    results_float["EQKEErrFroNormFloat"] = sf1.item()
+    results_float["EQKEErrFroNormSqrtTwoFloat"] = (sf1 * np.sqrt(2)).item()
+    sfs = [
+        torch.linalg.matrix_norm(m, ord="fro").item()
+        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    ]
+    (
+        results_float["WEqqPerpFroNormFloat"],
+        results_float["WQqPerpFroNormFloat"],
+        results_float["WKkPerpFroNormFloat"],
+        results_float["WEkkPerpFroNormFloat"],
+    ) = sfs
+    results_float["EQKEErrProdFroNormFloat"] = np.prod(sfs)
+    results_float["EQKEErrProdFroNormSqrtTwoFloat"] = np.prod(sfs) * np.sqrt(2)
+
+    results_float |= resample_EQKE_err(W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+
+    return results_float
+
+
+# %%
+with memoshelve(
+    (lambda seed: compute_EQKE_SVD_analysis(runtime_models[seed][1])),
+    filename=cache_dir / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis",
+    get_hash_mem=(lambda x: x[0]),
+    get_hash=str,
+)() as memo_compute_EQKE_SVD_analysis:
+    EQKE_SVD_analyses = {
+        seed: memo_compute_EQKE_SVD_analysis(seed)
+        for seed in tqdm(list(sorted(runtime_models.keys())), desc="SVD analysis")
+    }
+# %%
+EQKE_SVD_analyses_by_key = defaultdict(dict)
+for seed, d in EQKE_SVD_analyses.items():
+    for k, v in d.items():
+        EQKE_SVD_analyses_by_key[k][seed] = v
+# %%
+for k, v in EQKE_SVD_analyses_by_key.items():
+    if k.endswith("Float"):
+        latex_values |= data_summary(list(v.values()), prefix=k[: -len("Float")])
+    else:
+        vals = set(v.values())
+        assert len(vals) == 1, f"Too many values for {k}: {vals}"
+        latex_values[k] = list(vals)[0]
+# %%
+
+
 # %% [markdown]
 # # Sub-cubic Proofs
 # %%

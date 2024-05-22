@@ -1,6 +1,10 @@
 import re
 from typing import Any, Union, Tuple
 import numpy as np
+from gbmi.utils.instructions import (
+    InstructionCount,
+    PerfCounter,
+)
 
 
 def key_to_command(key: str, prefix: str = "", postfix: str = "") -> Tuple[str, bool]:
@@ -75,6 +79,29 @@ def to_latex_defs(values: dict[str, SupportedLaTeXType], sort: bool = True) -> s
             else:
                 raise ValueError(f"Unsupported type {type(value)} for {key} ({value})")
     return "\n".join(lines)
+
+
+def latex_values_of_counter(prefix: str, counters: PerfCounter) -> dict[str, int]:
+    return {
+        f"{prefix}Perf{latex_attr}": getattr(counters, attr)
+        for attr, latex_attr in (
+            ("time_enabled_ns", "TimeEnabledNS"),
+            ("instruction_count", "InstructionCount"),
+            ("branch_misses", "BranchMisses"),
+            ("page_faults", "PageFaults"),
+        )
+        if hasattr(counters, attr)
+    }
+
+
+def latex_values_of_instruction_count(
+    prefix: str, count: InstructionCount
+) -> dict[str, int]:
+    return {
+        f"{prefix}InstructionCount": count.flop,
+        f"{prefix}InstructionCountInt": count.int_op,
+        f"{prefix}InstructionCountBranch": count.branch,
+    }
 
 
 if __name__ == "__main__":

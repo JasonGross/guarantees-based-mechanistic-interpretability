@@ -687,6 +687,17 @@ def summarize(
     return res
 
 
+def EVOU_max_logit_diff(
+    model: HookedTransformer,
+    mean_PVOU: bool = False,
+) -> Float[Tensor, "d_vocab"]:  # noqa: F821
+    EVOU = all_EVOU(model)
+    if mean_PVOU:
+        EVOU += all_PVOU(model).mean(dim=0)
+    max_logit_diff = EVOU.max(dim=-1).values - EVOU.min(dim=-1).values
+    return max_logit_diff
+
+
 def hist_EVOU_max_logit_diff(
     model: HookedTransformer,
     mean_PVOU: bool = False,
@@ -695,7 +706,7 @@ def hist_EVOU_max_logit_diff(
 ) -> Tuple[
     Union[go.Figure, matplotlib.figure.Figure], Float[Tensor, "d_vocab"]  # noqa: F821
 ]:
-    EVOU = all_EVOU(model)
+    max_logit_diff = EVOU_max_logit_diff(model, mean_PVOU=mean_PVOU)
     title_kind = "html" if plot_with == "plotly" else "latex"
     WE_str = "W<sub>E</sub>" if title_kind == "html" else "W_E"
     smath = "" if title_kind == "html" else "$"
@@ -715,9 +726,7 @@ def hist_EVOU_max_logit_diff(
     pm = "±" if title_kind == "html" else r"\pm"
     nl = "<br>" if title_kind == "html" else "\n"
     if mean_PVOU:
-        EVOU += all_PVOU(model).mean(dim=0)
         WE_str = f"({WE_str} + {sE}{s_p}{sWpos}[p])"
-    max_logit_diff = EVOU.max(dim=-1).values - EVOU.min(dim=-1).values
     mean, std = max_logit_diff.mean().item(), max_logit_diff.std().item()
     min, max = max_logit_diff.min().item(), max_logit_diff.max().item()
     mid, spread = (min + max) / 2, (max - min) / 2

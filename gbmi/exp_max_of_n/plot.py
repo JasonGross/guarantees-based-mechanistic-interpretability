@@ -592,17 +592,12 @@ def display_basic_interpretation(
 
 
 @torch.no_grad()
-def hist_EVOU_max_minus_diag_logit_diff(
+def EVOU_max_minus_diag_logit_diff(
     model: HookedTransformer,
     *,
     duplicate_by_sequence_count: bool = True,
-    renderer: Optional[str] = None,
     num_bins: Optional[int] = None,
-    plot_with: Literal["plotly", "matplotlib"] = "plotly",
-) -> Tuple[
-    Union[go.Figure, matplotlib.figure.Figure],
-    Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]],  # noqa: F821
-]:
+) -> Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]]:  # noqa: F821
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
     """
@@ -617,6 +612,29 @@ def hist_EVOU_max_minus_diag_logit_diff(
         duplication_factors = (indices + 1) ** n_ctx - indices**n_ctx
     else:
         duplication_factors = torch.ones_like(max_logit_minus_diag)
+    return max_logit_minus_diag, duplication_factors
+
+
+@torch.no_grad()
+def hist_EVOU_max_minus_diag_logit_diff(
+    model: HookedTransformer,
+    *,
+    duplicate_by_sequence_count: bool = True,
+    renderer: Optional[str] = None,
+    num_bins: Optional[int] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+) -> Tuple[
+    Union[go.Figure, matplotlib.figure.Figure],
+    Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]],  # noqa: F821
+]:
+    """
+    If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
+    """
+    max_logit_minus_diag, duplication_factors = EVOU_max_minus_diag_logit_diff(
+        model,
+        duplicate_by_sequence_count=duplicate_by_sequence_count,
+        num_bins=num_bins,
+    )
     mean = np.average(max_logit_minus_diag.numpy(), weights=duplication_factors.numpy())
     std = np.average(
         (max_logit_minus_diag - mean).numpy() ** 2, weights=duplication_factors.numpy()
@@ -724,6 +742,29 @@ def scatter_attention_difference_vs_gap(
 
 
 @torch.no_grad()
+def attention_difference_over_gap(
+    model: HookedTransformer,
+    *,
+    duplicate_by_sequence_count: bool = True,
+    num_bins: Optional[int] = None,
+) -> Tuple[Float[Tensor, "batch"], Float[Tensor, "batch"]]:  # noqa: F821
+    """
+    If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
+    """
+    sequence_counts, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
+    flat_diffs /= flat_idxs
+    sequence_counts, flat_idxs, flat_diffs = (
+        sequence_counts[flat_diffs.isfinite()],
+        flat_idxs[flat_diffs.isfinite()],
+        flat_diffs[flat_diffs.isfinite()],
+    )
+    duplication_factors = (
+        sequence_counts if duplicate_by_sequence_count else torch.ones_like(flat_diffs)
+    )
+    return flat_diffs, duplication_factors
+
+
+@torch.no_grad()
 def hist_attention_difference_over_gap(
     model: HookedTransformer,
     *,
@@ -738,15 +779,10 @@ def hist_attention_difference_over_gap(
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
     """
-    sequence_counts, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
-    flat_diffs /= flat_idxs
-    sequence_counts, flat_idxs, flat_diffs = (
-        sequence_counts[flat_diffs.isfinite()],
-        flat_idxs[flat_diffs.isfinite()],
-        flat_diffs[flat_diffs.isfinite()],
-    )
-    duplication_factors = (
-        sequence_counts if duplicate_by_sequence_count else torch.ones_like(flat_diffs)
+    flat_diffs, duplication_factors = attention_difference_over_gap(
+        model,
+        duplicate_by_sequence_count=duplicate_by_sequence_count,
+        num_bins=num_bins,
     )
     mean = np.average(flat_diffs.numpy(), weights=duplication_factors.numpy())
     std = np.average(

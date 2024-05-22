@@ -143,6 +143,10 @@ CUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-cubic-values.csv"
 CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-subcubic-values.csv"
 SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+SUBCUBIC_ANALYSIS_CSV_PATH = (
+    Path(__file__).with_suffix("") / "all-models-subcubic-analysis-values.csv"
+)
+SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 PYTHON_VERSION_PATH = (
     Path(__file__).with_suffix("") / "all-models-values-python-version.txt"
 )
@@ -1139,7 +1143,24 @@ for k, v in EQKE_SVD_analyses_by_key.items():
         assert len(vals) == 1, f"Too many values for {k}: {vals}"
         latex_values[k] = list(vals)[0]
 # %%
+new_data = []
+for seed, d in EQKE_SVD_analyses.items():
+    new_data.append(d | {"seed": seed})
 
+for k, v in EQKE_SVD_analyses_by_key.items():
+    if k.endswith("Float"):
+        latex_values |= data_summary(v, prefix=k[: -len("Float")])
+    else:
+        vals = set(v.values())
+        assert len(vals) == 1, f"Too many values for {k}: {vals}"
+        latex_values[k] = list(vals)[0]
+
+update_csv_with_rows(
+    SUBCUBIC_ANALYSIS_CSV_PATH,
+    new_data,
+    columns=["seed"] + list(EQKE_SVD_analyses_by_key.keys()),
+    subset=["seed"] + list(EQKE_SVD_analyses_by_key.keys()),
+)
 
 # %% [markdown]
 # # Sub-cubic Proofs

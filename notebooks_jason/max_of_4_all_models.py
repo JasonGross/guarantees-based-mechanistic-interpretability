@@ -988,9 +988,7 @@ def resample_EQKE_err(
 
 # %%
 @torch.no_grad()
-def compute_EQKE_SVD_analysis(
-    model: HookedTransformer, with_attn_scale: bool = False
-) -> dict[str, float]:
+def compute_EQKE_SVD_analysis(model: HookedTransformer) -> dict[str, float]:
     results_float = {}
     (
         size_direction,
@@ -1022,36 +1020,53 @@ def compute_EQKE_SVD_analysis(
         sanity_check=False,
     )
 
-    if with_attn_scale:
-        EQKE_pos_err /= model.blocks[0].attn.attn_scale
+    EQKE_pos_err_with_attn_scale = EQKE_pos_err / model.blocks[0].attn.attn_scale
 
-    results_float |= data_summary(EQKE_pos_err.flatten(), prefix="EQKP")
-    results_float |= data_summary(EQKE_pos_err.abs().flatten(), prefix="EQKPAbs")
-    results_float |= data_summary(
-        EQKE_pos_err.amax(dim=-1) - EQKE_pos_err.amin(dim=-1), prefix="EQKPMaxRowDiff"
-    )
+    for attn_scale, cur_EQKE_pos_err in (
+        ("", EQKE_pos_err),
+        ("WithAttnScale", EQKE_pos_err_with_attn_scale),
+    ):
+        results_float |= data_summary(
+            cur_EQKE_pos_err.flatten(), prefix=f"EQKP{attn_scale}"
+        )
+        results_float |= data_summary(
+            cur_EQKE_pos_err.abs().flatten(), prefix=f"EQKP{attn_scale}Abs"
+        )
+        results_float |= data_summary(
+            cur_EQKE_pos_err.amax(dim=-1) - cur_EQKE_pos_err.amin(dim=-1),
+            prefix=f"EQKP{attn_scale}MaxRowDiff",
+        )
 
     EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
     EQKE_err_simple = EQKE_err + err_accumulator
     EQKE_exact = EQKE_query_key + EQKE_err_simple
-    if with_attn_scale:
-        EQKE_err /= model.blocks[0].attn.attn_scale
-        EQKE_err_simple /= model.blocks[0].attn.attn_scale
-        EQKE_exact /= model.blocks[0].attn.attn_scale
+
+    EQKE_err_with_attn_scale = EQKE_err / model.blocks[0].attn.attn_scale
+    EQKE_err_simple_with_attn_scale = EQKE_err_simple / model.blocks[0].attn.attn_scale
+    EQKE_exact_with_attn_scale = EQKE_exact / model.blocks[0].attn.attn_scale
 
     U, S, Vh = torch.linalg.svd(EQKE_exact)
-    results_float["EQKEFirstSingularFloat"] = S[0].item()
-    results_float["EQKESecondSingularFloat"] = S[1].item()
-    results_float["EQKEThirdSingularFloat"] = S[2].item()
-    results_float["EQKERatioFirstTwoSingularFloat"] = (S[0] / S[1]).item()
+    S_with_attn_scale = S / model.blocks[0].attn.attn_scale
     mindim = np.min(model.W_Q[0, 0].shape)
-    results_float |= data_summary(S[:mindim], prefix="EQKESingular")
+    for attn_scale, cur_S in (("", S), ("WithAttnScale", S_with_attn_scale)):
+        results_float[f"EQKE{attn_scale}FirstSingularFloat"] = cur_S[0].item()
+        results_float[f"EQKE{attn_scale}SecondSingularFloat"] = cur_S[1].item()
+        results_float[f"EQKE{attn_scale}ThirdSingularFloat"] = cur_S[2].item()
+        results_float[f"EQKE{attn_scale}RatioFirstTwoSingularFloat"] = (
+            cur_S[0] / cur_S[1]
+        ).item()
+        results_float |= data_summary(S[:mindim], prefix=f"EQKE{attn_scale}Singular")
     size_direction_diffs = size_direction.squeeze()[1:] - size_direction.squeeze()[:-1]
     results_float |= data_summary(size_direction, prefix="EQKESizeDirection")
     results_float |= data_summary(size_direction_diffs, prefix="EQKESizeDirectionDiffs")
     results_float |= data_summary(query_direction, prefix="EQKEQueryDirection")
 
-    for cur_EQKE_err, descr in ((EQKE_err_simple, "Simple"), (EQKE_err, "")):
+    for cur_EQKE_err, descr in (
+        (EQKE_err_simple, "Simple"),
+        (EQKE_err, ""),
+        (EQKE_err_simple_with_attn_scale, "SimpleWithAttnScale"),
+        (EQKE_err_with_attn_scale, "WithAttnScale"),
+    ):
         results_float[f"EQKEErr{descr}MaxRowDiffFloat"] = (
             (cur_EQKE_err.max(dim=-1).values - cur_EQKE_err.min(dim=-1).values)
             .max()
@@ -1103,17 +1118,13 @@ def compute_EQKE_SVD_analysis(
 
 # %%
 with memoshelve(
-    (
-        lambda seed, with_attn_scale: compute_EQKE_SVD_analysis(
-            runtime_models[seed][1], with_attn_scale=with_attn_scale
-        )
-    ),
+    (lambda seed: compute_EQKE_SVD_analysis(runtime_models[seed][1])),
     filename=cache_dir / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis",
     get_hash_mem=(lambda x: x[0]),
     get_hash=str,
 )() as memo_compute_EQKE_SVD_analysis:
     EQKE_SVD_analyses = {
-        seed: memo_compute_EQKE_SVD_analysis(seed, False)
+        seed: memo_compute_EQKE_SVD_analysis(seed)
         for seed in tqdm(list(sorted(runtime_models.keys())), desc="SVD analysis")
     }
 # %%

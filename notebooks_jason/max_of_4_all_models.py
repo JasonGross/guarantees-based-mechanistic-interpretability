@@ -1248,106 +1248,119 @@ def try_all_proofs_subcubic(
             err_upper_bound_is_max = True
             # print(f"err_upper_bound.max(): {err_upper_bound_value}")
 
-        # if DISPLAY_PLOTS:
-        d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[0][1].shape
-        weights = torch.zeros((d_vocab_q, d_vocab_max, n_ctx_nonmax_copies))
-        # weights = ein.array(
-        #     (
-        #         lambda q_tok, max_tok, n_copies_nonmax: torch.tensor(
-        #             (max_tok - 1) ** n_copies_nonmax
-        #             * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
-        #         )
-        #     ),
-        #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
-        #     device=torch.tensor(0).device,
-        # )
-        # weights[:, 0, :] = 1
-        # weights[:, 0, 1:] = 0
-        # weights = ein.array(
-        #     (
-        #         lambda q_tok, max_tok, n_copies_nonmax: torch.where(
-        #             (
-        #                 (q_tok > max_tok)
-        #                 | ( # TypeError: unsupported operand type(s) for |: 'Tensor' and 'Tensor'
-        #                     (n_copies_nonmax == n_ctx_nonmax_copies - 1)
-        #                     & (max_tok != q_tok)
-        #                 )
-        #                 | ((max_tok == 0) & (n_copies_nonmax > 0))
-        #             ),
-        #             torch.tensor(0),
-        #             torch.where(
-        #                 max_tok == 0,
-        #                 torch.tensor(1),
-        #                 torch.tensor(
-        #                     (max_tok - 1) ** n_copies_nonmax
-        #                     * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
-        #                 ),
-        #             ),
-        #         )
-        #     ),
-        #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
-        #     device=torch.tensor(0).device,
-        # )
-        for max_tok in range(d_vocab_max):
-            cur_n_ctx_nonmax_copies = 1 if max_tok == 0 else n_ctx_nonmax_copies
-            for n_copies_nonmax in range(cur_n_ctx_nonmax_copies):
-                weights[: max_tok + 1, max_tok, n_copies_nonmax] = (
-                    max_tok - 1
-                ) ** n_copies_nonmax * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
-            weights[:max_tok, max_tok, n_ctx_nonmax_copies - 1] = 0
-            # for q_tok in range(max_tok+1):
-            #     if (
-            #         # (q_tok > max_tok) or
-            #          (
-            #             n_copies_nonmax == n_ctx_nonmax_copies - 1
-            #             and max_tok != q_tok
+        def _analyze_gaps(*args, **kwargs):
+            d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[0][1].shape
+            weights = torch.zeros((d_vocab_q, d_vocab_max, n_ctx_nonmax_copies))
+            # weights = ein.array(
+            #     (
+            #         lambda q_tok, max_tok, n_copies_nonmax: torch.tensor(
+            #             (max_tok - 1) ** n_copies_nonmax
+            #             * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
             #         )
-            #         # or (max_tok == 0 and n_copies_nonmax > 0)
-            #     ):
-            #         weights[q_tok, max_tok, n_copies_nonmax] = 0
-            # if max_tok == 0:
-            #     assert q_tok == max_tok
-            #     assert n_copies_nonmax == 0
-        weights[1, 1, 0] = 1
+            #     ),
+            #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
+            #     device=torch.tensor(0).device,
+            # )
+            # weights[:, 0, :] = 1
+            # weights[:, 0, 1:] = 0
+            # weights = ein.array(
+            #     (
+            #         lambda q_tok, max_tok, n_copies_nonmax: torch.where(
+            #             (
+            #                 (q_tok > max_tok)
+            #                 | ( # TypeError: unsupported operand type(s) for |: 'Tensor' and 'Tensor'
+            #                     (n_copies_nonmax == n_ctx_nonmax_copies - 1)
+            #                     & (max_tok != q_tok)
+            #                 )
+            #                 | ((max_tok == 0) & (n_copies_nonmax > 0))
+            #             ),
+            #             torch.tensor(0),
+            #             torch.where(
+            #                 max_tok == 0,
+            #                 torch.tensor(1),
+            #                 torch.tensor(
+            #                     (max_tok - 1) ** n_copies_nonmax
+            #                     * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
+            #                 ),
+            #             ),
+            #         )
+            #     ),
+            #     sizes=[d_vocab_q, d_vocab_max, n_ctx_nonmax_copies],
+            #     device=torch.tensor(0).device,
+            # )
+            for max_tok in range(d_vocab_max):
+                cur_n_ctx_nonmax_copies = 1 if max_tok == 0 else n_ctx_nonmax_copies
+                for n_copies_nonmax in range(cur_n_ctx_nonmax_copies):
+                    weights[: max_tok + 1, max_tok, n_copies_nonmax] = (
+                        max_tok - 1
+                    ) ** n_copies_nonmax * math.comb(
+                        model.cfg.n_ctx - 1, n_copies_nonmax
+                    )
+                weights[:max_tok, max_tok, n_ctx_nonmax_copies - 1] = 0
+                # for q_tok in range(max_tok+1):
+                #     if (
+                #         # (q_tok > max_tok) or
+                #          (
+                #             n_copies_nonmax == n_ctx_nonmax_copies - 1
+                #             and max_tok != q_tok
+                #         )
+                #         # or (max_tok == 0 and n_copies_nonmax > 0)
+                #     ):
+                #         weights[q_tok, max_tok, n_copies_nonmax] = 0
+                # if max_tok == 0:
+                #     assert q_tok == max_tok
+                #     assert n_copies_nonmax == 0
+            weights[1, 1, 0] = 1
 
-        v = min_gaps.flatten().detach().cpu()
-        mean = np.average(v.numpy(), weights=weights.flatten().numpy())
-        std = np.average(
-            (v - mean).numpy() ** 2,
-            weights=weights.flatten().numpy(),
-        )
-        num_std = 1.5
-        most_below_value = int(math.ceil(mean + num_std * std))
-        # print(v)
-        # print(most_below_value)
-        # print(list(sorted(v.tolist())))
-        # print(f"max={(min_gaps==min_gaps.max()).nonzero()}")
-        # if min_gaps.max() > 100:
-        #     print(f"big! {min_gaps.max()}")
-        #     args = (tricks,)
-        #     kwargs = dict(
-        #         filename=cache_dir
-        #         / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}"
-        #     )
-        #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
-        #     memoshelve_uncache(*args, **kwargs)
-        #     args = (tricks, use_exact_EQKE)
-        #     kwargs = dict(
-        #         filename=cache_dir
-        #         / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
-        #         get_hash_mem=(lambda x: x[0]),
-        #         get_hash=str,
-        #     )
-        #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
-        #     memoshelve_uncache(*args, **kwargs)
-        # print(f"mean={mean}")
-        # print(f"std={std}")
-        # print(f"max={v.max().item()}")
-        # print(f"min={v.min().item()}")
-        # print(v <= most_below_value)
-        frac_below = (
-            weights.flatten()[v <= most_below_value].sum() / weights.sum()
-        ).item()
+            v = min_gaps.flatten().detach().cpu()
+            mean = np.average(v.numpy(), weights=weights.flatten().numpy())
+            std = np.average(
+                (v - mean).numpy() ** 2,
+                weights=weights.flatten().numpy(),
+            )
+            num_std = 1.5
+            most_below_value = int(math.ceil(mean + num_std * std))
+            # print(v)
+            # print(most_below_value)
+            # print(list(sorted(v.tolist())))
+            # print(f"max={(min_gaps==min_gaps.max()).nonzero()}")
+            # if min_gaps.max() > 100:
+            #     print(f"big! {min_gaps.max()}")
+            #     args = (tricks,)
+            #     kwargs = dict(
+            #         filename=cache_dir
+            #         / f"{SHARED_CACHE_STEM}.find_min_gaps-{descr}-{cfg_hash_for_filename}"
+            #     )
+            #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
+            #     memoshelve_uncache(*args, **kwargs)
+            #     args = (tricks, use_exact_EQKE)
+            #     kwargs = dict(
+            #         filename=cache_dir
+            #         / f"{SHARED_CACHE_STEM}.subcubic_verify_proof-{cfg_hash_for_filename}",
+            #         get_hash_mem=(lambda x: x[0]),
+            #         get_hash=str,
+            #     )
+            #     print(f"memoshelve_uncache(*{args}, **{kwargs})")
+            #     memoshelve_uncache(*args, **kwargs)
+            # print(f"mean={mean}")
+            # print(f"std={std}")
+            # print(f"max={v.max().item()}")
+            # print(f"min={v.min().item()}")
+            # print(v <= most_below_value)
+            frac_below = (
+                weights.flatten()[v <= most_below_value].sum() / weights.sum()
+            ).item()
+
+            return frac_below, v, most_below_value, mean, std, num_std
+
+        with memoshelve(
+            _analyze_gaps,
+            filename=cache_dir
+            / f"{SHARED_CACHE_STEM}.subcubic_analyze_gaps-{cfg_hash_for_filename}",
+            get_hash_mem=(lambda x: x[0]),
+            get_hash=str,
+        )() as analyze_gaps:
+            (frac_below, v, most_below_value, mean, std, num_std) = analyze_gaps(tricks)
 
         row = {
             "seed": seed,

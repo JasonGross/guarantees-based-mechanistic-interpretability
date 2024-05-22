@@ -199,6 +199,7 @@ def data_summary(
     result = {
         wf("Mean"): values.mean(),
         wf("StdDev"): values.std(),
+        wf("SqrMean"): (values**2).mean(),
         f"{prefix}Len{int_postfix}": len(values.flatten()),
         wf("Min"): values.min(),
         wf("Max"): values.max(),
@@ -937,11 +938,9 @@ def compute_EQKE_SVD_analysis(
         W_K_U=W_K_U,
         sanity_check=False,
     )
-    EQKE_exact = (
-        EQKE_query_key
-        + err_accumulator
-        + W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-    )
+    EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    EQKE_err_simple = EQKE_err + err_accumulator
+    EQKE_exact = EQKE_query_key + EQKE_err_simple
     U, S, Vh = torch.linalg.svd(EQKE_exact)
     results_float["EQKEFirstSingularFloat"] = S[0].item()
     results_float["EQKESecondSingularFloat"] = S[1].item()
@@ -954,17 +953,26 @@ def compute_EQKE_SVD_analysis(
     results_float |= data_summary(size_direction_diffs, prefix="EQKESizeDirectionDiffs")
     results_float |= data_summary(query_direction, prefix="EQKEQueryDirection")
 
-    EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-    results_float["EQKEErrMaxRowDiffFloat"] = (
-        (EQKE_err.max(dim=-1).values - EQKE_err.min(dim=-1).values).max().item()
-    )
-    results_float["EQKEErrMaxAbsFloat"] = EQKE_err.abs().max().item()
-    results_float["EQKEErrMeanDimZeroNormFloat"] = EQKE_err.mean(dim=0).norm().item()
-    s1 = torch.linalg.matrix_norm(
-        (W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T), ord=2
-    )
-    results_float["EQKEErrFirstSingularFloat"] = s1.item()
-    results_float["EQKEErrFirstSingularSqrtTwoFloat"] = (s1 * np.sqrt(2)).item()
+    for cur_EQKE_err, descr in ((EQKE_err_simple, "Simple"), (EQKE_err, "")):
+        results_float[f"EQKEErr{descr}MaxRowDiffFloat"] = (
+            (cur_EQKE_err.max(dim=-1).values - cur_EQKE_err.min(dim=-1).values)
+            .max()
+            .item()
+        )
+        results_float[f"EQKEErr{descr}MaxAbsFloat"] = cur_EQKE_err.abs().max().item()
+        results_float[f"EQKEErr{descr}MeanDimZeroNormFloat"] = (
+            cur_EQKE_err.mean(dim=0).norm().item()
+        )
+        results_float |= data_summary(cur_EQKE_err.flatten(), f"EQKEErr{descr}")
+        s1 = torch.linalg.matrix_norm(cur_EQKE_err, ord=2)
+        results_float[f"EQKEErr{descr}FirstSingularFloat"] = s1.item()
+        results_float[f"EQKEErr{descr}FirstSingularSqrtTwoFloat"] = (
+            s1 * np.sqrt(2)
+        ).item()
+        sf1 = torch.linalg.matrix_norm(cur_EQKE_err, ord="fro")
+        results_float[f"EQKEErr{descr}FroNormFloat"] = sf1.item()
+        results_float[f"EQKEErr{descr}FroNormSqrtTwoFloat"] = (sf1 * np.sqrt(2)).item()
+
     ss = [
         torch.linalg.matrix_norm(m, ord=2).item()
         for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
@@ -977,9 +985,6 @@ def compute_EQKE_SVD_analysis(
     ) = ss
     results_float["EQKEErrProdFirstSingularFloat"] = np.prod(ss)
     results_float["EQKEErrProdFirstSingularSqrtTwoFloat"] = np.prod(ss) * np.sqrt(2)
-    sf1 = torch.linalg.matrix_norm(EQKE_err, ord="fro")
-    results_float["EQKEErrFroNormFloat"] = sf1.item()
-    results_float["EQKEErrFroNormSqrtTwoFloat"] = (sf1 * np.sqrt(2)).item()
     sfs = [
         torch.linalg.matrix_norm(m, ord="fro").item()
         for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)

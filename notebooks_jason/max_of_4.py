@@ -197,7 +197,10 @@ matplotlib.rcParams[
 ] = r"""\usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{xfrac}
-\usepackage{lmodern}"""
+\usepackage{lmodern}
+\providecommand{\dmodel}{\ensuremath{d_{\mathrm{model}}}}
+\providecommand{\dhead}{\ensuremath{d_{\mathrm{head}}}}
+\providecommand{\dvocab}{\ensuremath{d_{\mathrm{vocab}}}}"""
 default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale(
     "RdBu"
 )  # px.colors.get_colorscale("Picnic_r")

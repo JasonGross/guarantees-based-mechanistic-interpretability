@@ -1704,9 +1704,10 @@ for trick_filter_descr, trick_filter in (
                 prefix=f"{trick_filter_descr}{latex_key}",
             )
         else:
-            print(
-                f"Skipping key {key} since values have at most one corresponding configuration"
-            )
+            # print(
+            #     f"Skipping key {key} since values have at most one corresponding configuration"
+            # )
+            pass
 # %%
 latex_values["AllModelsHEADSHA"] = git.get_head_sha(short=False)
 latex_values["AllModelsHEADSHASHORT"] = git.get_head_sha(short=True)

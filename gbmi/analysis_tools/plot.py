@@ -348,6 +348,7 @@ def scatter_matplotlib(
     reverse_xaxis: bool = False,
     reverse_yaxis: bool = False,
     legend: Optional[bool] = None,
+    yrange: Optional[Tuple[float, float]] = None,
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -429,6 +430,8 @@ def scatter_matplotlib(
         ax.invert_xaxis()
     if reverse_yaxis:
         ax.invert_yaxis()
+    if yrange is not None:
+        ax.set_ylim(*yrange)
     if title is not None:
         fig.suptitle(title)
     plt.tight_layout()

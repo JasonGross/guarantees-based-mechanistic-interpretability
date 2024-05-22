@@ -2941,12 +2941,13 @@ if HAS_CSVS:
                 "attention_error_handling",
             ]
         ],
+        yrange=(0, 1),
         y="normalized-accuracy-bound",
         x="EQKERatioFirstTwoSingularFloat",
         color="attention_error_handling",
         # title='Normalized Accuracy Bound vs EQKE Ratio First Two Singular',
         yaxis="Normalized Accuracy Bound",
-        xaxis="EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
+        xaxis=r"EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
         # labels={
         #     'normalized-accuracy-bound': 'Normalized Accuracy Bound',
         #     'EQKERatioFirstTwoSingularFloat': 'EQKE Ratio First Two Singular'
@@ -3036,7 +3037,7 @@ def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
     return data
 
 
-PLOT_WITH = "plotly"
+# PLOT_WITH = "matplotlib"
 # %%
 if HAS_CSVS:
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True

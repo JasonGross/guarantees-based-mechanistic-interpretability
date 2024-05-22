@@ -2932,6 +2932,7 @@ if HAS_CSVS:
         ].idxmax()
     ]
 
+    latex_externalize_tables["NormalizedAccuracyBoundVsEPQKESingularRatio"] = True
     latex_figures["NormalizedAccuracyBoundVsEPQKESingularRatio"] = fig = scatter(
         subcubic_sing_df[
             [
@@ -3047,6 +3048,7 @@ if HAS_CSVS:
         by=["group", "proof-flop-estimate", "effective-dimension-estimate"]
     )
     data["group"] = data["group"].map(category_name_remap)
+    latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
         data,
         x="proof-flop-estimate",

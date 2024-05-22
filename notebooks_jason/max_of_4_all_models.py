@@ -1212,16 +1212,17 @@ else:
     subcubic_results = pd.DataFrame(columns=subcubic_columns)
 
 all_seeds = set(runtime_models.keys())
-subcubic_data = {
-    seed: subcubic_results[subcubic_results["seed"] == seed].to_dict(orient="records")
-    for seed in known_seeds
-}
 unknown_seeds = all_seeds - set(
     seed
     for seed in subcubic_results["seed"]
     if len(subcubic_results[subcubic_results["seed"] == seed].to_dict(orient="records"))
     >= len(all_configs)
 )
+subcubic_data = {
+    seed: subcubic_results[subcubic_results["seed"] == seed].to_dict(orient="records")
+    for seed in all_seeds
+    if seed not in unknown_seeds
+}
 known_seeds = all_seeds - unknown_seeds
 relevant_seeds = all_seeds if OVERWRITE_CSV_FROM_CACHE else unknown_seeds
 

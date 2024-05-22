@@ -127,7 +127,7 @@ parser.add_argument(
     default=None,
     help="Recompute seeds that appear in csvs",
 )
-cli_args = parser.parse_args(None if ipython is None else [])
+cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 cache_dir = Path(__file__).parent / ".cache"
 cache_dir.mkdir(exist_ok=True)

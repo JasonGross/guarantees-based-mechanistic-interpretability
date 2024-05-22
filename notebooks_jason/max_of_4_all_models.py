@@ -183,29 +183,61 @@ def maybe_parallel_map(func, *args):
 def data_summary(
     data, prefix: str = "", float_postfix: str = "Float", int_postfix: str = ""
 ):
-    if isinstance(data, torch.Tensor):
-        data = data.cpu().numpy()
-    elif not isinstance(data, np.ndarray):
-        data = np.array(data)
+    if isinstance(data, dict):
+        keys = list(data.keys())
+        values = [data[k] for k in keys]
+    else:
+        keys = None
+        values = data
+    if isinstance(values, torch.Tensor):
+        values = values.cpu().numpy()
+    elif not isinstance(values, np.ndarray):
+        values = np.array(values) + 0.0  # turn to float
+
     wf = lambda k: f"{prefix}{k}{float_postfix}"
+
     result = {
-        wf("Mean"): data.mean(),
-        wf("StdDev"): data.std(),
-        f"{prefix}Len{int_postfix}": len(data.flatten()),
-        wf("Min"): data.min(),
-        wf("Max"): data.max(),
+        wf("Mean"): values.mean(),
+        wf("StdDev"): values.std(),
+        f"{prefix}Len{int_postfix}": len(values.flatten()),
+        wf("Min"): values.min(),
+        wf("Max"): values.max(),
     }
+
     s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
     percentiles = stats.norm.cdf([-3 * s, -2 * s, -s, 0, s, 2 * s, 3 * s])
-    (
-        result[wf("LowerWhiskerBottomEnd")],
-        result[wf("LowerWhiskerCrosshatch")],
-        result[wf("QuartileOne")],
-        result[wf("Median")],
-        result[wf("QuartileThree")],
-        result[wf("UpperWhiskerCrosshatch")],
-        result[wf("UpperWhiskerTopEnd")],
-    ) = np.percentile(data, percentiles)
+    percentile_names = [
+        "LowerWhiskerBottomEnd",
+        "LowerWhiskerCrosshatch",
+        "QuartileOne",
+        "Median",
+        "QuartileThree",
+        "UpperWhiskerCrosshatch",
+        "UpperWhiskerTopEnd",
+    ]
+    percentile_values = np.percentile(values, percentiles)
+
+    result.update({wf(pct): v for pct, v in zip(percentile_names, percentile_values)})
+
+    if keys is not None:
+        closest_keys = {}
+
+        def find_closest_key(value):
+            return keys[np.argmin(np.abs(values - value))]
+
+        closest_keys.update(
+            {
+                f"{prefix}MeanKey": find_closest_key(values.mean()),
+                f"{prefix}MinKey": find_closest_key(values.min()),
+                f"{prefix}MaxKey": find_closest_key(values.max()),
+            }
+        )
+
+        for pct, value in zip(percentile_names, percentile_values):
+            closest_keys[f"{prefix}{pct}Key"] = find_closest_key(value)
+
+        result.update(closest_keys)
+
     return result
 
 
@@ -620,6 +652,12 @@ latex_values["BruteForceNumBatches"] = int(
     math.ceil(list(all_tokens_datasets_lens.values())[0] / batch_size)
 )
 
+brute_force_data_by_key = defaultdict(dict)
+for seed, d in brute_force_data.items():
+    for k, v in d.items():
+        brute_force_data_by_key[k][seed] = v
+
+
 for key, latex_key in (
     ("loss", "BruteForceLoss"),
     ("accuracy", "BruteForceAccuracy"),
@@ -627,9 +665,7 @@ for key, latex_key in (
     ("num_incorrect", "BruteForceNumIncorrect"),
     ("duration", "BruteForceTime"),
 ):
-    latex_values |= data_summary(
-        [d[key] for d in brute_force_data.values()], prefix=latex_key
-    )
+    latex_values |= data_summary(brute_force_data_by_key[key], prefix=latex_key)
 
 # %% [markdown]
 # # Cubic proof
@@ -726,6 +762,11 @@ update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 # %% [markdown]
 # Summary satistics cubic
 # %%
+cubic_data_by_key = defaultdict(dict)
+for seed, d in cubic_data.items():
+    for k, v in d.items():
+        cubic_data_by_key[k][seed] = v
+
 assert len(cubic_data) == len(
     brute_force_data
 ), f"len(cubic_data) == {len(cubic_data)} != {len(brute_force_data)} == len(brute_force_data)"
@@ -735,15 +776,13 @@ for key, latex_key in (
     ("correct-count-lower-bound", "CubicCorrectCount"),
     ("duration", "CubicProofTime"),
 ):
-    latex_values |= data_summary(
-        [d[key] for d in cubic_data.values()], prefix=latex_key
-    )
+    latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
 
 latex_values |= data_summary(
-    [
-        cubic_data[seed]["accuracy-bound"] / brute_force_data[seed]["accuracy"]
+    {
+        seed: cubic_data[seed]["accuracy-bound"] / brute_force_data[seed]["accuracy"]
         for seed in cubic_data.keys()
-    ],
+    },
     prefix="CubicNormalizedAccuracy",
 )
 
@@ -755,7 +794,10 @@ max_logit_diffs = {
     for seed, (_runtime, model) in runtime_models.items()
 }
 latex_values |= data_summary(
-    [max_logit_diff.mean().item() for max_logit_diff in max_logit_diffs.values()],
+    {
+        seed: max_logit_diff.mean().item()
+        for seed, max_logit_diff in max_logit_diffs.items()
+    },
     prefix="EVOUMeanMaxRowDiff",
 )
 
@@ -812,7 +854,7 @@ for seed, (_runtime, model) in runtime_models.items():
         latex_values_tmp_data[value_key + "Std"][seed] = std
 
 for k, v in latex_values_tmp_data.items():
-    latex_values |= data_summary(v.values(), prefix=k)
+    latex_values |= data_summary(v, prefix=k)
 
 
 # %% [markdown]
@@ -975,7 +1017,7 @@ for seed, d in EQKE_SVD_analyses.items():
 # %%
 for k, v in EQKE_SVD_analyses_by_key.items():
     if k.endswith("Float"):
-        latex_values |= data_summary(list(v.values()), prefix=k[: -len("Float")])
+        latex_values |= data_summary(v, prefix=k[: -len("Float")])
     else:
         vals = set(v.values())
         assert len(vals) == 1, f"Too many values for {k}: {vals}"

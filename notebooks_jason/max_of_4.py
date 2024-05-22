@@ -3108,12 +3108,7 @@ def texify_matplotlib_title(
     orig_xlabels = [ax.get_xlabel() for ax in fig.axes if fig.axes]
     orig_ylabels = [ax.get_ylabel() for ax in fig.axes if fig.axes]
     orig_legend_labels = [
-        (
-            [text.get_text() for text in ax.get_legend().get_texts()]
-            if ax.get_legend()
-            else []
-        )
-        for ax in fig.axes
+        [line.get_label() for line in ax.get_lines()] for ax in fig.axes
     ]
     new_suptitle = texify(orig_suptitle)
     new_titles = [texify(t) for t in orig_titles]
@@ -3135,9 +3130,10 @@ def texify_matplotlib_title(
                     ax.set_xlabel(new_xlabel)
                 if new_ylabel is not None:
                     ax.set_ylabel(new_ylabel)
+                for line, new_label in zip(ax.get_lines(), new_leg_labels):
+                    line.set_label(new_label)
                 if ax.get_legend() is not None:
-                    handles, _ = ax.get_legend_handles_labels()
-                    ax.legend(handles, new_leg_labels)
+                    ax.legend()
         yield fig
     finally:
         if new_suptitle is not None:
@@ -3152,9 +3148,10 @@ def texify_matplotlib_title(
                     ax.set_xlabel(orig_xlabel)
                 if orig_ylabel is not None:
                     ax.set_ylabel(orig_ylabel)
+                for line, orig_label in zip(ax.get_lines(), orig_leg_labels):
+                    line.set_label(orig_label)
                 if ax.get_legend() is not None:
-                    handles, _ = ax.get_legend_handles_labels()
-                    ax.legend(handles, orig_leg_labels)
+                    ax.legend()
 
 
 errs = []

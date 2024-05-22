@@ -1647,7 +1647,7 @@ def subcubic_group(tricks: LargestWrongLogitQuadraticConfig):
         )
     )
     strs = [s for s in (EPQKE_str, EUPU_str) if s is not None]
-    return "Subcubic" + (f"{''.join(strs)}" if strs else "")
+    return "Subcubic" + (f"{''.join(strs)}" if strs else "Group")
 
 
 def filter_tricks_str_eq(value: str, tricks_str: str):

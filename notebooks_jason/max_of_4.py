@@ -2751,7 +2751,7 @@ if HAS_CSVS:
             if tricks.attention_error_handling_quadratic
             and tricks.attention_handling_quadratic
             else (
-                "direct-model-squared-vocab"
+                "attention-model-squared-vocab"
                 if tricks.attention_error_handling_subcubic_no_quadratic_vocab
                 and tricks.attention_handling_subcubic_no_quadratic_vocab
                 else (
@@ -2932,24 +2932,46 @@ if HAS_CSVS:
         ].idxmax()
     ]
 
-    latex_figures["NormalizedAccuracyBoundVsEPQKESignularRatio"] = fig = scatter(
-        subcubic_sing_df[
-            [
-                "normalized-accuracy-bound",
-                "EQKERatioFirstTwoSingularFloat",
-                "attention_error_handling",
-            ]
-        ],
+    # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
+    df = subcubic_sing_df[
+        [
+            "normalized-accuracy-bound",
+            "EQKERatioFirstTwoSingularFloat",
+            "attention_error_handling",
+        ]
+    ].sort_values(
+        by=[
+            "attention_error_handling",
+            "normalized-accuracy-bound",
+            "EQKERatioFirstTwoSingularFloat",
+        ]
+    )
+    # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for each group
+    max_bound_by_group = df.groupby("attention_error_handling")[
+        "normalized-accuracy-bound"
+    ].max()
+
+    # Sort the groups by max 'normalized-accuracy-bound'
+    sorted_groups = max_bound_by_group.sort_values(ascending=False)
+
+    # Extract the sorted list of 'attention_error_handling' categories
+    sorted_attn_err_handling = sorted_groups.index.tolist()
+
+    latex_externalize_tables["NormalizedAccuracyBoundVsEPQKESingularRatio"] = True
+    latex_figures["NormalizedAccuracyBoundVsEPQKESingularRatio"] = fig = scatter(
+        df,
+        yrange=(0, 1),
         y="normalized-accuracy-bound",
         x="EQKERatioFirstTwoSingularFloat",
         color="attention_error_handling",
         # title='Normalized Accuracy Bound vs EQKE Ratio First Two Singular',
         yaxis="Normalized Accuracy Bound",
-        xaxis="EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
+        xaxis=r"EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
         # labels={
         #     'normalized-accuracy-bound': 'Normalized Accuracy Bound',
         #     'EQKERatioFirstTwoSingularFloat': 'EQKE Ratio First Two Singular'
         # }
+        color_order=sorted_attn_err_handling,
         renderer=RENDERER,
         plot_with=PLOT_WITH,
     )
@@ -3035,7 +3057,7 @@ def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
     return data
 
 
-PLOT_WITH = "plotly"
+# PLOT_WITH = "matplotlib"
 # %%
 if HAS_CSVS:
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
@@ -3047,6 +3069,7 @@ if HAS_CSVS:
         by=["group", "proof-flop-estimate", "effective-dimension-estimate"]
     )
     data["group"] = data["group"].map(category_name_remap)
+    latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
         data,
         x="proof-flop-estimate",
@@ -3055,10 +3078,10 @@ if HAS_CSVS:
         title="",
         log_x=2,
         log_y=2,
-        reverse_xaxis=True,
+        reverse_xaxis=False,
         color_order=[category_name_remap[c] for c in category_order],
         xaxis="FLOPs to Verify Proof (approximate)",
-        yaxis="Effective Residual Dimensionality (Estimated)",
+        yaxis="Unexplained Dimension (Estimated)",
         plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
@@ -3090,7 +3113,7 @@ if HAS_CSVS:
                 color="group",
                 title="",  # "Pareto Frontier" if frontier_only else "",
                 log_x=2,
-                reverse_xaxis=True,
+                reverse_xaxis=False,
                 xaxis="FLOPs to Verify Proof (approximate)",
                 yaxis=f"{normt}Accuracy Bound",
                 color_order=[category_name_remap[c] for c in category_order],

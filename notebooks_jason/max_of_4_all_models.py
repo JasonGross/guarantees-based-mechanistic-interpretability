@@ -682,6 +682,7 @@ for key, latex_key in (
 cubic_columns = [
     "seed",
     "accuracy-bound",
+    "normalized-accuracy-bound",
     "correct-count-lower-bound",
     "duration-proof-search",
     "duration",
@@ -745,6 +746,8 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
     return {
         "seed": seed,
         "accuracy-bound": cubic_proof_results["accuracy_lower_bound"],
+        "normalized-accuracy-bound": cubic_proof_results["accuracy_lower_bound"]
+        / brute_force_data_by_key["accuracy"][seed],
         "correct-count-lower-bound": cubic_proof_results["correct_count_lower_bound"],
         "duration-proof-search": duration_proof_search,
         "duration": cubic_proof_results["prooftime"],
@@ -781,18 +784,12 @@ assert len(cubic_data) == len(
 for key, latex_key in (
     # ("loss", "CubicLoss"),
     ("accuracy-bound", "CubicAccuracy"),
+    ("normalized-accuracy-bound", "CubicNormalizedAccuracy"),
     ("correct-count-lower-bound", "CubicCorrectCount"),
     ("duration", "CubicProofTime"),
 ):
     latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
 
-latex_values |= data_summary(
-    {
-        seed: cubic_data[seed]["accuracy-bound"] / brute_force_data[seed]["accuracy"]
-        for seed in cubic_data.keys()
-    },
-    prefix="CubicNormalizedAccuracy",
-)
 
 # %% [markdown]
 # # Intermediate interp values for export
@@ -1223,6 +1220,7 @@ subcubic_EPQKP_cost = 0
 subcubic_columns = [
     "seed",
     "accuracy-bound",
+    "normalized-accuracy-bound",
     "duration-proof-search",
     "duration",
     "tricks",
@@ -1526,6 +1524,8 @@ def try_all_proofs_subcubic(
         row = {
             "seed": seed,
             "accuracy-bound": accuracy_bound,
+            "normalized-accuracy-bound": accuracy_bound
+            / brute_force_data_by_key["accuracy"][seed],
             "duration-proof-search": proof_search_duration,
             "duration": prooftime,
             "tricks": tricks.short_description(latex=True),

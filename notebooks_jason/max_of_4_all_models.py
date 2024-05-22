@@ -1153,6 +1153,8 @@ def try_all_proofs_subcubic(
         min_gaps_lists = [find_min_gaps_for(cfg) for cfg in all_configs]
 
     for tricks, min_gaps, proof_search_duration in min_gaps_lists:
+        if N_THREADS is None or N_THREADS <= 1:
+            proof_pbar.set_postfix(cfg=tricks.short_description(latex=True))
         proof_search_duration += shared_proof_search_duration
         # print(
         #     f"==========={descr}=============================\nTricks: {tricks}"
@@ -1380,6 +1382,8 @@ def _handle_subcubic(
     proof_pbar: tqdm,
     count_proof_pbar: tqdm,
 ):
+    if N_THREADS is None or N_THREADS <= 1:
+        cfg_pbar.set_postfix(seed=seed)
     try:
         subcubic_data[seed] = try_all_proofs_subcubic(
             seed,

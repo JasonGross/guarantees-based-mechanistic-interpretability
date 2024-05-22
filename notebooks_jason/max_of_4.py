@@ -188,6 +188,8 @@ CUBIC_CSV_PATH = ALL_MODELS_PATH / "all-models-cubic-values.csv"
 CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_CSV_PATH = ALL_MODELS_PATH / "all-models-subcubic-values.csv"
 SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+SUBCUBIC_ANALYSIS_CSV_PATH = ALL_MODELS_PATH / "all-models-subcubic-analysis-values.csv"
+SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = 2
 matplotlib.rcParams["text.usetex"] = True
 matplotlib.rcParams[
@@ -2632,11 +2634,17 @@ elif not SUBCUBIC_CSV_PATH.exists():
     print(
         f"Warning: {SUBCUBIC_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
     )
+elif not SUBCUBIC_ANALYSIS_CSV_PATH.exists():
+    print(
+        f"Warning: {SUBCUBIC_ANALYSIS_CSV_PATH} does not exist; instruction count summary statistics will be skipped"
+    )
 else:
     HAS_CSVS = True
     brute_force_df = pd.read_csv(BRUTE_FORCE_CSV_PATH)
     cubic_df = pd.read_csv(CUBIC_CSV_PATH)
     subcubic_df = pd.read_csv(SUBCUBIC_CSV_PATH)
+    subcubic_analysis_df = pd.read_csv(SUBCUBIC_ANALYSIS_CSV_PATH)
+# %%
 # %%
 # Approximating effective dimensionality
 d_vocab, n_ctx = model.cfg.d_vocab, model.cfg.n_ctx
@@ -2666,6 +2674,7 @@ if HAS_CSVS:
     brute_force_ext_df["group"] = "brute-force"
     brute_force_ext_df["effective-dimension-estimate"] = brute_force_ed
     brute_force_ext_df["leading-complexity"] = "brute-force"
+    brute_force_ext_df["tricks"] = ""
 
     cubic_ext_df = cubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
     if "CubicInstructionCount" not in latex_values:
@@ -2679,6 +2688,7 @@ if HAS_CSVS:
     cubic_ext_df["group"] = "cubic"
     cubic_ext_df["leading-complexity"] = "cubic"
     cubic_ext_df["effective-dimension-estimate"] = cubic_ed
+    cubic_ext_df["tricks"] = ""
 
     subcubic_PVOU_cost = d_vocab
     subcubic_EPQKP_cost = 0
@@ -2777,6 +2787,7 @@ if HAS_CSVS:
                     "effective-dimension-estimate",
                     "leading-complexity",
                     "group",
+                    "tricks",
                 ]
             ],
             brute_force_ext_df[
@@ -2788,6 +2799,7 @@ if HAS_CSVS:
                     "effective-dimension-estimate",
                     "leading-complexity",
                     "group",
+                    "tricks",
                 ]
             ],
             cubic_ext_df[
@@ -2799,6 +2811,7 @@ if HAS_CSVS:
                     "effective-dimension-estimate",
                     "leading-complexity",
                     "group",
+                    "tricks",
                 ]
             ],
         ],
@@ -2818,6 +2831,142 @@ if HAS_CSVS:
     combined_df["frontier"] = combined_df.apply(
         is_frontier, args=(combined_df,), axis=1
     )
+# %%
+if HAS_CSVS:
+    subcubic_sing_df = subcubic_ext_df.merge(
+        subcubic_analysis_df[["seed", "EQKERatioFirstTwoSingularFloat"]], on="seed"
+    )[["seed", "normalized-accuracy-bound", "tricks", "EQKERatioFirstTwoSingularFloat"]]
+    tricks = set(subcubic_sing_df["tricks"])
+    for trick in tricks:
+        if "AttnErrExactEqke" in trick:
+            subcubic_sing_df = subcubic_sing_df[subcubic_sing_df["tricks"] != trick]
+    subcubic_sing_df["attention_error_handling"] = subcubic_ext_df.apply(
+        (
+            lambda row: LargestWrongLogitQuadraticConfig.parse(
+                row["tricks"], latex=True
+            ).attention_error_handling
+        ),
+        axis=1,
+    )
+    subcubic_sing_df["attention_handling"] = subcubic_ext_df.apply(
+        (
+            lambda row: LargestWrongLogitQuadraticConfig.parse(
+                row["tricks"], latex=True
+            ).attention_handling
+        ),
+        axis=1,
+    )
+    subcubic_sing_df["EUPU_handling"] = subcubic_ext_df.apply(
+        (
+            lambda row: LargestWrongLogitQuadraticConfig.parse(
+                row["tricks"], latex=True
+            ).EUPU_handling
+        ),
+        axis=1,
+    )
+    subcubic_sing_df = subcubic_sing_df.loc[
+        subcubic_sing_df.groupby(["seed", "attention_error_handling"])[
+            "normalized-accuracy-bound"
+        ].idxmax()
+    ]
+
+    fig = px.scatter(
+        subcubic_sing_df[
+            [
+                "normalized-accuracy-bound",
+                "EQKERatioFirstTwoSingularFloat",
+                "attention_error_handling",
+            ]
+        ],
+        y="normalized-accuracy-bound",
+        x="EQKERatioFirstTwoSingularFloat",
+        color="attention_error_handling",
+        title="Normalized Accuracy Bound vs EQKE Ratio First Two Singular",
+        labels={
+            "normalized-accuracy-bound": "Normalized Accuracy Bound",
+            "EQKERatioFirstTwoSingularFloat": "EQKE Ratio First Two Singular",
+        },
+    )
+    # fig.update_layout(showlegend=False)
+    fig.update_layout(
+        legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5)
+    )
+    # Show the plot
+    fig.show("png")
+# %%
+if HAS_CSVS:
+    subcubic_sing_df = subcubic_ext_df.merge(
+        subcubic_analysis_df[["seed", "EQKERatioFirstTwoSingularFloat"]], on="seed"
+    )[["seed", "normalized-accuracy-bound", "tricks", "EQKERatioFirstTwoSingularFloat"]]
+    tricks = set(subcubic_sing_df["tricks"])
+    for trick in tricks:
+        if "AttnErrExactEqke" in trick:
+            subcubic_sing_df = subcubic_sing_df[subcubic_sing_df["tricks"] != trick]
+    subcubic_sing_df["attention_error_handling"] = subcubic_ext_df.apply(
+        (
+            lambda row: LargestWrongLogitQuadraticConfig.parse(
+                row["tricks"], latex=True
+            ).attention_error_handling
+        ),
+        axis=1,
+    )
+    subcubic_sing_df["attention_handling"] = subcubic_ext_df.apply(
+        (
+            lambda row: LargestWrongLogitQuadraticConfig.parse(
+                row["tricks"], latex=True
+            ).attention_handling
+        ),
+        axis=1,
+    )
+    subcubic_sing_df["EUPU_handling"] = subcubic_ext_df.apply(
+        (
+            lambda row: LargestWrongLogitQuadraticConfig.parse(
+                row["tricks"], latex=True
+            ).EUPU_handling
+        ),
+        axis=1,
+    )
+    subcubic_sing_df = subcubic_sing_df.loc[
+        subcubic_sing_df.groupby(["seed", "attention_error_handling"])[
+            "normalized-accuracy-bound"
+        ].idxmax()
+    ]
+
+    latex_figures["NormalizedAccuracyBoundVsEPQKESignularRatio"] = fig = scatter(
+        subcubic_sing_df[
+            [
+                "normalized-accuracy-bound",
+                "EQKERatioFirstTwoSingularFloat",
+                "attention_error_handling",
+            ]
+        ],
+        y="normalized-accuracy-bound",
+        x="EQKERatioFirstTwoSingularFloat",
+        color="attention_error_handling",
+        # title='Normalized Accuracy Bound vs EQKE Ratio First Two Singular',
+        yaxis="Normalized Accuracy Bound",
+        xaxis="EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
+        # labels={
+        #     'normalized-accuracy-bound': 'Normalized Accuracy Bound',
+        #     'EQKERatioFirstTwoSingularFloat': 'EQKE Ratio First Two Singular'
+        # }
+        renderer=RENDERER,
+        plot_with=PLOT_WITH,
+    )
+    # fig.update_layout(showlegend=False)
+    # fig.update_layout(
+    #     legend=dict(
+    #         orientation="h",
+    #         yanchor="top",
+    #         y=-0.3,
+    #         xanchor="center",
+    #         x=0.5
+    #     )
+    # )
+    # # Show the plot
+    # fig.show('png')
+
+
 # %%
 if HAS_CSVS:
     for descr, df in (
@@ -2886,6 +3035,7 @@ def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
     return data
 
 
+PLOT_WITH = "plotly"
 # %%
 if HAS_CSVS:
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
@@ -2953,23 +3103,32 @@ if HAS_CSVS:
 if HAS_CSVS:
     for norm, normt in (("", ""), ("normalized-", "Normalized ")):
 
+        data = combined_df[
+            [
+                "proof-flop-estimate",
+                f"{norm}accuracy-bound",
+                "group",
+                "frontier",
+                "tricks",
+            ]
+        ].copy()
+        # data["group"] = data["group"].map({k:k[:7] for k in set(data["group"])})
         fig = px.scatter(
-            combined_df[
-                ["proof-flop-estimate", f"{norm}accuracy-bound", "group", "frontier"]
-            ],
+            data,
             x="proof-flop-estimate",
             y=f"{norm}accuracy-bound",
-            color="group",
+            symbol="group",
             title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
             log_x=True,
-            symbol="frontier",
-            symbol_map={True: "diamond", False: "circle"},
+            color="tricks",
+            # symbol_map={True: "diamond", False: "circle"},
+            # legend=False,
         )
-
+        fig.update_layout(showlegend=False)
         # Flip the x-axis
         fig.update_layout(xaxis=dict(autorange="reversed"))
 
-        fig.show("png")
+        fig.show()
 
 # TRAIN_CSV_PATH = ALL_MODELS_PATH / "all-models-train-values.csv"
 # TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
@@ -3107,22 +3266,34 @@ def texify_matplotlib_title(
     orig_titles = [ax.get_title() for ax in fig.axes if fig.axes]
     orig_xlabels = [ax.get_xlabel() for ax in fig.axes if fig.axes]
     orig_ylabels = [ax.get_ylabel() for ax in fig.axes if fig.axes]
-    orig_legend_labels = [
-        [line.get_label() for line in ax.get_lines()] for ax in fig.axes
+    orig_legend_handles_labels = [
+        ax.get_legend_handles_labels() if ax.get_legend() else ([], [])
+        for ax in fig.axes
     ]
     new_suptitle = texify(orig_suptitle)
     new_titles = [texify(t) for t in orig_titles]
     new_xlabels = [texify(t) for t in orig_xlabels]
     new_ylabels = [texify(t) for t in orig_ylabels]
-    new_legend_labels = [
-        [texify(label) for label in labels] for labels in orig_legend_labels
+    new_legend_handles_labels = [
+        (handles, [(texify(label) or label) for label in labels])
+        for handles, labels in orig_legend_handles_labels
     ]
     try:
         if new_suptitle is not None:
             fig.suptitle(new_suptitle)
         if fig.axes:
-            for ax, new_title, new_xlabel, new_ylabel, new_leg_labels in zip(
-                fig.axes, new_titles, new_xlabels, new_ylabels, new_legend_labels
+            for (
+                ax,
+                new_title,
+                new_xlabel,
+                new_ylabel,
+                (new_leg_handles, new_leg_labels),
+            ) in zip(
+                fig.axes,
+                new_titles,
+                new_xlabels,
+                new_ylabels,
+                new_legend_handles_labels,
             ):
                 if new_title is not None:
                     ax.set_title(new_title)
@@ -3130,18 +3301,25 @@ def texify_matplotlib_title(
                     ax.set_xlabel(new_xlabel)
                 if new_ylabel is not None:
                     ax.set_ylabel(new_ylabel)
-                for line, new_label in zip(ax.get_lines(), new_leg_labels):
-                    if new_label is not None:
-                        line.set_label(new_label)
-                if ax.get_legend() is not None:
-                    ax.legend()
+                if new_leg_labels:
+                    ax.legend(new_leg_handles, new_leg_labels)
         yield fig
     finally:
         if new_suptitle is not None:
             fig.suptitle(orig_suptitle)
         if fig.axes:
-            for ax, orig_title, orig_xlabel, orig_ylabel, orig_leg_labels in zip(
-                fig.axes, orig_titles, orig_xlabels, orig_ylabels, orig_legend_labels
+            for (
+                ax,
+                orig_title,
+                orig_xlabel,
+                orig_ylabel,
+                (orig_leg_handles, orig_leg_labels),
+            ) in zip(
+                fig.axes,
+                orig_titles,
+                orig_xlabels,
+                orig_ylabels,
+                orig_legend_handles_labels,
             ):
                 if orig_title is not None:
                     ax.set_title(orig_title)
@@ -3149,10 +3327,8 @@ def texify_matplotlib_title(
                     ax.set_xlabel(orig_xlabel)
                 if orig_ylabel is not None:
                     ax.set_ylabel(orig_ylabel)
-                for line, orig_label in zip(ax.get_lines(), orig_leg_labels):
-                    line.set_label(orig_label)
-                if ax.get_legend() is not None:
-                    ax.legend()
+                if orig_leg_labels:
+                    ax.legend(orig_leg_handles, orig_leg_labels)
 
 
 errs = []

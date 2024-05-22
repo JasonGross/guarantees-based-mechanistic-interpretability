@@ -299,6 +299,7 @@ def scatter_plotly(
     legend_at_bottom: bool = False,
     reverse_xaxis: bool = False,
     reverse_yaxis: bool = False,
+    color_order: Optional = None,
     **kwargs,
 ):
     # x = utils.to_numpy(x)

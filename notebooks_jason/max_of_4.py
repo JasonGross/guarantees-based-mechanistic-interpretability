@@ -3038,7 +3038,7 @@ if HAS_CSVS:
             avg, std = result[result["group"] == group_name][["mean", "std"]].iloc[0]
             new_group_name = group_name[len("subcubic (") : -1]
             new_group_name = "subcubic" if not new_group_name else new_group_name
-            new_group_name.replace(
+            new_group_name = new_group_name.replace(
                 "model-squared-vocab", r"$d_{\mathrm{model}}^2d_{\mathrm{vocab}}$"
             )
             category_name_remap[group_name] = (

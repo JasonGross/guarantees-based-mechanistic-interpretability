@@ -753,6 +753,14 @@ class LargestWrongLogitQuadraticConfig:
         )
 
     @property
+    def is_subcubic_no_quadratic_vocab(self) -> bool:
+        return (
+            self.EUPU_handling_subcubic_no_quadratic_vocab
+            and self.attention_handling_subcubic_no_quadratic_vocab
+            and self.attention_error_handling_subcubic_no_quadratic_vocab
+        )
+
+    @property
     def is_quadratic(self) -> bool:
         return (
             self.EUPU_handling_quadratic
@@ -871,8 +879,14 @@ class LargestWrongLogitQuadraticConfig:
         return True
 
     @property
-    def EUPU_handling_subcubic(self) -> bool:
+    def EUPU_handling_subcubic_no_quadratic_vocab(self) -> bool:
         if self.EUPU_handling_quadratic:
+            return True
+        return True
+
+    @property
+    def EUPU_handling_subcubic(self) -> bool:
+        if self.EUPU_handling_subcubic_no_quadratic_vocab:
             return True
         return True
 
@@ -949,7 +963,7 @@ class LargestWrongLogitQuadraticConfig:
                 return False
 
     @property
-    def attention_error_handling_subcubic(self) -> bool:
+    def attention_error_handling_subcubic_no_quadratic_vocab(self) -> bool:
         if self.attention_error_handling_quadratic:
             return True
         match self.attention_error_handling:
@@ -971,6 +985,16 @@ class LargestWrongLogitQuadraticConfig:
                 assert False  # handled by quadratic
             case "max_diff_exact" | "exact_EQKE+max_diff_exact":
                 return False  # involves full matmul
+
+    @property
+    def attention_error_handling_subcubic(self) -> bool:
+        if self.attention_error_handling_subcubic_no_quadratic_vocab:
+            return True
+        match self.attention_error_handling:
+            case "max_diff_exact" | "exact_EQKE+max_diff_exact":
+                return True
+            case _:
+                assert False  # handled by attention_error_handling_subcubic_no_quadratic_vocab
 
     def attention_error_handling_effective_dimension_estimate(
         self, cfg: HookedTransformerConfig
@@ -1033,6 +1057,10 @@ class LargestWrongLogitQuadraticConfig:
 
     @property
     def attention_handling_quadratic(self) -> bool:
+        return True
+
+    @property
+    def attention_handling_subcubic_no_quadratic_vocab(self) -> bool:
         return True
 
     @property

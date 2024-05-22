@@ -2718,7 +2718,11 @@ if HAS_CSVS:
         return (
             "almost-quadratic"
             if tricks.is_quadratic
-            else "subcubic" if tricks.is_subcubic else "fake-cubic"
+            else (
+                "model-squared-vocab"
+                if tricks.is_subcubic_no_quadratic_vocab
+                else "subcubic" if tricks.is_subcubic else "fake-cubic"
+            )
         )
 
     def subcubic_group(row, df):
@@ -2726,17 +2730,26 @@ if HAS_CSVS:
         EUPU_str = (
             "direct-quadratic"
             if tricks.EUPU_handling_quadratic
-            else None if tricks.EUPU_handling_subcubic else "direct-cubic"
+            else (
+                "direct-model-squared-vocab"
+                if tricks.EUPU_no_quadratic_vocab
+                else None if tricks.EUPU_handling_subcubic else "direct-cubic"
+            )
         )
         EPQKE_str = (
             "attention-quadratic"
             if tricks.attention_error_handling_quadratic
             and tricks.attention_handling_quadratic
             else (
-                None
-                if tricks.attention_error_handling_subcubic
-                and tricks.attention_handling_subcubic
-                else "attention-cubic-reference"
+                "direct-model-squared-vocab"
+                if tricks.attention_error_handling_subcubic_no_quadratic_vocab
+                and tricks.attention_handling_subcubic_no_quadratic_vocab
+                else (
+                    None
+                    if tricks.attention_error_handling_subcubic
+                    and tricks.attention_handling_subcubic
+                    else "attention-cubic-reference"
+                )
             )
         )
         strs = [s for s in (EPQKE_str, EUPU_str) if s is not None]

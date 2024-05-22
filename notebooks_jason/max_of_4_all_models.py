@@ -1610,7 +1610,11 @@ def leading_complexity(tricks: LargestWrongLogitQuadraticConfig):
     return (
         "AlmostQuadratic"
         if tricks.is_quadratic
-        else "Subcubic" if tricks.is_subcubic else "FakeSubcubic"
+        else (
+            "SubcubicWithoutVocabSquared"
+            if tricks.is_subcubic_no_quadratic_vocab
+            else "Subcubic" if tricks.is_subcubic else "FakeSubcubic"
+        )
     )
 
 
@@ -1619,17 +1623,26 @@ def subcubic_group(tricks: LargestWrongLogitQuadraticConfig):
     EUPU_str = (
         "DirectQuadratic"
         if tricks.EUPU_handling_quadratic
-        else None if tricks.EUPU_handling_subcubic else "DirectCubic"
+        else (
+            "DirectModelSquaredVocab"
+            if tricks.EUPU_handling_subcubic_no_quadratic_vocab
+            else None if tricks.EUPU_handling_subcubic else "DirectCubic"
+        )
     )
     EPQKE_str = (
         "AttentionQuadratic"
         if tricks.attention_error_handling_quadratic
         and tricks.attention_handling_quadratic
         else (
-            None
-            if tricks.attention_error_handling_subcubic
-            and tricks.attention_handling_subcubic
-            else "AttentionCubic"
+            "AttentionModelSquaredVocab"
+            if tricks.attention_error_handling_subcubic_no_quadratic_vocab
+            and tricks.attention_handling_subcubic_no_quadratic_vocab
+            else (
+                None
+                if tricks.attention_error_handling_subcubic
+                and tricks.attention_handling_subcubic
+                else "AttentionCubic"
+            )
         )
     )
     strs = [s for s in (EPQKE_str, EUPU_str) if s is not None]
@@ -1663,6 +1676,12 @@ for trick_filter_descr, trick_filter in (
             lambda tricks_str: LargestWrongLogitQuadraticConfig.parse(
                 tricks_str, latex=True
             ).is_subcubic,
+        ),
+        (
+            "SubcubicModelSquaredVocab",
+            lambda tricks_str: LargestWrongLogitQuadraticConfig.parse(
+                tricks_str, latex=True
+            ).is_subcubic_no_quadratic_vocab,
         ),
     ]
     + [(k, partial(filter_tricks_by_func, k, subcubic_group)) for k in subcubic_groups]

@@ -2751,7 +2751,7 @@ if HAS_CSVS:
             if tricks.attention_error_handling_quadratic
             and tricks.attention_handling_quadratic
             else (
-                "direct-model-squared-vocab"
+                "attention-model-squared-vocab"
                 if tricks.attention_error_handling_subcubic_no_quadratic_vocab
                 and tricks.attention_handling_subcubic_no_quadratic_vocab
                 else (
@@ -3055,10 +3055,10 @@ if HAS_CSVS:
         title="",
         log_x=2,
         log_y=2,
-        reverse_xaxis=True,
+        reverse_xaxis=False,
         color_order=[category_name_remap[c] for c in category_order],
         xaxis="FLOPs to Verify Proof (approximate)",
-        yaxis="Effective Residual Dimensionality (Estimated)",
+        yaxis="Unexplained Dimension (Estimated)",
         plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
@@ -3090,7 +3090,7 @@ if HAS_CSVS:
                 color="group",
                 title="",  # "Pareto Frontier" if frontier_only else "",
                 log_x=2,
-                reverse_xaxis=True,
+                reverse_xaxis=False,
                 xaxis="FLOPs to Verify Proof (approximate)",
                 yaxis=f"{normt}Accuracy Bound",
                 color_order=[category_name_remap[c] for c in category_order],

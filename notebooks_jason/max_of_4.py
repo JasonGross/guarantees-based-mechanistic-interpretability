@@ -2867,6 +2867,9 @@ if HAS_CSVS:
             avg, std = result[result["group"] == group_name][["mean", "std"]].iloc[0]
             new_group_name = group_name[len("subcubic (") : -1]
             new_group_name = "subcubic" if not new_group_name else new_group_name
+            new_group_name.replace(
+                "model-squared-vocab", r"$d_{\mathrm{model}}^2d_{\mathrm{vocab}}$"
+            )
             category_name_remap[group_name] = (
                 f"{new_group_name} (rel acc: {pm_round(avg, std)})"
             )
@@ -3020,6 +3023,8 @@ title_reps = {
     r"\mathrm{EQKE}": r"\EPQKE ",
     r"\text{EQKP}": r"\EPQKP ",
     r"\mathrm{EQKP}": r"\EPQKP ",
+    r"d_{\mathrm{model}}": r"\dmodel ",
+    r"d_{\mathrm{vocab}}": r"\dvocab ",
 }
 
 
@@ -3102,16 +3107,27 @@ def texify_matplotlib_title(
     orig_titles = [ax.get_title() for ax in fig.axes if fig.axes]
     orig_xlabels = [ax.get_xlabel() for ax in fig.axes if fig.axes]
     orig_ylabels = [ax.get_ylabel() for ax in fig.axes if fig.axes]
+    orig_legend_labels = [
+        (
+            [text.get_text() for text in ax.get_legend().get_texts()]
+            if ax.get_legend()
+            else []
+        )
+        for ax in fig.axes
+    ]
     new_suptitle = texify(orig_suptitle)
     new_titles = [texify(t) for t in orig_titles]
     new_xlabels = [texify(t) for t in orig_xlabels]
     new_ylabels = [texify(t) for t in orig_ylabels]
+    new_legend_labels = [
+        [texify(label) for label in labels] for labels in orig_legend_labels
+    ]
     try:
         if new_suptitle is not None:
             fig.suptitle(new_suptitle)
         if fig.axes:
-            for ax, new_title, new_xlabel, new_ylabel in zip(
-                fig.axes, new_titles, new_xlabels, new_ylabels
+            for ax, new_title, new_xlabel, new_ylabel, new_leg_labels in zip(
+                fig.axes, new_titles, new_xlabels, new_ylabels, new_legend_labels
             ):
                 if new_title is not None:
                     ax.set_title(new_title)
@@ -3119,13 +3135,16 @@ def texify_matplotlib_title(
                     ax.set_xlabel(new_xlabel)
                 if new_ylabel is not None:
                     ax.set_ylabel(new_ylabel)
+                if ax.get_legend() is not None:
+                    handles, _ = ax.get_legend_handles_labels()
+                    ax.legend(handles, new_leg_labels)
         yield fig
     finally:
         if new_suptitle is not None:
             fig.suptitle(orig_suptitle)
         if fig.axes:
-            for ax, orig_title, orig_xlabel, orig_ylabel in zip(
-                fig.axes, orig_titles, orig_xlabels, orig_ylabels
+            for ax, orig_title, orig_xlabel, orig_ylabel, orig_leg_labels in zip(
+                fig.axes, orig_titles, orig_xlabels, orig_ylabels, orig_legend_labels
             ):
                 if orig_title is not None:
                     ax.set_title(orig_title)
@@ -3133,6 +3152,9 @@ def texify_matplotlib_title(
                     ax.set_xlabel(orig_xlabel)
                 if orig_ylabel is not None:
                     ax.set_ylabel(orig_ylabel)
+                if ax.get_legend() is not None:
+                    handles, _ = ax.get_legend_handles_labels()
+                    ax.legend(handles, orig_leg_labels)
 
 
 errs = []

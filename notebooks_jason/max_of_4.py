@@ -2932,15 +2932,34 @@ if HAS_CSVS:
         ].idxmax()
     ]
 
+    # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
+    df = subcubic_sing_df[
+        [
+            "normalized-accuracy-bound",
+            "EQKERatioFirstTwoSingularFloat",
+            "attention_error_handling",
+        ]
+    ].sort_values(
+        by=[
+            "attention_error_handling",
+            "normalized-accuracy-bound",
+            "EQKERatioFirstTwoSingularFloat",
+        ]
+    )
+    # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for each group
+    max_bound_by_group = df.groupby("attention_error_handling")[
+        "normalized-accuracy-bound"
+    ].max()
+
+    # Sort the groups by max 'normalized-accuracy-bound'
+    sorted_groups = max_bound_by_group.sort_values(ascending=False)
+
+    # Extract the sorted list of 'attention_error_handling' categories
+    sorted_attn_err_handling = sorted_groups.index.tolist()
+
     latex_externalize_tables["NormalizedAccuracyBoundVsEPQKESingularRatio"] = True
     latex_figures["NormalizedAccuracyBoundVsEPQKESingularRatio"] = fig = scatter(
-        subcubic_sing_df[
-            [
-                "normalized-accuracy-bound",
-                "EQKERatioFirstTwoSingularFloat",
-                "attention_error_handling",
-            ]
-        ],
+        df,
         yrange=(0, 1),
         y="normalized-accuracy-bound",
         x="EQKERatioFirstTwoSingularFloat",
@@ -2952,6 +2971,7 @@ if HAS_CSVS:
         #     'normalized-accuracy-bound': 'Normalized Accuracy Bound',
         #     'EQKERatioFirstTwoSingularFloat': 'EQKE Ratio First Two Singular'
         # }
+        color_order=sorted_attn_err_handling,
         renderer=RENDERER,
         plot_with=PLOT_WITH,
     )

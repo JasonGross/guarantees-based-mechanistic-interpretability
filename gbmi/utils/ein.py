@@ -9,7 +9,6 @@ from inspect import signature
 from typing import Callable, Optional, List, Union, TypeVar, Generic, Set, Dict
 
 import dill
-import functorch.dim
 
 import torch
 from functorch.dim import dims, Dim
@@ -43,7 +42,7 @@ def lambda_hash(thing: object) -> str:
     # TODO: speed up
     class Pickler(dill.Pickler):
         def reducer_override(self, obj):
-            if isinstance(obj, functorch.dim.Tensor):
+            if isinstance(obj, DTensor):
                 return pickle.loads, (
                     pickle.dumps(
                         obj.order(*obj.dims),
@@ -55,7 +54,7 @@ def lambda_hash(thing: object) -> str:
                         pickle.dumps(torch._C._functorch.get_unwrapped(obj)),
                     )
                 return NotImplemented
-            if isinstance(obj, functorch.dim.Dim):
+            if isinstance(obj, Dim):
                 # TODO: we're losing data here... pass int through if it exists.
                 return pickle.loads, (None,)
             return NotImplemented

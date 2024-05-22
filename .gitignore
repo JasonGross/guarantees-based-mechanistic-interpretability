@@ -197,3 +197,5 @@ notebooks_jason/max_of_4/git-diff-info.diff
 
 *_cache.pkl
 *_cache.pkl.lock
+
+lightning_logs/

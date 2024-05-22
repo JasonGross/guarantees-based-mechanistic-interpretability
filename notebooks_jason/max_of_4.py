@@ -3131,7 +3131,8 @@ def texify_matplotlib_title(
                 if new_ylabel is not None:
                     ax.set_ylabel(new_ylabel)
                 for line, new_label in zip(ax.get_lines(), new_leg_labels):
-                    line.set_label(new_label)
+                    if new_label is not None:
+                        line.set_label(new_label)
                 if ax.get_legend() is not None:
                     ax.legend()
         yield fig

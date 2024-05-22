@@ -1525,7 +1525,7 @@ def filter_tricks_str_eq(value: str, tricks_str: str):
 def filter_tricks_by_func(
     value: str, func: Callable[[LargestWrongLogitQuadraticConfig], str], tricks_str: str
 ):
-    return value == func(LargestWrongLogitQuadraticConfig.parse(tricks_str))
+    return value == func(LargestWrongLogitQuadraticConfig.parse(tricks_str, latex=True))
 
 
 subcubic_leading_complexities = defaultdict(set)
@@ -1543,7 +1543,7 @@ for trick_filter_descr, trick_filter in (
         (
             "RealSubcubic",
             lambda tricks_str: LargestWrongLogitQuadraticConfig.parse(
-                tricks_str
+                tricks_str, latex=True
             ).is_subcubic,
         ),
     ]

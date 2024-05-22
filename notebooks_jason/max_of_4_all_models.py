@@ -1030,12 +1030,13 @@ for k, v in EQKE_SVD_analyses_by_key.items():
 # %%
 try_all_configurations: bool = True  # @param {type:"boolean"}
 use_tricks: bool = True  # @param {type:"boolean"}
+all_configs: list[LargestWrongLogitQuadraticConfig]
 if try_all_configurations:
     all_configs = list(enumerate_dataclass_values(LargestWrongLogitQuadraticConfig))
 elif use_tricks:
     all_configs = [LargestWrongLogitQuadraticConfig()]
 else:
-    all_configs = [LargestWrongLogitQuadraticConfig.OFF]
+    all_configs = [LargestWrongLogitQuadraticConfig.OFF()]
 # %%
 
 
@@ -1426,6 +1427,12 @@ with (
         sorted(relevant_seeds),
     )
 
+for seed in subcubic_data:
+    for row in subcubic_data[seed]:
+        row["normalized-accuracy-bound"] = (
+            row["accuracy-bound"] / brute_force_data[seed]["accuracy"]
+        )
+
 new_data = []
 for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])
@@ -1433,3 +1440,152 @@ for seed in sorted(subcubic_data.keys()):
 update_csv_with_rows(SUBCUBIC_CSV_PATH, new_data, columns=subcubic_columns)
 
 # %%
+# %% [markdown]
+# Summary satistics subcubic
+# %%
+
+assert len(subcubic_data) == len(
+    brute_force_data
+), f"len(cubic_data) == {len(subcubic_data)} != {len(brute_force_data)} == len(brute_force_data)"
+# %%
+_some_runtime, some_model = runtime_models[123]
+d_vocab, n_ctx = some_model.cfg.d_vocab, some_model.cfg.n_ctx
+latex_values["BruteForceEffectiveDimensionalityEstimate"] = brute_force_ed = (
+    d_vocab ** (n_ctx + 1)
+)
+EUPU_cost = d_vocab**2
+PVOU_cost = n_ctx * d_vocab
+EPQKE_cost = d_vocab**2
+EPQKP_cost = d_vocab * n_ctx
+EVOU_cost = d_vocab**2
+latex_values["CubicEffectiveDimensionalityEstimate"] = cubic_ed = (
+    EUPU_cost + PVOU_cost + EPQKE_cost + EPQKP_cost + EVOU_cost
+)
+subcubic_PVOU_cost = d_vocab
+subcubic_EPQKP_cost = 0
+
+
+def leading_complexity(tricks: LargestWrongLogitQuadraticConfig):
+    # tricks = LargestWrongLogitQuadraticConfig.parse(tricks_str)
+    return (
+        "AlmostQuadratic"
+        if tricks.is_quadratic
+        else "Subcubic" if tricks.is_subcubic else "FakeSubcubic"
+    )
+
+
+def subcubic_group(tricks: LargestWrongLogitQuadraticConfig):
+    # tricks = LargestWrongLogitQuadraticConfig.parse(tricks_str)
+    EUPU_str = (
+        "DirectQuadratic"
+        if tricks.EUPU_handling_quadratic
+        else None if tricks.EUPU_handling_subcubic else "DirectCubic"
+    )
+    EPQKE_str = (
+        "AttentionQuadratic"
+        if tricks.attention_error_handling_quadratic
+        and tricks.attention_handling_quadratic
+        else (
+            None
+            if tricks.attention_error_handling_subcubic
+            and tricks.attention_handling_subcubic
+            else "AttentionCubic"
+        )
+    )
+    strs = [s for s in (EPQKE_str, EUPU_str) if s is not None]
+    return "Subcubic" + (f"{''.join(strs)}" if strs else "")
+
+
+def filter_tricks_str_eq(value: str, tricks_str: str):
+    return value == tricks_str
+
+
+def filter_tricks_by_func(
+    value: str, func: Callable[[LargestWrongLogitQuadraticConfig], str], tricks_str: str
+):
+    return value == func(LargestWrongLogitQuadraticConfig.parse(tricks_str))
+
+
+subcubic_leading_complexities = defaultdict(set)
+subcubic_groups = defaultdict(set)
+
+for tricks in all_configs:
+    tricks_str = tricks.short_description(latex=True)
+    subcubic_leading_complexities[leading_complexity(tricks)].add(tricks_str)
+    subcubic_groups[subcubic_group(tricks)].add(tricks_str)
+
+
+for trick_filter_descr, trick_filter in (
+    [
+        ("AnySubcubic", lambda tricks_str: True),
+        (
+            "RealSubcubic",
+            lambda tricks_str: LargestWrongLogitQuadraticConfig.parse(
+                tricks_str
+            ).is_subcubic,
+        ),
+    ]
+    + [(k, partial(filter_tricks_by_func, k, subcubic_group)) for k in subcubic_groups]
+    + [
+        (k, partial(filter_tricks_by_func, k, leading_complexity))
+        for k in subcubic_leading_complexities
+    ]
+    + [
+        (
+            f"Subcubic{tricks.short_description(latex=True)}",
+            partial(filter_tricks_str_eq, tricks.short_description(latex=True)),
+        )
+        for tricks in all_configs
+    ]
+):
+    filtered_subcubic_data = {
+        seed: [row for row in rows if trick_filter(row["tricks"])]
+        for seed, rows in subcubic_data.items()
+    }
+    filtered_subcubic_data_best_by_key = defaultdict(dict)
+    for seed, rows in filtered_subcubic_data.items():
+        best_row = max(rows, key=lambda row: row["accuracy-bound"])
+        for k, v in best_row.items():
+            filtered_subcubic_data_best_by_key[k][seed] = v
+    for key, latex_key in [
+        ("accuracy-bound", "Accuracy"),
+        ("duration-proof-search", "ProofSearchTime"),
+        ("duration", "ProofTime"),
+        ("normalized-accuracy-bound", "NormalizedAccuracy"),
+        ("perf-time-enabled-ns", "PerfTimeEnabledNS"),
+        ("perf-instruction-count", "PerfInstructionCount"),
+        ("perf-branch-misses", "PerfBranchMisses"),
+        ("perf-page-faults", "PerfPageFaults"),
+        ("proof-flop-estimate", "InstructionCount"),
+        ("proof-int-op-estimate", "InstructionCountInt"),
+        ("proof-branch-estimate", "InstructionCountBranch"),
+        ("err-upper-bound", "ErrUpperBound"),
+        ("dropped-sequences", "DroppedSequences"),
+        ("dropped-sequences-frac", "DroppedSequencesFrac"),
+        ("most-gap-below-value", "GapMostBelowValue"),
+        ("most-gap-below-value-frac", "GapMostBelowValueSequenceFrac"),
+        ("most-gap-below-value-num-std", "GapMostBelowValueNumStd"),
+        ("max-gap", "MaxGap"),
+    ]:
+        if key not in filtered_subcubic_data_best_by_key:
+            print(f"Warning! Missing key {key}")
+            continue
+        latex_values |= data_summary(
+            filtered_subcubic_data_best_by_key[key],
+            prefix=f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}",
+        )
+        if any(len(rows) > 1 for rows in filtered_subcubic_data.values()):
+            latex_values |= data_summary(
+                [row[key] for rows in filtered_subcubic_data.values() for row in rows],
+                prefix=f"{trick_filter_descr}{latex_key}",
+            )
+        else:
+            print(
+                f"Skipping key {key} since values have at most one corresponding configuration"
+            )
+# %%
+latex_values["AllModelsHEADSHA"] = git.get_head_sha(short=False)
+latex_values["AllModelsHEADSHASHORT"] = git.get_head_sha(short=True)
+
+with open(LATEX_VALUES_PATH, "w") as f:
+    f.write(to_latex_defs(latex_values))

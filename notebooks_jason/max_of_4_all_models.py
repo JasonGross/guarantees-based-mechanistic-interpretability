@@ -481,10 +481,10 @@ avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
 std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
 std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
 latex_values["NumSeeds"] = num_seeds
-latex_values["AvgTrainAccuracyFloat"] = avg_train_average_accuracy
-latex_values["StdDevTrainAccuracyFloat"] = std_dev_train_average_accuracy
-latex_values["AvgTrainLossFloat"] = avg_train_average_loss
-latex_values["StdDevTrainLossFloat"] = std_dev_train_average_loss
+latex_values["AllModelsAvgTrainAccuracyFloat"] = avg_train_average_accuracy
+latex_values["AllModelsStdDevTrainAccuracyFloat"] = std_dev_train_average_accuracy
+latex_values["AllModelsAvgTrainLossFloat"] = avg_train_average_loss
+latex_values["AllModelsStdDevTrainLossFloat"] = std_dev_train_average_loss
 
 # %% [markdown]
 # # Brute Force Proof

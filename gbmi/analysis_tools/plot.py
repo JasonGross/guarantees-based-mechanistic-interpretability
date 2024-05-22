@@ -367,7 +367,11 @@ def scatter_matplotlib(
             x = range(len(v))
             plt.scatter(x, v, label=k, marker=marker)
         if not legend_at_bottom:
-            ax.legend()
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+            # Put a legend to the right of the current axis
+            ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
     elif (
         len(data) == 1
         and isinstance(data[0], pd.DataFrame)
@@ -403,7 +407,12 @@ def scatter_matplotlib(
     if legend_at_bottom:
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
     elif legend:
-        ax.legend()
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+        # Put a legend to the right of the current axis
+        ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+        # ax.legend(loc='upper right', bbox_to_anchor=(0, 0, 1, 1))
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
     if log_x:

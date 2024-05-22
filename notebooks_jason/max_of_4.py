@@ -2932,7 +2932,7 @@ if HAS_CSVS:
         ].idxmax()
     ]
 
-    latex_figures["NormalizedAccuracyBoundVsEPQKESignularRatio"] = fig = scatter(
+    latex_figures["NormalizedAccuracyBoundVsEPQKESingularRatio"] = fig = scatter(
         subcubic_sing_df[
             [
                 "normalized-accuracy-bound",

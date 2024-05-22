@@ -1202,6 +1202,24 @@ def _subcubic_count_verify_proof(
 
 
 # %%
+_some_runtime, some_model = runtime_models[123]
+d_vocab, n_ctx = some_model.cfg.d_vocab, some_model.cfg.n_ctx
+latex_values["BruteForceEffectiveDimensionalityEstimate"] = brute_force_ed = (
+    d_vocab ** (n_ctx + 1)
+)
+EUPU_cost = d_vocab**2
+PVOU_cost = n_ctx * d_vocab
+EPQKE_cost = d_vocab**2
+EPQKP_cost = d_vocab * n_ctx
+EVOU_cost = d_vocab**2
+latex_values["CubicEffectiveDimensionalityEstimate"] = cubic_ed = (
+    EUPU_cost + PVOU_cost + EPQKE_cost + EPQKP_cost + EVOU_cost
+)
+subcubic_PVOU_cost = d_vocab
+subcubic_EPQKP_cost = 0
+
+
+# %%
 subcubic_columns = [
     "seed",
     "accuracy-bound",
@@ -1587,10 +1605,23 @@ with (
         sorted(relevant_seeds),
     )
 
+
+def subcubic_approx_effective_dimension(
+    model: HookedTransformer, tricks: LargestWrongLogitQuadraticConfig
+):
+    return (
+        int(tricks.effective_dimension_estimate(model.cfg))
+        + subcubic_PVOU_cost
+        + subcubic_EPQKP_cost
+        + EVOU_cost
+    )
+
+
 for seed in subcubic_data:
     for row in subcubic_data[seed]:
-        row["normalized-accuracy-bound"] = (
-            row["accuracy-bound"] / brute_force_data[seed]["accuracy"]
+        row["effective-dimensionality-estimate"] = subcubic_approx_effective_dimension(
+            runtime_models[seed][1],
+            LargestWrongLogitQuadraticConfig.parse(row["tricks"], latex=True),
         )
 
 new_data = []
@@ -1609,22 +1640,6 @@ update_csv_with_rows(
 assert len(subcubic_data) == len(
     brute_force_data
 ), f"len(cubic_data) == {len(subcubic_data)} != {len(brute_force_data)} == len(brute_force_data)"
-# %%
-_some_runtime, some_model = runtime_models[123]
-d_vocab, n_ctx = some_model.cfg.d_vocab, some_model.cfg.n_ctx
-latex_values["BruteForceEffectiveDimensionalityEstimate"] = brute_force_ed = (
-    d_vocab ** (n_ctx + 1)
-)
-EUPU_cost = d_vocab**2
-PVOU_cost = n_ctx * d_vocab
-EPQKE_cost = d_vocab**2
-EPQKP_cost = d_vocab * n_ctx
-EVOU_cost = d_vocab**2
-latex_values["CubicEffectiveDimensionalityEstimate"] = cubic_ed = (
-    EUPU_cost + PVOU_cost + EPQKE_cost + EPQKP_cost + EVOU_cost
-)
-subcubic_PVOU_cost = d_vocab
-subcubic_EPQKP_cost = 0
 
 
 def leading_complexity(tricks: LargestWrongLogitQuadraticConfig):
@@ -1747,6 +1762,7 @@ for trick_filter_descr, trick_filter in (
         ("most-gap-below-value-frac", "GapMostBelowValueSequenceFrac"),
         ("most-gap-below-value-num-std", "GapMostBelowValueNumStd"),
         ("max-gap", "MaxGap"),
+        ("effective-dimensionality-estimate", "EffectiveDimensionalityEstimate"),
     ]:
         if key not in filtered_subcubic_data_best_by_key:
             print(f"Warning! Missing key {key}")

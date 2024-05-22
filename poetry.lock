@@ -4565,7 +4565,7 @@ dev = ["seaborn"]
 type = "git"
 url = "https://tinyurl.com/tikzplotlib"
 reference = "patched"
-resolved_reference = "5128d3022db164581bc74f52f3c1033f3b702a31"
+resolved_reference = "9b33b8a39350bfc41c9ee265e07230e1af6e2239"
 
 [[package]]
 name = "tikzplotly"

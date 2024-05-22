@@ -28,7 +28,11 @@ from gbmi.verification_tools.decomp import factor_contribution
 
 @torch.no_grad()
 def find_size_and_query_direction(
-    model: HookedTransformer, plot_heatmaps=False, renderer=None, **kwargs
+    model: HookedTransformer,
+    plot_heatmaps=False,
+    renderer=None,
+    with_attn_scale: bool = False,
+    **kwargs,
 ) -> Tuple[
     Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Optional[dict[str, go.Figure]]
 ]:
@@ -64,6 +68,8 @@ def find_size_and_query_direction(
         @ W_K[0, 0, :, :].T
         @ (W_E + W_pos.mean(dim=0)).T
     )
+    if with_attn_scale:
+        QK = QK / model.blocks[0].attn.attn_scale
     assert QK.shape == (
         d_vocab,
         d_vocab,
@@ -105,6 +111,7 @@ def find_size_and_query_direction(
             # size_direction_resid=size_direction_resid, size_direction_QK=size_direction_QK,
             # query_direction_resid=query_direction_resid, query_direction_QK=query_direction_QK,
             renderer=renderer,
+            with_attn_scale=with_attn_scale,
             **kwargs,
         )
 
@@ -201,6 +208,7 @@ def display_size_direction_stats(
     query_direction_resid: Optional[torch.Tensor] = None,
     query_direction_QK: Optional[torch.Tensor] = None,
     *,
+    with_attn_scale: bool = False,
     do_exclusions: bool = True,
     include_contribution: bool = True,
     scale_by_singular_value: bool = True,
@@ -227,8 +235,11 @@ def display_size_direction_stats(
     sWK = "W<sub>K</sub>" if title_kind == "html" else r"W_K"
     sT = "<sup>T</sup>" if title_kind == "html" else "^T"
     sEp = "𝔼<sub>p</sub>" if title_kind == "html" else r"\mathbb{E}_p"
-
-    title = f"Attention{nl}{smath}({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}({sWE} + {sEp}{sWpos}[p]){sT}{smath}"
+    ssqrtdhead = (
+        "√d<sub>head</sub>" if title_kind == "html" else r"\sqrt{d_{\mathrm{head}}}"
+    )
+    sattn_scale = "" if not with_attn_scale else f"/{ssqrtdhead}"
+    title = f"Attention{nl}{smath}({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}({sWE} + {sEp}{sWpos}[p]){sT}{sattn_scale}{smath}"
 
     fig = imshow(
         QK,

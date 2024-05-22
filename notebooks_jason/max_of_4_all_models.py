@@ -38,6 +38,8 @@ from typing import (
 )
 
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
+from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
+from gbmi.verification_tools.general import EU_PU
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
 from gbmi.utils.dataclass import enumerate_dataclass_values
@@ -192,17 +194,20 @@ def data_summary(
     if isinstance(values, torch.Tensor):
         values = values.cpu().numpy()
     elif not isinstance(values, np.ndarray):
-        values = np.array(values) + 0.0  # turn to float
+        values = np.array(values)  # turn to float
 
     wf = lambda k: f"{prefix}{k}{float_postfix}"
 
     result = {
-        wf("Mean"): values.mean(),
-        wf("StdDev"): values.std(),
-        wf("SqrMean"): (values**2).mean(),
         f"{prefix}Len{int_postfix}": len(values.flatten()),
         wf("Min"): values.min(),
         wf("Max"): values.max(),
+    }
+    values = values + 0.0  # floatify
+    result |= {
+        wf("Mean"): values.mean(),
+        wf("StdDev"): values.std(),
+        wf("SqrMean"): (values**2).mean(),
     }
 
     s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
@@ -858,6 +863,84 @@ for k, v in latex_values_tmp_data.items():
     latex_values |= data_summary(v, prefix=k)
 
 
+# %%
+def analyze_EVOU(model: HookedTransformer):
+    EPVOU = all_EVOU(model)
+    PVOU = all_PVOU(model)
+    PVOU_mean = PVOU.mean(dim=0)
+    EPVOU += PVOU_mean
+    PVOU -= PVOU_mean
+    EPU = EU_PU(model)
+    EPVOU_diag = EPVOU.diagonal()
+    EPVOU_centered = EPVOU - EPVOU_diag.unsqueeze(-1)
+    EPVOU_minf_diag = EPVOU_centered.clone()
+    EPVOU_minf_diag[tuple(torch.arange(d) for d in EPVOU.shape)] = -torch.inf
+    EPVOU_max_above_diag = EPVOU_minf_diag.amax(dim=-1)
+    EPVOU_largest_index_above_diag = torch.arange(EPVOU.shape[0])[
+        EPVOU_max_above_diag > 0
+    ]
+    EPVOU_off_diag = EPVOU.clone()
+    EPVOU_off_diag[tuple(torch.arange(d) for d in EPVOU.shape)] = torch.nan
+    EPVOU_off_diag = EPVOU_off_diag[~EPVOU_off_diag.isnan()]
+    EPVOU_centered_off_diag = EPVOU_centered.clone()
+    EPVOU_centered_off_diag[tuple(torch.arange(d) for d in EPVOU_centered.shape)] = (
+        torch.nan
+    )
+    EPVOU_centered_off_diag = EPVOU_centered_off_diag[~EPVOU_centered_off_diag.isnan()]
+
+    result = {}
+    result |= data_summary(EPU.flatten(), "EUPU")
+    result |= data_summary(EPU.abs().flatten(), "EUPUAbs")
+    result |= data_summary(EPU.amax(dim=-1) - EPU.amin(dim=-1), "EUPUMaxRowDiff")
+
+    result |= data_summary(PVOU.flatten(), "PVOU")
+    result |= data_summary(PVOU.abs().flatten(), "PVOUAbs")
+    result |= data_summary(PVOU.amax(dim=-1) - PVOU.amin(dim=-1), "PVOUMaxRowDiff")
+
+    result |= data_summary(EPVOU.flatten(), "EPVOU")
+    result |= data_summary(EPVOU.abs().flatten(), "EPVOUAbs")
+    result |= data_summary(EPVOU.amax(dim=-1) - EPVOU.amin(dim=-1), "EPVOUMaxRowDiff")
+    result |= data_summary(EPVOU_diag, "EPVOUDiagonal")
+    result |= data_summary(EPVOU_centered.flatten(), "EPVOUCentered")
+    result |= data_summary(EPVOU_max_above_diag, "EPVOUMaxAboveDiag")
+    result |= data_summary(
+        EPVOU_largest_index_above_diag, "EPVOUInputsWithCopyingFailure"
+    )
+    result |= data_summary(EPVOU_off_diag, "EPVOUOffDiagonal")
+    result |= data_summary(EPVOU_off_diag.abs(), "EPVOUOffDiagonalAbs")
+    result |= data_summary(EPVOU_centered_off_diag, "EPVOUCenteredOffDiagonal")
+
+    return result
+
+
+# %%
+# with memoshelve(
+#     (lambda seed, with_attn_scale: compute_EQKE_SVD_analysis(runtime_models[seed][1], with_attn_scale=with_attn_scale)),
+#     filename=cache_dir / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis",
+#     get_hash_mem=(lambda x: x[0]),
+#     get_hash=str,
+# )() as memo_compute_EQKE_SVD_analysis:
+EVOU_analyses = {
+    seed: analyze_EVOU(runtime_models[seed][1])
+    for seed in tqdm(list(sorted(runtime_models.keys())), desc="EVOU analysis")
+}
+# %%
+EVOU_analyses_by_key = defaultdict(dict)
+for seed, d in EVOU_analyses.items():
+    for k, v in d.items():
+        EVOU_analyses_by_key[k][seed] = v
+# %%
+for k, v in EVOU_analyses_by_key.items():
+    if k.endswith("Float"):
+        latex_values |= data_summary(v, prefix=k[: -len("Float")])
+    else:
+        latex_values |= data_summary(v, prefix=k)
+        # vals = set(v.values())
+        # assert len(vals) == 1, f"Too many values for {k}: {vals}"
+        # latex_values[k] = list(vals)[0]
+# %%
+
+
 # %% [markdown]
 # # SVD analysis
 # %%
@@ -906,7 +989,7 @@ def resample_EQKE_err(
 # %%
 @torch.no_grad()
 def compute_EQKE_SVD_analysis(
-    model: HookedTransformer,
+    model: HookedTransformer, with_attn_scale: bool = False
 ) -> dict[str, float]:
     results_float = {}
     (
@@ -938,9 +1021,24 @@ def compute_EQKE_SVD_analysis(
         W_K_U=W_K_U,
         sanity_check=False,
     )
+
+    if with_attn_scale:
+        EQKE_pos_err /= model.blocks[0].attn.attn_scale
+
+    results_float |= data_summary(EQKE_pos_err.flatten(), prefix="EQKP")
+    results_float |= data_summary(EQKE_pos_err.abs().flatten(), prefix="EQKPAbs")
+    results_float |= data_summary(
+        EQKE_pos_err.amax(dim=-1) - EQKE_pos_err.amin(dim=-1), prefix="EQKPMaxRowDiff"
+    )
+
     EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
     EQKE_err_simple = EQKE_err + err_accumulator
     EQKE_exact = EQKE_query_key + EQKE_err_simple
+    if with_attn_scale:
+        EQKE_err /= model.blocks[0].attn.attn_scale
+        EQKE_err_simple /= model.blocks[0].attn.attn_scale
+        EQKE_exact /= model.blocks[0].attn.attn_scale
+
     U, S, Vh = torch.linalg.svd(EQKE_exact)
     results_float["EQKEFirstSingularFloat"] = S[0].item()
     results_float["EQKESecondSingularFloat"] = S[1].item()
@@ -1005,13 +1103,17 @@ def compute_EQKE_SVD_analysis(
 
 # %%
 with memoshelve(
-    (lambda seed: compute_EQKE_SVD_analysis(runtime_models[seed][1])),
+    (
+        lambda seed, with_attn_scale: compute_EQKE_SVD_analysis(
+            runtime_models[seed][1], with_attn_scale=with_attn_scale
+        )
+    ),
     filename=cache_dir / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis",
     get_hash_mem=(lambda x: x[0]),
     get_hash=str,
 )() as memo_compute_EQKE_SVD_analysis:
     EQKE_SVD_analyses = {
-        seed: memo_compute_EQKE_SVD_analysis(seed)
+        seed: memo_compute_EQKE_SVD_analysis(seed, False)
         for seed in tqdm(list(sorted(runtime_models.keys())), desc="SVD analysis")
     }
 # %%

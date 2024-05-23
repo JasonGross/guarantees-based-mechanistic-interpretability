@@ -11,7 +11,7 @@ if ipython is not None:
 else:
     print("Not in IPython, not loading autoreload")
 # %%
-#!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super
+#!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
 # %%
 import traceback
 import sys

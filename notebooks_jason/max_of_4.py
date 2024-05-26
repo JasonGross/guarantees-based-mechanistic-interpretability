@@ -3390,14 +3390,13 @@ for k, fig in latex_figures.items():
     elif isinstance(fig, matplotlib.figure.Figure):
         p = LATEX_FIGURE_PATH / f"{k}.tex"
         p.parent.mkdir(parents=True, exist_ok=True)
-        if latex_externalize_tables.get(k, False):
+        externalize_this_table = latex_externalize_tables.get(k, True)
+        if externalize_this_table:
             if not latex_only_externalize_tables.get(k, False):
                 p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
             print(f"Saving {p}...")
             with texify_matplotlib_title(fig) as fig:
-                tikzplotlib.save(
-                    p, fig, externalize_tables=latex_externalize_tables.get(k, False)
-                )
+                tikzplotlib.save(p, fig, externalize_tables=externalize_this_table)
         p = LATEX_FIGURE_PATH / f"{k}.tex"
         print(f"Saving {p}...")
         with texify_matplotlib_title(fig, replace_with_macros=True) as fig:

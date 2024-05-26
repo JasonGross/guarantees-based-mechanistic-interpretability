@@ -3363,6 +3363,7 @@ for file_path in chain(
 ):
     file_path.unlink()
     print(f"Deleted: {file_path}")
+table_row_sep = r"\\" + "\n"
 for k, fig in latex_figures.items():
     if isinstance(fig, go.Figure):
         fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
@@ -3396,11 +3397,18 @@ for k, fig in latex_figures.items():
                 p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
             print(f"Saving {p}...")
             with texify_matplotlib_title(fig) as fig:
-                tikzplotlib.save(p, fig, externalize_tables=externalize_this_table)
+                tikzplotlib.save(
+                    p,
+                    fig,
+                    externalize_tables=externalize_this_table,
+                    table_row_sep=table_row_sep,
+                )
         p = LATEX_FIGURE_PATH / f"{k}.tex"
         print(f"Saving {p}...")
         with texify_matplotlib_title(fig, replace_with_macros=True) as fig:
-            tikzplotlib.save(p, fig, externalize_tables=False)
+            tikzplotlib.save(
+                p, fig, externalize_tables=False, table_row_sep=table_row_sep
+            )
         for ext in (".pdf", ".svg"):
             p = LATEX_FIGURE_PATH / f"{k}{ext}"
             print(f"Saving {p}...")

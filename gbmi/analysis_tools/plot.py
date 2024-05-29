@@ -300,6 +300,7 @@ def scatter_plotly(
     reverse_xaxis: bool = False,
     reverse_yaxis: bool = False,
     color_order: Optional = None,
+    yrange: Optional[Tuple[float, float]] = None,
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -321,6 +322,8 @@ def scatter_plotly(
         fig.update_layout(yaxis=dict(autorange="reversed"))
     if reverse_xaxis:
         fig.update_layout(xaxis=dict(autorange="reversed"))
+    if yrange is not None:
+        fig.update_yaxes(range=yrange)
     if show:
         fig.show(renderer)
     return fig

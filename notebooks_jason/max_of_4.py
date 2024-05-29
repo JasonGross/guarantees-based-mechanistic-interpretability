@@ -2901,11 +2901,7 @@ if HAS_CSVS:
     subcubic_sing_df = subcubic_ext_df.merge(
         subcubic_analysis_df[["seed", "EQKERatioFirstTwoSingularFloat"]], on="seed"
     )[["seed", "normalized-accuracy-bound", "tricks", "EQKERatioFirstTwoSingularFloat"]]
-    tricks = set(subcubic_sing_df["tricks"])
-    for trick in tricks:
-        if "AttnErrExactEqke" in trick:
-            subcubic_sing_df = subcubic_sing_df[subcubic_sing_df["tricks"] != trick]
-    subcubic_sing_df["attention_error_handling"] = subcubic_ext_df.apply(
+    subcubic_sing_df["attention_error_handling"] = subcubic_sing_df.apply(
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
@@ -2913,7 +2909,7 @@ if HAS_CSVS:
         ),
         axis=1,
     )
-    subcubic_sing_df["attention_handling"] = subcubic_ext_df.apply(
+    subcubic_sing_df["attention_handling"] = subcubic_sing_df.apply(
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
@@ -2921,7 +2917,7 @@ if HAS_CSVS:
         ),
         axis=1,
     )
-    subcubic_sing_df["EUPU_handling"] = subcubic_ext_df.apply(
+    subcubic_sing_df["EUPU_handling"] = subcubic_sing_df.apply(
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
@@ -2929,67 +2925,90 @@ if HAS_CSVS:
         ),
         axis=1,
     )
-    subcubic_sing_df = subcubic_sing_df.loc[
-        subcubic_sing_df.groupby(["seed", "attention_error_handling"])[
+    tricks = set(subcubic_sing_df["tricks"])
+    for trick in tricks:
+        if (
+            "exact_EQKE"
+            in LargestWrongLogitQuadraticConfig.parse(
+                trick, latex=True
+            ).attention_error_handling
+        ):
+            subcubic_sing_df = subcubic_sing_df[subcubic_sing_df["tricks"] != trick]
+
+    # subcubic_sing_df = subcubic_sing_df.loc[
+    #     subcubic_sing_df.groupby(["seed", "attention_error_handling"])[
+    #         "normalized-accuracy-bound"
+    #     ].idxmax()
+    # ]
+
+    for best_bound_only in (True, False):
+        df = subcubic_sing_df.copy()
+        if best_bound_only:
+            print(f"len before: {len(df)}")
+            df = df.loc[
+                df.groupby(["seed", "attention_error_handling"])[
+                    "normalized-accuracy-bound"
+                ].idxmax()
+            ]
+            print(f"len after: {len(df)}")
+
+        # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
+        df = df[
+            [
+                "normalized-accuracy-bound",
+                "EQKERatioFirstTwoSingularFloat",
+                "attention_error_handling",
+            ]
+        ].sort_values(
+            by=[
+                "attention_error_handling",
+                "normalized-accuracy-bound",
+                "EQKERatioFirstTwoSingularFloat",
+            ]
+        )
+        # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for each group
+        max_bound_by_group = df.groupby("attention_error_handling")[
             "normalized-accuracy-bound"
-        ].idxmax()
-    ]
+        ].max()
 
-    # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
-    df = subcubic_sing_df[
-        [
-            "normalized-accuracy-bound",
-            "EQKERatioFirstTwoSingularFloat",
-            "attention_error_handling",
-        ]
-    ].sort_values(
-        by=[
-            "attention_error_handling",
-            "normalized-accuracy-bound",
-            "EQKERatioFirstTwoSingularFloat",
-        ]
-    )
-    # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for each group
-    max_bound_by_group = df.groupby("attention_error_handling")[
-        "normalized-accuracy-bound"
-    ].max()
+        # Sort the groups by max 'normalized-accuracy-bound'
+        sorted_groups = max_bound_by_group.sort_values(ascending=False)
 
-    # Sort the groups by max 'normalized-accuracy-bound'
-    sorted_groups = max_bound_by_group.sort_values(ascending=False)
+        # Extract the sorted list of 'attention_error_handling' categories
+        sorted_attn_err_handling = sorted_groups.index.tolist()
 
-    # Extract the sorted list of 'attention_error_handling' categories
-    sorted_attn_err_handling = sorted_groups.index.tolist()
-
-    latex_externalize_tables["NormalizedAccuracyBoundVsEPQKESingularRatio"] = True
-    latex_figures["NormalizedAccuracyBoundVsEPQKESingularRatio"] = fig = scatter(
-        df,
-        yrange=(0, 1),
-        y="normalized-accuracy-bound",
-        x="EQKERatioFirstTwoSingularFloat",
-        color="attention_error_handling",
-        # title='Normalized Accuracy Bound vs EQKE Ratio First Two Singular',
-        yaxis="Normalized Accuracy Bound",
-        xaxis=r"EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
-        # labels={
-        #     'normalized-accuracy-bound': 'Normalized Accuracy Bound',
-        #     'EQKERatioFirstTwoSingularFloat': 'EQKE Ratio First Two Singular'
-        # }
-        color_order=sorted_attn_err_handling,
-        renderer=RENDERER,
-        plot_with=PLOT_WITH,
-    )
-    # fig.update_layout(showlegend=False)
-    # fig.update_layout(
-    #     legend=dict(
-    #         orientation="h",
-    #         yanchor="top",
-    #         y=-0.3,
-    #         xanchor="center",
-    #         x=0.5
-    #     )
-    # )
-    # # Show the plot
-    # fig.show('png')
+        key = f"NormalizedAccuracyBound{'AllSecondaryTricks' if not best_bound_only else ''}VsEPQKESingularRatio"
+        latex_externalize_tables[key] = True
+        latex_figures[key] = fig = scatter(
+            df,
+            yrange=(0, 1),
+            y="normalized-accuracy-bound",
+            x="EQKERatioFirstTwoSingularFloat",
+            color="attention_error_handling",
+            # title='Normalized Accuracy Bound vs EQKE Ratio First Two Singular',
+            yaxis="Normalized Accuracy Bound",
+            xaxis=r"EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
+            # labels={
+            #     'normalized-accuracy-bound': 'Normalized Accuracy Bound',
+            #     'EQKERatioFirstTwoSingularFloat': 'EQKE Ratio First Two Singular'
+            # }
+            color_order=sorted_attn_err_handling,
+            renderer=RENDERER,
+            plot_with=PLOT_WITH,
+            # plot_with="plotly"
+        )
+        # fig.update_layout(showlegend=False)
+        # fig.update_layout(
+        #     legend=dict(
+        #         orientation="h",
+        #         yanchor="top",
+        #         y=-0.3,
+        #         xanchor="center",
+        #         x=0.5
+        #     )
+        # )
+        # # Show the plot
+        # fig.show()
 
 
 # %%

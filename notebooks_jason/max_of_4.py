@@ -2843,7 +2843,7 @@ if HAS_CSVS:
     for trick in tricks:
         if "AttnErrExactEqke" in trick:
             subcubic_sing_df = subcubic_sing_df[subcubic_sing_df["tricks"] != trick]
-    subcubic_sing_df["attention_error_handling"] = subcubic_ext_df.apply(
+    subcubic_sing_df["attention_error_handling"] = subcubic_sing_df.apply(
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
@@ -2851,7 +2851,7 @@ if HAS_CSVS:
         ),
         axis=1,
     )
-    subcubic_sing_df["attention_handling"] = subcubic_ext_df.apply(
+    subcubic_sing_df["attention_handling"] = subcubic_sing_df.apply(
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
@@ -2859,7 +2859,7 @@ if HAS_CSVS:
         ),
         axis=1,
     )
-    subcubic_sing_df["EUPU_handling"] = subcubic_ext_df.apply(
+    subcubic_sing_df["EUPU_handling"] = subcubic_sing_df.apply(
         (
             lambda row: LargestWrongLogitQuadraticConfig.parse(
                 row["tricks"], latex=True
@@ -3095,7 +3095,7 @@ if HAS_CSVS:
     data = data.sort_values(
         by=["group", "proof-flop-estimate", "effective-dimension-estimate"]
     )
-    data["group"] = data["group"].map(category_name_remap)
+    data["group"] = data["group"].map(category_name_remap_short)
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
         data,

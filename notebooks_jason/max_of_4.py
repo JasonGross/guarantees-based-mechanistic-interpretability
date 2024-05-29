@@ -3047,6 +3047,10 @@ if HAS_CSVS:
         "brute-force": f"brute force (acc: {pm_mean_std(brute_force_df['accuracy'])})",
         "cubic": f"cubic (rel acc: {pm_mean_std(cubic_ext_df['normalized-accuracy-bound'])})",
     }
+    category_name_remap_short = {
+        "brute-force": f"brute force",
+        "cubic": f"cubic",
+    }
     max_rows = subcubic_ext_df.loc[
         subcubic_ext_df.groupby(["seed", "group"])["normalized-accuracy-bound"].idxmax()
     ]
@@ -3066,6 +3070,7 @@ if HAS_CSVS:
             category_name_remap[group_name] = (
                 f"{new_group_name} (rel acc: {pm_round(avg, std)})"
             )
+            category_name_remap_short[group_name] = new_group_name
 
 
 # %%
@@ -3101,7 +3106,7 @@ if HAS_CSVS:
         log_x=2,
         log_y=2,
         reverse_xaxis=False,
-        color_order=[category_name_remap[c] for c in category_order],
+        color_order=[category_name_remap_short[c] for c in category_order],
         xaxis="FLOPs to Verify Proof (approximate)",
         yaxis="Unexplained Dimension (Estimated)",
         plot_with=PLOT_WITH,

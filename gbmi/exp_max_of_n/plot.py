@@ -442,6 +442,7 @@ def display_basic_interpretation(
     pos_dtick: Optional[int | float] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
+    show: bool = True,
 ) -> dict[str, Union[go.Figure, matplotlib.figure.Figure]]:
     QK_cmap = colorscale_to_cmap(QK_colorscale)
     QK_SVD_cmap = colorscale_to_cmap(QK_SVD_colorscale)
@@ -463,14 +464,16 @@ def display_basic_interpretation(
                         "value": QK["yaxis"],
                     },
                 )
-                fig_qk.show(renderer=renderer)
+                if show:
+                    fig_qk.show(renderer=renderer)
             case "matplotlib":
                 fig_qk, ax = plt.subplots()
                 ax.plot(QK["data"])
                 ax.set_title(QK["title"]["latex"])
                 ax.set_xlabel(QK["xaxis"])
                 ax.set_ylabel(QK["yaxis"])
-                fig_qk.show()
+                if show:
+                    fig_qk.show()
     else:
         fig_qk = imshow(
             QK["data"],
@@ -482,6 +485,7 @@ def display_basic_interpretation(
             dtick_y=tok_dtick,
             plot_with=plot_with,
             renderer=renderer,
+            show=show,
         )
         _, figs = find_size_and_query_direction(
             model,
@@ -490,6 +494,7 @@ def display_basic_interpretation(
             colorscale=QK_SVD_colorscale,
             plot_with=plot_with,
             dtick=tok_dtick,
+            show=show,
         )
         assert figs is not None
         for k, fig in figs.items():
@@ -508,6 +513,7 @@ def display_basic_interpretation(
             dtick_y=tok_dtick,
             plot_with=plot_with,
             renderer=renderer,
+            show=show,
         )
         result["EVOU"] = fig_ov
     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
@@ -521,6 +527,7 @@ def display_basic_interpretation(
         dtick_y=tok_dtick,
         plot_with=plot_with,
         renderer=renderer,
+        show=show,
     )
     result["EVOU-centered"] = fig_ov
 
@@ -531,7 +538,8 @@ def display_basic_interpretation(
             title=pos_QK["title"][title_kind],
             labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
         )
-        fig_qk.show(renderer=renderer)
+        if show:
+            fig_qk.show(renderer=renderer)
     else:
         fig_qk = imshow(
             pos_QK["data"]["QK"],
@@ -543,6 +551,7 @@ def display_basic_interpretation(
             dtick_x=pos_dtick,
             dtick_y=tok_dtick,
             renderer=renderer,
+            show=show,
         )
     result["EQKP"] = fig_qk
 
@@ -564,6 +573,7 @@ def display_basic_interpretation(
                 dtick_y=pos_dtick if data.shape[0] == model.cfg.n_ctx else tok_dtick,
                 plot_with=plot_with,
                 renderer=renderer,
+                show=show,
             )
             result[f"irrelevant_{key}"] = fig
     if include_equals_OV:
@@ -576,7 +586,7 @@ def display_basic_interpretation(
             legend_at_bottom=legend_at_bottom,
             plot_with=plot_with,
             renderer=renderer,
-            show=True,
+            show=show,
         )
     else:
         pass

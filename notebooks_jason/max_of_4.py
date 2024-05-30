@@ -21,32 +21,20 @@ import subprocess
 from itertools import chain
 from functools import reduce, partial, cache
 from concurrent.futures import ThreadPoolExecutor
-from PIL import Image
-import io
-import dataclasses
 import math
-import glob
 from scipy import stats
 from contextlib import contextmanager
-from collections import defaultdict
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.figure
-import seaborn as sns
-import tikzplotly
 import tikzplotlib
 import matplotlib
-from types import NoneType
 from typing import (
-    Callable,
-    ClassVar,
     Literal,
-    Sequence,
     Optional,
     Tuple,
     Union,
     Any,
-    List,
     Iterator,
 )
 from plotly.subplots import make_subplots
@@ -86,36 +74,28 @@ from gbmi.exp_max_of_n.analysis import (
 )
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
-    FullDatasetCfg,
     IterableDatasetCfg,
     MaxOfN,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
 )
-from gbmi.model import Config, RunData
-from torch.utils.data import DataLoader
+from gbmi.model import Config
 import torch
 from tqdm.auto import tqdm
 import numpy as np
-from jaxtyping import Float, Integer, Bool
+from jaxtyping import Float, Integer
 from torch import Tensor
 import pandas as pd
 import plotly.express as px
 from transformer_lens import HookedTransformerConfig, HookedTransformer
 from pathlib import Path
-from gbmi.utils import default_device, dropnan, shuffle_tensors, shuffle_tensor
-from gbmi.utils.memocache import Memoize
+from gbmi.utils import default_device, shuffle_tensor
 from gbmi.utils.sequences import (
     SequenceDataset,
-    ThunkedDataset,
-    generate_all_sequences_for_model,
 )
-import shelve
 from gbmi.verification_tools.decomp import (
     factor_contribution,
-    split_SVD,
-    max_row_diffs_per_dim,
     bound_max_row_diff_by_SVD,
 )
 
@@ -125,7 +105,6 @@ from gbmi.verification_tools.l1h1 import (
     all_EQKP,
     all_EVOU,
     all_PVOU,
-    all_attention_scores,
 )
 from gbmi.verification_tools.utils import complexity_of
 from gbmi.utils.hashing import get_hash_ascii
@@ -3112,6 +3091,32 @@ if HAS_CSVS:
         plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
+    latex_externalize_tables["EffectiveDimensionVsFLOPDiscontinuousXY"] = True
+    latex_figures["EffectiveDimensionVsFLOPDiscontinuousXY"] = fig = scatter(
+        data,
+        x="proof-flop-estimate",
+        y="effective-dimension-estimate",
+        color="group",
+        title="",
+        log_x=2,
+        log_y=2,
+        reverse_xaxis=False,
+        color_order=[category_name_remap_short[c] for c in category_order],
+        xaxis="FLOPs to Verify Proof (approximate)",
+        yaxis="Unexplained Dimension (Estimated)",
+        discontinuous_x=(
+            data[(data["group"] == "brute force") | (data["group"] == "cubic")][
+                "proof-flop-estimate"
+            ].mean(),
+        ),
+        discontinuous_y=(
+            data[(data["group"] == "brute force") | (data["group"] == "cubic")][
+                "effective-dimension-estimate"
+            ].mean(),
+        ),
+        plot_with=PLOT_WITH,
+        renderer=RENDERER,
+    )
 
 
 # %%
@@ -3131,6 +3136,11 @@ if HAS_CSVS:
             data = data.sort_values(
                 by=["group", f"{norm}accuracy-bound", "proof-flop-estimate"]
             )
+            discontinuous_x = (
+                data[(data["group"] == "brute force") | (data["group"] == "cubic")][
+                    "proof-flop-estimate"
+                ].mean(),
+            )
             data["group"] = data["group"].map(category_name_remap)
             latex_externalize_tables[key] = True
             latex_figures[key] = fig = scatter(
@@ -3144,6 +3154,22 @@ if HAS_CSVS:
                 xaxis="FLOPs to Verify Proof (approximate)",
                 yaxis=f"{normt}Accuracy Bound",
                 color_order=[category_name_remap[c] for c in category_order],
+                plot_with=PLOT_WITH,
+                renderer=RENDERER,
+            )
+            latex_externalize_tables[f"{key}DiscontinuousX"] = True
+            latex_figures[f"{key}DiscontinuousX"] = fig = scatter(
+                data,
+                x="proof-flop-estimate",
+                y=f"{norm}accuracy-bound",
+                color="group",
+                title="",  # "Pareto Frontier" if frontier_only else "",
+                log_x=2,
+                reverse_xaxis=False,
+                xaxis="FLOPs to Verify Proof (approximate)",
+                yaxis=f"{normt}Accuracy Bound",
+                color_order=[category_name_remap[c] for c in category_order],
+                discontinuous_x=discontinuous_x,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
             )

@@ -19,9 +19,12 @@ from collections import defaultdict
 import random
 import sys
 import os
+import re
+from contextlib import contextmanager
 import time
 import subprocess
 import pandas as pd
+from itertools import chain
 from functools import partial, reduce
 from concurrent.futures import ThreadPoolExecutor
 import math
@@ -37,6 +40,77 @@ from typing import (
     Callable,
 )
 
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.figure
+import seaborn as sns
+import tikzplotly
+import tikzplotlib
+import matplotlib
+from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
+from gbmi.analysis_tools.utils import pm_round, pm_mean_std
+from gbmi.analysis_tools.plot import scatter
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+from gbmi.utils.dataclass import enumerate_dataclass_values
+from gbmi.utils.lowrank import LowRankTensor
+import gbmi.utils.ein as ein
+import gbmi.utils.images as image_utils
+from gbmi.utils.images import trim_plotly_figure
+from gbmi.utils.memoshelve import memoshelve
+from gbmi.utils.latex_export import (
+    to_latex_defs,
+    latex_values_of_counter,
+    latex_values_of_instruction_count,
+)
+from gbmi.exp_max_of_n.analysis import (
+    find_second_singular_contributions,
+    find_size_and_query_direction,
+)
+from gbmi.exp_max_of_n.plot import display_basic_interpretation
+from gbmi.exp_max_of_n.train import (
+    IterableDatasetCfg,
+    MaxOfN,
+    MaxOfNDataModule,
+    MaxOfNTrainingWrapper,
+    train_or_load_model,
+)
+from gbmi.model import Config
+import torch
+from tqdm.auto import tqdm
+import numpy as np
+from jaxtyping import Float, Integer
+from torch import Tensor
+import pandas as pd
+import plotly.express as px
+from transformer_lens import HookedTransformerConfig, HookedTransformer
+from pathlib import Path
+from gbmi.utils import default_device, shuffle_tensor
+from gbmi.utils.sequences import (
+    SequenceDataset,
+)
+from gbmi.verification_tools.decomp import (
+    factor_contribution,
+    bound_max_row_diff_by_SVD,
+)
+
+from gbmi.verification_tools.general import EU_PU
+from gbmi.verification_tools.l1h1 import (
+    all_EQKE,
+    all_EQKP,
+    all_EVOU,
+    all_PVOU,
+)
+from gbmi.verification_tools.utils import complexity_of
+from gbmi.utils.hashing import get_hash_ascii
+import gbmi.utils.git as git
+import gbmi.exp_max_of_n.verification.cubic as cubic
+import gbmi.exp_max_of_n.verification.subcubic as subcubic
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
+import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
+import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
+import gbmi.utils.instructions as instructions
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 from gbmi.verification_tools.general import EU_PU
@@ -79,6 +153,19 @@ from gbmi.utils.latex_export import (
     latex_values_of_counter,
     latex_values_of_instruction_count,
 )
+from gbmi.exp_max_of_n.plot import (
+    scatter_attention_difference_vs_gap,
+    hist_attention_difference_over_gap,
+    hist_EVOU_max_minus_diag_logit_diff,
+)
+from gbmi.analysis_tools.plot import (
+    hist_EVOU_max_logit_diff,
+    weighted_histogram,
+    Colorscale,
+    colorscale_to_cmap,
+    imshow,
+    line,
+)
 from gbmi.utils import default_device, dropnan, shuffle_tensors, shuffle_tensor
 from gbmi.utils.gc import PeriodicGarbageCollector
 from gbmi.utils.hashing import get_hash_ascii
@@ -87,7 +174,7 @@ import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser, Namespace, BooleanOptionalAction
 import gbmi.utils.ein as ein
 import gbmi.utils.instructions as instructions
 from gbmi.utils.instructions import (
@@ -127,6 +214,12 @@ parser.add_argument(
     default=None,
     help="Recompute seeds that appear in csvs",
 )
+parser.add_argument(
+    "--plots",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Include plots",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 cache_dir = Path(__file__).parent / ".cache"
@@ -165,13 +258,52 @@ GIT_SHA_SHORT_PATH = (
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "all-models-values.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
+LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
+LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
+    Path(__file__).with_suffix("") / "tikzplotlib-preamble.tex"
+)
+LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
 N_THREADS: Optional[int] = cli_args.n_threads
+DISPLAY_PLOTS: bool = False  # @param {type:"boolean"}
+SAVE_PLOTS: bool = cli_args.plots
+RENDERER: Optional[str] = "png"  # @param ["png", None]
+PLOT_WITH: Literal["plotly", "matplotlib"] = (  # @param ["plotly", "matplotlib"]
+    "matplotlib"
+)
+matplotlib.rcParams["text.usetex"] = True
+matplotlib.rcParams[
+    "text.latex.preamble"
+] = r"""\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xfrac}
+\usepackage{lmodern}
+\providecommand{\dmodel}{\ensuremath{d_{\mathrm{model}}}}
+\providecommand{\dhead}{\ensuremath{d_{\mathrm{head}}}}
+\providecommand{\dvocab}{\ensuremath{d_{\mathrm{vocab}}}}"""
+default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale(
+    "RdBu"
+)  # px.colors.get_colorscale("Picnic_r")
+# default_OV_matplotlib_colorscale_2024_03_26: Colorscale = 'bwr_r'
+default_QK_colorscale_2024_03_26: Colorscale = [
+    [0, "#ff0000"],
+    [0.25, "#ff8247"],
+    [0.5, "white"],
+    [0.75, "#ffc100"],
+    [1, "#ff9c05"],
+]
+default_OV_colorscale: Colorscale = default_OV_colorscale_2024_03_26
+default_QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26
+default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 # %%
 if cli_args.no_perf:
     PERF_WORKING = False
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
+latex_figures: dict[str, Union[go.Figure, matplotlib.figure.Figure]] = {}
+latex_externalize_tables: dict[str, bool] = {}
+latex_only_externalize_tables: dict[str, bool] = {}
 
 
 # %%
@@ -358,7 +490,7 @@ def update_csv_with_rows(
     new_data: list[dict[str, Union[float, int, str]]],
     *,
     columns: list[str],
-    subset: str = "seed",
+    subset: str | list[str] = "seed",
 ):
     results = None
     if os.path.exists(csv_path):
@@ -379,7 +511,7 @@ def update_csv(
     data: dict[int, dict[str, Union[float, int, str]]],
     columns: list[str],
     *,
-    subset: str = "seed",
+    subset: str | list[str] = "seed",
 ):
     new_data = [data[seed] for seed in sorted(data.keys())]
     update_csv_with_rows(csv_path, new_data, columns=columns, subset=subset)
@@ -1159,6 +1291,47 @@ update_csv_with_rows(
     subset=["seed"] + list(EQKE_SVD_analyses_by_key.keys()),
 )
 
+
+# %% [markdown]
+# # Plots
+# %%
+if SAVE_PLOTS or DISPLAY_PLOTS:
+    with tqdm(runtime_models.items(), desc="display_basic_interpretation") as pbar:
+        for seed, (_runtime, model) in pbar:
+            pbar.set_postfix(dict(seed=seed))
+            figs = display_basic_interpretation(
+                model,
+                include_uncentered=True,
+                OV_colorscale=default_OV_colorscale,
+                QK_colorscale=default_QK_colorscale,
+                QK_SVD_colorscale=default_QK_SVD_colorscale,
+                tok_dtick=10,
+                plot_with=PLOT_WITH,
+                renderer=RENDERER,
+                show=DISPLAY_PLOTS,
+            )
+            latex_figures[f"{seed}-EQKE"] = figs["EQKE"]
+            latex_figures[f"{seed}-EVOU"] = figs["EVOU"]
+            latex_figures[f"{seed}-EVOU-centered"] = figs["EVOU-centered"]
+            latex_figures[f"{seed}-EQKP"] = figs["EQKP"]
+            latex_figures[f"{seed}-EQKE-SVD"] = figs["EQKE Attention SVD"]
+            del figs["EQKE Attention SVD"]
+            PVOU_keys = [
+                k for k in figs.keys() if k.startswith("irrelevant_") and "V" in k
+            ]
+            assert len(PVOU_keys) == 1, f"PVOU_keys: {PVOU_keys}"
+            latex_figures[f"{seed}-PVOU"] = figs[PVOU_keys[0]]
+            del figs[PVOU_keys[0]]
+            EUPU_keys = [k for k in figs.keys() if k.startswith("irrelevant_")]
+            assert len(EUPU_keys) == 1, f"EUPU_keys: {EUPU_keys}"
+            latex_figures[f"{seed}-EUPU"] = figs[EUPU_keys[0]]
+            del figs[EUPU_keys[0]]
+            latex_figures[f"{seed}-PVOU-scatter"] = figs["irrelevant"]
+            del figs["irrelevant"]
+            unused_keys = [k for k in figs if k not in latex_figures]
+        if unused_keys:
+            print(f"Unused keys: {unused_keys}")
+
 # %% [markdown]
 # # Sub-cubic Proofs
 # %%
@@ -1787,3 +1960,263 @@ latex_values["AllModelsHEADSHASHORT"] = git.get_head_sha(short=True)
 
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))
+# %%
+# @title export LaTeX code
+with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
+    f.write(
+        re.sub(
+            r"\\documentclass{[^}]*}" + "\n*", "", tikzplotlib.Flavors.latex.preamble()
+        )
+        + r"""
+% for line breaks
+\pgfplotsset{title/.append style={align=center}}
+"""
+    )
+
+# %%
+# @title export LaTeX figures
+title_reps = {
+    "W_E": r"\WE ",
+    r"W_{\text{pos}}": r"\Wpos ",
+    r"W_{\mathrm{pos}}": r"\Wpos ",
+    r"W_Q": r"\WQ ",
+    r"W_K": r"\WK ",
+    r"d_{\text{head}}": r"\dhead ",
+    r"d_{\mathrm{head}}": r"\dhead ",
+    r"W_V": r"\WV ",
+    r"W_O": r"\WO",
+    r"W_U": r"\WU ",
+    r"\text{EQKE}": r"\EPQKE ",
+    r"\mathrm{EQKE}": r"\EPQKE ",
+    r"\text{EQKP}": r"\EPQKP ",
+    r"\mathrm{EQKP}": r"\EPQKP ",
+    r"d_{\mathrm{model}}": r"\dmodel ",
+    r"d_{\mathrm{vocab}}": r"\dvocab ",
+}
+
+
+@contextmanager
+def texify_title(
+    fig: go.Figure, replace_with_macros: bool = True, show: bool = False, renderer=None
+):
+    orig_title = fig.layout.title.text  # type: ignore
+    new_title = None
+    if orig_title is not None and (
+        any(ch in orig_title for ch in "𝔼x̄") or r"$\mathbb{E}$" in orig_title
+    ):
+        print(f"Replacing 𝔼 in {orig_title}...")
+        new_title = (
+            orig_title.replace("𝔼", r"\mathbb{E}")
+            .replace("x̄", r"\overline{x}")
+            .replace("±", r"\pm ")
+            .replace("σ", r"\sigma ")
+            # .replace("½", r"\sfrac{1}{2}")
+        )
+        for word in (
+            "None",
+            "dim",
+            "OV",
+            "EQKE",
+            "EVOU",
+            ".diag",
+            " (weighted by sequence count)",
+            " (excluding diagonal)",
+            "; range",
+            "max",
+            "min",
+            "head",
+        ):
+            new_title = new_title.replace(word, r"\text{%s}" % word)
+        new_title = re.sub(r"<sub>([^<]*)</sub>", r"_{\1}", new_title)
+        new_title = re.sub(r"<sup>([^<]*)</sup>", r"^{\1}", new_title)
+        new_title = new_title.replace("{pos}", r"{\text{pos}}")
+        lines = new_title.split("<br>")
+        if len(lines) > 1 and ":=" not in lines[0]:
+            lines = [r"\text{%s}" % lines[0]] + lines[1:]
+        elif ": " in lines[0]:
+            lines = lines[0].split(": ")
+            lines = [r"\text{%s: }%s" % (lines[0], ": ".join(lines[1:]))]
+        new_title = r"\\".join(lines)
+        new_title = f"${new_title}$"
+        if replace_with_macros:
+            for search, rep in title_reps.items():
+                new_title = new_title.replace(search, rep)
+
+        print(new_title)
+    try:
+        if new_title is not None:
+            fig.update_layout(title_text=new_title)
+            if show:
+                fig.show(renderer)
+        yield fig
+    finally:
+        if new_title is not None:
+            fig.update_layout(title_text=orig_title)
+
+
+@contextmanager
+def texify_matplotlib_title(
+    fig: matplotlib.figure.Figure, show: bool = False, replace_with_macros: bool = True
+):
+    def texify(s: Optional[str]) -> Optional[str]:
+        if s is None:
+            return None
+        orig_s = s
+        s = s.replace("\n", "\\\\\n")
+        if replace_with_macros:
+            for search, rep in title_reps.items():
+                s = s.replace(search, rep)
+        if s != orig_s:
+            return s
+        return None
+
+    orig_suptitle = fig._suptitle.get_text() if fig._suptitle else None
+    orig_titles = [ax.get_title() for ax in fig.axes if fig.axes]
+    orig_xlabels = [ax.get_xlabel() for ax in fig.axes if fig.axes]
+    orig_ylabels = [ax.get_ylabel() for ax in fig.axes if fig.axes]
+    orig_legend_handles_labels = [
+        ax.get_legend_handles_labels() if ax.get_legend() else ([], [])
+        for ax in fig.axes
+    ]
+    new_suptitle = texify(orig_suptitle)
+    new_titles = [texify(t) for t in orig_titles]
+    new_xlabels = [texify(t) for t in orig_xlabels]
+    new_ylabels = [texify(t) for t in orig_ylabels]
+    new_legend_handles_labels = [
+        (handles, [(texify(label) or label) for label in labels])
+        for handles, labels in orig_legend_handles_labels
+    ]
+    try:
+        if new_suptitle is not None:
+            fig.suptitle(new_suptitle)
+        if fig.axes:
+            for (
+                ax,
+                new_title,
+                new_xlabel,
+                new_ylabel,
+                (new_leg_handles, new_leg_labels),
+            ) in zip(
+                fig.axes,
+                new_titles,
+                new_xlabels,
+                new_ylabels,
+                new_legend_handles_labels,
+            ):
+                if new_title is not None:
+                    ax.set_title(new_title)
+                if new_xlabel is not None:
+                    ax.set_xlabel(new_xlabel)
+                if new_ylabel is not None:
+                    ax.set_ylabel(new_ylabel)
+                if new_leg_labels:
+                    ax.legend(new_leg_handles, new_leg_labels)
+        yield fig
+    finally:
+        if new_suptitle is not None:
+            fig.suptitle(orig_suptitle)
+        if fig.axes:
+            for (
+                ax,
+                orig_title,
+                orig_xlabel,
+                orig_ylabel,
+                (orig_leg_handles, orig_leg_labels),
+            ) in zip(
+                fig.axes,
+                orig_titles,
+                orig_xlabels,
+                orig_ylabels,
+                orig_legend_handles_labels,
+            ):
+                if orig_title is not None:
+                    ax.set_title(orig_title)
+                if orig_xlabel is not None:
+                    ax.set_xlabel(orig_xlabel)
+                if orig_ylabel is not None:
+                    ax.set_ylabel(orig_ylabel)
+                if orig_leg_labels:
+                    ax.legend(orig_leg_handles, orig_leg_labels)
+
+
+errs = []
+for file_path in chain(
+    LATEX_FIGURE_PATH.glob("*.png"), LATEX_FIGURE_PATH.glob("*.dat")
+):
+    file_path.unlink()
+    print(f"Deleted: {file_path}")
+table_row_sep = r"\\" + "\n"
+for k, fig in latex_figures.items():
+    if isinstance(fig, go.Figure):
+        fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
+        unsupported_by_tikzplotly = any(
+            isinstance(trace, go.Heatmap) for trace in fig.data
+        )
+        # if not unsupported_by_tikzplotly:
+        #     p = LATEX_FIGURE_PATH / f"{k}.tex"
+        #     print(f"Saving {p}...")
+        #     p.parent.mkdir(parents=True, exist_ok=True)
+        #     tikzplotly.save(p, fig)
+        with texify_title(fig, replace_with_macros=False) as fig:
+            if True or unsupported_by_tikzplotly:
+                for ext in (".pdf", ".svg"):
+                    p = LATEX_FIGURE_PATH / f"{k}{ext}"
+                    print(f"Saving {p}...")
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    fig.write_image(p)
+                    if ext == ".pdf":
+                        try:
+                            subprocess.run(["pdfcrop", p, p], check=True)
+                        except FileNotFoundError as e:
+                            print(f"Warning: {e}")
+                            errs.append(e)
+    elif isinstance(fig, matplotlib.figure.Figure):
+        p = LATEX_FIGURE_PATH / f"{k}.tex"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        externalize_this_table = latex_externalize_tables.get(k, True)
+        if externalize_this_table:
+            if not latex_only_externalize_tables.get(k, False):
+                p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
+            print(f"Saving {p}...")
+            with texify_matplotlib_title(fig) as fig:
+                tikzplotlib.save(
+                    p,
+                    fig,
+                    externalize_tables=externalize_this_table,
+                    table_row_sep=table_row_sep,
+                )
+        p = LATEX_FIGURE_PATH / f"{k}.tex"
+        print(f"Saving {p}...")
+        with texify_matplotlib_title(fig, replace_with_macros=True) as fig:
+            tikzplotlib.save(
+                p, fig, externalize_tables=False, table_row_sep=table_row_sep
+            )
+        for ext in (".pdf", ".svg"):
+            p = LATEX_FIGURE_PATH / f"{k}{ext}"
+            print(f"Saving {p}...")
+            p.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(p)
+            if ext == ".pdf":
+                try:
+                    subprocess.run(["pdfcrop", p, p], check=True)
+                except FileNotFoundError as e:
+                    print(f"Warning: {e}")
+                    errs.append(e)
+    else:
+        raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
+
+for f in LATEX_FIGURE_PATH.glob("*.png"):
+    try:
+        image_utils.pngcrush(f)
+    except FileNotFoundError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+
+    try:
+        image_utils.optipng(f)
+    except FileNotFoundError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+
+for e in errs:
+    raise e

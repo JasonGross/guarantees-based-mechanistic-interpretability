@@ -218,6 +218,7 @@ def display_size_direction_stats(
     colorscale: Colorscale = "Plasma_r",
     dtick: Optional[float | int] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    show: bool = True,
     **kwargs,
 ):
     cmap = colorscale_to_cmap(colorscale)
@@ -251,6 +252,7 @@ def display_size_direction_stats(
         dtick_x=dtick,
         dtick_y=dtick,
         plot_with=plot_with,
+        show=show,
         **kwargs,
     )
     results["Attention"] = fig
@@ -310,7 +312,8 @@ def display_size_direction_stats(
             fig.update_yaxes(title_text="Query Token", row=1, col=1)
             fig.update_yaxes(range=[0, None], row=1, col=2)
             fig.update_yaxes(title_text="Key Token", row=1, col=3)
-            fig.show(renderer)
+            if show:
+                fig.show(renderer)
         case "matplotlib":
             fig, axs = plt.subplots(1, 3, figsize=(20, 5))
             # fig.subplots_adjust(hspace=0.5, wspace=0.4)
@@ -360,10 +363,12 @@ def display_size_direction_stats(
             # Adjust layout
             fig.tight_layout(pad=3.0)
             fig.suptitle("Attention SVD")
-            plt.show()
+            if show:
+                plt.show()
             fig.suptitle("")
             plt.figure(fig)
-            plt.show()
+            if show:
+                plt.show()
     results["Attention SVD"] = fig
 
     contribution_diff = None
@@ -377,6 +382,7 @@ def display_size_direction_stats(
             xaxis="Key Token",
             yaxis="Query Token",
             hovertemplate="Query: %{y}<br>Key: %{x}<br>Value: %{z}<extra></extra>",
+            plot_heatmaps=show,
             **kwargs,
         )
 
@@ -412,7 +418,8 @@ def display_size_direction_stats(
                 col=2,
             )
             fig.update_layout(title="Directions in Token Space", showlegend=False)
-            fig.show(renderer)
+            if show:
+                fig.show(renderer)
         case "matplotlib":
             fig, axs = plt.subplots(
                 1, 2, figsize=(12, 6)
@@ -448,7 +455,8 @@ def display_size_direction_stats(
                 rect=[0, 0, 1, 0.95]
             )  # Adjust layout to make room for the main title
             # Show plot
-            plt.show()
+            if show:
+                plt.show()
     results["Directions in Token Space"] = fig
 
     # px.line({'size direction': training.to_numpy(size_direction)}, title="size direction in token space").show(renderer)
@@ -458,6 +466,7 @@ def display_size_direction_stats(
             size_direction_resid,
             title="size direction in residual space",
             renderer=renderer,
+            show=show,
         )
         results["Size Direction in Residual Space"] = fig
     if query_direction_resid is not None:
@@ -465,16 +474,23 @@ def display_size_direction_stats(
             query_direction_resid,
             title="query direction in residual space",
             renderer=renderer,
+            show=show,
         )
         results["Query Direction in Residual Space"] = fig
     if size_direction_QK is not None:
         fig = line(
-            size_direction_QK, title="size direction in QK space", renderer=renderer
+            size_direction_QK,
+            title="size direction in QK space",
+            renderer=renderer,
+            show=show,
         )
         results["Size Direction in QK Space"] = fig
     if query_direction_QK is not None:
         fig = line(
-            query_direction_QK, title="query direction in QK space", renderer=renderer
+            query_direction_QK,
+            title="query direction in QK space",
+            renderer=renderer,
+            show=show,
         )
         results["Query Direction in QK Space"] = fig
 
@@ -541,27 +557,31 @@ def display_size_direction_stats(
         ]
 
     size_direction_differences = size_direction[1:] - size_direction[:-1]
-    figs = show_fits(
-        size_direction,
-        name="Size Direction",
-        fit_funcs=(fit_func for fit_func in fit_funcs if fit_func is not sigmoid_func),
-        do_exclusions=do_exclusions,
-        renderer=renderer,
-    )
-    if figs is not None:
-        results.update(figs)
-    figs = show_fits(
-        size_direction_differences,
-        name="Size Direction Δ",
-        reference_lines=reference_lines,
-        fit_funcs=(
-            fit_func for fit_func in delta_fit_funcs if fit_func is not sigmoid_func
-        ),
-        do_exclusions=do_exclusions,
-        renderer=renderer,
-    )
-    if figs is not None:
-        results.update(figs)
+    if show:
+        figs = show_fits(
+            size_direction,
+            name="Size Direction",
+            fit_funcs=(
+                fit_func for fit_func in fit_funcs if fit_func is not sigmoid_func
+            ),
+            do_exclusions=do_exclusions,
+            renderer=renderer,
+            show=show,
+        )
+        if figs is not None:
+            results.update(figs)
+        figs = show_fits(
+            size_direction_differences,
+            name="Size Direction Δ",
+            reference_lines=reference_lines,
+            fit_funcs=(
+                fit_func for fit_func in delta_fit_funcs if fit_func is not sigmoid_func
+            ),
+            do_exclusions=do_exclusions,
+            renderer=renderer,
+        )
+        if figs is not None:
+            results.update(figs)
 
     y_data = size_direction.detach().cpu().numpy()
     x_data = np.linspace(1, len(y_data), len(y_data))
@@ -627,7 +647,8 @@ def display_size_direction_stats(
             plt.tight_layout(
                 rect=(0, 0.03, 1, 0.95)
             )  # To prevent overlap between suptitle and subplots
-            plt.show()
+            if show:
+                plt.show()
     return results
 
 
@@ -707,5 +728,5 @@ def compute_singular_contribution(
                 fig.update_yaxes(title_text=yaxis, row=1, col=col + 1)
             if xaxis is not None:
                 fig.update_xaxes(title_text=xaxis, row=1, col=col + 1)
-    fig.show(renderer)
+        fig.show(renderer)
     return M - contribution, contribution

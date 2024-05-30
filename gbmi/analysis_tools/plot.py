@@ -1,6 +1,9 @@
 # %%
+import math
+from functools import partial
 from pathlib import Path
-from typing import Callable, Collection, Literal, Optional, Tuple, Union
+from typing import Callable, Collection, Literal, Optional, Tuple, Union, Sequence, Any
+from collections import defaultdict
 import imageio
 from matplotlib.colors import Colormap, to_hex, is_color_like
 import torch
@@ -9,6 +12,9 @@ from torch import Tensor
 from jaxtyping import Float
 import matplotlib.pyplot as plt
 import matplotlib.figure
+import matplotlib as mpl
+import matplotlib.axes
+import matplotlib.axes._axes
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
@@ -301,6 +307,8 @@ def scatter_plotly(
     reverse_yaxis: bool = False,
     color_order: Optional = None,
     yrange: Optional[Tuple[float, float]] = None,
+    discontinuous_x: Sequence[float] = (),
+    discontinuous_y: Sequence[float] = (),
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -352,11 +360,61 @@ def scatter_matplotlib(
     reverse_yaxis: bool = False,
     legend: Optional[bool] = None,
     yrange: Optional[Tuple[float, float]] = None,
+    discontinuous_x: Sequence[float] = (),
+    discontinuous_y: Sequence[float] = (),
     **kwargs,
 ):
     # x = utils.to_numpy(x)
     # y = utils.to_numpy(y)
-    fig, ax = plt.subplots()
+    fig, axes = plt.subplots(
+        nrows=len(discontinuous_y) + 1,
+        ncols=len(discontinuous_x) + 1,
+        sharey="row",
+        sharex="col",
+        squeeze=False,
+    )
+    data_minx: dict[int, float] = defaultdict(lambda: np.inf)
+    data_maxx: dict[int, float] = defaultdict(lambda: -np.inf)
+    data_miny: dict[int, float] = defaultdict(lambda: np.inf)
+    data_maxy: dict[int, float] = defaultdict(lambda: -np.inf)
+    missing: dict[Tuple[int, int], bool] = defaultdict(lambda: False)
+
+    def axes_scatter(all_x, all_y, **kwargs):
+        remaining_points = list(zip(all_x, all_y))
+        y_ubounds = [-np.inf] + list(discontinuous_y) + [np.inf]
+        x_ubounds = [-np.inf] + list(discontinuous_x) + [np.inf]
+        for r, row in enumerate(axes if reverse_yaxis else reversed(axes)):
+            for c, ax in enumerate(row if not reverse_xaxis else reversed(row)):
+                y_ubound, x_ubound = y_ubounds[r + 1], x_ubounds[c + 1]
+                y_lbound, x_lbound = y_ubounds[r], x_ubounds[c]
+                cur_x, cur_y = [], []
+                next_points = []
+                for x, y in remaining_points:
+                    if x_lbound < x <= x_ubound and y_lbound < y <= y_ubound:
+                        cur_x.append(x)
+                        cur_y.append(y)
+                    else:
+                        next_points.append((x, y))
+                remaining_points = next_points
+                # print(r, c, cur_x, cur_y, next_points)
+                if cur_x:
+                    ax.scatter(cur_x, cur_y, **kwargs)
+                    data_minx[c] = np.min([data_minx[c], *cur_x])
+                    data_maxx[c] = np.max([data_maxx[c], *cur_x])
+                    data_miny[r] = np.min([data_miny[r], *cur_y])
+                    data_maxy[r] = np.max([data_maxy[r], *cur_y])
+                    # print(r, c, dict(data_minx), dict(data_maxx), dict(data_miny), dict(data_maxy))
+                else:
+                    ax.scatter(all_x[:1], all_y[:1], **kwargs)
+                    missing[(r, c)] = True
+        assert len(remaining_points) == 0, (remaining_points, x_ubounds, y_ubounds)
+
+    def on_all_axes(f: Callable[[matplotlib.axes._axes.Axes], Any], axes=axes):
+        if isinstance(axes, np.ndarray):
+            return [on_all_axes(f, ax) for ax in axes]
+        return f(axes)
+
+    right_ax = axes[0, -1]
     # sns_kwargs = {}
     # if len(data) == 1 and isinstance(data[0], dict):
     #     data = list(data)
@@ -369,13 +427,13 @@ def scatter_matplotlib(
     if len(data) == 1 and isinstance(data[0], dict):
         for (k, v), marker in zip(data[0].items(), better_unique_markers(len(data[0]))):
             x = range(len(v))
-            plt.scatter(x, v, label=k, marker=marker)
+            axes_scatter(x, v, label=k, marker=marker)
         if not legend_at_bottom:
-            box = ax.get_position()
-            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            box = right_ax.get_position()
+            right_ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
 
             # Put a legend to the right of the current axis
-            ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+            right_ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
     elif (
         len(data) == 1
         and isinstance(data[0], pd.DataFrame)
@@ -389,14 +447,14 @@ def scatter_matplotlib(
                 legend = True
             for group, marker in zip(groups, better_unique_markers(len(groups))):
                 subset = data[data[kwargs["color"]] == group]
-                ax.scatter(
+                axes_scatter(
                     subset[kwargs["x"]],
                     subset[kwargs["y"]],
                     label=group,
                     # color=
                 )
         else:
-            ax.scatter(
+            axes_scatter(
                 data[kwargs["x"]],
                 data[kwargs["y"]],
                 # label=group,
@@ -407,34 +465,109 @@ def scatter_matplotlib(
         for k in list(kwargs.keys()):
             if k in sns_remap and sns_remap[k] not in kwargs:
                 kwargs[sns_remap[k]] = kwargs.pop(k)
-        sns.scatterplot(*data, ax=ax, **kwargs)
+        on_all_axes(lambda ax: sns.scatterplot(*data, ax=ax, **kwargs))
     if legend_at_bottom:
-        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
+        right_ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
     elif legend:
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+        box = right_ax.get_position()
+        right_ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
 
         # Put a legend to the right of the current axis
-        ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+        right_ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
         # ax.legend(loc='upper right', bbox_to_anchor=(0, 0, 1, 1))
-    ax.set_xlabel(xaxis)
-    ax.set_ylabel(yaxis)
+    rmid = axes.shape[0] // 2
+    cmid = axes.shape[1] // 2
+    axes[-1, cmid].set_xlabel(xaxis)
+    axes[rmid, 0].set_ylabel(yaxis)
     if log_x:
         if isinstance(log_x, bool):
-            ax.set_xscale("log")
+            on_all_axes(lambda ax: ax.set_xscale("log"))
         else:
-            ax.set_xscale("log", base=log_x)
+            on_all_axes(lambda ax: ax.set_xscale("log", base=log_x))
     if log_y:
         if isinstance(log_y, bool):
-            ax.set_yscale("log")
+            on_all_axes(lambda ax: ax.set_yscale("log"))
         else:
-            ax.set_yscale("log", base=log_y)
+            on_all_axes(lambda ax: ax.set_yscale("log", base=log_y))
     if reverse_xaxis:
-        ax.invert_xaxis()
+        on_all_axes(lambda ax: ax.invert_xaxis())
     if reverse_yaxis:
-        ax.invert_yaxis()
+        on_all_axes(lambda ax: ax.invert_yaxis())
     if yrange is not None:
-        ax.set_ylim(*yrange)
+        on_all_axes(lambda ax: ax.set_ylim(*yrange))
+    if discontinuous_y:
+        fig.subplots_adjust(hspace=0.15)
+    if discontinuous_x:
+        fig.subplots_adjust(wspace=0.15)
+    for row in axes[:-1]:
+        for ax in row:
+            ax.xaxis.tick_top()
+    for row in axes[-1:]:
+        for ax in row:
+            ax.xaxis.tick_bottom()
+    for row in axes:
+        for ax in row[:1]:
+            ax.yaxis.tick_left()
+        for ax in row[1:]:
+            ax.yaxis.tick_right()
+    for row in axes:
+        # hide the spines between axes
+        for ax in row[:-1]:
+            ax.spines["right"].set_visible(False)
+        # for ax in row[:1]:
+        #     ax.yaxis.tick_left()
+        for ax in row[1:]:
+            # ax.yaxis.tick_right()
+            ax.spines["left"].set_visible(False)
+            ax.tick_params(labelleft="off", left=False)
+            for tick in ax.get_yticklabels():
+                tick.set_visible(False)
+            # ax.set_yticks([])
+    for row in axes[:-1]:
+        for ax in row:
+            # ax.xaxis.tick_top()
+            ax.spines.bottom.set_visible(False)
+            ax.tick_params(labelbottom="off", bottom=False)
+            for tick in ax.get_xticklabels():
+                tick.set_visible(False)
+            # ax.set_xticks([])
+    for row in axes[1:]:
+        for ax in row:
+            ax.spines.top.set_visible(False)
+    on_all_axes(lambda ax: ax.tick_params(labeltop="off", labelright="off"))
+
+    def adjust_range(lo, hi, log_base):
+        if log_base is True:
+            log_base = 10
+        do_log = (lambda x: x) if not log_base else (lambda x: math.log(x, log_base))
+        do_exp = (lambda x: x) if not log_base else partial(math.pow, log_base)
+        lo = do_log(lo)
+        hi = do_log(hi)
+        r = 1.1 * (hi - lo) or 2
+        return do_exp(lo - r), do_exp(hi + r)
+
+    if discontinuous_y:
+        for r, row in enumerate(axes):
+            for c, ax in enumerate(row):
+                if (
+                    np.isfinite(data_maxy[r])
+                    and np.isfinite(data_miny[r])
+                    and missing[(r, c)]
+                ):
+                    # print(f"axes[{r}, {c}].set_ylim({data_miny[r] - extra}, {data_maxy[r] + extra})")
+                    ax.set_ylim(*adjust_range(data_miny[r], data_maxy[r], log_y))
+    if discontinuous_x:
+        for r, row in enumerate(axes):
+            for c, ax in enumerate(row):
+                # print(data_minx, data_maxx)
+                # print(r, c, np.isfinite(data_maxx[c]), np.isfinite(data_minx[c]), missing[(r, c)])
+                if (
+                    np.isfinite(data_maxx[c])
+                    and np.isfinite(data_minx[c])
+                    and missing[(r, c)]
+                ):
+                    # print(f"axes[{r}, {c}].set_xlim({data_minx[c] - extra}, {data_maxx[c] + extra})")
+                    ax.set_xlim(*adjust_range(data_minx[c], data_maxx[c], log_x))
     if title is not None:
         fig.suptitle(title)
     plt.tight_layout()
@@ -878,3 +1011,6 @@ def plotly_save_gif(
     if cleanup_frames:
         for filename in filenames:
             filename.unlink()
+
+
+# %%

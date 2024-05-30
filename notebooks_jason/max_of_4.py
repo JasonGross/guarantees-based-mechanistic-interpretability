@@ -950,12 +950,13 @@ if DISPLAY_PLOTS:
         plot_with=PLOT_WITH,
         renderer=RENDERER,
     )
-    latex_figures["EQKE"] = figs["EQKE"]
+    for attn_scale in ("", "WithAttnScale"):
+        latex_figures[f"EQKE{attn_scale}"] = figs[f"EQKE{attn_scale}"]
+        latex_figures[f"EQKP{attn_scale}"] = figs[f"EQKP{attn_scale}"]
+        latex_figures[f"EQKE{attn_scale}-SVD"] = figs[f"EQKE{attn_scale} Attention SVD"]
+        del figs[f"EQKE{attn_scale} Attention SVD"]
     latex_figures["EVOU"] = figs["EVOU"]
     latex_figures["EVOU-centered"] = figs["EVOU-centered"]
-    latex_figures["EQKP"] = figs["EQKP"]
-    latex_figures["EQKE-SVD"] = figs["EQKE Attention SVD"]
-    del figs["EQKE Attention SVD"]
     PVOU_keys = [k for k in figs.keys() if k.startswith("irrelevant_") and "V" in k]
     assert len(PVOU_keys) == 1, f"PVOU_keys: {PVOU_keys}"
     latex_figures["PVOU"] = figs[PVOU_keys[0]]

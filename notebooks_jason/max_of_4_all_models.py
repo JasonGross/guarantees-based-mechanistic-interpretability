@@ -1086,12 +1086,15 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                 renderer=RENDERER,
                 show=DISPLAY_PLOTS,
             )
-            latex_figures[f"{seed}-EQKE"] = figs["EQKE"]
+            for attn_scale in ("", "WithAttnScale"):
+                latex_figures[f"{seed}-EQKE{attn_scale}"] = figs[f"EQKE{attn_scale}"]
+                latex_figures[f"{seed}-EQKP{attn_scale}"] = figs[f"EQKP{attn_scale}"]
+                latex_figures[f"{seed}-EQKE{attn_scale}-SVD"] = figs[
+                    f"EQKE{attn_scale} Attention SVD"
+                ]
+                del figs[f"EQKE{attn_scale} Attention SVD"]
             latex_figures[f"{seed}-EVOU"] = figs["EVOU"]
             latex_figures[f"{seed}-EVOU-centered"] = figs["EVOU-centered"]
-            latex_figures[f"{seed}-EQKP"] = figs["EQKP"]
-            latex_figures[f"{seed}-EQKE-SVD"] = figs["EQKE Attention SVD"]
-            del figs["EQKE Attention SVD"]
             PVOU_keys = [
                 k for k in figs.keys() if k.startswith("irrelevant_") and "V" in k
             ]

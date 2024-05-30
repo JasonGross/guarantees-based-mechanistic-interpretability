@@ -59,8 +59,8 @@ def compute_QK(
             model.cfg.d_head
         ), f"attn_scale: {attn_scale}, d_head: {model.cfg.d_head}"
         sattn_scale = {
-            "html": "√d<sub>head</sub>",  # <sup>-1</sup>",
-            "latex": r"\sqrt{d_{\mathrm{head}}}",  # ^{-1}}",
+            "html": " / √d<sub>head</sub>",  # <sup>-1</sup>",
+            "latex": r" / \sqrt{d_{\mathrm{head}}}",  # ^{-1}}",
         }
 
     strings = {
@@ -105,7 +105,7 @@ def compute_QK(
         return {
             "data": (QK - QK_last).numpy() / attn_scale,
             "title": {
-                key: f"Attention Score{nl}QK[p] := {smath}({sWe}[-1] + {sWpos}[-1]){sWq}{sWk}{sT}({sWe} + {sWpos}[p]){sT} / {sattn_scale[key]}{smath}{nl}{smath}{sE}{s_dim0}({sQK}[:-1,:-1]) - {sQK}[-1, -1]{smath}"
+                key: f"Attention Score{nl}QK[p] := {smath}({sWe}[-1] + {sWpos}[-1]){sWq}{sWk}{sT}({sWe} + {sWpos}[p]){sT}{sattn_scale[key]}{smath}{nl}{smath}{sE}{s_dim0}({sQK}[:-1,:-1]) - {sQK}[-1, -1]{smath}"
                 for key, (
                     nl,
                     smath,
@@ -128,7 +128,7 @@ def compute_QK(
         return {
             "data": QK.numpy() / attn_scale,
             "title": {
-                key: f"Attention Score{nl}EQKE := {smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWe} + {sE}{s_p}{sWpos}[p]){sT} / {sattn_scale[key]}{smath}"
+                key: f"Attention Score{nl}EQKE := {smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWe} + {sE}{s_p}{sWpos}[p]){sT}{sattn_scale[key]}{smath}"
                 for key, (
                     nl,
                     smath,
@@ -266,7 +266,9 @@ def compute_OV(
 
 @torch.no_grad()
 def compute_QK_by_position(
-    model: HookedTransformer, includes_eos: Optional[bool] = None
+    model: HookedTransformer,
+    includes_eos: Optional[bool] = None,
+    with_attn_scale: bool = True,
 ) -> dict:
     W_E, W_pos, W_Q, W_K = (
         model.W_E.to("cpu"),
@@ -276,6 +278,17 @@ def compute_QK_by_position(
     )
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
+    attn_scale = 1.0
+    sattn_scale = {"html": "", "latex": ""}
+    if with_attn_scale and model.cfg.use_attn_scale:
+        attn_scale = model.blocks[0].attn.attn_scale
+        assert attn_scale == np.sqrt(
+            model.cfg.d_head
+        ), f"attn_scale: {attn_scale}, d_head: {model.cfg.d_head}"
+        sattn_scale = {
+            "html": " / √d<sub>head</sub>",  # <sup>-1</sup>",
+            "latex": r" / \sqrt{d_{\mathrm{head}}}",  # ^{-1}}",
+        }
     strings = {
         "html": (
             "<br>",
@@ -310,11 +323,11 @@ def compute_QK_by_position(
             @ W_Q[0, 0]
             @ W_K[0, 0].T
             @ (W_pos[:-1] - W_pos[:-1].mean(dim=0)).T
-        )
+        ) / attn_scale
         return {
             "data": {"QK": QK.numpy()},
             "title": {
-                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe}[-1] + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos}[:-1] - {sE}{s_dim0}{sWpos}[:-1]){sT}{smath}"
+                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe}[-1] + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos}[:-1] - {sE}{s_dim0}{sWpos}[:-1]){sT}{sattn_scale[key]}{smath}"
                 for key, (
                     nl,
                     smath,
@@ -333,11 +346,17 @@ def compute_QK_by_position(
             "yaxis": "attention score pre-softmax",
         }
     else:
-        QK = (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ (W_pos - W_pos.mean(dim=0)).T
+        QK = (
+            (W_E + W_pos[-1])
+            @ W_Q[0, 0]
+            @ W_K[0, 0].T
+            @ (W_pos - W_pos.mean(dim=0)).T
+            / attn_scale
+        )
         return {
             "data": {"QK": QK.numpy()},
             "title": {
-                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos} - {sE}{s_p}{sWpos}[p]){sT}{smath}"
+                key: f"Positional Contribution to Attention Score{nl}{smath}({sWe} + {sWpos}[-1]){sWq}{sWk}{sT}({sWpos} - {sE}{s_p}{sWpos}[p]){sT}{sattn_scale[key]}{smath}"
                 for key, (
                     nl,
                     smath,
@@ -460,59 +479,62 @@ def display_basic_interpretation(
     OV_cmap = colorscale_to_cmap(OV_colorscale)
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
-    QK = compute_QK(model, includes_eos=includes_eos)
-    title_kind = "html" if plot_with == "plotly" else "latex"
-    result = {}
-    if includes_eos:
-        match plot_with:
-            case "plotly":
-                fig_qk = px.line(
-                    {"QK": QK["data"]},
-                    title=QK["title"]["html"],
-                    labels={
-                        "index": QK["xaxis"],
-                        "variable": "",
-                        "value": QK["yaxis"],
-                    },
-                )
-                if show:
-                    fig_qk.show(renderer=renderer)
-            case "matplotlib":
-                fig_qk, ax = plt.subplots()
-                plt.close()
-                ax.plot(QK["data"])
-                ax.set_title(QK["title"]["latex"])
-                ax.set_xlabel(QK["xaxis"])
-                ax.set_ylabel(QK["yaxis"])
-                if show:
-                    plt.figure(fig_qk)
-                    fig_qk.show()
-    else:
-        fig_qk = imshow(
-            QK["data"],
-            title=QK["title"][title_kind],
-            xaxis=QK["xaxis"],
-            yaxis=QK["yaxis"],
-            colorscale=QK_colorscale,
-            dtick_x=tok_dtick,
-            dtick_y=tok_dtick,
-            plot_with=plot_with,
-            renderer=renderer,
-            show=show,
+    for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
+        QK = compute_QK(
+            model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
         )
-        _, figs = find_size_and_query_direction(
-            model,
-            plot_heatmaps=True,
-            renderer=renderer,
-            colorscale=QK_SVD_colorscale,
-            plot_with=plot_with,
-            dtick=tok_dtick,
-            show=show,
-        )
-        assert figs is not None
-        for k, fig in figs.items():
-            result[f"EQKE {k}"] = fig
-    result["EQKE"] = fig_qk
+        title_kind = "html" if plot_with == "plotly" else "latex"
+        result = {}
+        if includes_eos:
+            match plot_with:
+                case "plotly":
+                    fig_qk = px.line(
+                        {"QK": QK["data"]},
+                        title=QK["title"]["html"],
+                        labels={
+                            "index": QK["xaxis"],
+                            "variable": "",
+                            "value": QK["yaxis"],
+                        },
+                    )
+                    if show:
+                        fig_qk.show(renderer=renderer)
+                case "matplotlib":
+                    fig_qk, ax = plt.subplots()
+                    plt.close()
+                    ax.plot(QK["data"])
+                    ax.set_title(QK["title"]["latex"])
+                    ax.set_xlabel(QK["xaxis"])
+                    ax.set_ylabel(QK["yaxis"])
+                    if show:
+                        plt.figure(fig_qk)
+                        fig_qk.show()
+        else:
+            fig_qk = imshow(
+                QK["data"],
+                title=QK["title"][title_kind],
+                xaxis=QK["xaxis"],
+                yaxis=QK["yaxis"],
+                colorscale=QK_colorscale,
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            _, figs = find_size_and_query_direction(
+                model,
+                plot_heatmaps=True,
+                renderer=renderer,
+                colorscale=QK_SVD_colorscale,
+                plot_with=plot_with,
+                dtick=tok_dtick,
+                show=show,
+            )
+            assert figs is not None
+            for k, fig in figs.items():
+                result[f"EQKE{attn_scale} {k}"] = fig
+        result[f"EQKE{attn_scale}"] = fig_qk
 
     if include_uncentered:
         OV = compute_OV(model, centered=False, includes_eos=includes_eos)
@@ -544,29 +566,36 @@ def display_basic_interpretation(
     )
     result["EVOU-centered"] = fig_ov
 
-    pos_QK = compute_QK_by_position(model, includes_eos=includes_eos)
-    if includes_eos:
-        fig_qk = px.scatter(
-            pos_QK["data"],
-            title=pos_QK["title"][title_kind],
-            labels={"index": pos_QK["xaxis"], "variable": "", "value": pos_QK["yaxis"]},
+    for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
+        pos_QK = compute_QK_by_position(
+            model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
         )
-        if show:
-            fig_qk.show(renderer=renderer)
-    else:
-        fig_qk = imshow(
-            pos_QK["data"]["QK"],
-            title=pos_QK["title"][title_kind],
-            colorscale=QK_colorscale,
-            plot_with=plot_with,
-            xaxis=pos_QK["xaxis"],
-            yaxis=pos_QK["yaxis"],
-            dtick_x=pos_dtick,
-            dtick_y=tok_dtick,
-            renderer=renderer,
-            show=show,
-        )
-    result["EQKP"] = fig_qk
+        if includes_eos:
+            fig_qk = px.scatter(
+                pos_QK["data"],
+                title=pos_QK["title"][title_kind],
+                labels={
+                    "index": pos_QK["xaxis"],
+                    "variable": "",
+                    "value": pos_QK["yaxis"],
+                },
+            )
+            if show:
+                fig_qk.show(renderer=renderer)
+        else:
+            fig_qk = imshow(
+                pos_QK["data"]["QK"],
+                title=pos_QK["title"][title_kind],
+                colorscale=QK_colorscale,
+                plot_with=plot_with,
+                xaxis=pos_QK["xaxis"],
+                yaxis=pos_QK["yaxis"],
+                dtick_x=pos_dtick,
+                dtick_y=tok_dtick,
+                renderer=renderer,
+                show=show,
+            )
+        result[f"EQKP{attn_scale}"] = fig_qk
 
     irrelevant = compute_irrelevant(
         model,

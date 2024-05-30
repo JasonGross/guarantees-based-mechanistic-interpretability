@@ -34,6 +34,35 @@ def _via_tensor(attr: str, rattr: Optional[str] = None):
     return delegate
 
 
+def _via_broadcast_float_or_tensor(attr: str, rattr: Optional[str] = None):
+    def delegate(self: LowRankTensor, other, *args, **kwargs):
+        def subdelegate(m):
+            try:
+                return getattr(m, attr)(other, *args, **kwargs)
+            except TypeError as e:
+                if rattr is not None:
+                    try:
+                        return getattr(other, rattr)(m, *args, **kwargs)
+                    except TypeError as er:
+                        raise TypeError(e, er)
+                else:
+                    raise e
+
+        if isinstance(other, float):
+            if np.prod(self.A.shape) <= np.prod(self.B.shape):
+                return LowRankTensor(subdelegate(self.A), self.B, **self.params())  # type: ignore
+            else:
+                return LowRankTensor(self.A, subdelegate(self.B), **self.params())  # type: ignore
+        return _via_tensor(attr, rattr)(self, other, *args, **kwargs)
+
+    if hasattr(Tensor, attr):
+        reference = getattr(Tensor, attr)
+        for docattr in ("__doc__", "__name__"):
+            if hasattr(reference, docattr):
+                setattr(delegate, docattr, getattr(reference, docattr))
+    return delegate
+
+
 def _merge_check_params(
     *args: dict[str, T], merge_tol=max, merge_equal_nan=bool.__or__
 ) -> dict[str, T]:
@@ -201,35 +230,9 @@ class LowRankTensor(FactoredMatrix):
     __radd__ = _via_tensor("__radd__", "__add__")
     __sub__ = _via_tensor("__sub__", "__rsub__")
     __rsub__ = _via_tensor("__rsub__", "__sub__")
-
-    def __div__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
-        if isinstance(other, float):
-            if np.prod(self.A.shape) <= np.prod(self.B.shape):
-                return LowRankTensor(self.A / other, self.B, **self.params())  # type: ignore
-            else:
-                return LowRankTensor(self.A, self.B / other, **self.params())  # type: ignore
-        return _via_tensor("__div__", "__rdiv__")(self, other)
-
-    def __rdiv__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
-        if isinstance(other, float):
-            if np.prod(self.A.shape) <= np.prod(self.B.shape):
-                return LowRankTensor(other / self.A, self.B, **self.params())  # type: ignore
-            else:
-                return LowRankTensor(self.A, other / self.B, **self.params())  # type: ignore
-        return _via_tensor("__rdiv__", "__div__")(self, other)
-
-    def __mul__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
-        if isinstance(other, float):
-            if np.prod(self.A.shape) <= np.prod(self.B.shape):
-                return LowRankTensor(self.A * other, self.B, **self.params())  # type: ignore
-            else:
-                return LowRankTensor(self.A, self.B * other, **self.params())  # type: ignore
-        return _via_tensor("__mul__", "__rmul__")(self, other)
-
-    def __rmul__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
-        if isinstance(other, float):
-            if np.prod(self.A.shape) <= np.prod(self.B.shape):
-                return LowRankTensor(other * self.A, self.B, **self.params())  # type: ignore
-            else:
-                return LowRankTensor(self.A, other * self.B, **self.params())  # type: ignore
-        return _via_tensor("__rmul__", "__mul__")(self, other)
+    __div__ = _via_broadcast_float_or_tensor("__div__", "__rdiv__")
+    __rdiv__ = _via_broadcast_float_or_tensor("__rdiv__", "__div__")
+    __truediv__ = _via_broadcast_float_or_tensor("__truediv__", "__rtruediv__")
+    __rtruediv__ = _via_broadcast_float_or_tensor("__rtruediv__", "__truediv__")
+    __mul__ = _via_broadcast_float_or_tensor("__mul__", "__rmul__")
+    __rmul__ = _via_broadcast_float_or_tensor("__rmul__", "__mul__")

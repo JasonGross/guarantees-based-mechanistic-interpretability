@@ -30,10 +30,13 @@ def trim_plotly_figure(
     return fig
 
 
-def optipng(*images: Union[str, Path], level: int = 5):
+def optipng(*images: Union[str, Path], level: int = 5, exhaustive: bool = False):
     if not images:
         return
-    return subprocess.run(["optipng", f"-o{level}", *images], check=True)
+    if level == 5 and exhaustive:
+        level = 7
+    extra_args = [] if not exhaustive else ["-zm1-9"]
+    return subprocess.run(["optipng", f"-o{level}", *extra_args, *images], check=True)
 
 
 def pngcrush(

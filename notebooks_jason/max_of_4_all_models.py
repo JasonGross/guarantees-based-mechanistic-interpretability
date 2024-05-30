@@ -2021,84 +2021,92 @@ def texify_matplotlib_title(
                     ax.legend(orig_leg_handles, orig_leg_labels)
 
 
-errs = []
-for file_path in chain(
-    LATEX_FIGURE_PATH.glob("*.png"), LATEX_FIGURE_PATH.glob("*.dat")
-):
-    file_path.unlink()
-    print(f"Deleted: {file_path}")
-table_row_sep = r"\\" + "\n"
-for k, fig in latex_figures.items():
-    if isinstance(fig, go.Figure):
-        fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
-        unsupported_by_tikzplotly = any(
-            isinstance(trace, go.Heatmap) for trace in fig.data
-        )
-        # if not unsupported_by_tikzplotly:
-        #     p = LATEX_FIGURE_PATH / f"{k}.tex"
-        #     print(f"Saving {p}...")
-        #     p.parent.mkdir(parents=True, exist_ok=True)
-        #     tikzplotly.save(p, fig)
-        with texify_title(fig, replace_with_macros=False) as fig:
-            if True or unsupported_by_tikzplotly:
-                for ext in (".pdf", ".svg"):
-                    p = LATEX_FIGURE_PATH / f"{k}{ext}"
-                    print(f"Saving {p}...")
-                    p.parent.mkdir(parents=True, exist_ok=True)
-                    fig.write_image(p)
-                    if ext == ".pdf":
-                        try:
-                            subprocess.run(["pdfcrop", p, p], check=True)
-                        except FileNotFoundError as e:
-                            print(f"Warning: {e}")
-                            errs.append(e)
-    elif isinstance(fig, matplotlib.figure.Figure):
-        p = LATEX_FIGURE_PATH / f"{k}.tex"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        externalize_this_table = latex_externalize_tables.get(k, True)
-        if externalize_this_table:
-            if not latex_only_externalize_tables.get(k, False):
-                p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
-            print(f"Saving {p}...")
-            with texify_matplotlib_title(fig) as fig:
-                tikzplotlib.save(
-                    p,
-                    fig,
-                    externalize_tables=externalize_this_table,
-                    table_row_sep=table_row_sep,
-                )
-        p = LATEX_FIGURE_PATH / f"{k}.tex"
-        print(f"Saving {p}...")
-        with texify_matplotlib_title(fig, replace_with_macros=True) as fig:
-            tikzplotlib.save(
-                p, fig, externalize_tables=False, table_row_sep=table_row_sep
+if SAVE_PLOTS:
+    errs = []
+    for file_path in chain(
+        LATEX_FIGURE_PATH.glob("*.png"), LATEX_FIGURE_PATH.glob("*.dat")
+    ):
+        file_path.unlink()
+        print(f"Deleted: {file_path}")
+    table_row_sep = r"\\" + "\n"
+    for k, fig in latex_figures.items():
+        if isinstance(fig, go.Figure):
+            fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
+            unsupported_by_tikzplotly = any(
+                isinstance(trace, go.Heatmap) for trace in fig.data
             )
-        for ext in (".pdf", ".svg"):
-            p = LATEX_FIGURE_PATH / f"{k}{ext}"
-            print(f"Saving {p}...")
+            # if not unsupported_by_tikzplotly:
+            #     p = LATEX_FIGURE_PATH / f"{k}.tex"
+            #     print(f"Saving {p}...")
+            #     p.parent.mkdir(parents=True, exist_ok=True)
+            #     tikzplotly.save(p, fig)
+            with texify_title(fig, replace_with_macros=False) as fig:
+                if True or unsupported_by_tikzplotly:
+                    for ext in (".pdf", ".svg"):
+                        p = LATEX_FIGURE_PATH / f"{k}{ext}"
+                        print(f"Saving {p}...")
+                        p.parent.mkdir(parents=True, exist_ok=True)
+                        fig.write_image(p)
+                        if ext == ".pdf":
+                            try:
+                                subprocess.run(["pdfcrop", p, p], check=True)
+                            except FileNotFoundError as e:
+                                print(f"Warning: {e}")
+                                errs.append(e)
+        elif isinstance(fig, matplotlib.figure.Figure):
+            p = LATEX_FIGURE_PATH / f"{k}.tex"
             p.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(p)
-            if ext == ".pdf":
-                try:
-                    subprocess.run(["pdfcrop", p, p], check=True)
-                except FileNotFoundError as e:
-                    print(f"Warning: {e}")
-                    errs.append(e)
-    else:
-        raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
+            externalize_this_table = latex_externalize_tables.get(k, True)
+            if externalize_this_table:
+                if not latex_only_externalize_tables.get(k, False):
+                    p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
+                print(f"Saving {p}...")
+                with texify_matplotlib_title(fig) as fig:
+                    tikzplotlib.save(
+                        p,
+                        fig,
+                        externalize_tables=externalize_this_table,
+                        table_row_sep=table_row_sep,
+                    )
+            p = LATEX_FIGURE_PATH / f"{k}.tex"
+            print(f"Saving {p}...")
+            with texify_matplotlib_title(fig, replace_with_macros=True) as fig:
+                tikzplotlib.save(
+                    p, fig, externalize_tables=False, table_row_sep=table_row_sep
+                )
+            for ext in (".pdf", ".svg"):
+                p = LATEX_FIGURE_PATH / f"{k}{ext}"
+                print(f"Saving {p}...")
+                p.parent.mkdir(parents=True, exist_ok=True)
+                fig.savefig(p)
+                if ext == ".pdf":
+                    try:
+                        subprocess.run(["pdfcrop", p, p], check=True)
+                    except FileNotFoundError as e:
+                        print(f"Warning: {e}")
+                        errs.append(e)
+        else:
+            raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
 
-for f in LATEX_FIGURE_PATH.glob("*.png"):
-    try:
-        image_utils.pngcrush(f)
-    except FileNotFoundError as e:
-        print(f"Warning: {e}")
-        errs.append(e)
+    for f in LATEX_FIGURE_PATH.glob("*.png"):
+        try:
+            image_utils.pngcrush(f)
+        except FileNotFoundError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
 
-    try:
-        image_utils.optipng(f)
-    except FileNotFoundError as e:
-        print(f"Warning: {e}")
-        errs.append(e)
+        try:
+            image_utils.optipng(f)
+        except FileNotFoundError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
 
-for e in errs:
-    raise e
+    for f in LATEX_FIGURE_PATH.glob("*.png"):
+        try:
+            image_utils.optipng(f, exhaustive=True)
+        except FileNotFoundError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
+
+    for e in errs:
+        raise e

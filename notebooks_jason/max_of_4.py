@@ -2987,6 +2987,13 @@ for f in LATEX_FIGURE_PATH.glob("*.png"):
         print(f"Warning: {e}")
         errs.append(e)
 
+for f in LATEX_FIGURE_PATH.glob("*.png"):
+    try:
+        image_utils.optipng(f, exhaustive=True)
+    except FileNotFoundError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+
 for e in errs:
     raise e
 # %%

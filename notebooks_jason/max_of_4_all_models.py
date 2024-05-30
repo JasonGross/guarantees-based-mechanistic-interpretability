@@ -1176,7 +1176,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                 key = "EQKE-hist-attention-difference-over-gap" + (
                     "-dup-by-seq-count" if duplicate_by_sequence_count else ""
                 )
-                latex_figures[f"{seed}-key"] = fig
+                latex_figures[f"{seed}-{key}"] = fig
 # %%
 if SAVE_PLOTS or DISPLAY_PLOTS:
     with tqdm(runtime_models.items(), desc="display_EQKE_SVD_analysis") as pbar:

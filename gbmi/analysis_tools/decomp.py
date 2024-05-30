@@ -248,6 +248,7 @@ def analyze_svd(
     figsize: Optional[Tuple[int, int]] = (15, 5),
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
+    show: bool = True,
 ):
     U, S, Vh = torch.linalg.svd(M)
     V = Vh.T
@@ -332,13 +333,15 @@ def analyze_svd(
             fig.update_yaxes(range=[0, None], row=1, col=2)
             # fig.update_yaxes(title_text="Key Token", row=1, col=3)
 
-            fig.show(renderer)
+            if show:
+                fig.show(renderer)
 
             # line(S, title=f"Singular Values{descr}")
             # imshow(U, title=f"Principal Components on U{descr}")
             # imshow(Vh, title=f"Principal Components on Vh{descr}")
         case "matplotlib":
             fig, axs = plt.subplots(1, 3, figsize=figsize)
+            plt.close()
             cax_u = axs[0].imshow(utils.to_numpy(U), cmap=cmap, vmin=-uzmax, vmax=uzmax)
             axs[0].set_title("U")
             fig.colorbar(cax_u, ax=axs[0], orientation="vertical").remove()
@@ -385,12 +388,15 @@ def analyze_svd(
                     # ax.set_yticklabels([f"{int(tick)}" for tick in yticks])
 
             fig.suptitle(f"SVD{descr}")
-            plt.tight_layout(pad=3.0)
-            plt.show()
+            fig.tight_layout(pad=3.0)
+            if show:
+                plt.figure(fig)
+                plt.show()
             fig.suptitle("")
             axs[1].set_title(f"Singular Values{descr}")
-            plt.figure(fig)
-            plt.show()
+            if show:
+                plt.figure(fig)
+                plt.show()
     return fig
 
 

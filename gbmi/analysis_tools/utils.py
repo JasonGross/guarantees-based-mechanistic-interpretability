@@ -1,5 +1,6 @@
 from typing import Optional, Literal, Union, Sequence, Collection
 import numpy as np
+import scipy.stats as stats
 from torch import Tensor
 from jaxtyping import Integer, Float
 import torch
@@ -139,3 +140,68 @@ def weighted_quantile(
     else:
         weighted_quantiles /= sample_weight.sum()
     return np.interp(quantiles, weighted_quantiles, values)
+
+
+def data_summary(
+    data, prefix: str = "", float_postfix: str = "Float", int_postfix: str = ""
+):
+    if isinstance(data, dict):
+        keys = list(data.keys())
+        values = [data[k] for k in keys]
+    else:
+        keys = None
+        values = data
+    if isinstance(values, torch.Tensor):
+        values = values.cpu().numpy()
+    elif not isinstance(values, np.ndarray):
+        values = np.array(values)  # turn to float
+
+    wf = lambda k: f"{prefix}{k}{float_postfix}"
+
+    result = {
+        f"{prefix}Len{int_postfix}": len(values.flatten()),
+        wf("Min"): values.min(),
+        wf("Max"): values.max(),
+    }
+    values = values + 0.0  # floatify
+    result |= {
+        wf("Mean"): values.mean(),
+        wf("StdDev"): values.std(),
+        wf("SqrMean"): (values**2).mean(),
+    }
+
+    s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
+    percentiles = stats.norm.cdf([-3 * s, -2 * s, -s, 0, s, 2 * s, 3 * s])
+    percentile_names = [
+        "LowerWhiskerBottomEnd",
+        "LowerWhiskerCrosshatch",
+        "QuartileOne",
+        "Median",
+        "QuartileThree",
+        "UpperWhiskerCrosshatch",
+        "UpperWhiskerTopEnd",
+    ]
+    percentile_values = np.percentile(values, percentiles)
+
+    result.update({wf(pct): v for pct, v in zip(percentile_names, percentile_values)})
+
+    if keys is not None:
+        closest_keys = {}
+
+        def find_closest_key(value):
+            return keys[np.argmin(np.abs(values - value))]
+
+        closest_keys.update(
+            {
+                f"{prefix}MeanKey": find_closest_key(values.mean()),
+                f"{prefix}MinKey": find_closest_key(values.min()),
+                f"{prefix}MaxKey": find_closest_key(values.max()),
+            }
+        )
+
+        for pct, value in zip(percentile_names, percentile_values):
+            closest_keys[f"{prefix}{pct}Key"] = find_closest_key(value)
+
+        result.update(closest_keys)
+
+    return result

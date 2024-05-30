@@ -316,6 +316,7 @@ def display_size_direction_stats(
                 fig.show(renderer)
         case "matplotlib":
             fig, axs = plt.subplots(1, 3, figsize=(20, 5))
+            plt.close()
             # fig.subplots_adjust(hspace=0.5, wspace=0.4)
             # Plot 1: Query-Side SVD Heatmap
             cax1 = axs[0].matshow(
@@ -364,10 +365,11 @@ def display_size_direction_stats(
             fig.tight_layout(pad=3.0)
             fig.suptitle("Attention SVD")
             if show:
+                plt.figure(fig)
                 plt.show()
             fig.suptitle("")
-            plt.figure(fig)
             if show:
+                plt.figure(fig)
                 plt.show()
     results["Attention SVD"] = fig
 
@@ -424,7 +426,7 @@ def display_size_direction_stats(
             fig, axs = plt.subplots(
                 1, 2, figsize=(12, 6)
             )  # Adjust the figure size as needed
-
+            plt.close()
             # Plot 1: Size
             axs[0].plot(
                 np.arange(size_direction.shape[0]),
@@ -451,11 +453,12 @@ def display_size_direction_stats(
 
             # Set the main title for all subplots
             fig.suptitle("Directions in Token Space", fontsize=16)
-            plt.tight_layout(
+            fig.tight_layout(
                 rect=[0, 0, 1, 0.95]
             )  # Adjust layout to make room for the main title
             # Show plot
             if show:
+                plt.figure(fig)
                 plt.show()
     results["Directions in Token Space"] = fig
 

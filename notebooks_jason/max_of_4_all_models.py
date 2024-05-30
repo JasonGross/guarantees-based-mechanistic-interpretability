@@ -50,7 +50,7 @@ import tikzplotly
 import tikzplotlib
 import matplotlib
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-from gbmi.analysis_tools.utils import pm_round, pm_mean_std
+from gbmi.analysis_tools.utils import pm_round, pm_mean_std, data_summary
 from gbmi.analysis_tools.plot import scatter
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
@@ -124,6 +124,8 @@ from gbmi.analysis_tools.plot import (
 from gbmi.exp_max_of_n.plot import (
     EVOU_max_minus_diag_logit_diff,
     attention_difference_over_gap,
+    make_better_slides_plots_00,
+    display_EQKE_SVD_analysis,
 )
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
@@ -318,69 +320,6 @@ def maybe_parallel_map(func, *args):
 
 
 # %%
-def data_summary(
-    data, prefix: str = "", float_postfix: str = "Float", int_postfix: str = ""
-):
-    if isinstance(data, dict):
-        keys = list(data.keys())
-        values = [data[k] for k in keys]
-    else:
-        keys = None
-        values = data
-    if isinstance(values, torch.Tensor):
-        values = values.cpu().numpy()
-    elif not isinstance(values, np.ndarray):
-        values = np.array(values)  # turn to float
-
-    wf = lambda k: f"{prefix}{k}{float_postfix}"
-
-    result = {
-        f"{prefix}Len{int_postfix}": len(values.flatten()),
-        wf("Min"): values.min(),
-        wf("Max"): values.max(),
-    }
-    values = values + 0.0  # floatify
-    result |= {
-        wf("Mean"): values.mean(),
-        wf("StdDev"): values.std(),
-        wf("SqrMean"): (values**2).mean(),
-    }
-
-    s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
-    percentiles = stats.norm.cdf([-3 * s, -2 * s, -s, 0, s, 2 * s, 3 * s])
-    percentile_names = [
-        "LowerWhiskerBottomEnd",
-        "LowerWhiskerCrosshatch",
-        "QuartileOne",
-        "Median",
-        "QuartileThree",
-        "UpperWhiskerCrosshatch",
-        "UpperWhiskerTopEnd",
-    ]
-    percentile_values = np.percentile(values, percentiles)
-
-    result.update({wf(pct): v for pct, v in zip(percentile_names, percentile_values)})
-
-    if keys is not None:
-        closest_keys = {}
-
-        def find_closest_key(value):
-            return keys[np.argmin(np.abs(values - value))]
-
-        closest_keys.update(
-            {
-                f"{prefix}MeanKey": find_closest_key(values.mean()),
-                f"{prefix}MinKey": find_closest_key(values.min()),
-                f"{prefix}MaxKey": find_closest_key(values.max()),
-            }
-        )
-
-        for pct, value in zip(percentile_names, percentile_values):
-            closest_keys[f"{prefix}{pct}Key"] = find_closest_key(value)
-
-        result.update(closest_keys)
-
-    return result
 
 
 # %%
@@ -1075,181 +1014,18 @@ for k, v in EVOU_analyses_by_key.items():
 # %% [markdown]
 # # SVD analysis
 # %%
-# random resampling of EQKE_err
-@torch.no_grad()
-def resample_EQKE_err(
-    *ms: torch.Tensor,
-    # QK_colorscale: Colorscale = "Plasma",
-    # QK_SVD_colorscale: Colorscale = "Picnic_r",
-    seed: int = 1234,
-    nsamples: int = 100,
-) -> dict[str, float]:
-    results_float = {}
-    # what if we randomize the order of all matrices without replacement?
-    torch.manual_seed(seed)
-    results_float["ResampleEQKEErrSeed"] = seed
-    results_float["ResampleEQKEErrNumSamples"] = nsamples
-    row_diffs = []
-    max_row_diffs = []
-    for _ in range(nsamples):
-        ms_no_replacement = [shuffle_tensor(m) for m in ms]
-        result = reduce(torch.matmul, ms_no_replacement)
-        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
-        max_row_diffs.append(
-            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
-        )
-    row_diffs = torch.stack(row_diffs)
-    results_float |= data_summary(max_row_diffs, prefix="ResampleEQKEErr")
-    # print(f"row diff: {pm_mean_std(row_diffs)}")
-    # sampling from normal
-    row_diffs = []
-    max_row_diffs = []
-    for _ in range(nsamples):
-        ms_normal = [torch.randn_like(m) * m.std() + m.mean() for m in ms]
-        result = reduce(torch.matmul, ms_normal)
-        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
-        max_row_diffs.append(
-            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
-        )
-    row_diffs = torch.stack(row_diffs)
-    results_float |= data_summary(max_row_diffs, prefix="ResampleNormalEQKEErr")
-    # print(f"row diff: {pm_mean_std(row_diffs)}")
-    return results_float
 
 
 # %%
-@torch.no_grad()
-def compute_EQKE_SVD_analysis(model: HookedTransformer) -> dict[str, float]:
-    results_float = {}
-    (
-        size_direction,
-        query_direction,
-        size_query_singular_value,
-    ), _ = find_size_and_query_direction(model)
-    (second_key_direction, second_key_singular_value), (
-        second_query_direction,
-        second_query_singular_value,
-    ) = find_second_singular_contributions(model, size_direction, query_direction)
-    (W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
-        model.W_Q[0, 0]
-    )
-    (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
-        model.W_K[0, 0]
-    )
-    (
-        (EQKE_query_key, err_accumulator),
-        EQKE_pos_err,
-        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
-    ) = quadratic.decompose_EQKE_error_quadratic(
-        model,
-        key_direction=size_direction,
-        query_direction=query_direction,
-        second_key_direction=second_key_direction,
-        second_query_direction=second_query_direction,
-        W_Q_U=W_Q_U,
-        W_K_U=W_K_U,
-        sanity_check=False,
-    )
-
-    EQKE_pos_err_with_attn_scale = EQKE_pos_err / model.blocks[0].attn.attn_scale
-
-    for attn_scale, cur_EQKE_pos_err in (
-        ("", EQKE_pos_err),
-        ("WithAttnScale", EQKE_pos_err_with_attn_scale),
-    ):
-        results_float |= data_summary(
-            cur_EQKE_pos_err.flatten(), prefix=f"EQKP{attn_scale}"
-        )
-        results_float |= data_summary(
-            cur_EQKE_pos_err.abs().flatten(), prefix=f"EQKP{attn_scale}Abs"
-        )
-        results_float |= data_summary(
-            cur_EQKE_pos_err.amax(dim=-1) - cur_EQKE_pos_err.amin(dim=-1),
-            prefix=f"EQKP{attn_scale}MaxRowDiff",
-        )
-
-    EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
-    EQKE_err_simple = EQKE_err + err_accumulator
-    EQKE_exact = EQKE_query_key + EQKE_err_simple
-
-    EQKE_err_with_attn_scale = EQKE_err / model.blocks[0].attn.attn_scale
-    EQKE_err_simple_with_attn_scale = EQKE_err_simple / model.blocks[0].attn.attn_scale
-    EQKE_exact_with_attn_scale = EQKE_exact / model.blocks[0].attn.attn_scale
-
-    U, S, Vh = torch.linalg.svd(EQKE_exact)
-    S_with_attn_scale = S / model.blocks[0].attn.attn_scale
-    mindim = np.min(model.W_Q[0, 0].shape)
-    for attn_scale, cur_S in (("", S), ("WithAttnScale", S_with_attn_scale)):
-        results_float[f"EQKE{attn_scale}FirstSingularFloat"] = cur_S[0].item()
-        results_float[f"EQKE{attn_scale}SecondSingularFloat"] = cur_S[1].item()
-        results_float[f"EQKE{attn_scale}ThirdSingularFloat"] = cur_S[2].item()
-        results_float[f"EQKE{attn_scale}RatioFirstTwoSingularFloat"] = (
-            cur_S[0] / cur_S[1]
-        ).item()
-        results_float |= data_summary(S[:mindim], prefix=f"EQKE{attn_scale}Singular")
-    size_direction_diffs = size_direction.squeeze()[1:] - size_direction.squeeze()[:-1]
-    results_float |= data_summary(size_direction, prefix="EQKESizeDirection")
-    results_float |= data_summary(size_direction_diffs, prefix="EQKESizeDirectionDiffs")
-    results_float |= data_summary(query_direction, prefix="EQKEQueryDirection")
-
-    for cur_EQKE_err, descr in (
-        (EQKE_err_simple, "Simple"),
-        (EQKE_err, ""),
-        (EQKE_err_simple_with_attn_scale, "SimpleWithAttnScale"),
-        (EQKE_err_with_attn_scale, "WithAttnScale"),
-    ):
-        results_float[f"EQKEErr{descr}MaxRowDiffFloat"] = (
-            (cur_EQKE_err.max(dim=-1).values - cur_EQKE_err.min(dim=-1).values)
-            .max()
-            .item()
-        )
-        results_float[f"EQKEErr{descr}MaxAbsFloat"] = cur_EQKE_err.abs().max().item()
-        results_float[f"EQKEErr{descr}MeanDimZeroNormFloat"] = (
-            cur_EQKE_err.mean(dim=0).norm().item()
-        )
-        results_float |= data_summary(cur_EQKE_err.flatten(), f"EQKEErr{descr}")
-        s1 = torch.linalg.matrix_norm(cur_EQKE_err, ord=2)
-        results_float[f"EQKEErr{descr}FirstSingularFloat"] = s1.item()
-        results_float[f"EQKEErr{descr}FirstSingularSqrtTwoFloat"] = (
-            s1 * np.sqrt(2)
-        ).item()
-        sf1 = torch.linalg.matrix_norm(cur_EQKE_err, ord="fro")
-        results_float[f"EQKEErr{descr}FroNormFloat"] = sf1.item()
-        results_float[f"EQKEErr{descr}FroNormSqrtTwoFloat"] = (sf1 * np.sqrt(2)).item()
-
-    ss = [
-        torch.linalg.matrix_norm(m, ord=2).item()
-        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
-    ]
-    (
-        results_float["WEqqPerpFirstSingularFloat"],
-        results_float["WQqPerpFirstSingularFloat"],
-        results_float["WKkPerpFirstSingularFloat"],
-        results_float["WEkkPerpFirstSingularFloat"],
-    ) = ss
-    results_float["EQKEErrProdFirstSingularFloat"] = np.prod(ss)
-    results_float["EQKEErrProdFirstSingularSqrtTwoFloat"] = np.prod(ss) * np.sqrt(2)
-    sfs = [
-        torch.linalg.matrix_norm(m, ord="fro").item()
-        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
-    ]
-    (
-        results_float["WEqqPerpFroNormFloat"],
-        results_float["WQqPerpFroNormFloat"],
-        results_float["WKkPerpFroNormFloat"],
-        results_float["WEkkPerpFroNormFloat"],
-    ) = sfs
-    results_float["EQKEErrProdFroNormFloat"] = np.prod(sfs)
-    results_float["EQKEErrProdFroNormSqrtTwoFloat"] = np.prod(sfs) * np.sqrt(2)
-
-    results_float |= resample_EQKE_err(W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
-
-    return results_float
 
 
 # %%
 with memoshelve(
-    (lambda seed: compute_EQKE_SVD_analysis(runtime_models[seed][1])),
+    (
+        lambda seed: display_EQKE_SVD_analysis(
+            runtime_models[seed][1], include_figures=False, show=False, do_print=False
+        )[1]
+    ),
     filename=cache_dir / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis",
     get_hash_mem=(lambda x: x[0]),
     get_hash=str,
@@ -1331,6 +1107,107 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
             unused_keys = [k for k in figs if k not in latex_figures]
         if unused_keys:
             print(f"Unused keys: {unused_keys}")
+# %%
+## %%
+if DISPLAY_PLOTS or SAVE_PLOTS:
+    with tqdm(runtime_models.items(), desc="make_better_slides_plots_00") as pbar:
+        for seed, (_runtime, model) in pbar:
+            pbar.set_postfix(dict(seed=seed))
+            figs = make_better_slides_plots_00(
+                model,
+                OV_colorscale=default_OV_colorscale,
+                QK_colorscale=default_QK_colorscale,
+                tok_dtick=10,
+                plot_with=PLOT_WITH,
+                renderer=RENDERER,
+                show=DISPLAY_PLOTS,
+            )
+            for k, fig in figs.items():
+                latex_figures[f"{seed}-Decomposition-{k}"] = fig
+# %%
+if DISPLAY_PLOTS or SAVE_PLOTS:
+    with tqdm(runtime_models.items(), desc="hist_EVOU_max_logit_diff") as pbar:
+        for seed, (_runtime, model) in pbar:
+            pbar.set_postfix(dict(seed=seed))
+            latex_figures[f"{seed}-EVOU-hist-max-row-diff"], max_logit_diff = (
+                hist_EVOU_max_logit_diff(
+                    model, plot_with=PLOT_WITH, renderer=RENDERER, show=DISPLAY_PLOTS
+                )
+            )
+            for duplicate_by_sequence_count in [False, True]:
+                key = "EVOU-hist-min-above-diag"
+                if duplicate_by_sequence_count:
+                    key += "-dup-by-seq-count"
+                latex_figures[key], (max_logit_minus_diag, duplication_factors) = (
+                    hist_EVOU_max_minus_diag_logit_diff(
+                        model,
+                        duplicate_by_sequence_count=duplicate_by_sequence_count,
+                        plot_with=PLOT_WITH,
+                        renderer=RENDERER,
+                        show=DISPLAY_PLOTS,
+                    )
+                )
+
+
+# %%
+if DISPLAY_PLOTS or SAVE_PLOTS:
+    with tqdm(
+        runtime_models.items(), desc="scatter_attention_difference_vs_gap"
+    ) as pbar:
+        for seed, (_runtime, model) in pbar:
+            pbar.set_postfix(dict(seed=seed))
+            latex_figures[f"{seed}-EQKE-scatter-attention-difference-vs-gap"] = (
+                scatter_attention_difference_vs_gap(
+                    model, plot_with="plotly", renderer=RENDERER, show=DISPLAY_PLOTS
+                )  # this one is too big to export to TeX
+            )
+            for duplicate_by_sequence_count in [False, True]:
+                fig, (flat_diffs, duplication_factors) = (
+                    hist_attention_difference_over_gap(
+                        model,
+                        duplicate_by_sequence_count=duplicate_by_sequence_count,
+                        plot_with=PLOT_WITH,
+                        renderer=RENDERER,
+                        show=DISPLAY_PLOTS,
+                    )
+                )
+                key = "EQKE-hist-attention-difference-over-gap" + (
+                    "-dup-by-seq-count" if duplicate_by_sequence_count else ""
+                )
+                latex_figures[f"{seed}-key"] = fig
+# %%
+if SAVE_PLOTS or DISPLAY_PLOTS:
+    with tqdm(runtime_models.items(), desc="display_EQKE_SVD_analysis") as pbar:
+        for seed, (_runtime, model) in pbar:
+            pbar.set_postfix(dict(seed=seed))
+            figs, values = display_EQKE_SVD_analysis(
+                model,
+                plot_with=PLOT_WITH,
+                QK_colorscale=default_QK_colorscale,
+                QK_SVD_colorscale=default_QK_SVD_colorscale,
+                tok_dtick=10,
+                renderer=RENDERER,
+                include_figures=True,
+                show=DISPLAY_PLOTS,
+                do_print=False,
+            )
+            key_pairs = {}
+            for attn_scale in ("", "WithAttnScale"):
+                cur_key_pairs = {
+                    f"{k}{attn_scale}": f"{k}{attn_scale}"
+                    for k in (
+                        "WKkPerp-svd",
+                        "WQqPerp-svd",
+                        "WEqqPerp-svd",
+                        "WEkkPerp-svd",
+                    )
+                } | {
+                    f"EQKE_err{attn_scale}": f"EQKE-err{attn_scale}",
+                    f"EQKE_err_svd{attn_scale}": f"EQKE-err-svd{attn_scale}",
+                }
+                key_pairs |= cur_key_pairs
+                for key, latex_key in cur_key_pairs.items():
+                    latex_figures[latex_key] = figs[key]
 
 # %% [markdown]
 # # Sub-cubic Proofs

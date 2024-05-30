@@ -1,15 +1,24 @@
 from typing import Optional, Tuple, Literal, Union
+import re
+from functools import partial, reduce
 import numpy as np
 import torch
 from torch import Tensor
 import math
 from jaxtyping import Float, Integer
+import scipy.stats as stats
 from transformer_lens import HookedTransformer
 import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.figure
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from matplotlib.ticker import MaxNLocator
+from gbmi.utils import shuffle_tensor
+from gbmi.exp_max_of_n.analysis import (
+    find_second_singular_contributions,
+    find_size_and_query_direction,
+)
 from gbmi.analysis_tools.plot import (
     Colorscale,
     weighted_histogram,
@@ -18,9 +27,11 @@ from gbmi.analysis_tools.plot import (
     line,
     scatter,
 )
-from gbmi.analysis_tools.utils import pm_round
+from gbmi.utils.images import trim_plotly_figure
+from gbmi.analysis_tools.utils import pm_round, pm_mean_std, data_summary
 from gbmi.analysis_tools.plot import hist
-
+from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
 from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
 from gbmi.verification_tools.l1h1 import all_EQKE, all_EVOU, all_PVOU
 
@@ -468,11 +479,13 @@ def display_basic_interpretation(
                     fig_qk.show(renderer=renderer)
             case "matplotlib":
                 fig_qk, ax = plt.subplots()
+                plt.close()
                 ax.plot(QK["data"])
                 ax.set_title(QK["title"]["latex"])
                 ax.set_xlabel(QK["xaxis"])
                 ax.set_ylabel(QK["yaxis"])
                 if show:
+                    plt.figure(fig_qk)
                     fig_qk.show()
     else:
         fig_qk = imshow(
@@ -633,6 +646,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
     renderer: Optional[str] = None,
     num_bins: Optional[int] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    show: bool = True,
 ) -> Tuple[
     Union[go.Figure, matplotlib.figure.Figure],
     Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]],  # noqa: F821
@@ -685,6 +699,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
             variable="",
             renderer=renderer,
             plot_with=plot_with,
+            show=show,
         )
     else:
         fig = weighted_histogram(
@@ -695,6 +710,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
             yaxis=f"count × {shash} sequences with given max",
             renderer=renderer,
             plot_with=plot_with,
+            show=show,
         )
     return fig, (max_logit_minus_diag, duplication_factors)
 
@@ -734,6 +750,7 @@ def scatter_attention_difference_vs_gap(
     model: HookedTransformer,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
+    show: bool = True,
 ) -> Union[go.Figure, matplotlib.figure.Figure]:
     _, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
     title_kind = {"plotly": "html", "matplotlib": "latex"}[plot_with]
@@ -747,6 +764,7 @@ def scatter_attention_difference_vs_gap(
         yaxis=f"{smath}{sdhead}{spowmhalf}((E+P)QKE[i] - (E+P)QKE[j]){smath}",
         plot_with=plot_with,
         renderer=renderer,
+        show=show,
     )
     return fig
 
@@ -782,6 +800,7 @@ def hist_attention_difference_over_gap(
     num_bins: Optional[int] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
+    show: bool = True,
 ) -> Tuple[
     Union[go.Figure, matplotlib.figure.Figure],
     Tuple[Float[Tensor, "batch"], Float[Tensor, "batch"]],  # noqa: F821
@@ -836,6 +855,7 @@ def hist_attention_difference_over_gap(
             title=title,
             plot_with=plot_with,
             renderer=renderer,
+            show=show,
         )
     else:
         fig = weighted_histogram(
@@ -847,5 +867,668 @@ def hist_attention_difference_over_gap(
             yaxis=f"count × {shash} sequences with given max",
             renderer=renderer,
             plot_with=plot_with,
+            show=show,
         )
     return fig, (flat_diffs, duplication_factors)
+
+
+@torch.no_grad()
+def make_better_slides_plots_00(
+    model: HookedTransformer,
+    OV_colorscale: Colorscale = "Picnic_r",
+    QK_colorscale: Colorscale = "Plasma",
+    tok_dtick: Optional[int | float] = None,
+    pos_dtick: Optional[int | float] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+    show: bool = True,
+) -> dict[str, go.Figure]:
+    W_E, W_pos, W_U, W_V, W_O, W_Q, W_K = (
+        model.W_E.cpu(),
+        model.W_pos.cpu(),
+        model.W_U.cpu(),
+        model.W_V[0, 0].cpu(),
+        model.W_O[0, 0].cpu(),
+        model.W_Q[0, 0].cpu(),
+        model.W_K[0, 0].cpu(),
+    )
+    attn_scale = model.blocks[0].attn.attn_scale
+    EPq = W_E + W_pos[-1]
+    EPk = W_E + W_pos.mean(dim=0)
+    Pk = W_pos - W_pos.mean(dim=0)
+    EPU = EPq @ W_U
+    EVOU = EPk @ W_V @ W_O @ W_U
+    EVOU_centered = EVOU - EVOU.diag()[:, None]
+    PVOU = Pk @ W_V @ W_O @ W_U
+    EQKE = EPq @ W_Q @ W_K.T @ EPk.T / attn_scale
+    EQKP = EPq @ W_Q @ W_K.T @ Pk.T / attn_scale
+    OV_zmax = np.max(
+        [EVOU.abs().max().item(), PVOU.abs().max().item(), EPU.abs().max().item()]
+    )
+    QK_zmax = np.max([EQKE.abs().max().item(), EQKP.abs().max().item()])
+    results = {}
+    for key, zmax, colorscale in (
+        ("OV", OV_zmax, OV_colorscale),
+        ("QK", QK_zmax, QK_colorscale),
+    ):
+        match plot_with:
+            case "plotly":
+                results[f"{key}-colorbar"] = fig = go.Figure(
+                    data=go.Heatmap(
+                        z=[[0]],
+                        colorscale=colorscale,
+                        showscale=True,
+                        zmin=-zmax,
+                        zmax=zmax,
+                        zmid=0,
+                        colorbar=dict(x=0),
+                    )
+                )
+                fig.add_trace(
+                    go.Heatmap(
+                        z=[[0]],
+                        colorscale="Picnic_r",
+                        showscale=False,
+                        zmin=-zmax,
+                        zmax=zmax,
+                        zmid=0,
+                    )
+                )
+                fig.update_layout(
+                    width=75,
+                    xaxis_showgrid=False,
+                    yaxis_showgrid=False,
+                    xaxis_zeroline=False,
+                    yaxis_zeroline=False,
+                    xaxis_visible=False,
+                    yaxis_visible=False,
+                    margin=dict(l=0, r=0, b=0, t=0),
+                )
+                if show:
+                    fig.show(renderer)
+            case "matplotlib":
+                cmap = colorscale_to_cmap(colorscale)
+                results[f"{key}-colorbar"] = fig = plt.figure(figsize=(0.5, 4))
+                plt.close()
+                norm = matplotlib.colors.Normalize(vmin=-zmax, vmax=zmax)
+                cbar = fig.colorbar(
+                    cm.ScalarMappable(norm=norm, cmap=cmap),
+                    cax=fig.gca(),
+                    orientation="vertical",
+                )
+                # cbar = matplotlib.colorbar.ColorbarBase(
+                #     plt.gca(), cmap=cmap, norm=norm, orientation="vertical"
+                # )
+                if show:
+                    plt.figure(fig)
+                    plt.show()
+    to_latex = (
+        lambda s: re.sub(r"([a-zA-Z]*)<sub>([^>]*)</sub>", r"$\1_{\2}$", s)
+        .replace("position j", "position $j$")
+        .replace("key position k", "position $k$")
+    )
+    maybe_to_latex = to_latex if plot_with == "matplotlib" else (lambda x: x)
+    for m, title, colorscale, zmax, labels, dtick_x, dtick_y in (
+        (
+            EPU,
+            "EPU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "query token t<sub>i</sub>"},
+            tok_dtick,
+            tok_dtick,
+        ),
+        (
+            EVOU,
+            "EVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "key token t<sub>j</sub>"},
+            tok_dtick,
+            tok_dtick,
+        ),
+        (
+            PVOU,
+            "PVOU",
+            OV_colorscale,
+            OV_zmax,
+            {"x": "output logit", "y": "position j"},
+            tok_dtick,
+            pos_dtick,
+        ),
+        (
+            EQKE,
+            "EQKE",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key token t<sub>k</sub>", "y": "query token t<sub>q</sub>"},
+            tok_dtick,
+            tok_dtick,
+        ),
+        (
+            EQKP,
+            "EQKP",
+            QK_colorscale,
+            QK_zmax,
+            {"x": "key position k", "y": "query token t<sub>q</sub>"},
+            pos_dtick,
+            tok_dtick,
+        ),
+    ):
+        key = title
+        results[key] = fig = imshow(
+            m,
+            title=title,
+            colorscale=colorscale,
+            zmax=zmax,
+            zmin=-zmax,
+            xaxis=maybe_to_latex(labels["x"]),
+            yaxis=maybe_to_latex(labels["y"]),
+            show=False,
+            renderer=renderer,
+            plot_with=plot_with,
+            dtick_x=dtick_x,
+            dtick_y=dtick_y,
+            show=show,
+        )
+        match plot_with:
+            case "plotly":
+                assert isinstance(fig, go.Figure), f"fig: {type(fig)}"
+                # fig.show(renderer)
+                # remove title
+                fig.update_layout(title_text="")
+                fig.update(layout_coloraxis_showscale=False)
+                # crop whitespace
+                fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
+                trim_plotly_figure(fig)
+                if show:
+                    fig.show(renderer)
+            case "matplotlib":
+                assert isinstance(fig, plt.Figure), f"fig: {type(fig)}"
+                ax, cbar_ax = fig.axes
+                fig.tight_layout()
+                if show:
+                    plt.figure(fig)
+                    plt.show()
+                ax.set_title("")
+                assert hasattr(cbar_ax, "_colorbar"), cbar_ax
+                cbar = cbar_ax._colorbar
+                cbar_ax.remove()
+                # fig.colorbar(cbar_ax.collections[0], ax=ax, use_gridspec=False).remove()
+                for c in ax.get_children():
+                    if getattr(c, "colorbar", None) is cbar:
+                        print(f"!! Manually removing colorbar from {c}")
+                        del c.colorbar
+                fig.tight_layout()
+                if show:
+                    plt.figure(fig)
+                    plt.show()
+
+    return results
+
+
+# random resampling of EQKE_err
+@torch.no_grad()
+def resample_EQKE_err(
+    *ms: torch.Tensor,
+    # QK_colorscale: Colorscale = "Plasma",
+    # QK_SVD_colorscale: Colorscale = "Picnic_r",
+    seed: int = 1234,
+    nsamples: int = 100,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+    show: bool = True,
+    include_figures: bool = True,
+    do_print: bool = False,
+) -> Tuple[dict[str, Union[go.Figure, matplotlib.figure.Figure]], dict[str, float]]:
+    results: dict = {}
+    results_float = {}
+    if include_figures:
+        EQKE_err_exact = reduce(torch.matmul, [m for m, s in ms])
+        for m, (title, fig_key) in ms:
+            m_numpy = m.flatten().numpy()
+            edges = np.histogram_bin_edges(m_numpy, bins="auto")
+            counts, _ = np.histogram(m_numpy, bins=edges)
+            bin_centers = (edges[:-1] + edges[1:]) / 2
+            pdf_values = stats.norm.pdf(
+                bin_centers, loc=m.mean().item(), scale=m.std().item()
+            )
+            pdf_scaled = pdf_values * m.numel() * np.diff(edges)
+            line_name = r"$\mathcal{N}(%s)$" % pm_round(
+                m.mean().item(), m.std().item(), sep=", "
+            )
+            match plot_with:
+                case "plotly":
+                    fig = px.histogram(
+                        {"": m_numpy},
+                        nbins=len(edges) - 1,
+                        title=title["html"],
+                        labels={"variable": "", "value": "matrix element value"},
+                    )
+                    # f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})"
+                    fig.add_scatter(
+                        x=bin_centers,
+                        y=pdf_scaled,
+                        mode="lines",
+                        name=line_name,
+                    )
+                    if show:
+                        fig.show(renderer)
+                case "matplotlib":
+                    fig, ax = plt.subplots()
+                    plt.close()
+                    ax.hist(
+                        m_numpy,
+                        bins=edges,
+                    )
+                    ax.plot(
+                        bin_centers,
+                        pdf_scaled,
+                        linestyle="-",
+                        color="r",
+                        label=line_name,
+                    )
+                    ax.set_title(title["latex"])
+                    ax.set_xlabel("matrix element value")
+                    ax.set_ylabel("count")
+                    ax.legend()
+                    if show:
+                        plt.figure(fig)
+                        plt.show()
+            results[fig_key] = fig
+    # what if we randomize the order of all matrices without replacement?
+    torch.manual_seed(seed)
+    results_float["ResampleEQKEErrSeed"] = seed
+    results_float["ResampleEQKEErrNumSamples"] = nsamples
+    row_diffs = []
+    max_row_diffs = []
+    for _ in range(nsamples):
+        ms_no_replacement = [shuffle_tensor(m) for m in ms]
+        result = reduce(torch.matmul, ms_no_replacement)
+        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
+        max_row_diffs.append(
+            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
+        )
+    row_diffs = torch.stack(row_diffs)
+    results_float |= data_summary(max_row_diffs, prefix="ResampleEQKEErr")
+    max_row_diffs = torch.tensor(max_row_diffs)
+    if do_print:
+        print(f"max row diff (n = {nsamples}): {pm_mean_std(max_row_diffs)}")
+    # print(f"row diff: {pm_mean_std(row_diffs)}")
+    # sampling from normal
+    row_diffs = []
+    max_row_diffs = []
+    for _ in range(nsamples):
+        ms_normal = [torch.randn_like(m) * m.std() + m.mean() for m in ms]
+        result = reduce(torch.matmul, ms_normal)
+        row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
+        max_row_diffs.append(
+            (result.max(dim=-1).values - result.min(dim=-1).values).max().item()
+        )
+    row_diffs = torch.stack(row_diffs)
+    results_float |= data_summary(max_row_diffs, prefix="ResampleNormalEQKEErr")
+    if do_print:
+        max_row_diffs = torch.tensor(max_row_diffs)
+        m_descr = ", ".join(
+            f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})" for m, s in ms
+        )
+        print(
+            f"max row diff (n = {nsamples}, m ~ {m_descr}): {pm_mean_std(max_row_diffs)}"
+        )
+    # print(f"row diff: {pm_mean_std(row_diffs)}")
+    return results, results_float
+
+
+@torch.no_grad()
+def display_EQKE_SVD_analysis(
+    model: HookedTransformer,
+    *,
+    QK_colorscale: Colorscale = "Plasma",
+    QK_SVD_colorscale: Colorscale = "Picnic_r",
+    tok_dtick: Optional[int | float] = None,
+    pos_dtick: Optional[int | float] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+    show: bool = True,
+    include_figures: bool = True,
+    do_print: bool = False,
+) -> Tuple[dict[str, Union[go.Figure, plt.figure.Figure]], dict[str, float]]:
+    title_kind = "html" if plot_with == "plotly" else "latex"
+    results = {}
+    results_float = {}
+    (
+        size_direction,
+        query_direction,
+        size_query_singular_value,
+    ), _ = find_size_and_query_direction(model)
+    (second_key_direction, second_key_singular_value), (
+        second_query_direction,
+        second_query_singular_value,
+    ) = find_second_singular_contributions(model, size_direction, query_direction)
+    (W_Q_U, W_Q_S, W_Q_Vh), (W_Q_contrib, W_Q_err) = split_svd_contributions(
+        model.W_Q[0, 0]
+    )
+    (W_K_U, W_K_S, W_K_Vh), (W_K_contrib, W_K_err) = split_svd_contributions(
+        model.W_K[0, 0]
+    )
+    (
+        (EQKE_query_key, err_accumulator),
+        EQKE_pos_err,
+        (err_upper_bound, (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)),
+    ) = quadratic.decompose_EQKE_error_quadratic(
+        model,
+        key_direction=size_direction,
+        query_direction=query_direction,
+        second_key_direction=second_key_direction,
+        second_query_direction=second_query_direction,
+        W_Q_U=W_Q_U,
+        W_K_U=W_K_U,
+        sanity_check=False,
+    )
+
+    EQKE_pos_err_with_attn_scale = EQKE_pos_err / model.blocks[0].attn.attn_scale
+
+    for attn_scale, cur_EQKE_pos_err in (
+        ("", EQKE_pos_err),
+        ("WithAttnScale", EQKE_pos_err_with_attn_scale),
+    ):
+        results_float |= data_summary(
+            cur_EQKE_pos_err.flatten(), prefix=f"EQKP{attn_scale}"
+        )
+        results_float |= data_summary(
+            cur_EQKE_pos_err.abs().flatten(), prefix=f"EQKP{attn_scale}Abs"
+        )
+        results_float |= data_summary(
+            cur_EQKE_pos_err.amax(dim=-1) - cur_EQKE_pos_err.amin(dim=-1),
+            prefix=f"EQKP{attn_scale}MaxRowDiff",
+        )
+
+    EQKE_err = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
+    EQKE_err_simple = EQKE_err + err_accumulator
+    EQKE_exact = EQKE_query_key + EQKE_err_simple
+
+    EQKE_query_key_with_attn_scale = EQKE_query_key / model.blocks[0].attn.attn_scale
+    err_accumulator_with_attn_scale = err_accumulator / model.blocks[0].attn.attn_scale
+    EQKE_err_with_attn_scale = EQKE_err / model.blocks[0].attn.attn_scale
+    EQKE_err_simple_with_attn_scale = EQKE_err_simple / model.blocks[0].attn.attn_scale
+    EQKE_exact_with_attn_scale = EQKE_exact / model.blocks[0].attn.attn_scale
+
+    if include_figures:
+        for attn_scale, attn_scale_value in (
+            ("", 1.0),
+            ("WithAttnScale", model.blocks[0].attn.attn_scale),
+        ):
+            fig = imshow(
+                EQKE_exact / attn_scale_value,
+                colorscale=QK_colorscale,
+                title=f"EQKE{attn_scale}",
+                xaxis="key token",
+                yaxis="query token",
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE{attn_scale}"] = fig
+            fig = imshow(
+                EQKE_query_key.numpy() / attn_scale_value,
+                title=(
+                    f"EQKE{attn_scale}<sub>1</sub>"
+                    if title_kind == "html"
+                    else f"EQKE{attn_scale}$_1$"
+                ),
+                colorscale=QK_colorscale,
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE{attn_scale}1"] = fig
+            fig = imshow(
+                err_accumulator.numpy() / attn_scale_value,
+                title=(
+                    f"err_accumulator{attn_scale}"
+                    if title_kind == "html"
+                    else rf"err\_accumulator{attn_scale}"
+                ),
+                colorscale=QK_colorscale,
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"err_accumulator{attn_scale}"] = fig
+            fig = imshow(
+                (EQKE_query_key + err_accumulator) / attn_scale_value,
+                title=(
+                    f"EQKE{attn_scale}<sub>2</sub>"
+                    if title_kind == "html"
+                    else "EQKE$_2$"
+                ),
+                colorscale=QK_colorscale,
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE{attn_scale}2"] = fig
+            smath = "" if title_kind == "html" else "$"
+            sWE = "W<sub>E</sub>" if title_kind == "html" else "W_E"
+            sWpos = "W<sub>pos</sub>" if title_kind == "html" else r"W_{\mathrm{pos}}"
+            sWQ = "W<sub>Q</sub>" if title_kind == "html" else r"W_Q"
+            sWK = "W<sub>K</sub>" if title_kind == "html" else r"W_K"
+            sT = "<sup>T</sup>" if title_kind == "html" else "^T"
+            sE = "𝔼" if title_kind == "html" else r"\mathbb{E}"
+            s_p = "<sub>p</sub>" if title_kind == "html" else "_p"
+            fig = imshow(
+                EQKE_pos_err.numpy() / attn_scale_value,
+                title=f"{smath}({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}({sWpos} - {sE}{s_p}{sWpos}[p]){sT}{smath}{attn_scale}",
+                colorscale=QK_colorscale,
+                dtick_x=pos_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE_pos_err{attn_scale}"] = fig
+
+            zmax = EQKE_err.abs().max().item() / attn_scale_value
+            fig = imshow(
+                EQKE_err.numpy() / attn_scale_value,
+                title=(
+                    f"EQKE_err{attn_scale}"
+                    if title_kind == "html"
+                    else rf"EQKE\_err{attn_scale}"
+                ),
+                xaxis="key token",
+                yaxis="query token",
+                colorscale=QK_colorscale,
+                zmax=zmax,
+                zmin=-zmax,
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE_err{attn_scale}"] = fig
+            fig = imshow(
+                EQKE_err.numpy() / attn_scale_value,
+                title=(
+                    f"EQKE_err{attn_scale}"
+                    if title_kind == "html"
+                    else rf"EQKE\_err{attn_scale}"
+                ),
+                xaxis="",
+                yaxis="",
+                colorscale=QK_colorscale,
+                zmax=zmax,
+                zmin=-zmax,
+                showticklabels=False,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE_err_noticks{attn_scale}"] = fig
+            results[f"EQKE_err_svd{attn_scale}"] = analyze_svd(
+                EQKE_err / attn_scale_value,
+                descr=(
+                    f"EQKE_err{attn_scale}"
+                    if title_kind == "html"
+                    else rf"EQKE\_err{attn_scale}"
+                ),
+                colorscale=QK_SVD_colorscale,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+
+            for m, s, key in (
+                (
+                    W_E_query_err2,
+                    {
+                        "html": "E<sub>q,2</sub><sup>⟂</sup>",
+                        "latex": r"$E_{q,2}^{\perp}$",
+                    },
+                    "WEqqPerp",
+                ),
+                (
+                    W_Q_err,
+                    {"html": "Q<sup>⟂</sup>", "latex": r"$Q^{\perp}$"},
+                    "WQqPerp",
+                ),
+                (
+                    W_K_errT,
+                    {"html": "K<sup>⟂</sup>", "latex": r"$K^{\perp}$"},
+                    "WKkPerp",
+                ),
+                (
+                    W_E_key_err2T,
+                    {
+                        "html": "E<sub>k,2</sub><sup>⟂</sup>",
+                        "latex": r"$E_{k,2}^{\perp}$",
+                    },
+                    "WEkkPerp",
+                ),
+            ):
+                fig = imshow(
+                    m.numpy() / attn_scale_value,
+                    title=f"{s[title_kind]}{attn_scale}",
+                    colorscale=QK_colorscale,
+                    zmax=zmax,
+                    zmin=-zmax,
+                    showticklabels=False,
+                    plot_with=plot_with,
+                    renderer=renderer,
+                    show=show,
+                )
+                results[f"{key}{attn_scale}"] = fig
+                fig = analyze_svd(
+                    m / attn_scale_value,
+                    scale_by_singular_value=False,
+                    descr=f"{s[title_kind]}{attn_scale}",
+                    colorscale=QK_SVD_colorscale,
+                    plot_with=plot_with,
+                    renderer=renderer,
+                    show=show,
+                )
+                results[f"{key}-svd{attn_scale}"] = fig
+
+    if do_print:
+        for k in (
+            "EQKEErrMaxRowDiffFloat",
+            "EQKEErrMaxAbsFloat",
+            "EQKEErrMeanDimZeroNormFloat",
+        ):
+            print(f"{k}: {results_float[k]}")
+
+    U, S, Vh = torch.linalg.svd(EQKE_exact)
+    S_with_attn_scale = S / model.blocks[0].attn.attn_scale
+    mindim = np.min(model.W_Q[0, 0].shape)
+    for attn_scale, cur_S in (("", S), ("WithAttnScale", S_with_attn_scale)):
+        results_float[f"EQKE{attn_scale}FirstSingularFloat"] = cur_S[0].item()
+        results_float[f"EQKE{attn_scale}FirstSingularSqrtTwoFloat"] = cur_S[
+            0
+        ].item() * np.sqrt(2)
+        if do_print:
+            print(
+                f"σ₁(EQKE_err)√2 = {cur_S[0].item()}√2 = {cur_S[0].item()*np.sqrt(2)}"
+            )
+        results_float[f"EQKE{attn_scale}SecondSingularFloat"] = cur_S[1].item()
+        results_float[f"EQKE{attn_scale}ThirdSingularFloat"] = cur_S[2].item()
+        results_float[f"EQKE{attn_scale}RatioFirstTwoSingularFloat"] = (
+            cur_S[0] / cur_S[1]
+        ).item()
+        results_float |= data_summary(S[:mindim], prefix=f"EQKE{attn_scale}Singular")
+    size_direction_diffs = size_direction.squeeze()[1:] - size_direction.squeeze()[:-1]
+    results_float |= data_summary(size_direction, prefix="EQKESizeDirection")
+    results_float |= data_summary(size_direction_diffs, prefix="EQKESizeDirectionDiffs")
+    results_float |= data_summary(query_direction, prefix="EQKEQueryDirection")
+
+    for cur_EQKE_err, descr in (
+        (EQKE_err_simple, "Simple"),
+        (EQKE_err, ""),
+        (EQKE_err_simple_with_attn_scale, "SimpleWithAttnScale"),
+        (EQKE_err_with_attn_scale, "WithAttnScale"),
+    ):
+        results_float[f"EQKEErr{descr}MaxRowDiffFloat"] = (
+            (cur_EQKE_err.max(dim=-1).values - cur_EQKE_err.min(dim=-1).values)
+            .max()
+            .item()
+        )
+        results_float[f"EQKEErr{descr}MaxAbsFloat"] = cur_EQKE_err.abs().max().item()
+        results_float[f"EQKEErr{descr}MeanDimZeroNormFloat"] = (
+            cur_EQKE_err.mean(dim=0).norm().item()
+        )
+        results_float |= data_summary(cur_EQKE_err.flatten(), f"EQKEErr{descr}")
+        s1 = torch.linalg.matrix_norm(cur_EQKE_err, ord=2)
+        results_float[f"EQKEErr{descr}FirstSingularFloat"] = s1.item()
+        results_float[f"EQKEErr{descr}FirstSingularSqrtTwoFloat"] = (
+            s1 * np.sqrt(2)
+        ).item()
+        sf1 = torch.linalg.matrix_norm(cur_EQKE_err, ord="fro")
+        results_float[f"EQKEErr{descr}FroNormFloat"] = sf1.item()
+        results_float[f"EQKEErr{descr}FroNormSqrtTwoFloat"] = (sf1 * np.sqrt(2)).item()
+        if do_print:
+            print(f"σf₁(EQKE_err)√2 = {sf1}√2 = {sf1*np.sqrt(2)}")
+
+    ss = [
+        torch.linalg.matrix_norm(m, ord=2).item()
+        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    ]
+    (
+        results_float["WEqqPerpFirstSingularFloat"],
+        results_float["WQqPerpFirstSingularFloat"],
+        results_float["WKkPerpFirstSingularFloat"],
+        results_float["WEkkPerpFirstSingularFloat"],
+    ) = ss
+    if do_print:
+        print(f"singular values: {ss}")
+        print(f"√2∏σ₁ = {np.prod(ss)}√2 = {np.prod(ss)*np.sqrt(2)}")
+
+    results_float["EQKEErrProdFirstSingularFloat"] = np.prod(ss)
+    results_float["EQKEErrProdFirstSingularSqrtTwoFloat"] = np.prod(ss) * np.sqrt(2)
+    sfs = [
+        torch.linalg.matrix_norm(m, ord="fro").item()
+        for m in (W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    ]
+    (
+        results_float["WEqqPerpFroNormFloat"],
+        results_float["WQqPerpFroNormFloat"],
+        results_float["WKkPerpFroNormFloat"],
+        results_float["WEkkPerpFroNormFloat"],
+    ) = sfs
+    if do_print:
+        print(f"singular fro values: {sfs}")
+        print(f"√2∏σf₁ = {np.prod(sfs)}√2 = {np.prod(sfs)*np.sqrt(2)}")
+        print(f"err_upper_bound: {err_upper_bound}")
+    results_float["EQKEErrProdFroNormFloat"] = np.prod(sfs)
+    results_float["EQKEErrProdFroNormSqrtTwoFloat"] = np.prod(sfs) * np.sqrt(2)
+
+    results_float |= resample_EQKE_err(W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+
+    return results, results_float

@@ -124,6 +124,7 @@ def imshow_matplotlib(
 ):
     cmap = colorscale_to_cmap(colorscale)
     fig, ax = plt.subplots(figsize=figsize)
+    plt.close()
     sns.heatmap(
         utils.to_numpy(tensor),
         ax=ax,
@@ -160,6 +161,7 @@ def imshow_matplotlib(
     if title is not None:
         ax.set_title(title)
     if show:
+        plt.figure(fig)
         plt.show()
     return fig
 
@@ -373,6 +375,8 @@ def scatter_matplotlib(
         sharex="col",
         squeeze=False,
     )
+    if not show:
+        plt.close()
     data_minx: dict[int, float] = defaultdict(lambda: np.inf)
     data_maxx: dict[int, float] = defaultdict(lambda: -np.inf)
     data_miny: dict[int, float] = defaultdict(lambda: np.inf)
@@ -570,8 +574,9 @@ def scatter_matplotlib(
                     ax.set_xlim(*adjust_range(data_minx[c], data_maxx[c], log_x))
     if title is not None:
         fig.suptitle(title)
-    plt.tight_layout()
+    fig.tight_layout()
     if show:
+        plt.figure(fig)
         plt.show()
     return fig
 
@@ -652,6 +657,7 @@ def hist_matplotlib(
     if isinstance(data, dict):
         data = pd.DataFrame(data)
     fig, ax = plt.subplots(figsize=figsize)
+    plt.close()
     sns.histplot(data=data, ax=ax, **kwargs)
     ax.set_xlabel(xaxis)
     ax.set_ylabel(yaxis)
@@ -660,6 +666,7 @@ def hist_matplotlib(
     if title is not None:
         ax.set_title(title)
     if show:
+        plt.figure(fig)
         plt.show()
     return fig
 
@@ -852,6 +859,7 @@ def hist_EVOU_max_logit_diff(
     mean_PVOU: bool = False,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
+    show: bool = True,
 ) -> Tuple[
     Union[go.Figure, matplotlib.figure.Figure], Float[Tensor, "d_vocab"]  # noqa: F821
 ]:
@@ -888,6 +896,7 @@ def hist_EVOU_max_logit_diff(
         column_names="",
         plot_with=plot_with,
         renderer=renderer,
+        show=show,
     )
     return fig, max_logit_diff
 
@@ -903,6 +912,7 @@ def weighted_histogram(
     yaxis: str = "count",
     column_name: str = "",
     title: Optional[str] = None,
+    show: bool = True,
     **kwargs,
 ):
     if num_bins is None:
@@ -941,9 +951,11 @@ def weighted_histogram(
                     trace.marker.line.color = trace.marker.color = (
                         "rgba(0, 0, 255, 1.0)"
                     )
-            fig.show(renderer)
+            if show:
+                fig.show(renderer)
         case "matplotlib":
             fig, ax = plt.subplots()
+            plt.close()
             df = pd.DataFrame({"data": data, "weights": weights})
             sns.histplot(
                 df,
@@ -960,7 +972,9 @@ def weighted_histogram(
             if title is not None:
                 ax.set_title(title)
             # ax.bar(bin_centers, hist_counts, width=np.diff(bins), align="center")
-            plt.show()
+            if show:
+                plt.figure(fig)
+                plt.show()
     return fig
 
 

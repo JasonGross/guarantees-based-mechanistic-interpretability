@@ -1528,7 +1528,7 @@ def display_EQKE_SVD_analysis(
     results_float["EQKEErrProdFroNormFloat"] = np.prod(sfs)
     results_float["EQKEErrProdFroNormSqrtTwoFloat"] = np.prod(sfs) * np.sqrt(2)
 
-    results_float |= resample_EQKE_err(
+    resample_EQKE_err_results, resample_EQKE_err_results_float = resample_EQKE_err(
         (
             W_E_query_err2,
             (
@@ -1547,5 +1547,7 @@ def display_EQKE_SVD_analysis(
         ),
     )
     # W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    results |= resample_EQKE_err_results
+    results_float |= resample_EQKE_err_results_float
 
     return results, results_float

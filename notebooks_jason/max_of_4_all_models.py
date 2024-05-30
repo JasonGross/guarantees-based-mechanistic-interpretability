@@ -1121,6 +1121,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
                 show=DISPLAY_PLOTS,
+                do_print=False,
             )
             for k, fig in figs.items():
                 latex_figures[f"{seed}-Decomposition-{k}"] = fig

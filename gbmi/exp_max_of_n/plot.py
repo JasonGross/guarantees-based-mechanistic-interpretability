@@ -882,6 +882,7 @@ def make_better_slides_plots_00(
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
     show: bool = True,
+    do_print: bool = True,
 ) -> dict[str, go.Figure]:
     W_E, W_pos, W_U, W_V, W_O, W_Q, W_K = (
         model.W_E.cpu(),
@@ -1056,7 +1057,8 @@ def make_better_slides_plots_00(
                 # fig.colorbar(cbar_ax.collections[0], ax=ax, use_gridspec=False).remove()
                 for c in ax.get_children():
                     if getattr(c, "colorbar", None) is cbar:
-                        print(f"!! Manually removing colorbar from {c}")
+                        if do_print:
+                            print(f"!! Manually removing colorbar from {c}")
                         del c.colorbar
                 fig.tight_layout()
                 if show:

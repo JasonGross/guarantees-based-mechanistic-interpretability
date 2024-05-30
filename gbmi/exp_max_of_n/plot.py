@@ -1437,14 +1437,6 @@ def display_EQKE_SVD_analysis(
                 )
                 results[f"{key}-svd{attn_scale}"] = fig
 
-    if do_print:
-        for k in (
-            "EQKEErrMaxRowDiffFloat",
-            "EQKEErrMaxAbsFloat",
-            "EQKEErrMeanDimZeroNormFloat",
-        ):
-            print(f"{k}: {results_float[k]}")
-
     U, S, Vh = torch.linalg.svd(EQKE_exact)
     S_with_attn_scale = S / model.blocks[0].attn.attn_scale
     mindim = np.min(model.W_Q[0, 0].shape)
@@ -1494,6 +1486,14 @@ def display_EQKE_SVD_analysis(
         results_float[f"EQKEErr{descr}FroNormSqrtTwoFloat"] = (sf1 * np.sqrt(2)).item()
         if do_print:
             print(f"σf₁(EQKE_err)√2 = {sf1}√2 = {sf1*np.sqrt(2)}")
+
+    if do_print:
+        for k in (
+            "EQKEErrMaxRowDiffFloat",
+            "EQKEErrMaxAbsFloat",
+            "EQKEErrMeanDimZeroNormFloat",
+        ):
+            print(f"{k}: {results_float[k]}")
 
     ss = [
         torch.linalg.matrix_norm(m, ord=2).item()

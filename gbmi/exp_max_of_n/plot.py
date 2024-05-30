@@ -1069,7 +1069,7 @@ def make_better_slides_plots_00(
 # random resampling of EQKE_err
 @torch.no_grad()
 def resample_EQKE_err(
-    *ms: torch.Tensor,
+    *ms: Tuple[torch.Tensor, Tuple[dict[Literal["html", "latex"], str], str]],
     # QK_colorscale: Colorscale = "Plasma",
     # QK_SVD_colorscale: Colorscale = "Picnic_r",
     seed: int = 1234,
@@ -1142,7 +1142,7 @@ def resample_EQKE_err(
     row_diffs = []
     max_row_diffs = []
     for _ in range(nsamples):
-        ms_no_replacement = [shuffle_tensor(m) for m in ms]
+        ms_no_replacement = [shuffle_tensor(m) for m, _ in ms]
         result = reduce(torch.matmul, ms_no_replacement)
         row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
         max_row_diffs.append(
@@ -1158,7 +1158,7 @@ def resample_EQKE_err(
     row_diffs = []
     max_row_diffs = []
     for _ in range(nsamples):
-        ms_normal = [torch.randn_like(m) * m.std() + m.mean() for m in ms]
+        ms_normal = [torch.randn_like(m) * m.std() + m.mean() for m, _ in ms]
         result = reduce(torch.matmul, ms_normal)
         row_diffs.extend(result.max(dim=-1).values - result.min(dim=-1).values)
         max_row_diffs.append(
@@ -1528,6 +1528,24 @@ def display_EQKE_SVD_analysis(
     results_float["EQKEErrProdFroNormFloat"] = np.prod(sfs)
     results_float["EQKEErrProdFroNormSqrtTwoFloat"] = np.prod(sfs) * np.sqrt(2)
 
-    results_float |= resample_EQKE_err(W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
+    results_float |= resample_EQKE_err(
+        (
+            W_E_query_err2,
+            (
+                {"html": "E<sub>q,2</sub><sup>⟂</sup>", "latex": r"$E_{q,2}^\perp$"},
+                "WEqqPerp-hist",
+            ),
+        ),
+        (W_Q_err, ({"html": "Q<sup>⟂</sup>", "latex": r"$Q^\perp$"}, "WQqPerp-hist")),
+        (W_K_errT, ({"html": "K<sup>⟂</sup>", "latex": r"$K^\perp$"}, "WKkPerp-hist")),
+        (
+            W_E_key_err2T,
+            (
+                {"html": "E<sub>k,2</sub><sup>⟂</sup>", "latex": r"$E_{k,2}^\perp$"},
+                "WEkkPerp-hist",
+            ),
+        ),
+    )
+    # W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T)
 
     return results, results_float

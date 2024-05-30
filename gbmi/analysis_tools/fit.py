@@ -231,6 +231,7 @@ def show_fits(
     fit_funcs: Iterable[Callable],
     do_exclusions=True,
     renderer=None,
+    show: bool = True,
     **kwargs,
 ):
     assert len(values.shape) == 1
@@ -323,4 +324,5 @@ def show_fits(
 
         fig.update_layout(sliders=sliders)
 
-    fig.show(renderer)
+    if show:
+        fig.show(renderer)

@@ -1024,12 +1024,11 @@ def make_better_slides_plots_00(
             zmin=-zmax,
             xaxis=maybe_to_latex(labels["x"]),
             yaxis=maybe_to_latex(labels["y"]),
-            show=False,
             renderer=renderer,
             plot_with=plot_with,
             dtick_x=dtick_x,
             dtick_y=dtick_y,
-            show=show,
+            show=False,
         )
         match plot_with:
             case "plotly":
@@ -1044,7 +1043,7 @@ def make_better_slides_plots_00(
                 if show:
                     fig.show(renderer)
             case "matplotlib":
-                assert isinstance(fig, plt.Figure), f"fig: {type(fig)}"
+                assert isinstance(fig, matplotlib.figure.Figure), f"fig: {type(fig)}"
                 ax, cbar_ax = fig.axes
                 fig.tight_layout()
                 if show:
@@ -1192,7 +1191,7 @@ def display_EQKE_SVD_analysis(
     show: bool = True,
     include_figures: bool = True,
     do_print: bool = False,
-) -> Tuple[dict[str, Union[go.Figure, plt.figure.Figure]], dict[str, float]]:
+) -> Tuple[dict[str, Union[go.Figure, matplotlib.figure.Figure]], dict[str, float]]:
     title_kind = "html" if plot_with == "plotly" else "latex"
     results = {}
     results_float = {}

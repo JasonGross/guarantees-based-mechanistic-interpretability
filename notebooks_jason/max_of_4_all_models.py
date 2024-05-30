@@ -1139,14 +1139,15 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                 key = "EVOU-hist-min-above-diag"
                 if duplicate_by_sequence_count:
                     key += "-dup-by-seq-count"
-                latex_figures[key], (max_logit_minus_diag, duplication_factors) = (
-                    hist_EVOU_max_minus_diag_logit_diff(
-                        model,
-                        duplicate_by_sequence_count=duplicate_by_sequence_count,
-                        plot_with=PLOT_WITH,
-                        renderer=RENDERER,
-                        show=DISPLAY_PLOTS,
-                    )
+                latex_figures[f"{seed}-{key}"], (
+                    max_logit_minus_diag,
+                    duplication_factors,
+                ) = hist_EVOU_max_minus_diag_logit_diff(
+                    model,
+                    duplicate_by_sequence_count=duplicate_by_sequence_count,
+                    plot_with=PLOT_WITH,
+                    renderer=RENDERER,
+                    show=DISPLAY_PLOTS,
                 )
 
 
@@ -1208,7 +1209,7 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                 }
                 key_pairs |= cur_key_pairs
                 for key, latex_key in cur_key_pairs.items():
-                    latex_figures[latex_key] = figs[key]
+                    latex_figures[f"{seed}-{latex_key}"] = figs[key]
 
 # %% [markdown]
 # # Sub-cubic Proofs

@@ -3,6 +3,7 @@ from torch import Tensor
 import torch
 from jaxtyping import Float
 from typing import TypeVar, Union, Optional, overload
+import numpy as np
 import plotly.express as px
 
 # from transformer_lens import FactoredMatrix
@@ -200,8 +201,35 @@ class LowRankTensor(FactoredMatrix):
     __radd__ = _via_tensor("__radd__", "__add__")
     __sub__ = _via_tensor("__sub__", "__rsub__")
     __rsub__ = _via_tensor("__rsub__", "__sub__")
-    # TODO: FIXME: better implementation of div, mul
-    __div__ = _via_tensor("__div__", "__rdiv__")
-    __rdiv__ = _via_tensor("__rdiv__", "__div__")
-    __mul__ = _via_tensor("__mul__", "__rmul__")
-    __rmul__ = _via_tensor("__rmul__", "__mul__")
+
+    def __div__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
+        if isinstance(other, float):
+            if np.prod(self.A.shape) <= np.prod(self.B.shape):
+                return LowRankTensor(self.A / other, self.B, **self.params())  # type: ignore
+            else:
+                return LowRankTensor(self.A, self.B / other, **self.params())  # type: ignore
+        return _via_tensor("__div__", "__rdiv__")(self, other)
+
+    def __rdiv__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
+        if isinstance(other, float):
+            if np.prod(self.A.shape) <= np.prod(self.B.shape):
+                return LowRankTensor(other / self.A, self.B, **self.params())  # type: ignore
+            else:
+                return LowRankTensor(self.A, other / self.B, **self.params())  # type: ignore
+        return _via_tensor("__rdiv__", "__div__")(self, other)
+
+    def __mul__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
+        if isinstance(other, float):
+            if np.prod(self.A.shape) <= np.prod(self.B.shape):
+                return LowRankTensor(self.A * other, self.B, **self.params())  # type: ignore
+            else:
+                return LowRankTensor(self.A, self.B * other, **self.params())  # type: ignore
+        return _via_tensor("__mul__", "__rmul__")(self, other)
+
+    def __rmul__(self, other: Union[Tensor, LowRankTensor, FactoredMatrix, float]):
+        if isinstance(other, float):
+            if np.prod(self.A.shape) <= np.prod(self.B.shape):
+                return LowRankTensor(other * self.A, self.B, **self.params())  # type: ignore
+            else:
+                return LowRankTensor(self.A, other * self.B, **self.params())  # type: ignore
+        return _via_tensor("__rmul__", "__mul__")(self, other)

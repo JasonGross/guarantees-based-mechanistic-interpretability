@@ -479,12 +479,12 @@ def display_basic_interpretation(
     OV_cmap = colorscale_to_cmap(OV_colorscale)
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
+    result = {}
     for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
         QK = compute_QK(
             model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
         )
         title_kind = "html" if plot_with == "plotly" else "latex"
-        result = {}
         if includes_eos:
             match plot_with:
                 case "plotly":

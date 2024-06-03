@@ -786,11 +786,14 @@ def scatter_attention_difference_vs_gap(
     smath = "" if title_kind == "html" else "$"
     sdhead = "d<sub>head</sub>" if title_kind == "html" else r"d_{\mathrm{head}}"
     spowmhalf = "<sup>-½</sup>" if title_kind == "html" else r"^{-\sfrac{1}{2}}"
+    sqWE = "(E+P)" if title_kind == "html" else r"\qWE "
+    sbarWE = "E" if title_kind == "html" else r"\barWE "
+    sT = "<sup>T</sup>" if title_kind == "html" else r"^T"
     fig = scatter(
         x=flat_idxs,
         y=flat_diffs,
         xaxis=f"{smath}i - j{smath}",
-        yaxis=f"{smath}{sdhead}{spowmhalf}((E+P)QKE[i] - (E+P)QKE[j]){smath}",
+        yaxis=f"{smath}{sdhead}{spowmhalf}({sqWE}QK{sT}{sbarWE}{sT}[i] - {sqWE}QK{sT}{sbarWE}{sT}[j]){smath}",
         plot_with=plot_with,
         renderer=renderer,
         show=show,

@@ -283,7 +283,10 @@ matplotlib.rcParams[
 \usepackage{lmodern}
 \providecommand{\dmodel}{\ensuremath{d_{\mathrm{model}}}}
 \providecommand{\dhead}{\ensuremath{d_{\mathrm{head}}}}
-\providecommand{\dvocab}{\ensuremath{d_{\mathrm{vocab}}}}"""
+\providecommand{\dvocab}{\ensuremath{d_{\mathrm{vocab}}}}
+\providecommand{\barWE}{\ensuremath{\mathbf{\bar{E}}}}}
+\providecommand{\qWE}{\ensuremath{\mathbf{E}_q}}
+"""
 default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale(
     "RdBu"
 )  # px.colors.get_colorscale("Picnic_r")
@@ -1163,7 +1166,10 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
             pbar.set_postfix(dict(seed=seed))
             latex_figures[f"{seed}-EQKE-scatter-attention-difference-vs-gap"] = (
                 scatter_attention_difference_vs_gap(
-                    model, plot_with="plotly", renderer=RENDERER, show=DISPLAY_PLOTS
+                    model,
+                    renderer=RENDERER,
+                    show=DISPLAY_PLOTS,
+                    plot_with=PLOT_WITH,  # "plotly",
                 )  # this one is too big to export to TeX
             )
             for duplicate_by_sequence_count in [False, True]:
@@ -1874,6 +1880,7 @@ title_reps = {
     r"\mathrm{EQKP}": r"\EPQKP ",
     r"d_{\mathrm{model}}": r"\dmodel ",
     r"d_{\mathrm{vocab}}": r"\dvocab ",
+    r"QK^T": r"\WQ\WK^T",
 }
 
 

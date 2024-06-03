@@ -1090,6 +1090,18 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                 show=DISPLAY_PLOTS,
             )
             for attn_scale in ("", "WithAttnScale"):
+                for fig in (
+                    figs[f"EQKE{attn_scale}"],
+                    figs[f"EQKP{attn_scale}"],
+                    figs["EVOU"],
+                    figs["EVOU-centered"],
+                ):
+                    match PLOT_WITH:
+                        case "matplotlib":
+                            for ax in fig.axes:
+                                ax.set_title("")
+                        case "plotly":
+                            fig.update_layout(title_text="")
                 latex_figures[f"{seed}-EQKE{attn_scale}"] = figs[f"EQKE{attn_scale}"]
                 latex_figures[f"{seed}-EQKP{attn_scale}"] = figs[f"EQKP{attn_scale}"]
                 latex_figures[f"{seed}-EQKE{attn_scale}-SVD"] = figs[
@@ -1111,6 +1123,18 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
             latex_figures[f"{seed}-PVOU-scatter"] = figs["irrelevant"]
             del figs["irrelevant"]
             unused_keys = [k for k in figs if k not in latex_figures]
+            for fig in (
+                latex_figures[f"{seed}-PVOU-scatter"],
+                latex_figures[f"{seed}-EUPU"],
+                latex_figures[f"{seed}-PVOU"],
+            ):
+                match PLOT_WITH:
+                    case "matplotlib":
+                        for ax in fig.axes:
+                            ax.set_title("")
+                    case "plotly":
+                        fig.update_layout(title_text="")
+
         if unused_keys:
             print(f"Unused keys: {unused_keys}")
 # %%

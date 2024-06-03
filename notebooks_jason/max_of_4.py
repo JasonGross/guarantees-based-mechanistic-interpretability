@@ -182,7 +182,7 @@ matplotlib.rcParams[
 \providecommand{\dmodel}{\ensuremath{d_{\mathrm{model}}}}
 \providecommand{\dhead}{\ensuremath{d_{\mathrm{head}}}}
 \providecommand{\dvocab}{\ensuremath{d_{\mathrm{vocab}}}}
-\providecommand{\barWE}{\ensuremath{\mathbf{\bar{E}}}}}
+\providecommand{\barWE}{\ensuremath{\mathbf{\bar{E}}}}
 """
 default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale(
     "RdBu"

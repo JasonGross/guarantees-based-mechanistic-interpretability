@@ -1,10 +1,81 @@
+# %%
 import re
-from typing import Any, Union, Tuple
+import math
+from typing import Any, Union, Tuple, Literal
 import numpy as np
 from gbmi.utils.instructions import (
     InstructionCount,
     PerfCounter,
 )
+
+
+def get_float_type(v: Union[float, np.floating]) -> Literal[np.float32 | np.float64]:
+    for ty in (np.float32,):
+        if np.array(v, dtype=ty).item() == v:
+            return ty
+    return np.float64
+
+
+def get_mantissa_bits(f: float, explicit_only: bool = False) -> int:
+    return {np.float32: 23, np.float64: 52}[get_float_type(f)] + (
+        1 if not explicit_only else 0
+    )
+
+
+def get_precision(f: float, base: int = 10) -> int:
+    float_type = get_float_type(f)
+    mantissa_bits = get_mantissa_bits(f, explicit_only=False)
+
+    # Calculate the required precision in decimal digits
+    precision_bits = math.ceil(mantissa_bits * math.log(base, 2))
+
+    # Adjust precision based on the logarithm of the number
+    if f != 0:
+        exponent_adjustment = max(0, -math.floor(math.log(abs(f), base)))
+    else:
+        exponent_adjustment = 0
+
+    return precision_bits + exponent_adjustment
+
+
+def format_float_full_precision(f: float) -> str:
+    precision = get_precision(f)
+    return f"{f:.{precision}f}"
+
+
+# # Test function to ensure enough precision
+# def test_enough_precision(f: float):
+#     formatted = format_float_full_precision(f)
+#     parsed_back = float(formatted)
+#     return np.isclose(f, parsed_back, atol=0, rtol=1e-15)
+
+# test values to be moved into a test file
+# # Example usage and test
+# if __name__ == "__main__":
+#     f = 1.234567890123456789
+#     precision = get_precision(f)
+#     formatted = format_float_full_precision(f)
+#     print(f"Precision: {precision} decimal places")
+#     print(f"Formatted float: {formatted}")
+
+#     # Run the test
+#     result = test_enough_precision(f)
+#     print(f"Test passed: {result}")
+
+#     # Additional tests
+#     test_values = [
+#         1.234567890123456789,
+#         -1.234567890123456789,
+#         0.000000000123456789,
+#         -0.000000000123456789,
+#         123456789.123456789,
+#         -123456789.123456789
+#     ]
+
+#     for value in test_values:
+#         formatted_value = format_float_full_precision(value)
+#         print(f"Original: {value}, Formatted: {formatted_value}")
+#         assert test_enough_precision(value), f"Test failed for value: {value}"
 
 
 def key_to_command(key: str, prefix: str = "", postfix: str = "") -> Tuple[str, bool]:
@@ -75,7 +146,9 @@ def to_latex_defs(values: dict[str, SupportedLaTeXType], sort: bool = True) -> s
             if isinstance(value, (str, int, np.integer)):
                 lines.append(rf"{expand}\newcommand{key}{{{value}}}")
             elif isinstance(value, (float, np.floating)):
-                lines.append(rf"{expand}\newcommand{key}{{{value}}}")
+                lines.append(
+                    rf"{expand}\newcommand{key}{{{format_float_full_precision(value)}}}"
+                )
             else:
                 raise ValueError(f"Unsupported type {type(value)} for {key} ({value})")
     return "\n".join(lines)

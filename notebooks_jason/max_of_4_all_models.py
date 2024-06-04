@@ -2125,10 +2125,16 @@ if SAVE_PLOTS:
         except FileNotFoundError as e:
             print(f"Warning: {e}")
             errs.append(e)
+        except subprocess.CalledProcessError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
 
         try:
             image_utils.optipng(f)
         except FileNotFoundError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
+        except subprocess.CalledProcessError as e:
             print(f"Warning: {e}")
             errs.append(e)
 
@@ -2136,6 +2142,9 @@ if SAVE_PLOTS:
         try:
             image_utils.optipng(f, exhaustive=True)
         except FileNotFoundError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
+        except subprocess.CalledProcessError as e:
             print(f"Warning: {e}")
             errs.append(e)
 

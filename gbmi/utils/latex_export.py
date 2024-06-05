@@ -40,7 +40,7 @@ def get_precision(f: float, base: int = 10) -> int:
 
 def format_float_full_precision(f: float) -> str:
     precision = get_precision(f)
-    return f"{f:.{precision}f}".rstrip("0")
+    return f"{f:.{precision}f}".rstrip("0").rstrip(".")
 
 
 # # Test function to ensure enough precision

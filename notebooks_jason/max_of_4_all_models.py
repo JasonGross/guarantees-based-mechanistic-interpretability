@@ -1387,14 +1387,37 @@ def try_all_proofs_subcubic(
 
     rows = []
 
-    shared_proof_search_duration = 0.0
-    start = time.time()
-    W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(model)
-    find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
-    size_and_query_directions_kwargs = analysis_quadratic.find_EKQE_error_directions(
-        model
-    )
-    shared_proof_search_duration += time.time() - start
+    def _shared_proof_search(seed: int):
+        shared_proof_search_duration = 0.0
+        start = time.time()
+        W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(
+            model
+        )
+        find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
+        size_and_query_directions_kwargs = (
+            analysis_quadratic.find_EKQE_error_directions(model)
+        )
+        shared_proof_search_duration += time.time() - start
+        return (
+            W_EP_direction_kwargs,
+            find_min_gaps_kwargs,
+            size_and_query_directions_kwargs,
+            shared_proof_search_duration,
+        )
+
+    with memoshelve(
+        _shared_proof_search,
+        # cache={},
+        filename=cache_dir
+        / f"{SHARED_CACHE_STEM}.shared_proof_search-{cfg_hash_for_filename}",
+    )() as shared_proof_search:
+        (
+            W_EP_direction_kwargs,
+            find_min_gaps_kwargs,
+            size_and_query_directions_kwargs,
+            shared_proof_search_duration,
+        ) = shared_proof_search(seed)
+
     with memoshelve(
         (
             lambda cfg: (
@@ -1891,9 +1914,9 @@ for trick_filter_descr, trick_filter in (
 for seed, rows in subcubic_data.items():
     for row in rows:
         for key, latex_key in subcubic_key_pairs:
-            latex_all_values_by_value[f"{row['tricks_str']}{latex_key}Float"][seed] = (
-                row[key]
-            )
+            latex_all_values_by_value[f"{row['tricks']}{latex_key}Float"][seed] = row[
+                key
+            ]
 
 # %%
 latex_values["AllModelsHEADSHA"] = git.get_head_sha(short=False)

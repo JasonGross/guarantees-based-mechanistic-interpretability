@@ -1302,7 +1302,8 @@ if DISPLAY_PLOTS:
         scatter_attention_difference_vs_gap(
             model,
             renderer=RENDERER,
-            plot_with=PLOT_WITH,  # "plotly",
+            # plot_with=PLOT_WITH,
+            plot_with="plotly",
         )  # this one is too big to export to TeX
     )
     for duplicate_by_sequence_count in [False, True]:

@@ -1213,7 +1213,8 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                     model,
                     renderer=RENDERER,
                     show=DISPLAY_PLOTS,
-                    plot_with=PLOT_WITH,  # "plotly",
+                    # plot_with=PLOT_WITH,
+                    plot_with="plotly",
                 )  # this one is too big to export to TeX
             )
             for duplicate_by_sequence_count in [False, True]:

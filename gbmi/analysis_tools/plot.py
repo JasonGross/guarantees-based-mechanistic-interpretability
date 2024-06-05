@@ -316,7 +316,7 @@ def scatter_plotly(
     # x = utils.to_numpy(x)
     # y = utils.to_numpy(y)
     # labels = {"x": xaxis, "y": yaxis, "color": caxis}
-    labels = {"index": xaxis, "variable": caxis, "value": yaxis}
+    labels = {"index": xaxis, "x": xaxis, "variable": caxis, "value": yaxis, "y": yaxis}
     fig = px.scatter(*data, labels=labels, **kwargs)
     if legend_at_bottom:
         fig.update_layout(

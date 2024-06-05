@@ -15,6 +15,7 @@ else:
 # %%
 import traceback
 import gc
+import csv
 from collections import defaultdict
 import random
 import sys
@@ -63,6 +64,7 @@ from gbmi.utils.latex_export import (
     to_latex_defs,
     latex_values_of_counter,
     latex_values_of_instruction_count,
+    format_float_full_precision,
 )
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
@@ -260,6 +262,10 @@ GIT_SHA_SHORT_PATH = (
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "all-models-values.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_VALUES_DATATABLE_PATH = (
+    Path(__file__).with_suffix("") / "all-models-all-values.csv"
+)
+LATEX_VALUES_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
@@ -306,6 +312,9 @@ if cli_args.no_perf:
     PERF_WORKING = False
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}
+latex_all_values_by_value: dict[str, dict[int, Union[int, float, str]]] = defaultdict(
+    dict
+)
 latex_figures: dict[str, Union[go.Figure, matplotlib.figure.Figure]] = {}
 latex_externalize_tables: dict[str, bool] = {}
 latex_only_externalize_tables: dict[str, bool] = {}
@@ -559,6 +568,8 @@ avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
 std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
 std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
 latex_values["NumSeeds"] = num_seeds
+latex_all_values_by_value["TrainAccuracyFloat"] = train_average_accuracy
+latex_all_values_by_value["TrainLossFloat"] = train_average_loss
 latex_values |= data_summary(train_average_accuracy, prefix="TrainAccuracy")
 latex_values |= data_summary(train_average_loss, prefix="TrainLoss")
 
@@ -748,6 +759,7 @@ for key, latex_key in (
     ("duration", "BruteForceTime"),
 ):
     latex_values |= data_summary(brute_force_data_by_key[key], prefix=latex_key)
+    latex_all_values_by_value[f"{latex_key}Float"] = brute_force_data_by_key[key]
 
 # %% [markdown]
 # # Cubic proof
@@ -863,6 +875,7 @@ for key, latex_key in (
     ("duration", "CubicProofTime"),
 ):
     latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
+    latex_all_values_by_value[f"{latex_key}Float"] = cubic_data_by_key[key]
 
 
 # %% [markdown]
@@ -872,13 +885,15 @@ max_logit_diffs = {
     seed: EVOU_max_logit_diff(model)
     for seed, (_runtime, model) in runtime_models.items()
 }
+max_logit_diff_means = {
+    seed: max_logit_diff.mean().item()
+    for seed, max_logit_diff in max_logit_diffs.items()
+}
 latex_values |= data_summary(
-    {
-        seed: max_logit_diff.mean().item()
-        for seed, max_logit_diff in max_logit_diffs.items()
-    },
+    max_logit_diff_means,
     prefix="EVOUMeanMaxRowDiff",
 )
+latex_all_values_by_value["EVOUMeanMaxRowDiffFloat"] = max_logit_diff_means
 
 # hold some data before summarizing it
 latex_values_tmp_data = defaultdict(dict)
@@ -934,6 +949,7 @@ for seed, (_runtime, model) in runtime_models.items():
 
 for k, v in latex_values_tmp_data.items():
     latex_values |= data_summary(v, prefix=k)
+    latex_all_values_by_value[f"{k}Float"] = v
 
 
 # %%
@@ -1006,8 +1022,10 @@ for seed, d in EVOU_analyses.items():
 for k, v in EVOU_analyses_by_key.items():
     if k.endswith("Float"):
         latex_values |= data_summary(v, prefix=k[: -len("Float")])
+        latex_all_values_by_value[k] = v
     else:
         latex_values |= data_summary(v, prefix=k)
+        latex_all_values_by_value[f"{k}Float"] = v
         # vals = set(v.values())
         # assert len(vals) == 1, f"Too many values for {k}: {vals}"
         # latex_values[k] = list(vals)[0]
@@ -1046,6 +1064,7 @@ for seed, d in EQKE_SVD_analyses.items():
 for k, v in EQKE_SVD_analyses_by_key.items():
     if k.endswith("Float"):
         latex_values |= data_summary(v, prefix=k[: -len("Float")])
+        latex_all_values_by_value[k] = v
     else:
         vals = set(v.values())
         assert len(vals) == 1, f"Too many values for {k}: {vals}"
@@ -1058,6 +1077,7 @@ for seed, d in EQKE_SVD_analyses.items():
 for k, v in EQKE_SVD_analyses_by_key.items():
     if k.endswith("Float"):
         latex_values |= data_summary(v, prefix=k[: -len("Float")])
+        latex_all_values_by_value[k] = v
     else:
         vals = set(v.values())
         assert len(vals) == 1, f"Too many values for {k}: {vals}"
@@ -1789,6 +1809,27 @@ for tricks in all_configs:
     subcubic_leading_complexities[leading_complexity(tricks)].add(tricks_str)
     subcubic_groups[subcubic_group(tricks)].add(tricks_str)
 
+subcubic_key_pairs = [
+    ("accuracy-bound", "Accuracy"),
+    ("duration-proof-search", "ProofSearchTime"),
+    ("duration", "ProofTime"),
+    ("normalized-accuracy-bound", "NormalizedAccuracy"),
+    ("perf-time-enabled-ns", "PerfTimeEnabledNS"),
+    ("perf-instruction-count", "PerfInstructionCount"),
+    ("perf-branch-misses", "PerfBranchMisses"),
+    ("perf-page-faults", "PerfPageFaults"),
+    ("proof-flop-estimate", "InstructionCount"),
+    ("proof-int-op-estimate", "InstructionCountInt"),
+    ("proof-branch-estimate", "InstructionCountBranch"),
+    ("err-upper-bound", "ErrUpperBound"),
+    ("dropped-sequences", "DroppedSequences"),
+    ("dropped-sequences-frac", "DroppedSequencesFrac"),
+    ("most-gap-below-value", "GapMostBelowValue"),
+    ("most-gap-below-value-frac", "GapMostBelowValueSequenceFrac"),
+    ("most-gap-below-value-num-std", "GapMostBelowValueNumStd"),
+    ("max-gap", "MaxGap"),
+    ("effective-dimensionality-estimate", "EffectiveDimensionalityEstimate"),
+]
 
 for trick_filter_descr, trick_filter in (
     [
@@ -1828,27 +1869,7 @@ for trick_filter_descr, trick_filter in (
         best_row = max(rows, key=lambda row: row["accuracy-bound"])
         for k, v in best_row.items():
             filtered_subcubic_data_best_by_key[k][seed] = v
-    for key, latex_key in [
-        ("accuracy-bound", "Accuracy"),
-        ("duration-proof-search", "ProofSearchTime"),
-        ("duration", "ProofTime"),
-        ("normalized-accuracy-bound", "NormalizedAccuracy"),
-        ("perf-time-enabled-ns", "PerfTimeEnabledNS"),
-        ("perf-instruction-count", "PerfInstructionCount"),
-        ("perf-branch-misses", "PerfBranchMisses"),
-        ("perf-page-faults", "PerfPageFaults"),
-        ("proof-flop-estimate", "InstructionCount"),
-        ("proof-int-op-estimate", "InstructionCountInt"),
-        ("proof-branch-estimate", "InstructionCountBranch"),
-        ("err-upper-bound", "ErrUpperBound"),
-        ("dropped-sequences", "DroppedSequences"),
-        ("dropped-sequences-frac", "DroppedSequencesFrac"),
-        ("most-gap-below-value", "GapMostBelowValue"),
-        ("most-gap-below-value-frac", "GapMostBelowValueSequenceFrac"),
-        ("most-gap-below-value-num-std", "GapMostBelowValueNumStd"),
-        ("max-gap", "MaxGap"),
-        ("effective-dimensionality-estimate", "EffectiveDimensionalityEstimate"),
-    ]:
+    for key, latex_key in subcubic_key_pairs:
         if key not in filtered_subcubic_data_best_by_key:
             print(f"Warning! Missing key {key}")
             continue
@@ -1866,12 +1887,43 @@ for trick_filter_descr, trick_filter in (
             #     f"Skipping key {key} since values have at most one corresponding configuration"
             # )
             pass
+
+for seed, rows in subcubic_data.items():
+    for row in rows:
+        for key, latex_key in subcubic_key_pairs:
+            latex_all_values_by_value[f"{row['tricks_str']}{latex_key}Float"][seed] = (
+                row[key]
+            )
+
 # %%
 latex_values["AllModelsHEADSHA"] = git.get_head_sha(short=False)
 latex_values["AllModelsHEADSHASHORT"] = git.get_head_sha(short=True)
 
 with open(LATEX_VALUES_PATH, "w") as f:
     f.write(to_latex_defs(latex_values))
+# %%
+latex_all_values_by_seed: dict[int, dict[str, Union[int, float, str]]] = defaultdict(
+    dict
+)
+for k, d in latex_all_values_by_value.items():
+    for seed, v in d.items():
+        latex_all_values_by_seed[seed][k] = v
+
+with open(LATEX_VALUES_DATATABLE_PATH, "w", newline="") as f:
+    all_keys = sorted(latex_all_values_by_value.keys())
+    writer = csv.DictWriter(
+        f, fieldnames=["seed"] + all_keys, quoting=csv.QUOTE_MINIMAL
+    )
+
+    writer.writeheader()
+
+    for seed in sorted(latex_all_values_by_seed.keys()):
+        row = {"seed": seed} | {
+            k: format_float_full_precision(v) if isinstance(v, float) else v
+            for k, v in latex_all_values_by_seed[seed].items()
+        }
+        writer.writerow(row)
+
 # %%
 # @title export LaTeX code
 with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:

@@ -1914,9 +1914,10 @@ for trick_filter_descr, trick_filter in (
 for seed, rows in subcubic_data.items():
     for row in rows:
         for key, latex_key in subcubic_key_pairs:
-            latex_all_values_by_value[f"{row['tricks']}{latex_key}Float"][seed] = row[
-                key
-            ]
+            if key in row:
+                latex_all_values_by_value[f"{row['tricks']}{latex_key}Float"][seed] = (
+                    row[key]
+                )
 
 # %%
 latex_values["AllModelsHEADSHA"] = git.get_head_sha(short=False)

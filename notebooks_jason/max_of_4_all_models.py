@@ -1982,6 +1982,7 @@ title_reps = {
     r"d_{\mathrm{model}}": r"\dmodel ",
     r"d_{\mathrm{vocab}}": r"\dvocab ",
     r"QK^T": r"\WQ\WK^T",
+    r"×": r"\ensuremath{\times}",
 }
 
 

@@ -784,16 +784,22 @@ def scatter_attention_difference_vs_gap(
     _, flat_idxs, flat_diffs = compute_attention_difference_vs_gap(model)
     title_kind = {"plotly": "html", "matplotlib": "latex"}[plot_with]
     smath = "" if title_kind == "html" else "$"
-    sdhead = "d<sub>head</sub>" if title_kind == "html" else r"d_{\mathrm{head}}"
-    spowmhalf = "<sup>-½</sup>" if title_kind == "html" else r"^{-\sfrac{1}{2}}"
-    sqWE = "(E+P)" if title_kind == "html" else r"\qWE "
-    sbarWE = "E" if title_kind == "html" else r"\barWE "
+    ssqrtdhead = (
+        "√d<sub>head</sub>" if title_kind == "html" else r"\sqrt{d_{\mathrm{head}}}"
+    )
+    # sdhead = "d<sub>head</sub>" if title_kind == "html" else r"d_{\mathrm{head}}"
+    # spowmhalf = "<sup>-½</sup>" if title_kind == "html" else r"^{-\sfrac{1}{2}}"
+    # (E+P)
+    sqWE = "<b>E</b><sub>q</sub>" if title_kind == "html" else r"\qWE "
+    sbarWE = "<b>Ē</b>" if title_kind == "html" else r"\barWE "
     sT = "<sup>T</sup>" if title_kind == "html" else r"^T"
     fig = scatter(
         x=flat_idxs,
         y=flat_diffs,
-        xaxis=f"{smath}i - j{smath}",
-        yaxis=f"{smath}{sdhead}{spowmhalf}({sqWE}QK{sT}{sbarWE}{sT}[i] - {sqWE}QK{sT}{sbarWE}{sT}[j]){smath}",
+        # xaxis=f"{smath}i - j{smath}",
+        # yaxis=f"{smath}({sqWE}QK{sT}{sbarWE}{sT}[i] - {sqWE}QK{sT}{sbarWE}{sT}[j]) / {ssqrtdhead}{smath}",
+        xaxis="token gap",
+        yaxis="attention difference",
         plot_with=plot_with,
         renderer=renderer,
         show=show,
@@ -870,13 +876,16 @@ def hist_attention_difference_over_gap(
     sdim = "dim" if title_kind == "html" else r"\mathrm{dim}"
     spowmhalf = "<sup>-½</sup>" if title_kind == "html" else r"^{-\sfrac{1}{2}}"
     shash = "#" if title_kind == "html" else r"\#"
+    ssqrtdhead = (
+        "√d<sub>head</sub>" if title_kind == "html" else r"\sqrt{d_{\mathrm{head}}}"
+    )
     title = (
         f"{smath}{rm('EQKE')} := ({sWE} + {sWpos}[-1]){sWQ}{sWK}{sT}{sWE}{sT}{smath}"
         f"{'' if not duplicate_by_sequence_count else ' (weighted by sequence count)'}"
         f"{nl}{smath}{sdhead}{spowmhalf}({rm('EQKE')}[i] - {rm('EQKE')}[j]) / (i - j){smath}"
         f"{nl}{smath}{xbar}{pm}{sigma}{smath}: {smath}{pm_round(mean, std, sep=f' {pm} ')}{smath}"
     )
-    xlabel = f"{smath}{sdhead}{spowmhalf}({rm('EQKE')}[i]-{rm('EQKE')}[j])/(i-j){smath}"
+    xlabel = f"{smath}({rm('EQKE')}[i]-{rm('EQKE')}[j])/((i-j){ssqrtdhead}){smath}"
     if not duplicate_by_sequence_count:
         fig = hist(
             flat_diffs,

@@ -84,3 +84,23 @@ def pngcrush(
 
     if cleanup:
         cleanup()
+
+
+def optimize(
+    *images: Union[str, Path],
+    exhaustive: bool = True,
+    tmpdir: Optional[Union[str, Path]] = None,
+    cleanup: Optional[bool] = None,
+):
+    cur_images = images
+    cur_sizes = [Path(image).stat().st_size for image in cur_images]
+    while cur_images:
+        optipng(*cur_images, exhaustive=exhaustive)
+        pngcrush(*cur_images, brute=exhaustive, tmpdir=tmpdir, cleanup=cleanup)
+        new_sizes = [Path(image).stat().st_size for image in cur_images]
+        cur_images = [
+            image
+            for image, old_size, new_size in zip(cur_images, cur_sizes, new_sizes)
+            if new_size < old_size
+        ]
+        cur_sizes = [Path(image).stat().st_size for image in cur_images]

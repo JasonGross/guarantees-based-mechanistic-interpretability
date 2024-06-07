@@ -2215,15 +2215,27 @@ if SAVE_PLOTS:
             print(f"Warning: {e}")
             errs.append(e)
 
-    for f in LATEX_FIGURE_PATH.glob("*.png"):
-        try:
-            image_utils.optipng(f, exhaustive=True)
-        except FileNotFoundError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
-        except subprocess.CalledProcessError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
+    opt_success = False
+    try:
+        image_utils.optimize(*LATEX_FIGURE_PATH.glob("*.png"), exhaustive=True)
+        opt_success = True
+    except FileNotFoundError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+
+    if not opt_success:
+        for f in LATEX_FIGURE_PATH.glob("*.png"):
+            try:
+                image_utils.optimize(f, exhaustive=True)
+            except FileNotFoundError as e:
+                print(f"Warning: {e}")
+                errs.append(e)
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: {e}")
+                errs.append(e)
 
     for e in errs:
         raise e

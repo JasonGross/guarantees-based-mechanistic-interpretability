@@ -51,7 +51,12 @@ import tikzplotly
 import tikzplotlib
 import matplotlib
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-from gbmi.analysis_tools.utils import pm_round, pm_mean_std, data_summary
+from gbmi.analysis_tools.utils import (
+    pm_round,
+    pm_mean_std,
+    data_summary,
+    data_summary_percentiles,
+)
 from gbmi.analysis_tools.plot import scatter
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
@@ -468,6 +473,11 @@ def update_csv(
     update_csv_with_rows(csv_path, new_data, columns=columns, subset=subset)
 
 
+# %%
+latex_values |= {
+    f"{percentile_name}PercentileFloat": percentile_value
+    for percentile_name, percentile_value in zip(data_summary_percentiles())
+}
 # %% [markdown]
 # # Training stats
 # %%

@@ -142,6 +142,21 @@ def weighted_quantile(
     return np.interp(quantiles, weighted_quantiles, values)
 
 
+def data_summary_percentiles():
+    s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
+    percentiles = stats.norm.cdf([-3 * s, -2 * s, -s, 0, s, 2 * s, 3 * s])
+    percentile_names = [
+        "LowerWhiskerBottomEnd",
+        "LowerWhiskerCrosshatch",
+        "QuartileOne",
+        "Median",
+        "QuartileThree",
+        "UpperWhiskerCrosshatch",
+        "UpperWhiskerTopEnd",
+    ]
+    return percentile_names, percentiles
+
+
 def data_summary(
     data, prefix: str = "", float_postfix: str = "Float", int_postfix: str = ""
 ):
@@ -170,17 +185,7 @@ def data_summary(
         wf("SqrMean"): (values**2).mean(),
     }
 
-    s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
-    percentiles = stats.norm.cdf([-3 * s, -2 * s, -s, 0, s, 2 * s, 3 * s])
-    percentile_names = [
-        "LowerWhiskerBottomEnd",
-        "LowerWhiskerCrosshatch",
-        "QuartileOne",
-        "Median",
-        "QuartileThree",
-        "UpperWhiskerCrosshatch",
-        "UpperWhiskerTopEnd",
-    ]
+    percentile_names, percentiles = data_summary_percentiles()
     percentile_values = np.percentile(values, percentiles)
 
     result.update({wf(pct): v for pct, v in zip(percentile_names, percentile_values)})

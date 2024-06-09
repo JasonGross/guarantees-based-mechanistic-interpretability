@@ -3023,7 +3023,11 @@ if not opt_success:
             print(f"Warning: {e}")
             errs.append(e)
 
-
+if errs:
+    print("Errors:")
+    for e in errs:
+        print(e)
+    print(f"Total errors: {len(errs)}")
 for e in errs:
     raise e
 # %%

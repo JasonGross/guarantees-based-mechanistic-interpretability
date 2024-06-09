@@ -1901,6 +1901,9 @@ for trick_filter_descr, trick_filter in (
             filtered_subcubic_data_best_by_key[key],
             prefix=f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}",
         )
+        latex_all_values_by_value[
+            f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}Float"
+        ] = filtered_subcubic_data_best_by_key
         if any(len(rows) > 1 for rows in filtered_subcubic_data.values()):
             latex_values |= data_summary(
                 [row[key] for rows in filtered_subcubic_data.values() for row in rows],
@@ -2238,5 +2241,10 @@ if SAVE_PLOTS:
                 print(f"Warning: {e}")
                 errs.append(e)
 
+    if errs:
+        print("Errors:")
+        for e in errs:
+            print(e)
+        print(f"Total errors: {len(errs)}")
     for e in errs:
         raise e

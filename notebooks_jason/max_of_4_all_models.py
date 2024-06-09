@@ -1911,12 +1911,12 @@ for trick_filter_descr, trick_filter in (
             filtered_subcubic_data_best_by_key[key],
             prefix=f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}",
         )
-        assert all(
-            isinstance(seed, int) for seed in filtered_subcubic_data_best_by_key.keys()
-        )
+        # assert all(
+        #     isinstance(seed, int) for seed in filtered_subcubic_data_best_by_key.keys()
+        # )
         latex_all_values_by_value[
             f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}Float"
-        ] = filtered_subcubic_data_best_by_key
+        ] = {int(seed): v for seed, v in filtered_subcubic_data_best_by_key.items()}
         if any(len(rows) > 1 for rows in filtered_subcubic_data.values()):
             latex_values |= data_summary(
                 [row[key] for rows in filtered_subcubic_data.values() for row in rows],

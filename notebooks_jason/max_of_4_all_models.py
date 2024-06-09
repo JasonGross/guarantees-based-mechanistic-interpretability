@@ -568,6 +568,8 @@ avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
 std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
 std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
 latex_values["NumSeeds"] = num_seeds
+assert all(isinstance(seed, int) for seed in train_average_accuracy.keys())
+assert all(isinstance(seed, int) for seed in train_average_loss.keys())
 latex_all_values_by_value["TrainAccuracyFloat"] = train_average_accuracy
 latex_all_values_by_value["TrainLossFloat"] = train_average_loss
 latex_values |= data_summary(train_average_accuracy, prefix="TrainAccuracy")
@@ -759,6 +761,7 @@ for key, latex_key in (
     ("duration", "BruteForceTime"),
 ):
     latex_values |= data_summary(brute_force_data_by_key[key], prefix=latex_key)
+    assert all(isinstance(seed, int) for seed in brute_force_data_by_key[key].keys())
     latex_all_values_by_value[f"{latex_key}Float"] = brute_force_data_by_key[key]
 
 # %% [markdown]
@@ -875,6 +878,7 @@ for key, latex_key in (
     ("duration", "CubicProofTime"),
 ):
     latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
+    assert all(isinstance(seed, int) for seed in cubic_data_by_key[key].keys())
     latex_all_values_by_value[f"{latex_key}Float"] = cubic_data_by_key[key]
 
 
@@ -893,6 +897,7 @@ latex_values |= data_summary(
     max_logit_diff_means,
     prefix="EVOUMeanMaxRowDiff",
 )
+assert all(isinstance(seed, int) for seed in max_logit_diff_means.keys())
 latex_all_values_by_value["EVOUMeanMaxRowDiffFloat"] = max_logit_diff_means
 
 # hold some data before summarizing it
@@ -949,6 +954,7 @@ for seed, (_runtime, model) in runtime_models.items():
 
 for k, v in latex_values_tmp_data.items():
     latex_values |= data_summary(v, prefix=k)
+    assert all(isinstance(seed, int) for seed in v.keys())
     latex_all_values_by_value[f"{k}Float"] = v
 
 
@@ -1022,9 +1028,11 @@ for seed, d in EVOU_analyses.items():
 for k, v in EVOU_analyses_by_key.items():
     if k.endswith("Float"):
         latex_values |= data_summary(v, prefix=k[: -len("Float")])
+        assert all(isinstance(seed, int) for seed in v.keys())
         latex_all_values_by_value[k] = v
     else:
         latex_values |= data_summary(v, prefix=k)
+        assert all(isinstance(seed, int) for seed in v.keys())
         latex_all_values_by_value[f"{k}Float"] = v
         # vals = set(v.values())
         # assert len(vals) == 1, f"Too many values for {k}: {vals}"
@@ -1064,6 +1072,7 @@ for seed, d in EQKE_SVD_analyses.items():
 for k, v in EQKE_SVD_analyses_by_key.items():
     if k.endswith("Float"):
         latex_values |= data_summary(v, prefix=k[: -len("Float")])
+        assert all(isinstance(seed, int) for seed in v.keys())
         latex_all_values_by_value[k] = v
     else:
         vals = set(v.values())
@@ -1077,6 +1086,7 @@ for seed, d in EQKE_SVD_analyses.items():
 for k, v in EQKE_SVD_analyses_by_key.items():
     if k.endswith("Float"):
         latex_values |= data_summary(v, prefix=k[: -len("Float")])
+        assert all(isinstance(seed, int) for seed in v.keys())
         latex_all_values_by_value[k] = v
     else:
         vals = set(v.values())
@@ -1901,6 +1911,9 @@ for trick_filter_descr, trick_filter in (
             filtered_subcubic_data_best_by_key[key],
             prefix=f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}",
         )
+        assert all(
+            isinstance(seed, int) for seed in filtered_subcubic_data_best_by_key.keys()
+        )
         latex_all_values_by_value[
             f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}Float"
         ] = filtered_subcubic_data_best_by_key
@@ -1919,6 +1932,7 @@ for seed, rows in subcubic_data.items():
     for row in rows:
         for key, latex_key in subcubic_key_pairs:
             if key in row:
+                assert isinstance(seed, int)
                 latex_all_values_by_value[f"{row['tricks']}{latex_key}Float"][seed] = (
                     row[key]
                 )

@@ -143,7 +143,7 @@ def weighted_quantile(
 
 
 def data_summary_percentiles():
-    s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75) * 2
+    s = twenty_five_percent_in_std_dev = stats.norm.ppf(0.75)
     percentiles = stats.norm.cdf([-3 * s, -2 * s, -s, 0, s, 2 * s, 3 * s])
     percentile_names = [
         "LowerWhiskerBottomEnd",

@@ -476,7 +476,7 @@ def update_csv(
 # %%
 latex_values |= {
     f"{percentile_name}PercentileFloat": percentile_value
-    for percentile_name, percentile_value in zip(data_summary_percentiles())
+    for percentile_name, percentile_value in zip(*data_summary_percentiles())
 }
 # %% [markdown]
 # # Training stats

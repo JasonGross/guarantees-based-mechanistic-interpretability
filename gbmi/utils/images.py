@@ -30,12 +30,31 @@ def trim_plotly_figure(
     return fig
 
 
-def optipng(*images: Union[str, Path], level: int = 5, exhaustive: bool = False):
+def remove_bak(*files: Union[str, Path], save_bak: bool = True, ext: str = ".bak"):
+    file_paths = [Path(file) for file in files]
+    bak_files = [file.with_suffix(file.suffix + ext) for file in file_paths]
+    extant_bak_files = [bak_file for bak_file in bak_files if bak_file.exists()]
+    if save_bak:
+        remove_bak(*extant_bak_files, save_bak=save_bak, ext=ext)
+        for bak_file in extant_bak_files:
+            bak_file.rename(bak_file.with_suffix(bak_file.suffix + ext))
+    else:
+        for bak_file in extant_bak_files:
+            bak_file.unlink()
+
+
+def optipng(
+    *images: Union[str, Path],
+    level: int = 5,
+    exhaustive: bool = False,
+    save_bak: bool = True,
+):
     if not images:
         return
     if level == 5 and exhaustive:
         level = 7
     extra_args = [] if not exhaustive else ["-zm1-9"]
+    remove_bak(*images, save_bak=save_bak)
     return subprocess.run(["optipng", f"-o{level}", *extra_args, *images], check=True)
 
 

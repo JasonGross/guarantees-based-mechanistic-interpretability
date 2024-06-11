@@ -207,6 +207,17 @@ latex_only_externalize_tables: dict[str, bool] = {}
 
 
 # %%
+def remove_titles(
+    fig: Union[go.Figure, matplotlib.figure.Figure],
+    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
+):
+    match plot_with:
+        case "matplotlib":
+            for ax in fig.axes:
+                ax.set_title("")
+        case "plotly":
+            fig.update_layout(title_text="")
+    return fig
 
 
 # %%
@@ -1288,9 +1299,18 @@ if DISPLAY_PLOTS:
         value_key = "".join(
             v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
         )
+        minv, maxv = (
+            max_logit_minus_diag.min().item(),
+            max_logit_minus_diag.max().item(),
+        )
+        # mid, spread = (minv + maxv) / 2, (maxv - minv) / 2
         latex_values[value_key + "MostBelowValue"] = most_below_value
         latex_values[value_key + "MostBelowValueNumStd"] = num_std
         latex_values[value_key + "MostBelowValueSequenceFracFloat"] = frac_below
+        latex_values[value_key + "MeanFloat"] = mean
+        latex_values[value_key + "StdFloat"] = std
+        latex_values[value_key + "MinFloat"] = minv
+        latex_values[value_key + "MaxFloat"] = maxv
         print(
             f"{key}: most ({frac_below*100}%) sequences are <= {most_below_value} (based on + {num_std} std)"
         )
@@ -1302,8 +1322,8 @@ if DISPLAY_PLOTS:
         scatter_attention_difference_vs_gap(
             model,
             renderer=RENDERER,
-            # plot_with=PLOT_WITH,
-            plot_with="plotly",
+            plot_with=PLOT_WITH,
+            # plot_with="plotly",
         )  # this one is too big to export to TeX
     )
     for duplicate_by_sequence_count in [False, True]:
@@ -1316,6 +1336,7 @@ if DISPLAY_PLOTS:
         key = "EQKE-hist-attention-difference-over-gap" + (
             "-dup-by-seq-count" if duplicate_by_sequence_count else ""
         )
+        remove_titles(fig)
         latex_figures[key] = fig
         mean = np.average(flat_diffs.numpy(), weights=duplication_factors.numpy())
         std = np.average(
@@ -1327,6 +1348,9 @@ if DISPLAY_PLOTS:
         )
         latex_values[value_key + "MeanFloat"] = mean
         latex_values[value_key + "StdFloat"] = std
+        minv, maxv = flat_diffs.min().item(), flat_diffs.max().item()
+        latex_values[value_key + "MinFloat"] = minv
+        latex_values[value_key + "MaxFloat"] = maxv
 
 
 # %% [markdown]
@@ -1455,6 +1479,8 @@ if DISPLAY_PLOTS:
         }
         key_pairs |= cur_key_pairs
         for key, latex_key in cur_key_pairs.items():
+            if key == f"EQKE_err{attn_scale}":
+                remove_titles(figs[key])
             latex_figures[latex_key] = figs[key]
     latex_values.update(values)
     display_EQKE_SVD_analysis(

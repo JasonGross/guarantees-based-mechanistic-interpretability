@@ -942,6 +942,13 @@ for seed, (_runtime, model) in runtime_models.items():
         latex_values_tmp_data[value_key + "MostBelowValueSequenceFrac"][
             seed
         ] = frac_below
+        for k, v in data_summary(
+            max_logit_minus_diag,
+            sample_weight=duplication_factors,
+            prefix=value_key,
+            float_postfix="",
+        ).items():
+            latex_values_tmp_data[k][seed] = v
 
     for duplicate_by_sequence_count in [False, True]:
         flat_diffs, duplication_factors = attention_difference_over_gap(
@@ -959,8 +966,13 @@ for seed, (_runtime, model) in runtime_models.items():
         value_key = "".join(
             v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
         )
-        latex_values_tmp_data[value_key + "Mean"][seed] = mean
-        latex_values_tmp_data[value_key + "Std"][seed] = std
+        for k, v in data_summary(
+            max_logit_minus_diag,
+            sample_weight=duplication_factors,
+            prefix=value_key,
+            float_postfix="",
+        ).items():
+            latex_values_tmp_data[k][seed] = v
 
 for k, v in latex_values_tmp_data.items():
     latex_values |= data_summary(v, prefix=k)
@@ -1233,8 +1245,8 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                     model,
                     renderer=RENDERER,
                     show=DISPLAY_PLOTS,
-                    # plot_with=PLOT_WITH,
-                    plot_with="plotly",
+                    plot_with=PLOT_WITH,
+                    # plot_with="plotly",
                 )  # this one is too big to export to TeX
             )
             for duplicate_by_sequence_count in [False, True]:

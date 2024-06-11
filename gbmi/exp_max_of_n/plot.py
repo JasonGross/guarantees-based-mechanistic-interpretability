@@ -1518,7 +1518,7 @@ def display_EQKE_SVD_analysis(
         results_float[f"EQKEErr{descr}MeanDimZeroNormFloat"] = (
             cur_EQKE_err.mean(dim=0).norm().item()
         )
-        results_float |= data_summary(cur_EQKE_err.flatten(), f"EQKEErr{descr}")
+        results_float |= data_summary(cur_EQKE_err.flatten(), prefix=f"EQKEErr{descr}")
         s1 = torch.linalg.matrix_norm(cur_EQKE_err, ord=2)
         results_float[f"EQKEErr{descr}FirstSingularFloat"] = s1.item()
         results_float[f"EQKEErr{descr}FirstSingularSqrtTwoFloat"] = (

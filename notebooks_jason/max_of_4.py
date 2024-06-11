@@ -1270,6 +1270,7 @@ if DISPLAY_PLOTS:
     latex_figures["EVOU-hist-max-row-diff"], max_logit_diff = hist_EVOU_max_logit_diff(
         model, plot_with=PLOT_WITH, renderer=RENDERER
     )
+    remove_titles(latex_figures["EVOU-hist-max-row-diff"])
     latex_values["EVOUMeanMaxRowDiffFloat"] = max_logit_diff.mean().item()
     latex_values |= data_summary(max_logit_diff, prefix="EVOUMaxRowDiff")
     for duplicate_by_sequence_count in [False, True]:
@@ -1284,6 +1285,7 @@ if DISPLAY_PLOTS:
                 renderer=RENDERER,
             )
         )
+        remove_titles(latex_figures[key])
         mean = np.average(
             max_logit_minus_diag.numpy(), weights=duplication_factors.numpy()
         )
@@ -2347,6 +2349,19 @@ if HAS_CSVS:
     combined_df["frontier"] = combined_df.apply(
         is_frontier, args=(combined_df,), axis=1
     )
+
+
+# %%
+def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
+    # hack around https://github.com/nschloe/tikzplotlib/issues/594
+    group_counts = data[column].value_counts()
+    single_row_groups = group_counts[group_counts == 1].index
+    for group in single_row_groups:
+        single_row = data[data[column] == group]
+        data = pd.concat([data, single_row], ignore_index=True)
+    return data
+
+
 # %%
 if HAS_CSVS:
     subcubic_sing_df = subcubic_ext_df.merge(
@@ -2385,15 +2400,18 @@ if HAS_CSVS:
             "normalized-accuracy-bound"
         ].idxmax()
     ]
-
+    data = subcubic_sing_df[
+        [
+            "normalized-accuracy-bound",
+            "EQKERatioFirstTwoSingularFloat",
+            "attention_error_handling",
+        ]
+    ]
+    data = double_singleton_groups(
+        data.drop_duplicates(), column="attention_error_handling"
+    )
     fig = px.scatter(
-        subcubic_sing_df[
-            [
-                "normalized-accuracy-bound",
-                "EQKERatioFirstTwoSingularFloat",
-                "attention_error_handling",
-            ]
-        ].unique(),
+        data,
         y="normalized-accuracy-bound",
         x="EQKERatioFirstTwoSingularFloat",
         color="attention_error_handling",
@@ -2492,8 +2510,11 @@ if HAS_CSVS:
 
         key = f"NormalizedAccuracyBound{'AllSecondaryTricks' if not best_bound_only else ''}VsEPQKESingularRatio"
         latex_externalize_tables[key] = True
+        df = double_singleton_groups(
+            df.drop_duplicates(), column="attention_error_handling"
+        )
         latex_figures[key] = fig = scatter(
-            df.unique(),
+            df,
             yrange=(0, 1),
             y="normalized-accuracy-bound",
             x="EQKERatioFirstTwoSingularFloat",
@@ -2586,17 +2607,6 @@ if HAS_CSVS:
             category_name_remap_short[group_name] = new_group_name
 
 
-# %%
-def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
-    # hack around https://github.com/nschloe/tikzplotlib/issues/594
-    group_counts = data[column].value_counts()
-    single_row_groups = group_counts[group_counts == 1].index
-    for group in single_row_groups:
-        single_row = data[data[column] == group]
-        data = pd.concat([data, single_row], ignore_index=True)
-    return data
-
-
 # PLOT_WITH = "matplotlib"
 # %%
 if HAS_CSVS:
@@ -2611,7 +2621,7 @@ if HAS_CSVS:
     data["group"] = data["group"].map(category_name_remap_short)
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
-        data.unique(),
+        data,
         x="proof-flop-estimate",
         y="effective-dimension-estimate",
         color="group",
@@ -2678,7 +2688,7 @@ if HAS_CSVS:
             data["group"] = data["group"].map(category_name_remap)
             latex_externalize_tables[key] = True
             latex_figures[key] = fig = scatter(
-                data.unique(),
+                data,
                 x="proof-flop-estimate",
                 y=f"{norm}accuracy-bound",
                 color="group",
@@ -2693,7 +2703,7 @@ if HAS_CSVS:
             )
             latex_externalize_tables[f"{key}DiscontinuousX"] = True
             latex_figures[f"{key}DiscontinuousX"] = fig = scatter(
-                data.unique(),
+                data,
                 x="proof-flop-estimate",
                 y=f"{norm}accuracy-bound",
                 color="group",
@@ -2722,9 +2732,10 @@ if HAS_CSVS:
                 "tricks",
             ]
         ].copy()
+        data = double_singleton_groups(data.drop_duplicates(), column="group")
         # data["group"] = data["group"].map({k:k[:7] for k in set(data["group"])})
         fig = px.scatter(
-            data.unique(),
+            data,
             x="proof-flop-estimate",
             y=f"{norm}accuracy-bound",
             symbol="group",

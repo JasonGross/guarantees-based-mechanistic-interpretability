@@ -369,6 +369,22 @@ with open(PYTHON_VERSION_PATH, "w") as f:
 
 with open(TORCH_VERSION_PATH, "w") as f:
     f.write(torch.__version__)
+
+
+# %%
+def remove_titles(
+    fig: Union[go.Figure, matplotlib.figure.Figure],
+    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
+):
+    match plot_with:
+        case "matplotlib":
+            for ax in fig.axes:
+                ax.set_title("")
+        case "plotly":
+            fig.update_layout(title_text="")
+    return fig
+
+
 # %%
 # hack around newlines of black formatting
 seeds = (
@@ -1154,12 +1170,7 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                     figs["EVOU"],
                     figs["EVOU-centered"],
                 ):
-                    match PLOT_WITH:
-                        case "matplotlib":
-                            for ax in fig.axes:
-                                ax.set_title("")
-                        case "plotly":
-                            fig.update_layout(title_text="")
+                    remove_titles(fig)
                 latex_figures[f"{seed}-EQKE{attn_scale}"] = figs[f"EQKE{attn_scale}"]
                 latex_figures[f"{seed}-EQKP{attn_scale}"] = figs[f"EQKP{attn_scale}"]
                 latex_figures[f"{seed}-EQKE{attn_scale}-SVD"] = figs[
@@ -1186,12 +1197,7 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                 latex_figures[f"{seed}-EUPU"],
                 latex_figures[f"{seed}-PVOU"],
             ):
-                match PLOT_WITH:
-                    case "matplotlib":
-                        for ax in fig.axes:
-                            ax.set_title("")
-                    case "plotly":
-                        fig.update_layout(title_text="")
+                remove_titles(fig)
 
         if unused_keys:
             print(f"Unused keys: {unused_keys}")
@@ -1223,6 +1229,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                     model, plot_with=PLOT_WITH, renderer=RENDERER, show=DISPLAY_PLOTS
                 )
             )
+            # remove_titles(latex_figures[f"{seed}-EVOU-hist-max-row-diff"])
             for duplicate_by_sequence_count in [False, True]:
                 key = "EVOU-hist-min-above-diag"
                 if duplicate_by_sequence_count:
@@ -1237,6 +1244,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                     renderer=RENDERER,
                     show=DISPLAY_PLOTS,
                 )
+                # remove_titles(latex_figures[f"{seed}-{key}"])
 
 
 # %%

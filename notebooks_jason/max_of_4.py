@@ -56,7 +56,7 @@ from gbmi.analysis_tools.plot import (
     line,
 )
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-from gbmi.analysis_tools.utils import pm_round, pm_mean_std
+from gbmi.analysis_tools.utils import pm_round, pm_mean_std, data_summary
 from gbmi.analysis_tools.plot import scatter
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
@@ -1271,6 +1271,7 @@ if DISPLAY_PLOTS:
         model, plot_with=PLOT_WITH, renderer=RENDERER
     )
     latex_values["EVOUMeanMaxRowDiffFloat"] = max_logit_diff.mean().item()
+    latex_values |= data_summary(max_logit_diff, prefix="EVOUMaxRowDiff")
     for duplicate_by_sequence_count in [False, True]:
         key = "EVOU-hist-min-above-diag"
         if duplicate_by_sequence_count:

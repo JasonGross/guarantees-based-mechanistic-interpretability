@@ -899,16 +899,18 @@ max_logit_diffs = {
     seed: EVOU_max_logit_diff(model)
     for seed, (_runtime, model) in runtime_models.items()
 }
-max_logit_diff_means = {
-    seed: max_logit_diff.mean().item()
+max_logit_diff_summaries = {
+    seed: data_summary(max_logit_diff, prefix="EVOUMaxRowDiff", float_postfix="")
     for seed, max_logit_diff in max_logit_diffs.items()
 }
-latex_values |= data_summary(
-    max_logit_diff_means,
-    prefix="EVOUMeanMaxRowDiff",
-)
-assert all(isinstance(seed, int) for seed in max_logit_diff_means.keys())
-latex_all_values_by_value["EVOUMeanMaxRowDiffFloat"] = max_logit_diff_means
+max_logit_diff_summaries_by_keys = defaultdict(dict)
+for seed, summary in max_logit_diff_summaries.items():
+    for k, v in summary.items():
+        max_logit_diff_summaries_by_keys[k][seed] = v
+for k, v in max_logit_diff_summaries_by_keys.items():
+    latex_values |= data_summary(v, prefix=k)
+    assert all(isinstance(seed, int) for seed in v.keys())
+    latex_all_values_by_value[f"{k}Float"] = v
 
 # hold some data before summarizing it
 latex_values_tmp_data = defaultdict(dict)

@@ -1309,7 +1309,7 @@ if DISPLAY_PLOTS:
         latex_values[value_key + "MostBelowValueNumStd"] = num_std
         latex_values[value_key + "MostBelowValueSequenceFracFloat"] = frac_below
         latex_values[value_key + "MeanFloat"] = mean
-        latex_values[value_key + "StdFloat"] = std
+        latex_values[value_key + "StdDevFloat"] = std
         latex_values[value_key + "MinFloat"] = minv
         latex_values[value_key + "MaxFloat"] = maxv
         print(
@@ -1348,7 +1348,7 @@ if DISPLAY_PLOTS:
             v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
         )
         latex_values[value_key + "MeanFloat"] = mean
-        latex_values[value_key + "StdFloat"] = std
+        latex_values[value_key + "StdDevFloat"] = std
         minv, maxv = flat_diffs.min().item(), flat_diffs.max().item()
         latex_values[value_key + "MinFloat"] = minv
         latex_values[value_key + "MaxFloat"] = maxv

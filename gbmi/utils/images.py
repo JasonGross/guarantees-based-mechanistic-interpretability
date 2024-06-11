@@ -35,7 +35,8 @@ def remove_bak(*files: Union[str, Path], save_bak: bool = True, ext: str = ".bak
     bak_files = [file.with_suffix(file.suffix + ext) for file in file_paths]
     extant_bak_files = [bak_file for bak_file in bak_files if bak_file.exists()]
     if save_bak:
-        remove_bak(*extant_bak_files, save_bak=save_bak, ext=ext)
+        if extant_bak_files:
+            remove_bak(*extant_bak_files, save_bak=save_bak, ext=ext)
         for bak_file in extant_bak_files:
             bak_file.rename(bak_file.with_suffix(bak_file.suffix + ext))
     else:

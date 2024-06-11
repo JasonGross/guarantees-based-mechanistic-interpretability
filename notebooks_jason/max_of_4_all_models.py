@@ -967,7 +967,7 @@ for seed, (_runtime, model) in runtime_models.items():
             v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
         )
         for k, v in data_summary(
-            max_logit_minus_diag,
+            flat_diffs,
             sample_weight=duplication_factors,
             prefix=value_key,
             float_postfix="",
@@ -1671,7 +1671,15 @@ def try_all_proofs_subcubic(
                 weights.flatten()[v <= most_below_value].sum() / weights.sum()
             ).item()
 
-            return frac_below, v, most_below_value, mean, std, num_std
+            return (
+                frac_below,
+                v,
+                weights.flatten().detach().cpu(),
+                most_below_value,
+                mean,
+                std,
+                num_std,
+            )
 
         with memoshelve(
             _analyze_gaps,
@@ -1680,7 +1688,9 @@ def try_all_proofs_subcubic(
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         )() as analyze_gaps:
-            (frac_below, v, most_below_value, mean, std, num_std) = analyze_gaps(tricks)
+            (frac_below, v, weights, most_below_value, mean, std, num_std) = (
+                analyze_gaps(tricks)
+            )
 
         row = {
             "seed": seed,

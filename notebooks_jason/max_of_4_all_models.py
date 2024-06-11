@@ -1006,26 +1006,30 @@ def analyze_EVOU(model: HookedTransformer):
     EPVOU_centered_off_diag = EPVOU_centered_off_diag[~EPVOU_centered_off_diag.isnan()]
 
     result = {}
-    result |= data_summary(EPU.flatten(), "EUPU")
-    result |= data_summary(EPU.abs().flatten(), "EUPUAbs")
-    result |= data_summary(EPU.amax(dim=-1) - EPU.amin(dim=-1), "EUPUMaxRowDiff")
+    result |= data_summary(EPU.flatten(), prefix="EUPU")
+    result |= data_summary(EPU.abs().flatten(), prefix="EUPUAbs")
+    result |= data_summary(EPU.amax(dim=-1) - EPU.amin(dim=-1), prefix="EUPUMaxRowDiff")
 
-    result |= data_summary(PVOU.flatten(), "PVOU")
-    result |= data_summary(PVOU.abs().flatten(), "PVOUAbs")
-    result |= data_summary(PVOU.amax(dim=-1) - PVOU.amin(dim=-1), "PVOUMaxRowDiff")
-
-    result |= data_summary(EPVOU.flatten(), "EPVOU")
-    result |= data_summary(EPVOU.abs().flatten(), "EPVOUAbs")
-    result |= data_summary(EPVOU.amax(dim=-1) - EPVOU.amin(dim=-1), "EPVOUMaxRowDiff")
-    result |= data_summary(EPVOU_diag, "EPVOUDiagonal")
-    result |= data_summary(EPVOU_centered.flatten(), "EPVOUCentered")
-    result |= data_summary(EPVOU_max_above_diag, "EPVOUMaxAboveDiag")
+    result |= data_summary(PVOU.flatten(), prefix="PVOU")
+    result |= data_summary(PVOU.abs().flatten(), prefix="PVOUAbs")
     result |= data_summary(
-        EPVOU_largest_index_above_diag, "EPVOUInputsWithCopyingFailure"
+        PVOU.amax(dim=-1) - PVOU.amin(dim=-1), prefix="PVOUMaxRowDiff"
     )
-    result |= data_summary(EPVOU_off_diag, "EPVOUOffDiagonal")
-    result |= data_summary(EPVOU_off_diag.abs(), "EPVOUOffDiagonalAbs")
-    result |= data_summary(EPVOU_centered_off_diag, "EPVOUCenteredOffDiagonal")
+
+    result |= data_summary(EPVOU.flatten(), prefix="EPVOU")
+    result |= data_summary(EPVOU.abs().flatten(), prefix="EPVOUAbs")
+    result |= data_summary(
+        EPVOU.amax(dim=-1) - EPVOU.amin(dim=-1), prefix="EPVOUMaxRowDiff"
+    )
+    result |= data_summary(EPVOU_diag, prefix="EPVOUDiagonal")
+    result |= data_summary(EPVOU_centered.flatten(), prefix="EPVOUCentered")
+    result |= data_summary(EPVOU_max_above_diag, prefix="EPVOUMaxAboveDiag")
+    result |= data_summary(
+        EPVOU_largest_index_above_diag, prefix="EPVOUInputsWithCopyingFailure"
+    )
+    result |= data_summary(EPVOU_off_diag, prefix="EPVOUOffDiagonal")
+    result |= data_summary(EPVOU_off_diag.abs(), prefix="EPVOUOffDiagonalAbs")
+    result |= data_summary(EPVOU_centered_off_diag, prefix="EPVOUCenteredOffDiagonal")
 
     return result
 

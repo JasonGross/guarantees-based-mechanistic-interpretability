@@ -2393,7 +2393,7 @@ if HAS_CSVS:
                 "EQKERatioFirstTwoSingularFloat",
                 "attention_error_handling",
             ]
-        ],
+        ].unique(),
         y="normalized-accuracy-bound",
         x="EQKERatioFirstTwoSingularFloat",
         color="attention_error_handling",
@@ -2493,7 +2493,7 @@ if HAS_CSVS:
         key = f"NormalizedAccuracyBound{'AllSecondaryTricks' if not best_bound_only else ''}VsEPQKESingularRatio"
         latex_externalize_tables[key] = True
         latex_figures[key] = fig = scatter(
-            df,
+            df.unique(),
             yrange=(0, 1),
             y="normalized-accuracy-bound",
             x="EQKERatioFirstTwoSingularFloat",
@@ -2611,7 +2611,7 @@ if HAS_CSVS:
     data["group"] = data["group"].map(category_name_remap_short)
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
-        data,
+        data.unique(),
         x="proof-flop-estimate",
         y="effective-dimension-estimate",
         color="group",
@@ -2678,7 +2678,7 @@ if HAS_CSVS:
             data["group"] = data["group"].map(category_name_remap)
             latex_externalize_tables[key] = True
             latex_figures[key] = fig = scatter(
-                data,
+                data.unique(),
                 x="proof-flop-estimate",
                 y=f"{norm}accuracy-bound",
                 color="group",
@@ -2693,7 +2693,7 @@ if HAS_CSVS:
             )
             latex_externalize_tables[f"{key}DiscontinuousX"] = True
             latex_figures[f"{key}DiscontinuousX"] = fig = scatter(
-                data,
+                data.unique(),
                 x="proof-flop-estimate",
                 y=f"{norm}accuracy-bound",
                 color="group",
@@ -2724,7 +2724,7 @@ if HAS_CSVS:
         ].copy()
         # data["group"] = data["group"].map({k:k[:7] for k in set(data["group"])})
         fig = px.scatter(
-            data,
+            data.unique(),
             x="proof-flop-estimate",
             y=f"{norm}accuracy-bound",
             symbol="group",

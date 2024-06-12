@@ -470,6 +470,10 @@ def display_basic_interpretation(
     QK_SVD_colorscale: Colorscale = "Picnic_r",
     tok_dtick: Optional[int | float] = None,
     pos_dtick: Optional[int | float] = None,
+    OV_zmin: Optional[float] = None,
+    OV_zmax: Optional[float] = None,
+    QK_zmin: Optional[float] = None,
+    QK_zmax: Optional[float] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
     show: bool = True,
@@ -516,6 +520,10 @@ def display_basic_interpretation(
                 xaxis=QK["xaxis"],
                 yaxis=QK["yaxis"],
                 colorscale=QK_colorscale,
+                zmin=QK_zmin,
+                zmax=QK_zmax,
+                zmin=QK_zmin,
+                zmax=QK_zmax,
                 dtick_x=tok_dtick,
                 dtick_y=tok_dtick,
                 plot_with=plot_with,
@@ -544,6 +552,8 @@ def display_basic_interpretation(
             xaxis=OV["xaxis"],
             yaxis=OV["yaxis"],
             colorscale=OV_colorscale,
+            zmin=OV_zmin,
+            zmax=OV_zmax,
             dtick_x=tok_dtick,
             dtick_y=tok_dtick,
             plot_with=plot_with,
@@ -558,6 +568,8 @@ def display_basic_interpretation(
         xaxis=OV["xaxis"],
         yaxis=OV["yaxis"],
         colorscale=OV_colorscale,
+        zmin=OV_zmin,
+        zmax=OV_zmax,
         dtick_x=tok_dtick,
         dtick_y=tok_dtick,
         plot_with=plot_with,
@@ -587,6 +599,8 @@ def display_basic_interpretation(
                 pos_QK["data"]["QK"],
                 title=pos_QK["title"][title_kind],
                 colorscale=QK_colorscale,
+                zmin=QK_zmin,
+                zmax=QK_zmax,
                 plot_with=plot_with,
                 xaxis=pos_QK["xaxis"],
                 yaxis=pos_QK["yaxis"],
@@ -609,6 +623,8 @@ def display_basic_interpretation(
                 data,
                 title=key,
                 colorscale=OV_colorscale,
+                zmin=OV_zmin,
+                zmax=OV_zmax,
                 xaxis=irrelevant["xaxis"],
                 yaxis=irrelevant["yaxis"][key],
                 dtick_x=tok_dtick,
@@ -1132,9 +1148,8 @@ def resample_EQKE_err(
             edges = np.histogram_bin_edges(m_numpy, bins="auto")
             counts, _ = np.histogram(m_numpy, bins=edges)
             bin_centers = (edges[:-1] + edges[1:]) / 2
-            pdf_values = stats.norm.pdf(
-                bin_centers, loc=m.mean().item(), scale=m.std().item()
-            )
+            xs = np.linspace(m.min().item(), m.max().item(), 100)
+            pdf_values = stats.norm.pdf(xs, loc=m.mean().item(), scale=m.std().item())
             pdf_scaled = pdf_values * m.numel() * np.diff(edges)
             line_name = r"$\mathcal{N}(%s)$" % pm_round(
                 m.mean().item(), m.std().item(), sep=", "
@@ -1149,7 +1164,7 @@ def resample_EQKE_err(
                     )
                     # f"𝒩({pm_round(m.mean().item(), m.std().item(), sep=', ')})"
                     fig.add_scatter(
-                        x=bin_centers,
+                        x=xs,
                         y=pdf_scaled,
                         mode="lines",
                         name=line_name,
@@ -1164,7 +1179,7 @@ def resample_EQKE_err(
                         bins=edges,
                     )
                     ax.plot(
-                        bin_centers,
+                        xs,
                         pdf_scaled,
                         linestyle="-",
                         color="r",
@@ -1173,7 +1188,7 @@ def resample_EQKE_err(
                     ax.set_title(title["latex"])
                     ax.set_xlabel("matrix element value")
                     ax.set_ylabel("count")
-                    ax.legend()
+                    ax.legend(loc="upper right")
                     if show:
                         plt.figure(fig)
                         plt.show()

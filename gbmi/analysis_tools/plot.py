@@ -15,6 +15,7 @@ import matplotlib.figure
 import matplotlib as mpl
 import matplotlib.axes
 import matplotlib.axes._axes
+import matplotlib.cm as cm
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
@@ -708,98 +709,110 @@ def hist(
             )
 
 
-# def colorbar_plotly(zmin: float,
-#     zmax: float,
-#     colorscale: Colorscale = "RdBu",
-#     *,
-#     orientation: Literal["vertical", "horizontal"] = "vertical",
-#     show: bool = True,
-#     renderer: Optional[str] = None,
-#     **kwargs):
-#     fig = go.Figure(
-#     data=go.Heatmap(
-#         z=[[0]],
-#         colorscale=colorscale,
-#         showscale=True,
-#         zmin=zmin,
-#         zmax=zmax,
-#         zmid=0,
-#         colorbar=dict(x=0),
-#     )
-#     )
-#     fig.add_trace(
-#     go.Heatmap(
-#         z=[[0]],
-#         colorscale="Picnic_r",
-#         showscale=False,
-#         zmin=zmin,
-#         zmax=zmax,
-#         zmid=0,
-#     )
-#     )
-#     fig.update_layout(
-#     width=75,
-#     xaxis_showgrid=False,
-#     yaxis_showgrid=False,
-#     xaxis_zeroline=False,
-#     yaxis_zeroline=False,
-#     xaxis_visible=False,
-#     yaxis_visible=False,
-#     margin=dict(l=0, r=0, b=0, t=0),
-#     )
-#     if show:
-#         fig.show(renderer)
-#     return fig
+def colorbar_plotly(
+    zmin: float,
+    zmax: float,
+    colorscale: Colorscale = "RdBu",
+    *,
+    orientation: Literal["vertical", "horizontal"] = "vertical",
+    show: bool = True,
+    renderer: Optional[str] = None,
+    **kwargs,
+):
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=[[0]],
+            colorscale=colorscale,
+            showscale=True,
+            zmin=zmin,
+            zmax=zmax,
+            # zmid=0,
+            colorbar=dict(x=0),
+        )
+    )
+    fig.add_trace(
+        go.Heatmap(
+            z=[[0]],
+            colorscale="Picnic_r",
+            showscale=False,
+            zmin=zmin,
+            zmax=zmax,
+            zmid=0,
+        )
+    )
+    fig.update_layout(
+        width=75,
+        xaxis_showgrid=False,
+        yaxis_showgrid=False,
+        xaxis_zeroline=False,
+        yaxis_zeroline=False,
+        xaxis_visible=False,
+        yaxis_visible=False,
+        margin=dict(l=0, r=0, b=0, t=0),
+    )
+    if show:
+        fig.show(renderer)
+    return fig
 
 
-# def colorbar_matplotlib(zmin: float,
-#     zmax: float,
-#     colorscale: Colorscale = "RdBu",
-#     *,
-#     orientation: Literal["vertical", "horizontal"] = "vertical",
-#     show: bool = True,
-#     renderer: Optional[str] = None,
-#     **kwargs):
-#     cmap = colorscale_to_cmap(colorscale)
-#     fig = plt.figure(figsize=(0.5, 4) if orientation == "vertical" else (4, 0.5))
-#     plt.close()
-#     norm = matplotlib.colors.Normalize(vmin=zmin, vmax=zmax)
-#     cbar = fig.colorbar(
-#         cm.ScalarMappable(norm=norm, cmap=cmap),
-#         cax=fig.gca(),
-#         orientation="vertical",
-#     )
-#     # cbar = matplotlib.colorbar.ColorbarBase(
-#     #     plt.gca(), cmap=cmap, norm=norm, orientation="vertical"
-#     # )
-#     if show:
-#         plt.figure(fig)
-#         plt.show()
+def colorbar_matplotlib(
+    zmin: float,
+    zmax: float,
+    colorscale: Colorscale = "RdBu",
+    *,
+    orientation: Literal["vertical", "horizontal"] = "vertical",
+    show: bool = True,
+    renderer: Optional[str] = None,
+    **kwargs,
+):
+    cmap = colorscale_to_cmap(colorscale)
+    fig = plt.figure(figsize=(0.5, 4) if orientation == "vertical" else (4, 0.5))
+    plt.close()
+    norm = matplotlib.colors.Normalize(vmin=zmin, vmax=zmax)
+    cbar = fig.colorbar(
+        cm.ScalarMappable(norm=norm, cmap=cmap),
+        cax=fig.gca(),
+        orientation=orientation,
+    )
+    # cbar = matplotlib.colorbar.ColorbarBase(
+    #     plt.gca(), cmap=cmap, norm=norm, orientation="vertical"
+    # )
+    if show:
+        plt.figure(fig)
+        plt.show()
+    return fig
 
 
-# def colorbar(
-#     zmin: float,
-#     zmax: float,
-#     colorscale: Colorscale = "RdBu",
-#     *,
-#     orientation: Literal["vertical", "horizontal"] = "vertical",
-#     show: bool = True,
-#     plot_with: Literal["plotly", "matplotlib"] = "plotly",
-#     renderer: Optional[str] = None,
-#     **kwargs):
-#     match plot_with:
-#         case "plotly":
-#             return colorbar_plotly(
-#                 zmin=zmin, zmax=zmax, colorscale=colorscale, show=show, orientation=orientation,**kwargs
-#             )
-#         case "matplotlib":
-#             return colorbar_matplotlib(
-#                 zmin=zmin, zmax=zmax, colorscale=colorscale, show=show, orientation=orientation,**kwargs
-#             )
-
-#         match plot_with:
-#             case "plotly":
-#             case "matplotlib":
+def colorbar(
+    zmin: float,
+    zmax: float,
+    colorscale: Colorscale = "RdBu",
+    *,
+    orientation: Literal["vertical", "horizontal"] = "vertical",
+    show: bool = True,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+    renderer: Optional[str] = None,
+    **kwargs,
+):
+    match plot_with:
+        case "plotly":
+            return colorbar_plotly(
+                zmin=zmin,
+                zmax=zmax,
+                colorscale=colorscale,
+                show=show,
+                orientation=orientation,
+                **kwargs,
+            )
+        case "matplotlib":
+            return colorbar_matplotlib(
+                zmin=zmin,
+                zmax=zmax,
+                colorscale=colorscale,
+                show=show,
+                orientation=orientation,
+                **kwargs,
+            )
 
 
 def summarize(

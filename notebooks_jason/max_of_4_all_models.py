@@ -1287,7 +1287,9 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
         )
         latex_values[f"AxisLimits{k}Float"] = v
 
-    with tqdm(runtime_models.items(), desc="display_basic_interpretation") as pbar:
+    with tqdm(
+        runtime_models.items(), desc="display_basic_interpretation (uniform limits)"
+    ) as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))
             figs, _axis_limits = display_basic_interpretation(

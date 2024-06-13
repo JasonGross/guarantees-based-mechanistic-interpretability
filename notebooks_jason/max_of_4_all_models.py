@@ -2371,6 +2371,23 @@ def texify_matplotlib_title(
 
 if SAVE_PLOTS:
     errs = []
+
+    def wrap_err(f, *args, return_bool: bool = False, **kwargs):
+        try:
+            result = f(*args, **kwargs)
+            return True if return_bool else result
+        except FileNotFoundError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
+        except subprocess.CalledProcessError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
+        except OSError as e:
+            print(f"Warning: {e}")
+            errs.append(e)
+        if return_bool:
+            return False
+
     for file_path in chain(
         LATEX_FIGURE_PATH.glob("*.png"), LATEX_FIGURE_PATH.glob("*.dat")
     ):
@@ -2396,11 +2413,7 @@ if SAVE_PLOTS:
                         p.parent.mkdir(parents=True, exist_ok=True)
                         fig.write_image(p)
                         if ext == ".pdf":
-                            try:
-                                subprocess.run(["pdfcrop", p, p], check=True)
-                            except FileNotFoundError as e:
-                                print(f"Warning: {e}")
-                                errs.append(e)
+                            wrap_err(subprocess.run, ["pdfcrop", p, p], check=True)
         elif isinstance(fig, matplotlib.figure.Figure):
             p = LATEX_FIGURE_PATH / f"{k}.tex"
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -2428,54 +2441,24 @@ if SAVE_PLOTS:
                 p.parent.mkdir(parents=True, exist_ok=True)
                 fig.savefig(p)
                 if ext == ".pdf":
-                    try:
-                        subprocess.run(["pdfcrop", p, p], check=True)
-                    except FileNotFoundError as e:
-                        print(f"Warning: {e}")
-                        errs.append(e)
+                    wrap_err(subprocess.run, ["pdfcrop", p, p], check=True)
         else:
             raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
 
     for f in LATEX_FIGURE_PATH.glob("*.png"):
-        try:
-            image_utils.pngcrush(f)
-        except FileNotFoundError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
-        except subprocess.CalledProcessError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
+        wrap_err(image_utils.pngcrush, f)
+        wrap_err(image_utils.optipng, f)
 
-        try:
-            image_utils.optipng(f)
-        except FileNotFoundError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
-        except subprocess.CalledProcessError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
-
-    opt_success = False
-    try:
-        image_utils.optimize(*LATEX_FIGURE_PATH.glob("*.png"), exhaustive=True)
-        opt_success = True
-    except FileNotFoundError as e:
-        print(f"Warning: {e}")
-        errs.append(e)
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: {e}")
-        errs.append(e)
+    opt_success = wrap_err(
+        image_utils.optimize,
+        *LATEX_FIGURE_PATH.glob("*.png"),
+        exhaustive=True,
+        return_bool=True,
+    )
 
     if not opt_success:
         for f in LATEX_FIGURE_PATH.glob("*.png"):
-            try:
-                image_utils.optimize(f, exhaustive=True)
-            except FileNotFoundError as e:
-                print(f"Warning: {e}")
-                errs.append(e)
-            except subprocess.CalledProcessError as e:
-                print(f"Warning: {e}")
-                errs.append(e)
+            wrap_err(image_utils.optimize, f, exhaustive=True)
 
     if errs:
         print("Errors:")

@@ -57,7 +57,7 @@ from gbmi.analysis_tools.utils import (
     data_summary,
     data_summary_percentiles,
 )
-from gbmi.analysis_tools.plot import scatter
+from gbmi.analysis_tools.plot import scatter, colorbar
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.lowrank import LowRankTensor
@@ -1266,17 +1266,58 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
         else:
             raise ValueError(f"Unknown axis limit key: {k}")
 
+    seen = set()
     for k in axis_limits.keys():
+        k_no_min_max = k.replace("min", "").replace("max", "")
+        latex_key = "".join(
+            [
+                kpart if kpart[0] == kpart[0].capitalize() else kpart.capitalize()
+                for kpart in k_no_min_max.replace("-", "_").split("_")
+            ]
+        )
+        k_min = k.replace("max", "min")
+        k_max = k.replace("min", "max")
+        assert k_min in axis_limits, f"Missing {k_min}"
+        assert k_max in axis_limits, f"Missing {k_max}"
+        assert k_min == k or k_max == k, f"Unknown key: {k}"
+        assert k_min != k_max, f"Same key: {k}"
         if "centered" not in k.lower():
-            k_min = k.replace("max", "min")
-            k_max = k.replace("min", "max")
-            assert k_min in axis_limits, f"Missing {k_min}"
-            assert k_max in axis_limits, f"Missing {k_max}"
-            assert k_min == k or k_max == k, f"Unknown key: {k}"
-            assert k_min != k_max, f"Same key: {k}"
             v_max = np.max([np.abs(axis_limits[k_min]), np.abs(axis_limits[k_max])])
             axis_limits[k_min] = -v_max
             axis_limits[k_max] = v_max
+
+            assert "OV" in k or "QK" in k, f"Unknown key: {k}"
+            if k_no_min_max in seen:
+                continue
+            kwargs = dict(
+                zmin=-v_max,
+                zmax=v_max,
+                colorscale=(
+                    default_OV_colorscale if "OV" in k else default_QK_colorscale
+                ),
+                show=False,
+                plot_with=PLOT_WITH,
+                renderer=RENDERER,
+            )
+        else:
+            if k_no_min_max in seen:
+                continue
+            kwargs = dict(
+                zmin=axis_limits[k_min],
+                zmax=axis_limits[k_max],
+                colorscale=(
+                    default_OV_colorscale if "OV" in k else default_QK_colorscale
+                ),
+                orientation="vertical",
+                show=False,
+                plot_with=PLOT_WITH,
+                renderer=RENDERER,
+            )
+        figV = colorbar(**kwargs, orientation="vertical")
+        figH = colorbar(**kwargs, orientation="horizontal")
+        seen.add(k_no_min_max)
+        latex_figures[f"Colorbar-{latex_key}-Vertical"] = figV
+        latex_figures[f"Colorbar-{latex_key}-Horizontal"] = figH
 
     for k, v in axis_limits.items():
         k = "".join(

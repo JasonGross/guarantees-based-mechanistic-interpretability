@@ -1289,30 +1289,17 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
             assert "OV" in k or "QK" in k, f"Unknown key: {k}"
             if k_no_min_max in seen:
                 continue
-            kwargs = dict(
-                zmin=-v_max,
-                zmax=v_max,
-                colorscale=(
-                    default_OV_colorscale if "OV" in k else default_QK_colorscale
-                ),
-                show=False,
-                plot_with=PLOT_WITH,
-                renderer=RENDERER,
-            )
+            kwargs = dict(zmin=-v_max, zmax=v_max)
         else:
             if k_no_min_max in seen:
                 continue
-            kwargs = dict(
-                zmin=axis_limits[k_min],
-                zmax=axis_limits[k_max],
-                colorscale=(
-                    default_OV_colorscale if "OV" in k else default_QK_colorscale
-                ),
-                orientation="vertical",
-                show=False,
-                plot_with=PLOT_WITH,
-                renderer=RENDERER,
-            )
+            kwargs = dict(zmin=axis_limits[k_min], zmax=axis_limits[k_max])
+        kwargs |= dict(
+            colorscale=(default_OV_colorscale if "OV" in k else default_QK_colorscale),
+            show=False,
+            plot_with=PLOT_WITH,
+            renderer=RENDERER,
+        )
         figV = colorbar(**kwargs, orientation="vertical")
         figH = colorbar(**kwargs, orientation="horizontal")
         seen.add(k_no_min_max)

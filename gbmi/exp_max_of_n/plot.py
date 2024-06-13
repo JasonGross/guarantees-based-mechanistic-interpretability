@@ -542,8 +542,6 @@ def display_basic_interpretation(
                 colorscale=QK_colorscale,
                 zmin=QK_zmin,
                 zmax=QK_zmax,
-                zmin=QK_zmin,
-                zmax=QK_zmax,
                 dtick_x=tok_dtick,
                 dtick_y=tok_dtick,
                 plot_with=plot_with,

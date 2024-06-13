@@ -696,7 +696,7 @@ def display_basic_interpretation(
         case "plotly":
             assert isinstance(fig, go.Figure)
             fig.update_layout(title="")
-    return result
+    return result, axis_limits
 
 
 @torch.no_grad()

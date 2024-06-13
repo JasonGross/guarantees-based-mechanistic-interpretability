@@ -1188,9 +1188,9 @@ def resample_EQKE_err(
             edges = np.histogram_bin_edges(m_numpy, bins="auto")
             counts, _ = np.histogram(m_numpy, bins=edges)
             bin_centers = (edges[:-1] + edges[1:]) / 2
-            xs = np.linspace(m.min().item(), m.max().item(), 100)
+            xs = np.linspace(m.min().item(), m.max().item(), num=100)
             pdf_values = stats.norm.pdf(xs, loc=m.mean().item(), scale=m.std().item())
-            pdf_scaled = pdf_values * m.numel() * np.diff(edges)
+            pdf_scaled = pdf_values * m.numel()
             line_name = r"$\mathcal{N}(%s)$" % pm_round(
                 m.mean().item(), m.std().item(), sep=", "
             )

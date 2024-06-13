@@ -954,7 +954,7 @@ latex_values["CubicOldDroppedSequencesFracFloat"] = cubic_old_dropped_sequences_
 # # Plots
 # %%
 if DISPLAY_PLOTS:
-    figs = display_basic_interpretation(
+    figs, axis_limits = display_basic_interpretation(
         model,
         include_uncentered=True,
         OV_colorscale=default_OV_colorscale,

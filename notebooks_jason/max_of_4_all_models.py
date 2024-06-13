@@ -1149,10 +1149,11 @@ update_csv_with_rows(
 # # Plots
 # %%
 if SAVE_PLOTS or DISPLAY_PLOTS:
+    all_axis_limits = defaultdict(dict)
     with tqdm(runtime_models.items(), desc="display_basic_interpretation") as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))
-            figs = display_basic_interpretation(
+            figs, axis_limits = display_basic_interpretation(
                 model,
                 include_uncentered=True,
                 OV_colorscale=default_OV_colorscale,
@@ -1163,6 +1164,8 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                 renderer=RENDERER,
                 show=DISPLAY_PLOTS,
             )
+            for k, v in axis_limits.items():
+                all_axis_limits[k][seed] = v
             for attn_scale in ("", "WithAttnScale"):
                 for fig in (
                     figs[f"EQKE{attn_scale}"],
@@ -1201,6 +1204,90 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
 
         if unused_keys:
             print(f"Unused keys: {unused_keys}")
+
+    axis_limits = {}
+    for k, v in all_axis_limits.items():
+        if k.endswith("min"):
+            axis_limits[k] = np.min(list(v.values()))
+        elif k.endswith("max"):
+            axis_limits[k] = np.max(list(v.values()))
+        else:
+            raise ValueError(f"Unknown axis limit key: {k}")
+
+    for k in axis_limits.keys():
+        if "centered" not in k.lower():
+            k_min = k.replace("max", "min")
+            k_max = k.replace("min", "max")
+            assert k_min in axis_limits, f"Missing {k_min}"
+            assert k_max in axis_limits, f"Missing {k_max}"
+            assert k_min == k or k_max == k, f"Unknown key: {k}"
+            assert k_min != k_max, f"Same key: {k}"
+            v_max = np.max([np.abs(axis_limits[k_min]), np.abs(axis_limits[k_max])])
+            axis_limits[k_min] = -v_max
+            axis_limits[k_max] = v_max
+
+    for k, v in axis_limits.items():
+        k = "".join(
+            [
+                kpart if kpart[0] == kpart[0].capitalize() else kpart.capitalize()
+                for kpart in k.replace("-", "_").split("_")
+            ]
+        )
+        latex_values[f"AxisLimits{k}Float"] = v
+
+    with tqdm(runtime_models.items(), desc="display_basic_interpretation") as pbar:
+        for seed, (_runtime, model) in pbar:
+            pbar.set_postfix(dict(seed=seed))
+            figs, _axis_limits = display_basic_interpretation(
+                model,
+                include_uncentered=True,
+                OV_colorscale=default_OV_colorscale,
+                QK_colorscale=default_QK_colorscale,
+                QK_SVD_colorscale=default_QK_SVD_colorscale,
+                tok_dtick=10,
+                **axis_limits,
+                plot_with=PLOT_WITH,
+                renderer=RENDERER,
+                show=DISPLAY_PLOTS,
+            )
+            for attn_scale in ("", "WithAttnScale"):
+                for fig in (
+                    figs[f"EQKE{attn_scale}"],
+                    figs[f"EQKP{attn_scale}"],
+                    figs["EVOU"],
+                    figs["EVOU-centered"],
+                ):
+                    remove_titles(fig)
+                latex_figures[f"{seed}-EQKE{attn_scale}UniformLimits"] = figs[
+                    f"EQKE{attn_scale}"
+                ]
+                latex_figures[f"{seed}-EQKP{attn_scale}UniformLimits"] = figs[
+                    f"EQKP{attn_scale}"
+                ]
+                del figs[f"EQKE{attn_scale} Attention SVD"]
+            latex_figures[f"{seed}-EVOUUniformLimits"] = figs["EVOU"]
+            latex_figures[f"{seed}-EVOU-centeredUniformLimits"] = figs["EVOU-centered"]
+            PVOU_keys = [
+                k for k in figs.keys() if k.startswith("irrelevant_") and "V" in k
+            ]
+            assert len(PVOU_keys) == 1, f"PVOU_keys: {PVOU_keys}"
+            latex_figures[f"{seed}-PVOUUniformLimits"] = figs[PVOU_keys[0]]
+            del figs[PVOU_keys[0]]
+            EUPU_keys = [k for k in figs.keys() if k.startswith("irrelevant_")]
+            assert len(EUPU_keys) == 1, f"EUPU_keys: {EUPU_keys}"
+            latex_figures[f"{seed}-EUPUUniformLimits"] = figs[EUPU_keys[0]]
+            del figs[EUPU_keys[0]]
+            latex_figures[f"{seed}-PVOU-scatterUniformLimits"] = figs["irrelevant"]
+            del figs["irrelevant"]
+            unused_keys = [k for k in figs if k not in latex_figures]
+            for fig in (
+                latex_figures[f"{seed}-PVOU-scatterUniformLimits"],
+                latex_figures[f"{seed}-EUPUUniformLimits"],
+                latex_figures[f"{seed}-PVOUUniformLimits"],
+            ):
+                remove_titles(fig)
+
+
 # %%
 ## %%
 if DISPLAY_PLOTS or SAVE_PLOTS:

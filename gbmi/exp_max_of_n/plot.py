@@ -472,21 +472,41 @@ def display_basic_interpretation(
     pos_dtick: Optional[int | float] = None,
     OV_zmin: Optional[float] = None,
     OV_zmax: Optional[float] = None,
+    OVCentered_zmin: Optional[float] = None,
+    OVCentered_zmax: Optional[float] = None,
     QK_zmin: Optional[float] = None,
     QK_zmax: Optional[float] = None,
+    QKWithAttnScale_zmin: Optional[float] = None,
+    QKWithAttnScale_zmax: Optional[float] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
     show: bool = True,
-) -> dict[str, Union[go.Figure, matplotlib.figure.Figure]]:
+) -> Tuple[dict[str, Union[go.Figure, matplotlib.figure.Figure]], dict[str, float]]:
     QK_cmap = colorscale_to_cmap(QK_colorscale)
     QK_SVD_cmap = colorscale_to_cmap(QK_SVD_colorscale)
     OV_cmap = colorscale_to_cmap(OV_colorscale)
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
     result = {}
+    axis_limits = {
+        "OV_zmin": np.inf,
+        "OV_zmax": -np.inf,
+        "QK_zmin": np.inf,
+        "QK_zmax": -np.inf,
+        "OVCentered_zmin": np.inf,
+        "OVCentered_zmax": -np.inf,
+        "QKWithAttnScale_zmin": np.inf,
+        "QKWithAttnScale_zmax": -np.inf,
+    }
     for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
         QK = compute_QK(
             model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
+        )
+        axis_limits[f"QK{attn_scale}_zmin"] = np.min(
+            [axis_limits[f"QK{attn_scale}_zmin"], QK["data"].min()]
+        )
+        axis_limits[f"QK{attn_scale}_zmax"] = np.max(
+            [axis_limits[f"QK{attn_scale}_zmax"], QK["data"].max()]
         )
         title_kind = "html" if plot_with == "plotly" else "latex"
         if includes_eos:
@@ -546,6 +566,8 @@ def display_basic_interpretation(
 
     if include_uncentered:
         OV = compute_OV(model, centered=False, includes_eos=includes_eos)
+        axis_limits["OV_zmin"] = np.min([axis_limits["OV_zmin"], OV["data"].min()])
+        axis_limits["OV_zmax"] = np.max([axis_limits["OV_zmax"], OV["data"].max()])
         fig_ov = imshow(
             OV["data"],
             title=OV["title"][title_kind],
@@ -562,14 +584,20 @@ def display_basic_interpretation(
         )
         result["EVOU"] = fig_ov
     OV = compute_OV(model, centered=True, includes_eos=includes_eos)
+    axis_limits["OVCentered_zmin"] = np.min(
+        [axis_limits["OVCentered_zmin"], OV["data"].min()]
+    )
+    axis_limits["OVCentered_zmax"] = np.max(
+        [axis_limits["OVCentered_zmax"], OV["data"].max()]
+    )
     fig_ov = imshow(
         OV["data"],
         title=OV["title"][title_kind],
         xaxis=OV["xaxis"],
         yaxis=OV["yaxis"],
         colorscale=OV_colorscale,
-        zmin=OV_zmin,
-        zmax=OV_zmax,
+        zmin=OVCentered_zmin,
+        zmax=OVCentered_zmax,
         dtick_x=tok_dtick,
         dtick_y=tok_dtick,
         plot_with=plot_with,
@@ -583,6 +611,12 @@ def display_basic_interpretation(
             model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
         )
         if includes_eos:
+            axis_limits[f"QK{attn_scale}_zmin"] = np.min(
+                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"].min()]
+            )
+            axis_limits[f"QK{attn_scale}_zmax"] = np.max(
+                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"].max()]
+            )
             fig_qk = px.scatter(
                 pos_QK["data"],
                 title=pos_QK["title"][title_kind],
@@ -595,6 +629,12 @@ def display_basic_interpretation(
             if show:
                 fig_qk.show(renderer=renderer)
         else:
+            axis_limits[f"QK{attn_scale}_zmin"] = np.min(
+                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"]["QK"].min()]
+            )
+            axis_limits[f"QK{attn_scale}_zmax"] = np.max(
+                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"]["QK"].max()]
+            )
             fig_qk = imshow(
                 pos_QK["data"]["QK"],
                 title=pos_QK["title"][title_kind],
@@ -619,6 +659,8 @@ def display_basic_interpretation(
     )
     for key, data in irrelevant["data"].items():
         if len(data.shape) == 2:
+            axis_limits["OV_zmin"] = np.min([axis_limits["OV_zmin"], data.min()])
+            axis_limits["OV_zmax"] = np.max([axis_limits["OV_zmax"], data.max()])
             fig = imshow(
                 data,
                 title=key,

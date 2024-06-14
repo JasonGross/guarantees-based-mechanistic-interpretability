@@ -953,6 +953,13 @@ if DISPLAY_PLOTS:
         renderer=RENDERER,
     )
     for attn_scale in ("", "WithAttnScale"):
+        for fig in (
+            figs[f"EQKE{attn_scale}"],
+            figs[f"EQKP{attn_scale}"],
+            figs["EVOU"],
+            figs["EVOU-centered"],
+        ):
+            remove_titles(fig)
         latex_figures[f"EQKE{attn_scale}"] = figs[f"EQKE{attn_scale}"]
         latex_figures[f"EQKP{attn_scale}"] = figs[f"EQKP{attn_scale}"]
         latex_figures[f"EQKE{attn_scale}-SVD"] = figs[f"EQKE{attn_scale} Attention SVD"]
@@ -972,6 +979,12 @@ if DISPLAY_PLOTS:
     unused_keys = [k for k in figs if k not in latex_figures]
     if unused_keys:
         print(f"Unused keys: {unused_keys}")
+    for fig in (
+        latex_figures[f"PVOU-scatter"],
+        latex_figures[f"EUPU"],
+        latex_figures[f"PVOU"],
+    ):
+        remove_titles(fig)
 
 
 # %%

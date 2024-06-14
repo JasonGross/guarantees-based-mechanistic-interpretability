@@ -1211,7 +1211,12 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
 
     seen = set()
     for k in axis_limits.keys():
-        k_no_min_max = k.replace("min", "").replace("max", "")
+        k_no_min_max = (
+            k.replace("zmin", "")
+            .replace("zmax", "")
+            .replace("min", "")
+            .replace("max", "")
+        )
         latex_key = "".join(
             [
                 kpart if kpart[0] == kpart[0].capitalize() else kpart.capitalize()

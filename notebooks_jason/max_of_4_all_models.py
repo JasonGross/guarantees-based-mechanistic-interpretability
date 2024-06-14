@@ -57,7 +57,14 @@ from gbmi.analysis_tools.utils import (
     data_summary,
     data_summary_percentiles,
 )
-from gbmi.analysis_tools.plot import scatter, colorbar
+from gbmi.analysis_tools.plot import (
+    scatter,
+    colorbar,
+    remove_titles,
+    remove_axis_labels,
+    remove_colorbars,
+    remove_axis_ticklabels,
+)
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.lowrank import LowRankTensor
@@ -372,70 +379,6 @@ with open(TORCH_VERSION_PATH, "w") as f:
 
 
 # %%
-def remove_titles(
-    fig: Union[go.Figure, matplotlib.figure.Figure],
-    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
-):
-    match plot_with:
-        case "matplotlib":
-            for ax in fig.axes:
-                ax.set_title("")
-        case "plotly":
-            fig.update_layout(title_text="")
-    return fig
-
-
-def remove_colorbars(
-    fig: Union[go.Figure, matplotlib.figure.Figure],
-    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
-):
-    match plot_with:
-        case "matplotlib":
-            for ax in fig.axes:
-                for cax in ax.get_children():
-                    if isinstance(cax, plt.Axes):
-                        cax.remove()
-        case "plotly":
-            for trace in fig.data:
-                if "colorbar" in trace:
-                    trace.colorbar = None
-    return fig
-
-
-def remove_axis_labels(
-    fig: Union[go.Figure, matplotlib.figure.Figure],
-    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
-):
-    match plot_with:
-        case "matplotlib":
-            for ax in fig.axes:
-                ax.set_xlabel("")
-                ax.set_ylabel("")
-        case "plotly":
-            fig.update_layout(xaxis_title="", yaxis_title="")
-    return fig
-
-
-def remove_axis_ticklabels(
-    fig: Union[go.Figure, matplotlib.figure.Figure],
-    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
-    remove_tickmarks: bool = False,
-):
-    match plot_with:
-        case "matplotlib":
-            for ax in fig.axes:
-                ax.set_xticklabels([])
-                ax.set_yticklabels([])
-                if remove_tickmarks:
-                    ax.tick_params(axis="both", which="both", length=0)
-        case "plotly":
-            fig.update_xaxes(showticklabels=False)
-            fig.update_yaxes(showticklabels=False)
-            if remove_tickmarks:
-                fig.update_xaxes(ticks="")
-                fig.update_yaxes(ticks="")
-    return fig
-
 
 # %%
 # hack around newlines of black formatting
@@ -1342,7 +1285,7 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                     remove_titles(fig)
                     remove_axis_labels(fig)
                     remove_colorbars(fig)
-                    remove_axis_ticklabels(fig, remove_tickmarks=False)
+                    remove_axis_ticklabels(fig, remove_tickmarks=True)
                 latex_figures[f"{seed}-EQKE{attn_scale}UniformLimits"] = figs[
                     f"EQKE{attn_scale}"
                 ]
@@ -1373,7 +1316,7 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
                 remove_titles(fig)
                 remove_axis_labels(fig)
                 remove_colorbars(fig)
-                remove_axis_ticklabels(fig, remove_tickmarks=False)
+                remove_axis_ticklabels(fig, remove_tickmarks=True)
 
 
 # %%

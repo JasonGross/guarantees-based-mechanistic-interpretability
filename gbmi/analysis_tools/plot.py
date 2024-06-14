@@ -1135,3 +1135,94 @@ def plotly_save_gif(
 
 
 # %%
+def discriminate_figure(
+    fig: Union[go.Figure, matplotlib.figure.Figure],
+    *,
+    plotly_attrs=("update_layout",),
+    matplotlib_attrs=("axes",),
+) -> Literal["plotly", "matplotlib"]:
+    has_plotly_attrs = [hasattr(fig, attr) for attr in plotly_attrs]
+    has_matplotlib_attrs = [hasattr(fig, attr) for attr in matplotlib_attrs]
+    is_plotly = [isinstance(fig, go.Figure), all(has_plotly_attrs)] + has_plotly_attrs
+    is_matplotlib = [
+        isinstance(fig, matplotlib.figure.Figure),
+        all(has_matplotlib_attrs),
+    ] + has_matplotlib_attrs
+    while len(is_plotly) > 0 or len(is_matplotlib) > 0:
+        if len(is_plotly) > 0 and is_plotly[0]:
+            return "plotly"
+        elif len(is_matplotlib) > 0 and is_matplotlib[0]:
+            return "matplotlib"
+        else:
+            if len(is_plotly) > 0:
+                is_plotly.pop(0)
+            if len(is_matplotlib) > 0:
+                is_matplotlib.pop(0)
+    assert len(is_plotly) == 0 and len(is_matplotlib) == 0, (is_plotly, is_matplotlib)
+    raise ValueError(f"Could not determine the type of figure {fig} ({type(fig)})")
+
+
+def remove_titles(
+    fig: Union[go.Figure, matplotlib.figure.Figure],
+):
+    match discriminate_figure(fig):
+        case "plotly":
+            for trace in fig.data:
+                trace.update(name="")
+            fig.update_layout(title_text="")
+        case "matplotlib":
+            for ax in fig.axes:
+                ax.set_title("")
+            fig.suptitle("")
+    return fig
+
+
+def remove_axis_labels(
+    fig: Union[go.Figure, matplotlib.figure.Figure],
+):
+    match discriminate_figure(fig):
+        case "matplotlib":
+            for ax in fig.axes:
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+        case "plotly":
+            fig.update_layout(xaxis_title="", yaxis_title="")
+    return fig
+
+
+def remove_colorbars(
+    fig: Union[go.Figure, matplotlib.figure.Figure],
+):
+    match discriminate_figure(fig):
+        case "matplotlib":
+            for ax in fig.axes:
+                for cax in ax.get_children():
+                    if getattr(cax, "colorbar", None) is not None:
+                        cax.colorbar.remove()
+        case "plotly":
+            fig.update(layout_coloraxis_showscale=False)
+            # for trace in fig.data:
+            #     if "colorbar" in trace:
+            #         trace.colorbar = None
+    return fig
+
+
+def remove_axis_ticklabels(
+    fig: Union[go.Figure, matplotlib.figure.Figure],
+    *,
+    remove_tickmarks: bool = False,
+):
+    match discriminate_figure(fig):
+        case "matplotlib":
+            for ax in fig.axes:
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+                if remove_tickmarks:
+                    ax.tick_params(axis="both", which="both", length=0)
+        case "plotly":
+            fig.update_xaxes(showticklabels=False)
+            fig.update_yaxes(showticklabels=False)
+            if remove_tickmarks:
+                fig.update_xaxes(ticks="")
+                fig.update_yaxes(ticks="")
+    return fig

@@ -54,6 +54,7 @@ from gbmi.analysis_tools.plot import (
     colorscale_to_cmap,
     imshow,
     line,
+    remove_titles,
 )
 from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.utils import pm_round, pm_mean_std, data_summary
@@ -207,19 +208,6 @@ latex_only_externalize_tables: dict[str, bool] = {}
 
 
 # %%
-def remove_titles(
-    fig: Union[go.Figure, matplotlib.figure.Figure],
-    plot_with: Literal["plotly", "matplotlib"] = PLOT_WITH,
-):
-    match plot_with:
-        case "matplotlib":
-            for ax in fig.axes:
-                ax.set_title("")
-        case "plotly":
-            fig.update_layout(title_text="")
-    return fig
-
-
 # %%
 # hack around newlines of black formatting
 seeds = (

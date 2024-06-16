@@ -316,8 +316,11 @@ default_QK_colorscale_2024_03_26: Colorscale = [
     [0.75, "#ffc100"],
     [1, "#ff9c05"],
 ]
-default_OV_colorscale: Colorscale = default_OV_colorscale_2024_03_26
-default_QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26
+default_OV_colorscale_2024_06_15: Colorscale = px.colors.get_colorscale("IceFire_r")
+default_QK_colorscale_2024_06_15: Colorscale = px.colors.get_colorscale("IceFire_r")
+# alt: Edge_r, Twilight, twilight_shifted, shift_cyclical_colorscale(px.colors.get_colorscale("Edge"), shift=0)
+default_OV_colorscale: Colorscale = default_OV_colorscale_2024_06_15
+default_QK_colorscale: Colorscale = default_QK_colorscale_2024_06_15
 default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 # %%
 if cli_args.no_perf:

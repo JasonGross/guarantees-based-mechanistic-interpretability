@@ -52,6 +52,7 @@ from gbmi.analysis_tools.plot import (
     weighted_histogram,
     Colorscale,
     colorscale_to_cmap,
+    cmap_to_list,
     imshow,
     line,
     remove_titles,
@@ -308,7 +309,69 @@ assert cfg.experiment.model_config.seed is not None
 # %% [markdown]
 # # Plots
 # %%
-figs, axis_limits = display_basic_interpretation(
+# default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale(
+#     "RdBu"
+# )
+
+# # px.colors.get_colorscale("Picnic_r")
+# # default_OV_matplotlib_colorscale_2024_03_26: Colorscale = 'bwr_r'
+# default_QK_colorscale_2024_03_26: Colorscale = [
+#     [0, "#ff0000"],
+#     [0.25, "#ff8247"],
+#     [0.5, "white"],
+#     [0.75, "#ffc100"],
+#     [1, "#ff9c05"],
+# ]
+
+# px.colors.get_colorscale(
+#     "Spectral"
+# )#px.colors.get_colorscale("oxy") # listed_cmap_to_list("twilight")
+
+# default_QK_colorscale_2024_03_26: Colorscale = [
+#     [0, "#FF4B4B"],      # Oxy Red
+#     [0.25, "#FF914D"],   # Oxy Orange
+#     [0.5, "#BFBFBF"],    # Oxy White
+#     [0.75, "#FFCF33"],   # Oxy Yellow
+#     [1, "#FF9C05"],      # Modified Oxy Orange (closest match)
+# ]
+
+from typing import TypeVar
+
+T = TypeVar("T")
+
+
+def shift_cyclical_colorscale(
+    colors: list[Tuple[float, T]], shift: int = 0
+) -> list[Tuple[float, T]]:
+    pos = [c[0] for c in colors]
+    colors = [c[1] for c in colors]
+    mid = len(colors) // 2
+    return list(zip(pos, colors[mid + shift :] + colors[: mid + shift]))
+
+
+default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Twilight_r")
+# px.colors.get_colorscale("Edge_r")
+# px.colors.get_colorscale("IceFire_r")
+# shift_cyclical_colorscale(px.colors.get_colorscale("IceFire"), shift=0)
+
+default_QK_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Twilight_r")
+# px.colors.get_colorscale("Edge_r")
+# shift_cyclical_colorscale(px.colors.get_colorscale("Edge"), shift=0)
+# px.colors.get_colorscale("Twilight")
+# px.colors.get_colorscale(
+#     "curl_r"
+# )
+#                                                         px.colors.get_colorscale(
+#     "twilight_shifted"
+# )
+
+default_OV_colorscale: Colorscale = default_OV_colorscale_2024_03_26
+default_QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26
+default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
+# default_OV_colorscale =default_QK_colorscale
+# default_QK_SVD_colorscale = px.colors.get_colorscale("oxy")
+# %%
+figs_separate, axis_limits = display_basic_interpretation(
     model,
     include_uncentered=True,
     OV_colorscale=default_OV_colorscale,
@@ -319,13 +382,39 @@ figs, axis_limits = display_basic_interpretation(
     renderer=RENDERER,
     show=False,
 )
+figs, axis_limits = display_basic_interpretation(
+    model,
+    include_uncentered=True,
+    OV_colorscale=default_OV_colorscale,
+    QK_colorscale=default_QK_colorscale,
+    QK_SVD_colorscale=default_QK_SVD_colorscale,
+    tok_dtick=10,
+    plot_with=PLOT_WITH,
+    renderer=RENDERER,
+    show=False,
+    **axis_limits,
+)
 PVOU_keys = [k for k in figs.keys() if k.startswith("irrelevant_") and "V" in k]
 EUPU_keys = [
     k for k in figs.keys() if k.startswith("irrelevant_") and k != PVOU_keys[0]
 ]
 # %%
-for key in ("EQKE", "EQKP", "EVOU", PVOU_keys[0], EUPU_keys[0]):
+for key in ("EQKE", "EQKP", "EVOU", PVOU_keys[0], EUPU_keys[0], "EQKE Attention SVD"):
     plt.figure(figs[key])
     plt.show()
 
+# %%
+
+# %%
+# figs_svd, values = display_EQKE_SVD_analysis(
+#         model,
+#         plot_with=PLOT_WITH,
+#         QK_colorscale=default_QK_colorscale,
+#         QK_SVD_colorscale=default_QK_SVD_colorscale,
+#         tok_dtick=10,
+#         renderer=RENDERER,
+#         include_figures=True,
+#         show=True,
+#         do_print=True,
+#     )
 # %%

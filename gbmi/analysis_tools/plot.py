@@ -2,7 +2,17 @@
 import math
 from functools import partial
 from pathlib import Path
-from typing import Callable, Collection, Literal, Optional, Tuple, Union, Sequence, Any
+from typing import (
+    Callable,
+    Collection,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    Sequence,
+    Any,
+    TypeVar,
+)
 from collections import defaultdict
 import imageio
 from matplotlib.colors import Colormap, to_hex, is_color_like
@@ -16,8 +26,9 @@ import matplotlib as mpl
 import matplotlib.axes
 import matplotlib.axes._axes
 import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import pandas as pd
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
@@ -31,6 +42,55 @@ from gbmi.analysis_tools.utils import pm_range, pm_mean_std, pm_round
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 
 Colorscale = Union[str, Collection[Collection[Union[float, str]]]]
+T = TypeVar("T")
+
+
+def cmap_to_list(
+    cmap: Union[str, ListedColormap], num_samples: int = 256
+) -> list[Tuple[float, str]]:
+    if isinstance(cmap, str):
+        return cmap_to_list(plt.cm.get_cmap(cmap))
+
+    if isinstance(cmap, mcolors.ListedColormap):
+        colors = cmap.colors
+        num_colors = len(colors)
+
+        color_list = []
+
+        for i, color in enumerate(colors):
+            # Position as a fraction (0 to 1)
+            position = i / (num_colors - 1)
+            # Convert RGB tuple to hex string
+            hex_color = mcolors.rgb2hex(color)
+            color_list.append((position, hex_color))
+
+        return color_list
+    elif isinstance(cmap, mcolors.LinearSegmentedColormap):
+        color_list = []
+
+        for i in range(num_samples):
+            # Position as a fraction (0 to 1)
+            position = i / (num_samples - 1)
+            # Get the color at this position
+            rgba = cmap(position)
+            # Convert RGBA tuple to hex string
+            hex_color = mcolors.rgb2hex(rgba)
+            color_list.append((position, hex_color))
+
+        return color_list
+    else:
+        raise ValueError(
+            f"{cmap} ({type(cmap)}) is not a ListedColormap nor LinearSegmentedColormap"
+        )
+
+
+def shift_cyclical_colorscale(
+    colors: list[Tuple[float, T]], shift: int = 0
+) -> list[Tuple[float, T]]:
+    pos = [c[0] for c in colors]
+    colors = [c[1] for c in colors]
+    mid = len(colors) // 2
+    return list(zip(pos, colors[mid + shift :] + colors[: mid + shift]))
 
 
 def normalize_rgba(rgba):

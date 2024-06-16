@@ -1222,7 +1222,7 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
         )
         latex_key = "".join(
             [
-                kpart if kpart[0] == kpart[0].capitalize() else kpart.capitalize()
+                kpart if kpart[:1] == kpart[:1].capitalize() else kpart.capitalize()
                 for kpart in k_no_min_max.replace("-", "_").split("_")
             ]
         )

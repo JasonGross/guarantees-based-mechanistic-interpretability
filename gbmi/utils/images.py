@@ -140,7 +140,7 @@ def optimize(
     cur_sizes = [Path(image).stat().st_size for image in cur_images]
     while cur_images:
         if shutil.which("ect"):
-            for img in cur_images:
+            for img in tqdm(cur_images, desc="ect"):
                 ect(img, exhaustive=exhaustive)
         optipng(*cur_images, exhaustive=exhaustive)
         pngcrush(*cur_images, brute=exhaustive, tmpdir=tmpdir, cleanup=cleanup)

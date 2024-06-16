@@ -1,10 +1,12 @@
-from typing import Union, Optional
+from typing import Union, Optional, Sequence
+import shutil
 import tempfile
 import subprocess
 from pathlib import Path
 from PIL import Image, ImageChops
 import io
 import plotly.graph_objects as go
+from tqdm.auto import tqdm
 
 
 def trim(im: Image.Image, border_color=None) -> Image.Image:
@@ -42,6 +44,28 @@ def remove_bak(*files: Union[str, Path], save_bak: bool = True, ext: str = ".bak
     else:
         for bak_file in extant_bak_files:
             bak_file.unlink()
+
+
+def ect(
+    *images: Union[str, Path],
+    level: Optional[int] = None,
+    exhaustive: bool = False,
+    strip: bool = True,
+    strict: bool = True,
+    extra_args: Sequence[str] = (),
+):
+    if not images:
+        return
+    if level is None and exhaustive:
+        level = 9
+    extra_args = list(extra_args)
+    if level is not None:
+        extra_args.append(f"-{level}")
+    if strip:
+        extra_args.append("-strip")
+    if strict:
+        extra_args.append("--strict")
+    return subprocess.run(["ect", *extra_args, *images], check=True)
 
 
 def optipng(
@@ -115,6 +139,9 @@ def optimize(
     cur_images = images
     cur_sizes = [Path(image).stat().st_size for image in cur_images]
     while cur_images:
+        if shutil.which("ect"):
+            for img in cur_images:
+                ect(img, exhaustive=exhaustive)
         optipng(*cur_images, exhaustive=exhaustive)
         pngcrush(*cur_images, brute=exhaustive, tmpdir=tmpdir, cleanup=cleanup)
         new_sizes = [Path(image).stat().st_size for image in cur_images]

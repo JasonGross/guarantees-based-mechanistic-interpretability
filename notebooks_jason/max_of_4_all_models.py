@@ -2396,9 +2396,10 @@ if SAVE_PLOTS:
         else:
             raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
 
-    for f in LATEX_FIGURE_PATH.glob("*.png"):
-        wrap_err(image_utils.pngcrush, f)
-        wrap_err(image_utils.optipng, f)
+    # for f in LATEX_FIGURE_PATH.glob("*.png"):
+    #     wrap_err(image_utils.ect, f)
+    #     wrap_err(image_utils.pngcrush, f)
+    #     wrap_err(image_utils.optipng, f)
 
     opt_success = wrap_err(
         image_utils.optimize,

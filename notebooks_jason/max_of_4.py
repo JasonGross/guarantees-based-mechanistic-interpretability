@@ -3037,6 +3037,7 @@ for k, fig in latex_figures.items():
 
 
 for f in LATEX_FIGURE_PATH.glob("*.png"):
+    wrap_err(image_utils.ect, f)
     wrap_err(image_utils.pngcrush, f)
     wrap_err(image_utils.optipng, f)
 

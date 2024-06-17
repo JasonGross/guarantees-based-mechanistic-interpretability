@@ -874,7 +874,7 @@ class LargestWrongLogitQuadraticConfig:
 
     @property
     def EUPU_handling_quadratic(self) -> bool:
-        if self.EUPU_handling in ("global_max_diff_exact", "max_diff"):
+        if self.EUPU_handling in ("global_max_diff_exact", "max_diff_exact"):
             return False
         return True
 

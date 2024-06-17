@@ -75,6 +75,7 @@ from gbmi.utils.latex_export import (
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
+    analyze_EVOU,
 )
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
@@ -1274,6 +1275,8 @@ if DISPLAY_PLOTS:
     # for k, fig in figs.items():
     #     latex_figures[f"Decomposition-{k}"] = fig
 
+# %%
+latex_values |= analyze_EVOU(model)
 # %% [markdown]
 # # Back of the envelope math for sub-cubic
 # %%

@@ -81,6 +81,7 @@ from gbmi.utils.latex_export import (
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
+    analyze_EVOU,
 )
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
@@ -1001,60 +1002,6 @@ for k, v in latex_values_tmp_data.items():
     latex_values |= data_summary(v, prefix=k)
     assert all(isinstance(seed, int) for seed in v.keys())
     latex_all_values_by_value[f"{k}Float"] = v
-
-
-# %%
-def analyze_EVOU(model: HookedTransformer):
-    EPVOU = all_EVOU(model)
-    PVOU = all_PVOU(model)
-    PVOU_mean = PVOU.mean(dim=0)
-    EPVOU += PVOU_mean
-    PVOU -= PVOU_mean
-    EPU = EU_PU(model)
-    EPVOU_diag = EPVOU.diagonal()
-    EPVOU_centered = EPVOU - EPVOU_diag.unsqueeze(-1)
-    EPVOU_minf_diag = EPVOU_centered.clone()
-    EPVOU_minf_diag[tuple(torch.arange(d) for d in EPVOU.shape)] = -torch.inf
-    EPVOU_max_above_diag = EPVOU_minf_diag.amax(dim=-1)
-    EPVOU_largest_index_above_diag = torch.arange(EPVOU.shape[0])[
-        EPVOU_max_above_diag > 0
-    ]
-    EPVOU_off_diag = EPVOU.clone()
-    EPVOU_off_diag[tuple(torch.arange(d) for d in EPVOU.shape)] = torch.nan
-    EPVOU_off_diag = EPVOU_off_diag[~EPVOU_off_diag.isnan()]
-    EPVOU_centered_off_diag = EPVOU_centered.clone()
-    EPVOU_centered_off_diag[tuple(torch.arange(d) for d in EPVOU_centered.shape)] = (
-        torch.nan
-    )
-    EPVOU_centered_off_diag = EPVOU_centered_off_diag[~EPVOU_centered_off_diag.isnan()]
-
-    result = {}
-    result |= data_summary(EPU.flatten(), prefix="EUPU")
-    result |= data_summary(EPU.abs().flatten(), prefix="EUPUAbs")
-    result |= data_summary(EPU.amax(dim=-1) - EPU.amin(dim=-1), prefix="EUPUMaxRowDiff")
-
-    result |= data_summary(PVOU.flatten(), prefix="PVOU")
-    result |= data_summary(PVOU.abs().flatten(), prefix="PVOUAbs")
-    result |= data_summary(
-        PVOU.amax(dim=-1) - PVOU.amin(dim=-1), prefix="PVOUMaxRowDiff"
-    )
-
-    result |= data_summary(EPVOU.flatten(), prefix="EPVOU")
-    result |= data_summary(EPVOU.abs().flatten(), prefix="EPVOUAbs")
-    result |= data_summary(
-        EPVOU.amax(dim=-1) - EPVOU.amin(dim=-1), prefix="EPVOUMaxRowDiff"
-    )
-    result |= data_summary(EPVOU_diag, prefix="EPVOUDiagonal")
-    result |= data_summary(EPVOU_centered.flatten(), prefix="EPVOUCentered")
-    result |= data_summary(EPVOU_max_above_diag, prefix="EPVOUMaxAboveDiag")
-    result |= data_summary(
-        EPVOU_largest_index_above_diag, prefix="EPVOUInputsWithCopyingFailure"
-    )
-    result |= data_summary(EPVOU_off_diag, prefix="EPVOUOffDiagonal")
-    result |= data_summary(EPVOU_off_diag.abs(), prefix="EPVOUOffDiagonalAbs")
-    result |= data_summary(EPVOU_centered_off_diag, prefix="EPVOUCenteredOffDiagonal")
-
-    return result
 
 
 # %%

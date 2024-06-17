@@ -25,6 +25,15 @@ import math
 from scipy import stats
 from contextlib import contextmanager
 import matplotlib.pyplot as plt
+
+from gbmi.analysis_tools.plot import (
+    scatter,
+    colorbar,
+    remove_titles,
+    remove_axis_labels,
+    remove_colorbars,
+    remove_axis_ticklabels,
+)
 import matplotlib.cm as cm
 import matplotlib.figure
 import tikzplotlib
@@ -391,7 +400,9 @@ def get_color_mapping(colors_1, colors_2):
 
 oranges = ["#fefec7", "#f29f05", "#f25c05", "#a62f03", "#400d01"]
 blues = ["#e6f3ff", "#5e87f5", "#3d4b91", "#2d2c5e", "#1d0e2c"]
-teals = ["#d1e8e8", "#9AD4DE", "#58B8C9", "#10656d", "#0c3547"]
+
+# teals = ["#d1e8e8", "#9AD4DE", "#58B8C9", "#10656d", "#0c3547"]
+# blues = [ "#F4F5FF", "#4259ff" , "#3447CC", "#0006b1", "#05014a"]
 
 color_mapping = get_color_mapping(oranges, blues)
 # %%
@@ -435,3 +446,19 @@ EUPU_keys = [
 for key in ("EQKE", "EQKP", "EVOU", PVOU_keys[0], EUPU_keys[0], "EQKE Attention SVD"):
     plt.figure(figs[key])
     plt.show()
+
+# %%
+cs = colorbar(
+    colorscale=default_QK_colorscale,
+    show=False,
+    plot_with=PLOT_WITH,
+    renderer=RENDERER,
+    orientation="horizontal",
+    zmin=-400.082916259765625,
+    zmax=400.082916259765625,
+)
+plt.figure(cs)
+plt.show()
+# %%
+code = tikzplotlib.get_tikz_code(cs)
+# %%

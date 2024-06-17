@@ -173,7 +173,7 @@ def combine_interpolate_color_mapping(
     all_hex = []
     all_hex += list(zip(np.linspace(0, mid, len(hex_1)), hex_1))
     if mid_color is not None:
-        all_hex += [(mid, mid_color)]
+        all_hex += [(0.5, mid_color)]
     all_hex += list(zip(np.linspace(1 - mid, 1, len(hex_2)), hex_2))
 
     return all_hex

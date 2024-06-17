@@ -324,7 +324,7 @@ oranges = ["#fefec7", "#f29f05", "#f25c05", "#a62f03", "#400d01"]
 blues = ["#e6f3ff", "#5e87f5", "#3d4b91", "#2d2c5e", "#1d0e2c"]
 teals = ["#d1e8e8", "#9AD4DE", "#58B8C9", "#10656d", "#0c3547"]
 default_colorscale_2024_06_16: Colorscale = combine_interpolate_color_mapping(
-    reversed(oranges), blues
+    oranges[::-1], blues
 )
 default_OV_colorscale: Colorscale = default_colorscale_2024_06_16
 default_QK_colorscale: Colorscale = default_colorscale_2024_06_16

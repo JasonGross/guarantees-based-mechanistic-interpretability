@@ -165,7 +165,7 @@ def data_summary(
     int_postfix: str = "",
 ):
     if isinstance(data, dict):
-        keys = list(data.keys())
+        keys = list(sorted(data.keys()))
         values = [data[k] for k in keys]
         weights = None if sample_weight is None else [sample_weight[k] for k in keys]
     else:

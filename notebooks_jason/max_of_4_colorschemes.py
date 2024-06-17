@@ -307,33 +307,7 @@ latex_values["seed"] = seed
 assert cfg.experiment.model_config.seed is not None
 
 # %% [markdown]
-# # Plots
-# %%
-# default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale(
-#     "RdBu"
-# )
 
-# # px.colors.get_colorscale("Picnic_r")
-# # default_OV_matplotlib_colorscale_2024_03_26: Colorscale = 'bwr_r'
-# default_QK_colorscale_2024_03_26: Colorscale = [
-#     [0, "#ff0000"],
-#     [0.25, "#ff8247"],
-#     [0.5, "white"],
-#     [0.75, "#ffc100"],
-#     [1, "#ff9c05"],
-# ]
-
-# px.colors.get_colorscale(
-#     "Spectral"
-# )#px.colors.get_colorscale("oxy") # listed_cmap_to_list("twilight")
-
-# default_QK_colorscale_2024_03_26: Colorscale = [
-#     [0, "#FF4B4B"],      # Oxy Red
-#     [0.25, "#FF914D"],   # Oxy Orange
-#     [0.5, "#BFBFBF"],    # Oxy White
-#     [0.75, "#FFCF33"],   # Oxy Yellow
-#     [1, "#FF9C05"],      # Modified Oxy Orange (closest match)
-# ]
 
 from typing import TypeVar
 
@@ -349,39 +323,86 @@ def shift_cyclical_colorscale(
     return list(zip(pos, colors[mid + shift :] + colors[: mid + shift]))
 
 
-default_OV_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Twilight_r")
-# px.colors.get_colorscale("Edge_r")
-# px.colors.get_colorscale("IceFire_r")
-# shift_cyclical_colorscale(px.colors.get_colorscale("IceFire"), shift=0)
-
-default_QK_colorscale_2024_03_26: Colorscale = px.colors.get_colorscale("Twilight_r")
-# px.colors.get_colorscale("Edge_r")
-# shift_cyclical_colorscale(px.colors.get_colorscale("Edge"), shift=0)
-# px.colors.get_colorscale("Twilight")
-# px.colors.get_colorscale(
-#     "curl_r"
-# )
-#                                                         px.colors.get_colorscale(
-#     "twilight_shifted"
-# )
-
-default_OV_colorscale: Colorscale = default_OV_colorscale_2024_03_26
-default_QK_colorscale: Colorscale = default_QK_colorscale_2024_03_26
-default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
-# default_OV_colorscale =default_QK_colorscale
-# default_QK_SVD_colorscale = px.colors.get_colorscale("oxy")
 # %%
-figs_separate, axis_limits = display_basic_interpretation(
-    model,
-    include_uncentered=True,
-    OV_colorscale=default_OV_colorscale,
-    QK_colorscale=default_QK_colorscale,
-    QK_SVD_colorscale=default_QK_SVD_colorscale,
-    tok_dtick=10,
-    plot_with=PLOT_WITH,
-    renderer=RENDERER,
-    show=False,
-)
+
+from matplotlib.colors import hsv_to_rgb
+from matplotlib.colors import rgb_to_hsv
+from matplotlib.colors import to_hex
+
+
+def get_gradient(hex_start, hex_end):
+    n_steps = 10
+
+    rbg_start = tuple(int(hex_start[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
+    rgb_end = tuple(int(hex_end[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
+
+    hsv_start = rgb_to_hsv(np.array([rbg_start]))[0]
+    hsv_end = rgb_to_hsv(np.array([rgb_end]))[0]
+
+    # Interpolate HSV values
+    hues = np.linspace(hsv_start[0], hsv_end[0], n_steps)
+    saturations = np.linspace(hsv_start[1], hsv_end[1], n_steps)
+    values = np.linspace(hsv_start[2], hsv_end[2], n_steps)
+
+    # Combine interpolated HSV values
+    hsv_gradient = np.column_stack((hues, saturations, values))
+
+    # Convert HSV to RGB
+    rgb_gradient = hsv_to_rgb(hsv_gradient)
+
+    return rgb_gradient
+
+
+def get_color_mapping(colors_1, colors_2):
+
+    array_list_1 = []
+    array_list_2 = []
+
+    for i in range(4):
+        new_array = get_gradient(colors_1[i], colors_1[i + 1])
+        array_list_1.append(new_array)
+
+    for i in range(4):
+        new_array = get_gradient(colors_2[i], colors_2[i + 1])
+        array_list_2.append(new_array)
+
+    array_1 = np.concatenate(array_list_1, axis=0)
+    array_2 = np.concatenate(array_list_2, axis=0)
+
+    hex_1 = [to_hex(color) for color in array_1][::-1]
+    hex_2 = [to_hex(color) for color in array_2]
+
+    mid = 0.485
+    all_hex = (
+        list(zip(np.linspace(0, mid, len(hex_1)), hex_1))
+        + [(0.5, "#ffffff")]
+        + list(zip(np.linspace(1 - mid, 1, len(hex_2)), hex_2))
+    )
+
+    return all_hex
+    # values = np.linspace(0, 1, len(all_hex))
+    # color_mapping = list(zip(values, all_hex))
+
+    # return color_mapping
+
+
+# %%
+
+
+oranges = ["#fefec7", "#f29f05", "#f25c05", "#a62f03", "#400d01"]
+blues = ["#e6f3ff", "#5e87f5", "#3d4b91", "#2d2c5e", "#1d0e2c"]
+teals = ["#d1e8e8", "#9AD4DE", "#58B8C9", "#10656d", "#0c3547"]
+
+color_mapping = get_color_mapping(oranges, blues)
+# %%
+
+
+default_OV_colorscale: Colorscale = color_mapping
+default_QK_colorscale: Colorscale = color_mapping
+default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
+
+# %%
+
 figs, axis_limits = display_basic_interpretation(
     model,
     include_uncentered=True,
@@ -392,8 +413,20 @@ figs, axis_limits = display_basic_interpretation(
     plot_with=PLOT_WITH,
     renderer=RENDERER,
     show=False,
-    **axis_limits,
+    # **axis_limits,
 )
+# figs, axis_limits = display_basic_interpretation(
+#     model,
+#     include_uncentered=True,
+#     OV_colorscale=default_OV_colorscale,
+#     QK_colorscale=default_QK_colorscale,
+#     QK_SVD_colorscale=default_QK_SVD_colorscale,
+#     tok_dtick=10,
+#     plot_with=PLOT_WITH,
+#     renderer=RENDERER,
+#     show=False,
+#     **axis_limits,
+# )
 PVOU_keys = [k for k in figs.keys() if k.startswith("irrelevant_") and "V" in k]
 EUPU_keys = [
     k for k in figs.keys() if k.startswith("irrelevant_") and k != PVOU_keys[0]
@@ -402,19 +435,3 @@ EUPU_keys = [
 for key in ("EQKE", "EQKP", "EVOU", PVOU_keys[0], EUPU_keys[0], "EQKE Attention SVD"):
     plt.figure(figs[key])
     plt.show()
-
-# %%
-
-# %%
-# figs_svd, values = display_EQKE_SVD_analysis(
-#         model,
-#         plot_with=PLOT_WITH,
-#         QK_colorscale=default_QK_colorscale,
-#         QK_SVD_colorscale=default_QK_SVD_colorscale,
-#         tok_dtick=10,
-#         renderer=RENDERER,
-#         include_figures=True,
-#         show=True,
-#         do_print=True,
-#     )
-# %%

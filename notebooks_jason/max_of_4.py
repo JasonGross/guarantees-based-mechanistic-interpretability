@@ -51,6 +51,7 @@ from gbmi.analysis_tools.plot import (
     hist_EVOU_max_logit_diff,
     weighted_histogram,
     Colorscale,
+    combine_interpolate_color_mapping,
     colorscale_to_cmap,
     imshow,
     line,
@@ -200,8 +201,14 @@ default_QK_colorscale_2024_03_26: Colorscale = [
 default_OV_colorscale_2024_06_15: Colorscale = px.colors.get_colorscale("IceFire_r")
 default_QK_colorscale_2024_06_15: Colorscale = px.colors.get_colorscale("IceFire_r")
 # alt: Edge_r, Twilight, twilight_shifted, shift_cyclical_colorscale(px.colors.get_colorscale("Edge"), shift=0)
-default_OV_colorscale: Colorscale = default_OV_colorscale_2024_06_15
-default_QK_colorscale: Colorscale = default_QK_colorscale_2024_06_15
+oranges = ["#fefec7", "#f29f05", "#f25c05", "#a62f03", "#400d01"]
+blues = ["#e6f3ff", "#5e87f5", "#3d4b91", "#2d2c5e", "#1d0e2c"]
+teals = ["#d1e8e8", "#9AD4DE", "#58B8C9", "#10656d", "#0c3547"]
+default_colorscale_2024_06_16: Colorscale = combine_interpolate_color_mapping(
+    reversed(oranges), blues
+)
+default_OV_colorscale: Colorscale = default_colorscale_2024_06_16
+default_QK_colorscale: Colorscale = default_colorscale_2024_06_16
 default_QK_SVD_colorscale: Colorscale = default_QK_colorscale
 # %%
 latex_values: dict[str, Union[int, float, str]] = {}

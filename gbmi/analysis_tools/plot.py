@@ -15,7 +15,7 @@ from typing import (
 )
 from collections import defaultdict
 import imageio
-from matplotlib.colors import Colormap, to_hex, is_color_like
+from matplotlib.colors import Colormap, hsv_to_rgb, rgb_to_hsv, to_hex, is_color_like
 import torch
 import numpy as np
 from torch import Tensor
@@ -111,6 +111,72 @@ def color_to_hex(color: str) -> str:
         return to_hex(color)
     else:
         raise ValueError(f"Unrecognized color format: {color}")
+
+
+def hex_to_rgb_float(hex_color: str) -> Tuple[float, float, float]:
+    """Convert a hex color string to an RGB float tuple."""
+    return tuple(int(hex_color[i : i + 2], 16) / 255.0 for i in (1, 3, 5))
+
+
+GET_GRADIENT_N_STEPS_DEFAULT: int = 10
+
+
+def get_gradient(
+    hex_start: str, hex_end: str, n_steps: int = GET_GRADIENT_N_STEPS_DEFAULT
+) -> np.ndarray:
+    rgb_start = hex_to_rgb_float(hex_start)
+    rgb_end = hex_to_rgb_float(hex_end)
+
+    hsv_start = rgb_to_hsv(np.array([rgb_start]))[0]
+    hsv_end = rgb_to_hsv(np.array([rgb_end]))[0]
+
+    # Interpolate HSV values
+    hues = np.linspace(hsv_start[0], hsv_end[0], n_steps)
+    saturations = np.linspace(hsv_start[1], hsv_end[1], n_steps)
+    values = np.linspace(hsv_start[2], hsv_end[2], n_steps)
+
+    # Combine interpolated HSV values
+    hsv_gradient = np.column_stack((hues, saturations, values))
+
+    # Convert HSV to RGB
+    rgb_gradient = hsv_to_rgb(hsv_gradient)
+
+    return rgb_gradient
+
+
+def interpolate_gradient(
+    seq: Sequence[str],
+    n_steps: Optional[int] = None,
+    n_total_steps: Optional[int] = None,
+) -> list[str]:
+    if n_steps is None and n_total_steps is None:
+        n_steps = GET_GRADIENT_N_STEPS_DEFAULT
+    elif n_steps is None:
+        n_steps = n_total_steps // (len(seq) - 1)
+    gradient = []
+    for i in range(len(seq) - 1):
+        gradient.extend(get_gradient(seq[i], seq[i + 1], n_steps=n_steps))
+    return [to_hex(color) for color in gradient]
+
+
+def combine_interpolate_color_mapping(
+    colors_1: Sequence[str],
+    colors_2: Sequence[str],
+    mid_color: Optional[str] = "#ffffff",
+    mid: float = 0.485,
+    n_steps: Optional[int] = None,
+    n_total_steps: Optional[int] = None,
+) -> list[Tuple[float, str]]:
+    hex_1 = interpolate_gradient(colors_1, n_steps=n_steps, n_total_steps=n_total_steps)
+    hex_2 = interpolate_gradient(colors_2, n_steps=n_steps, n_total_steps=n_total_steps)
+
+    all_hex = []
+    all_hex += list(zip(np.linspace(0, mid, len(hex_1)), hex_1))
+    if mid_color is not None:
+        all_hex += [(mid, mid_color)]
+    all_hex += list(zip(np.linspace(1 - mid, 1, len(hex_2)), hex_2))
+
+    return all_hex
 
 
 def colorscale_to_cmap(colorscale: Colorscale, *, name: str = "custom") -> Colormap:

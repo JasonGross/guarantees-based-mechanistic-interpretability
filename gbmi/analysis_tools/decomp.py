@@ -246,6 +246,8 @@ def analyze_svd(
     colorscale: Colorscale = "Picnic_r",
     singular_color="blue",
     figsize: Optional[Tuple[int, int]] = (15, 5),
+    remove_colorbar: bool = True,
+    zmax: float = -np.inf,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
     show: bool = True,
@@ -260,6 +262,7 @@ def analyze_svd(
         descr = f" for {descr}"
 
     uzmax, vzmax = U.abs().max().item(), V.abs().max().item()
+    zmax = max(zmax, max(uzmax, vzmax))
     cmap = colorscale_to_cmap(colorscale)
     match plot_with:
         case "plotly":
@@ -269,8 +272,8 @@ def analyze_svd(
             fig.add_trace(
                 go.Heatmap(
                     z=utils.to_numpy(U),
-                    zmin=-uzmax,
-                    zmax=uzmax,
+                    zmin=-zmax,
+                    zmax=zmax,
                     colorscale=colorscale,
                     zmid=0,
                     showscale=False,
@@ -283,10 +286,10 @@ def analyze_svd(
                 go.Heatmap(
                     z=utils.to_numpy(V),
                     colorscale=colorscale,
-                    zmin=-vzmax,
-                    zmax=vzmax,
+                    zmin=-zmax,
+                    zmax=zmax,
                     zmid=0,
-                    showscale=False,
+                    showscale=not remove_colorbar,
                     hovertemplate="V: %{y}<br>Singular Index: %{x}<br>Value: %{z}<extra></extra>",
                 ),
                 row=1,
@@ -342,8 +345,8 @@ def analyze_svd(
         case "matplotlib":
             fig, axs = plt.subplots(1, 3, figsize=figsize)
             plt.close()
-            cax_u = axs[0].imshow(utils.to_numpy(U), cmap=cmap, vmin=-uzmax, vmax=uzmax)
-            axs[0].set_title("U")
+            cax_u = axs[0].imshow(utils.to_numpy(U), cmap=cmap, vmin=-zmax, vmax=zmax)
+            axs[0].set_title("$U$")
             fig.colorbar(cax_u, ax=axs[0], orientation="vertical").remove()
 
             axs[1].plot(
@@ -356,13 +359,12 @@ def analyze_svd(
             axs[1].set_title("Singular Values")
             axs[1].set_ylim(bottom=0)
 
-            cax_v = axs[2].matshow(
-                utils.to_numpy(V), cmap=cmap, vmin=-vzmax, vmax=vzmax
-            )
-            axs[2].set_title("V")
-            fig.colorbar(
-                cax_v, ax=axs[2], orientation="vertical"
-            ).remove()  # Remove colorbar if not needed
+            cax_v = axs[2].matshow(utils.to_numpy(V), cmap=cmap, vmin=-zmax, vmax=zmax)
+            axs[2].set_title("$V$")
+            if remove_colorbar:
+                fig.colorbar(
+                    cax_v, ax=axs[2], orientation="vertical"
+                ).remove()  # Remove colorbar if not needed
 
             for ax, ax_m in zip(axs, (U, None, V)):
                 ax.tick_params(
@@ -397,7 +399,7 @@ def analyze_svd(
             if show:
                 plt.figure(fig)
                 plt.show()
-    return fig
+    return fig, zmax
 
 
 @torch.no_grad()

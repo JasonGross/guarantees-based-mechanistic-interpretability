@@ -1471,8 +1471,8 @@ def display_EQKE_SVD_analysis(
                 show=show,
             )
             results[f"EQKE_err_noticks{attn_scale}"] = fig
-            results[f"EQKE_err_svd{attn_scale}"] = analyze_svd(
-                EQKE_err / attn_scale_value,
+            svd_args = (EQKE_err / attn_scale_value,)
+            svd_kwargs = dict(
                 descr=(
                     f"EQKE_err{attn_scale}"
                     if title_kind == "html"
@@ -1482,58 +1482,70 @@ def display_EQKE_SVD_analysis(
                 plot_with=plot_with,
                 renderer=renderer,
                 show=show,
+                remove_colorbar=False,
+            )
+            results[f"EQKE_err_svd{attn_scale}"], svd_zmax = analyze_svd(
+                *svd_args, **svd_kwargs
+            )
+            svd_kwargs["zmax"] = svd_zmax
+            results[f"EQKE_err_svd{attn_scale}"], _ = analyze_svd(
+                *svd_args, **svd_kwargs
             )
 
-            for m, s, key in (
-                (
-                    W_E_query_err2,
-                    {
-                        "html": "E<sub>q,2</sub><sup>⟂</sup>",
-                        "latex": r"$E_{q,2}^{\perp}$",
-                    },
-                    "WEqqPerp",
-                ),
-                (
-                    W_Q_err,
-                    {"html": "Q<sup>⟂</sup>", "latex": r"$Q^{\perp}$"},
-                    "WQqPerp",
-                ),
-                (
-                    W_K_errT,
-                    {"html": "K<sup>⟂</sup>", "latex": r"$K^{\perp}$"},
-                    "WKkPerp",
-                ),
-                (
-                    W_E_key_err2T,
-                    {
-                        "html": "E<sub>k,2</sub><sup>⟂</sup>",
-                        "latex": r"$E_{k,2}^{\perp}$",
-                    },
-                    "WEkkPerp",
-                ),
-            ):
-                fig = imshow(
-                    m.numpy() / attn_scale_value,
-                    title=f"{s[title_kind]}{attn_scale}",
-                    colorscale=QK_colorscale,
-                    zmax=zmax,
-                    zmin=-zmax,
-                    showticklabels=False,
-                    plot_with=plot_with,
-                    renderer=renderer,
-                    show=show,
-                )
-                results[f"{key}{attn_scale}"] = fig
-                fig = analyze_svd(
-                    m / attn_scale_value,
-                    scale_by_singular_value=False,
-                    descr=f"{s[title_kind]}{attn_scale}",
-                    colorscale=QK_SVD_colorscale,
-                    plot_with=plot_with,
-                    renderer=renderer,
-                    show=show,
-                )
-                results[f"{key}-svd{attn_scale}"] = fig
+            svd_zmax = -np.inf
+            for _do_twice_for_setting_svd_zmax in (1, 2):
+                for m, s, key in (
+                    (
+                        W_E_query_err2,
+                        {
+                            "html": "E<sub>q,2</sub><sup>⟂</sup>",
+                            "latex": r"$E_{q,2}^{\perp}$",
+                        },
+                        "WEqqPerp",
+                    ),
+                    (
+                        W_Q_err,
+                        {"html": "Q<sup>⟂</sup>", "latex": r"$Q^{\perp}$"},
+                        "WQqPerp",
+                    ),
+                    (
+                        W_K_errT,
+                        {"html": "K<sup>⟂</sup>", "latex": r"$K^{\perp}$"},
+                        "WKkPerp",
+                    ),
+                    (
+                        W_E_key_err2T,
+                        {
+                            "html": "E<sub>k,2</sub><sup>⟂</sup>",
+                            "latex": r"$E_{k,2}^{\perp}$",
+                        },
+                        "WEkkPerp",
+                    ),
+                ):
+                    fig = imshow(
+                        m.numpy() / attn_scale_value,
+                        title=f"{s[title_kind]}{attn_scale}",
+                        colorscale=QK_colorscale,
+                        zmax=zmax,
+                        zmin=-zmax,
+                        showticklabels=False,
+                        plot_with=plot_with,
+                        renderer=renderer,
+                        show=show,
+                    )
+                    results[f"{key}{attn_scale}"] = fig
+                    svd_args = (m / attn_scale_value,)
+                    svd_kwargs = dict(
+                        scale_by_singular_value=False,
+                        descr=f"{s[title_kind]}{attn_scale}",
+                        colorscale=QK_SVD_colorscale,
+                        plot_with=plot_with,
+                        renderer=renderer,
+                        show=show,
+                        zmax=svd_zmax,
+                    )
+                    fig, svd_zmax = analyze_svd(*svd_args, **svd_kwargs)
+                    results[f"{key}-svd{attn_scale}"] = fig
 
     U, S, Vh = torch.linalg.svd(EQKE_exact)
     S_with_attn_scale = S / model.blocks[0].attn.attn_scale

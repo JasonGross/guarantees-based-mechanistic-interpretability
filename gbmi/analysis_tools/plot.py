@@ -27,6 +27,7 @@ import matplotlib.axes
 import matplotlib.axes._axes
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
+from cycler import cycler
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 import seaborn as sns
@@ -438,6 +439,7 @@ def scatter_plotly(
     yrange: Optional[Tuple[float, float]] = None,
     discontinuous_x: Sequence[float] = (),
     discontinuous_y: Sequence[float] = (),
+    # prop_cycle: dict[str, Any] = {},
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -491,6 +493,7 @@ def scatter_matplotlib(
     yrange: Optional[Tuple[float, float]] = None,
     discontinuous_x: Sequence[float] = (),
     discontinuous_y: Sequence[float] = (),
+    # prop_cycle: dict[str, Any] = {},
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -504,6 +507,8 @@ def scatter_matplotlib(
     )
     if not show:
         plt.close()
+    # for ax in axes:
+    #     ax.set_prop_cycle(cycler(**prop_cycle))
     data_minx: dict[int, float] = defaultdict(lambda: np.inf)
     data_maxx: dict[int, float] = defaultdict(lambda: -np.inf)
     data_miny: dict[int, float] = defaultdict(lambda: np.inf)

@@ -39,7 +39,7 @@ from typing import (
 )
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-
+from cycler import cycler
 from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
     hist_attention_difference_over_gap,
@@ -175,6 +175,7 @@ SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_ANALYSIS_CSV_PATH = ALL_MODELS_PATH / "all-models-subcubic-analysis-values.csv"
 SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 N_THREADS: Optional[int] = 2
+default_colors = plt.rcParams["axes.prop_cycle"]
 matplotlib.rcParams["text.usetex"] = True
 matplotlib.rcParams[
     "text.latex.preamble"
@@ -2391,6 +2392,8 @@ def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
 
 
 # %%
+
+# %%
 if HAS_CSVS:
     subcubic_sing_df = subcubic_ext_df.merge(
         subcubic_analysis_df[["seed", "EQKERatioFirstTwoSingularFloat"]], on="seed"
@@ -2456,6 +2459,12 @@ if HAS_CSVS:
     # Show the plot
     fig.show("png")
 # %%
+# plt.set_prop_cycle(color=['red', 'green', 'blue'])
+# default_colors
+# cycler(color=plt.cm.Paired.colors)
+# cycler(color=plt.cm.tab20c.colors)
+# %%
+plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors[::-1])
 if HAS_CSVS:
     subcubic_sing_df = subcubic_ext_df.merge(
         subcubic_analysis_df[["seed", "EQKERatioFirstTwoSingularFloat"]], on="seed"
@@ -2637,6 +2646,7 @@ if HAS_CSVS:
 
 # PLOT_WITH = "matplotlib"
 # %%
+plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors)
 if HAS_CSVS:
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     data = combined_df[
@@ -2692,6 +2702,7 @@ if HAS_CSVS:
 
 
 # %%
+plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors)
 if HAS_CSVS:
     for frontier_only in (True, False):
         for norm, normt in (("", ""), ("normalized-", "Normalized ")):

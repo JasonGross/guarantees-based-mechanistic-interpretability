@@ -7,6 +7,7 @@ from torch import Tensor
 import math
 from jaxtyping import Float, Integer
 import scipy.stats as stats
+from cycler import cycler
 from transformer_lens import HookedTransformer
 import plotly.express as px
 import plotly.graph_objects as go

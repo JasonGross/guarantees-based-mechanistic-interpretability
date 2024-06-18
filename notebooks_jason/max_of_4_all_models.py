@@ -595,10 +595,12 @@ update_csv(TRAIN_CSV_PATH, train_data, columns=train_columns)
 
 # %%
 num_seeds = len(train_average_loss)
-avg_train_average_loss = sum(train_average_loss.values()) / num_seeds
-avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
-std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
-std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
+avg_train_average_loss = sum(sorted(train_average_loss.values())) / num_seeds
+avg_train_average_accuracy = sum(sorted(train_average_accuracy.values())) / num_seeds
+std_dev_train_average_loss = float(np.std(list(sorted(train_average_loss.values()))))
+std_dev_train_average_accuracy = float(
+    np.std(list(sorted(train_average_accuracy.values())))
+)
 latex_values["NumSeeds"] = num_seeds
 assert all(isinstance(seed, int) for seed in train_average_accuracy.keys())
 assert all(isinstance(seed, int) for seed in train_average_loss.keys())

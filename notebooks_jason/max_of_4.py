@@ -362,8 +362,10 @@ for seedi, seed in enumerate(tqdm(runtime_models.keys(), desc="seed", position=0
 num_seeds = len(train_average_loss)
 avg_train_average_loss = sum(train_average_loss.values()) / num_seeds
 avg_train_average_accuracy = sum(train_average_accuracy.values()) / num_seeds
-std_dev_train_average_loss = float(np.std(list(train_average_loss.values())))
-std_dev_train_average_accuracy = float(np.std(list(train_average_accuracy.values())))
+std_dev_train_average_loss = float(np.std(list(sorted(train_average_loss.values()))))
+std_dev_train_average_accuracy = float(
+    np.std(list(sorted(train_average_accuracy.values())))
+)
 latex_values["NumSeeds"] = num_seeds
 latex_values["AvgTrainAccuracyFloat"] = avg_train_average_accuracy
 latex_values["StdDevTrainAccuracyFloat"] = std_dev_train_average_accuracy
@@ -507,11 +509,11 @@ with memoshelve(
         ((loss, accuracy, size), incorrect_sequences), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
         total_duration += duration
         # Accumulate loss and accuracy
-        start = time.time()
+        # start = time.time()
         total_loss += loss * size
         total_accuracy += accuracy * size
         total_samples += size
-        total_duration += time.time() - start
+        # total_duration += time.time() - start
         all_incorrect_sequences.append(incorrect_sequences)
 
 # Calculate average loss and accuracy

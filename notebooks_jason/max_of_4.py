@@ -1489,10 +1489,24 @@ if DISPLAY_PLOTS:
     for attn_scale in ("", "WithAttnScale"):
         cur_key_pairs = {
             f"{k}{attn_scale}": f"{k}{attn_scale}"
-            for k in ("WKkPerp-svd", "WQqPerp-svd", "WEqqPerp-svd", "WEkkPerp-svd")
+            for k in (
+                "WKkPerp-svd",
+                "WQqPerp-svd",
+                "WEqqPerp-svd",
+                "WEkkPerp-svd",
+                "WEqqPerp",
+                "WQqPerp",
+                "WKkPerp",
+                "WEkkPerp",
+            )
         } | {
             f"EQKE_err{attn_scale}": f"EQKE-err{attn_scale}",
+            f"EQKE_err_noticks{attn_scale}": f"EQKE-err-noticks{attn_scale}",
+            f"EQKE_err_simple{attn_scale}": f"EQKE-err-simple{attn_scale}",
+            f"EQKE_err_simple_noticks{attn_scale}": f"EQKE-err-simple-noticks{attn_scale}",
             f"EQKE_err_svd{attn_scale}": f"EQKE-err-svd{attn_scale}",
+            f"EQKE{attn_scale}1": f"EQKE{attn_scale}1",
+            f"EQKE{attn_scale}2": f"EQKE{attn_scale}2",
         }
         key_pairs |= cur_key_pairs
         for key, latex_key in cur_key_pairs.items():

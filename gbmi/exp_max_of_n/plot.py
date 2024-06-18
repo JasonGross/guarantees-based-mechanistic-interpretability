@@ -1471,6 +1471,43 @@ def display_EQKE_SVD_analysis(
                 show=show,
             )
             results[f"EQKE_err_noticks{attn_scale}"] = fig
+            fig = imshow(
+                EQKE_err.numpy() / attn_scale_value,
+                title=(
+                    f"EQKE_err{attn_scale}"
+                    if title_kind == "html"
+                    else rf"EQKE\_err{attn_scale}"
+                ),
+                xaxis="key token",
+                yaxis="query token",
+                colorscale=QK_colorscale,
+                zmax=zmax,
+                zmin=-zmax,
+                dtick_x=tok_dtick,
+                dtick_y=tok_dtick,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE_err_simple{attn_scale}"] = fig
+            fig = imshow(
+                EQKE_err_simple.numpy() / attn_scale_value,
+                title=(
+                    f"EQKE_err_simple{attn_scale}"
+                    if title_kind == "html"
+                    else rf"EQKE\_err\_simple{attn_scale}"
+                ),
+                xaxis="",
+                yaxis="",
+                colorscale=QK_colorscale,
+                zmax=zmax,
+                zmin=-zmax,
+                showticklabels=False,
+                plot_with=plot_with,
+                renderer=renderer,
+                show=show,
+            )
+            results[f"EQKE_err_simple_noticks{attn_scale}"] = fig
             svd_args = (EQKE_err / attn_scale_value,)
             svd_kwargs = dict(
                 descr=(

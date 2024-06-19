@@ -1364,43 +1364,51 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
     with tqdm(runtime_models.items(), desc="display_EQKE_SVD_analysis") as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))
-            figs, values = display_EQKE_SVD_analysis(
-                model,
-                plot_with=PLOT_WITH,
-                QK_colorscale=default_QK_colorscale,
-                QK_SVD_colorscale=default_QK_SVD_colorscale,
-                tok_dtick=10,
-                renderer=RENDERER,
-                include_figures=True,
-                show=DISPLAY_PLOTS,
-                do_print=False,
-            )
-            key_pairs = {}
-            for attn_scale in ("", "WithAttnScale"):
-                cur_key_pairs = {
-                    f"{k}{attn_scale}": f"{k}{attn_scale}"
-                    for k in (
-                        "WKkPerp-svd",
-                        "WQqPerp-svd",
-                        "WEqqPerp-svd",
-                        "WEkkPerp-svd",
-                        "WEqqPerp",
-                        "WQqPerp",
-                        "WKkPerp",
-                        "WEkkPerp",
-                    )
-                } | {
-                    f"EQKE_err{attn_scale}": f"EQKE-err{attn_scale}",
-                    f"EQKE_err_noticks{attn_scale}": f"EQKE-err-noticks{attn_scale}",
-                    f"EQKE_err_simple{attn_scale}": f"EQKE-err-simple{attn_scale}",
-                    f"EQKE_err_simple_noticks{attn_scale}": f"EQKE-err-simple-noticks{attn_scale}",
-                    f"EQKE_err_svd{attn_scale}": f"EQKE-err-svd{attn_scale}",
-                    f"EQKE{attn_scale}1": f"EQKE{attn_scale}1",
-                    f"EQKE{attn_scale}2": f"EQKE{attn_scale}2",
-                }
-                key_pairs |= cur_key_pairs
-                for key, latex_key in cur_key_pairs.items():
-                    latex_figures[f"{seed}-{latex_key}"] = figs[key]
+            for remove_ticks, remove_ticks_descr in ((True, "-noticks"), (False, "")):
+                figs, values = display_EQKE_SVD_analysis(
+                    model,
+                    plot_with=PLOT_WITH,
+                    QK_colorscale=default_QK_colorscale,
+                    QK_SVD_colorscale=default_QK_SVD_colorscale,
+                    tok_dtick=10,
+                    renderer=RENDERER,
+                    include_figures=True,
+                    show=DISPLAY_PLOTS,
+                    do_print=False,
+                )
+                key_pairs = {}
+                for attn_scale in ("", "WithAttnScale"):
+                    cur_key_pairs = {
+                        f"{k}{attn_scale}": f"{k}{remove_ticks_descr}{attn_scale}"
+                        for k in (
+                            "WKkPerp-svd",
+                            "WQqPerp-svd",
+                            "WEqqPerp-svd",
+                            "WEkkPerp-svd",
+                            "WEqqPerp",
+                            "WQqPerp",
+                            "WKkPerp",
+                            "WEkkPerp",
+                        )
+                    } | {
+                        f"EQKE_err{attn_scale}": f"EQKE-err{remove_ticks_descr}{attn_scale}",
+                        f"EQKE_err_noticks{attn_scale}": f"EQKE-err-noticks{remove_ticks_descr}{attn_scale}",
+                        f"EQKE_err_simple{attn_scale}": f"EQKE-err-simple{remove_ticks_descr}{attn_scale}",
+                        f"EQKE_err_simple_noticks{attn_scale}": f"EQKE-err-simple-noticks{remove_ticks_descr}{attn_scale}",
+                        f"EQKE_err_svd{attn_scale}": f"EQKE-err-svd{remove_ticks_descr}{attn_scale}",
+                        f"EQKE{attn_scale}1": f"EQKE1{remove_ticks_descr}{attn_scale}",
+                        f"EQKE{attn_scale}2": f"EQKE2{remove_ticks_descr}{attn_scale}",
+                    }
+                    key_pairs |= cur_key_pairs
+                    for key, latex_key in cur_key_pairs.items():
+                        if key == f"EQKE_err{attn_scale}":
+                            remove_titles(figs[key])
+                        if remove_ticks:
+                            remove_titles(figs[key])
+                            remove_axis_labels(figs[key])
+                            remove_colorbars(figs[key])
+                            remove_axis_ticklabels(figs[key])
+                        latex_figures[f"{seed}-{latex_key}"] = figs[key]
 
 # %% [markdown]
 # # Sub-cubic Proofs

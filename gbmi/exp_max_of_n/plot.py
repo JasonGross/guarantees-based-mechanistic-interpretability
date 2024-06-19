@@ -1657,6 +1657,7 @@ def display_EQKE_SVD_analysis(
     configs = {
         cfg.transform_description(cfg.attention_error_handling, latex=True): cfg
         for cfg in enumerate_dataclass_values(LargestWrongLogitQuadraticConfig)
+        if cfg.attention_error_handling != "exact_EQKE+max_diff_exact"
     }
     for ms, with_attn_scale in (
         ((W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T), ""),

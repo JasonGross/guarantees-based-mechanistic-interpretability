@@ -1674,7 +1674,9 @@ def display_EQKE_SVD_analysis(
         for cfg_key in sorted(configs.keys()):
             cfg = configs[cfg_key]
             attn_err_result = cfg.bound_attention_error(*ms).max().item()
-            results[f"EQKEErr{with_attn_scale}Bound{cfg_key}Float"] = attn_err_result
+            results_float[f"EQKEErr{with_attn_scale}Bound{cfg_key}Float"] = (
+                attn_err_result
+            )
 
     ss = [
         torch.linalg.matrix_norm(m, ord=2).item()

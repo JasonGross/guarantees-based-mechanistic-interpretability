@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.ticker import MaxNLocator
 from gbmi.utils import shuffle_tensor
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
@@ -1351,6 +1353,15 @@ def display_EQKE_SVD_analysis(
     EQKE_err_simple_with_attn_scale = EQKE_err_simple / model.blocks[0].attn.attn_scale
     EQKE_exact_with_attn_scale = EQKE_exact / model.blocks[0].attn.attn_scale
 
+    W_E_query_err2_with_attn_scale = W_E_query_err2 / (
+        model.blocks[0].attn.attn_scale ** 0.25
+    )
+    W_E_key_err2T_with_attn_scale = W_E_key_err2T / (
+        model.blocks[0].attn.attn_scale ** 0.25
+    )
+    W_Q_err_with_attn_scale = W_Q_err / (model.blocks[0].attn.attn_scale ** 0.25)
+    W_K_errT_with_attn_scale = W_K_errT / (model.blocks[0].attn.attn_scale ** 0.25)
+
     if include_figures:
         for attn_scale, attn_scale_value in (
             ("", 1.0),
@@ -1642,6 +1653,27 @@ def display_EQKE_SVD_analysis(
             "EQKEErrMeanDimZeroNormFloat",
         ):
             print(f"{k}: {results_float[k]}")
+
+    configs = {
+        cfg.transform_description(cfg.attention_error_handling, latex=True): cfg
+        for cfg in enumerate_dataclass_values(LargestWrongLogitQuadraticConfig)
+    }
+    for ms, with_attn_scale in (
+        ((W_E_query_err2, W_Q_err, W_K_errT, W_E_key_err2T), ""),
+        (
+            (
+                W_E_query_err2_with_attn_scale,
+                W_Q_err_with_attn_scale,
+                W_K_errT_with_attn_scale,
+                W_E_key_err2T_with_attn_scale,
+            ),
+            "WithAttnScale",
+        ),
+    ):
+        for cfg_key in sorted(configs.keys()):
+            cfg = configs[cfg_key]
+            attn_err_result = cfg.bound_attention_error(*ms).max().item()
+            results[f"EQKEErr{with_attn_scale}Bound{cfg_key}Float"] = attn_err_result
 
     ss = [
         torch.linalg.matrix_norm(m, ord=2).item()

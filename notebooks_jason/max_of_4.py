@@ -2068,12 +2068,12 @@ with torch.no_grad():
         left_behind = proof_results["left_behind"]
 
         try:
-            err_upper_bound_key = f"Subcubic{tricks.transform_description(tricks.attention_error_handling, latex=True)}ErrUpperBoundFloat"
+            err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
             err_upper_bound_value = err_upper_bound.item()
             print(f"err_upper_bound: {err_upper_bound_value}")
         except Exception:
             # print(f"err_upper_bound: {err_upper_bound}")
-            err_upper_bound_key = f"Subcubic{tricks.transform_description(tricks.attention_error_handling, latex=True)}ErrUpperBoundMaxFloat"
+            err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
             err_upper_bound_value = err_upper_bound.max().item()
             print(f"err_upper_bound.max(): {err_upper_bound_value}")
 

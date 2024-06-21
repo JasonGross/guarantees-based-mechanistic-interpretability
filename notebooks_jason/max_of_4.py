@@ -2638,7 +2638,7 @@ if HAS_CSVS:
             new_group_name = group_name[len("subcubic (") : -1]
             new_group_name = "subcubic" if not new_group_name else new_group_name
             new_group_name = new_group_name.replace(
-                "vocab-model-squared", r"$d_{\mathrm{model}}^2d_{\mathrm{vocab}}$"
+                "vocab-model-squared", r"$d_{\mathrm{vocab}}d_{\mathrm{model}}^2$"
             )
             category_name_remap[group_name] = (
                 f"{new_group_name} (rel acc: {pm_round(avg, std)})"

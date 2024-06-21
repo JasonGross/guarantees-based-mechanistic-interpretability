@@ -2068,12 +2068,12 @@ with torch.no_grad():
         left_behind = proof_results["left_behind"]
 
         try:
-            err_upper_bound_key = f"SubcubicErrUpperBound{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+            err_upper_bound_key = f"Subcubic{tricks.transform_description(tricks.attention_error_handling, latex=True)}ErrUpperBoundFloat"
             err_upper_bound_value = err_upper_bound.item()
             print(f"err_upper_bound: {err_upper_bound_value}")
         except Exception:
             # print(f"err_upper_bound: {err_upper_bound}")
-            err_upper_bound_key = f"SubcubicErrUpperBoundMax{tricks.transform_description(tricks.attention_error_handling, latex=True)}Float"
+            err_upper_bound_key = f"Subcubic{tricks.transform_description(tricks.attention_error_handling, latex=True)}ErrUpperBoundMaxFloat"
             err_upper_bound_value = err_upper_bound.max().item()
             print(f"err_upper_bound.max(): {err_upper_bound_value}")
 
@@ -2086,10 +2086,10 @@ with torch.no_grad():
             )
         latex_values[err_upper_bound_key] = err_upper_bound_value
 
-        latex_values[f"SubcubicAccuracy{postkey}Float"] = accuracy_bound
-        latex_values[f"SubcubicProofTime{postkey}Float"] = prooftime
-        latex_values[f"SubcubicDroppedSequences{postkey}"] = left_behind
-        latex_values[f"SubcubicDroppedSequencesFrac{postkey}Float"] = (
+        latex_values[f"Subcubic{postkey}AccuracyFloat"] = accuracy_bound
+        latex_values[f"Subcubic{postkey}ProofTimeFloat"] = prooftime
+        latex_values[f"Subcubic{postkey}DroppedSequences"] = left_behind
+        latex_values[f"Subcubic{postkey}DroppedSequencesFracFloat"] = (
             left_behind / total_sequences
         )
 
@@ -2133,12 +2133,12 @@ with torch.no_grad():
             frac_below = (
                 weights.flatten()[v <= most_below_value].sum() / weights.sum()
             ).item()
-            latex_values[f"SubcubicGapMostBelowValue{postlatexkey}"] = most_below_value
-            latex_values[f"SubcubicGapMostBelowValueNumStd{postlatexkey}Float"] = (
+            latex_values[f"Subcubic{postlatexkey}GapMostBelowValue"] = most_below_value
+            latex_values[f"Subcubic{postlatexkey}GapMostBelowValueNumStdFloat"] = (
                 num_std
             )
             latex_values[
-                f"SubcubicGapMostBelowValueSequenceFrac{postlatexkey}Float"
+                f"Subcubic{postlatexkey}GapMostBelowValueSequenceFracFloat"
             ] = frac_below
             print(
                 f"{postlatexkey}: most ({frac_below*100}%) sequences are <= {most_below_value} (based on + {num_std} std)"
@@ -2157,7 +2157,7 @@ with torch.no_grad():
                     plot_with=PLOT_WITH,
                     renderer=RENDERER,
                 )
-                latex_figures[f"SubcubicGapHistogram{postkey}"] = fig
+                latex_figures[f"Subcubic{postkey}GapHistogram"] = fig
             except Exception as e:
                 etype, value, tb = sys.exc_info()
                 if value is None:

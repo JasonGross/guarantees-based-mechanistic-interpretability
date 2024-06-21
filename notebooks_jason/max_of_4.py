@@ -2278,7 +2278,7 @@ if HAS_CSVS:
             "almost-quadratic"
             if tricks.is_quadratic
             else (
-                "model-squared-vocab"
+                "vocab-model-squared"
                 if tricks.is_subcubic_no_quadratic_vocab
                 else "subcubic" if tricks.is_subcubic else "fake-cubic"
             )
@@ -2290,7 +2290,7 @@ if HAS_CSVS:
             "direct-quadratic"
             if tricks.EUPU_handling_quadratic
             else (
-                "direct-model-squared-vocab"
+                "direct-vocab-squared-model"
                 if tricks.EUPU_handling_subcubic_no_quadratic_vocab
                 else None if tricks.EUPU_handling_subcubic else "direct-cubic"
             )
@@ -2300,7 +2300,7 @@ if HAS_CSVS:
             if tricks.attention_error_handling_quadratic
             and tricks.attention_handling_quadratic
             else (
-                "attention-model-squared-vocab"
+                "attention-vocab-model-squared"
                 if tricks.attention_error_handling_subcubic_no_quadratic_vocab
                 and tricks.attention_handling_subcubic_no_quadratic_vocab
                 else (
@@ -2638,7 +2638,7 @@ if HAS_CSVS:
             new_group_name = group_name[len("subcubic (") : -1]
             new_group_name = "subcubic" if not new_group_name else new_group_name
             new_group_name = new_group_name.replace(
-                "model-squared-vocab", r"$d_{\mathrm{model}}^2d_{\mathrm{vocab}}$"
+                "vocab-model-squared", r"$d_{\mathrm{model}}^2d_{\mathrm{vocab}}$"
             )
             category_name_remap[group_name] = (
                 f"{new_group_name} (rel acc: {pm_round(avg, std)})"

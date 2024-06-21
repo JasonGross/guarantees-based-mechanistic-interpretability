@@ -2290,7 +2290,7 @@ if HAS_CSVS:
             "direct-quadratic"
             if tricks.EUPU_handling_quadratic
             else (
-                "direct-vocab-squared-model"
+                "direct-vocab-model-squared"
                 if tricks.EUPU_handling_subcubic_no_quadratic_vocab
                 else None if tricks.EUPU_handling_subcubic else "direct-cubic"
             )

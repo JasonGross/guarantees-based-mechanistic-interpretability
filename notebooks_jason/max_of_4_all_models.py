@@ -1937,7 +1937,7 @@ def subcubic_group(tricks: LargestWrongLogitQuadraticConfig):
         "DirectQuadratic"
         if tricks.EUPU_handling_quadratic
         else (
-            "DirectModelSquaredVocab"
+            "DirectVocabModelSquared"
             if tricks.EUPU_handling_subcubic_no_quadratic_vocab
             else None if tricks.EUPU_handling_subcubic else "DirectCubic"
         )
@@ -1947,7 +1947,7 @@ def subcubic_group(tricks: LargestWrongLogitQuadraticConfig):
         if tricks.attention_error_handling_quadratic
         and tricks.attention_handling_quadratic
         else (
-            "AttentionModelSquaredVocab"
+            "AttentionVocabModelSquared"
             if tricks.attention_error_handling_subcubic_no_quadratic_vocab
             and tricks.attention_handling_subcubic_no_quadratic_vocab
             else (
@@ -2012,7 +2012,7 @@ for trick_filter_descr, trick_filter in (
             ).is_subcubic,
         ),
         (
-            "SubcubicModelSquaredVocab",
+            "SubcubicVocabModelSquared",
             lambda tricks_str: LargestWrongLogitQuadraticConfig.parse(
                 tricks_str, latex=True
             ).is_subcubic_no_quadratic_vocab,

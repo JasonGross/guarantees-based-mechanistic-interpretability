@@ -1175,20 +1175,24 @@ def weighted_histogram(
                 y=hist_counts,
                 labels={"x": xaxis, "y": yaxis},
                 title=title,
-                **kwargs,
+                **{k: v for k, v in kwargs.items() if k != "edgecolor"},
             )
             fig.update_layout(bargap=0)
             # Iterate over each trace (bar chart) in the figure and adjust the marker properties
-            for trace in fig.data:
-                if trace.type == "bar":  # Check if the trace is a bar chart
-                    # Update marker properties to remove the border line or adjust its appearance
-                    trace.marker.line.width = (
-                        0  # Set line width to 0 to remove the border
-                    )
-                    # Optionally, you can also set the line color to match the bar color exactly
-                    trace.marker.line.color = trace.marker.color = (
-                        "rgba(0, 0, 255, 1.0)"
-                    )
+            if "edgecolor" in kwargs:
+                for trace in fig.data:
+                    if trace.type == "bar":  # Check if the trace is a bar chart
+                        if kwargs["edgecolor"] == "none":
+                            # Update marker properties to remove the border line or adjust its appearance
+                            trace.marker.line.width = (
+                                0  # Set line width to 0 to remove the border
+                            )
+                            # Optionally, you can also set the line color to match the bar color exactly
+                            trace.marker.line.color = trace.marker.color = (
+                                "rgba(0, 0, 255, 1.0)"
+                            )
+                        else:
+                            trace.marker.line.color = kwargs["edgecolor"]
             if show:
                 fig.show(renderer)
         case "matplotlib":
@@ -1201,7 +1205,6 @@ def weighted_histogram(
                 bins=num_bins,
                 ax=ax,
                 x="data",
-                edgecolor="none",
                 **kwargs,
             )
             if not column_name and ax.get_legend() is not None:

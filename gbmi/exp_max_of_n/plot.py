@@ -945,6 +945,7 @@ def hist_attention_difference_over_gap(
         f"{nl}{smath}{xbar}{pm}{sigma}{smath}: {smath}{pm_round(mean, std, sep=f' {pm} ')}{smath}"
     )
     xlabel = f"{smath}({rm('EQKE')}[i]-{rm('EQKE')}[j])/((i-j){ssqrtdhead}){smath}"
+    xlabel = "attention difference / gap"
     if not duplicate_by_sequence_count:
         fig = hist(
             flat_diffs,
@@ -968,6 +969,7 @@ def hist_attention_difference_over_gap(
             renderer=renderer,
             plot_with=plot_with,
             show=show,
+            edgecolor="none",
         )
     return fig, (flat_diffs, duplication_factors)
 

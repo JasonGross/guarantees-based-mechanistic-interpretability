@@ -157,11 +157,13 @@ def compute_ablations(
         EQKPs = EQKPs - EQKPs.max(dim=-1, keepdim=True).values
         EQKEs = EQKEs.exp()
         EQKPs = EQKPs.exp()
+        EQKEPs = EQKEs * EQKPs
         EQKEsum = EQKEs.sum(dim=-1, keepdim=True)
         EQKPsum = EQKPs.sum(dim=-1, keepdim=True)
-        EQKEPs = EQKEs * EQKPs / (EQKEsum + EQKPsum)
+        EQKEPsum = EQKEPs.sum(dim=-1, keepdim=True)
         EQKEs = EQKEs / EQKEsum
         EQKPs = EQKPs / EQKPsum
+        EQKEPs = EQKEPs / EQKEPsum
         # EVOU -= EVOU[:, qtok].unsqueeze(-1)
         # PVOU -= PVOU[:, qtok].unsqueeze(-1)
         # EU -= EU[:, qtok].unsqueeze(-1)

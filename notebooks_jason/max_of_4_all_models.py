@@ -828,6 +828,7 @@ def get_ablation_for(seed: int, *, pbar: tqdm):
 def _handle_ablation_for(seed: int, *, pbar: tqdm):
     try:
         pbar.set_postfix(dict(seed=seed))
+        pbar.update(1)
         ablation_data[seed] = get_ablation_for(seed, pbar=pbar)
     except Exception as e:
         print(f"Error computing ablation for seed {seed}: {e}")
@@ -837,7 +838,11 @@ def _handle_ablation_for(seed: int, *, pbar: tqdm):
 all_d_vocabs = [model.cfg.d_vocab for _runtime, model in runtime_models.values()]
 assert len(set(all_d_vocabs)) == 1, f"Multiple d_vocabs: {all_d_vocabs}"
 
-with tqdm(total=sum(all_d_vocabs), desc="batches for ablations", position=0) as pbar:
+with tqdm(
+    total=sum(all_d_vocabs) + len(all_d_vocabs),
+    desc="batches for ablations",
+    position=0,
+) as pbar:
     # with PeriodicGarbageCollector(60):
     maybe_parallel_map(partial(_handle_ablation_for, pbar=pbar), sorted(all_seeds))
 # %%

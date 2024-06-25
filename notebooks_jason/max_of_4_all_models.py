@@ -834,7 +834,7 @@ def get_ablation_for(seed: int, *, pbar: tqdm):
 
 def _handle_ablation_for(seed: int, *, pbar: tqdm):
     try:
-        pbar.set_description(f"ablation for {seed}")
+        pbar.set_postfix(dict(seed=seed))
         ablation_data[seed] = get_ablation_for(seed, pbar=pbar)
     except Exception as e:
         print(f"Error computing ablation for seed {seed}: {e}")

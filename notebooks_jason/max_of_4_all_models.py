@@ -192,7 +192,10 @@ import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-from gbmi.exp_max_of_n.analysis.ablation import compute_ablations
+from gbmi.exp_max_of_n.analysis.ablation import (
+    compute_ablations,
+    latexify_ablation_results,
+)
 from argparse import ArgumentParser, Namespace, BooleanOptionalAction
 import gbmi.utils.ein as ein
 import gbmi.utils.instructions as instructions
@@ -819,17 +822,7 @@ def get_ablation_for(seed: int, *, pbar: tqdm):
         get_hash_mem=str,
     )() as memo_compute_ablations:
         ablation_results, ablation_time = memo_compute_ablations()
-
-    latex_results = {}
-    for k, d in ablation_results.items():
-        for key in d.keys():
-            value_key = "".join(
-                v.capitalize() if v[0] != v[0].capitalize() else v
-                for v in key.replace("_", "-").split("-")
-            )
-            latex_key = f"{k.short_description(latex=True)}{value_key}"
-            latex_results[latex_key] = d[key]
-    return latex_results
+    return latexify_ablation_results(ablation_results, float_postfix="", int_postfix="")
 
 
 def _handle_ablation_for(seed: int, *, pbar: tqdm):

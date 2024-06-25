@@ -67,7 +67,10 @@ import gbmi.utils.ein as ein
 import gbmi.utils.images as image_utils
 from gbmi.utils.images import trim_plotly_figure
 from gbmi.utils.memoshelve import memoshelve
-from gbmi.exp_max_of_n.analysis.ablation import compute_ablations
+from gbmi.exp_max_of_n.analysis.ablation import (
+    compute_ablations,
+    latexify_ablation_results,
+)
 from gbmi.utils.latex_export import (
     to_latex_defs,
     latex_values_of_counter,
@@ -671,16 +674,8 @@ with memoshelve(
 )() as memo_compute_ablations:
     ablation_results, ablation_time = memo_compute_ablations()
 
-# %%
-for k, d in ablation_results.items():
-    for key in d.keys():
-        value_key = "".join(
-            v.capitalize() if v[0] != v[0].capitalize() else v
-            for v in key.replace("_", "-").split("-")
-        )
-        latex_key = f"{k.short_description(latex=True)}{value_key}Float"
-        latex_values[latex_key] = d[key]
-        print((latex_key, d[key]))
+latex_values |= latexify_ablation_results(ablation_results)
+# print((latex_key, d[key]))
 
 
 # %% [markdown]

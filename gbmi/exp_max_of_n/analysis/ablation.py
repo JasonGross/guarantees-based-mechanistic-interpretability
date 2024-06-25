@@ -9,6 +9,7 @@ from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 from gbmi.utils import ein
+from gbmi.analysis_tools.utils import data_summary
 from gbmi.utils.sequences import generate_all_sequences
 
 
@@ -221,3 +222,37 @@ def compute_ablations(
         v["num_incorrect_sequences"] = d_vocab**n_ctx - v["num_correct_sequences"]
     end = time.time() - start
     return normalize_result(result), end
+
+
+def latexify_ablation_results(
+    ablation_results: dict[AblationOptions, dict[str, Union[float, Sequence[int]]]],
+    float_postfix: str = "Float",
+    int_postfix: str = "",
+) -> dict[str, float]:
+    latex_values = {}
+    summary_latex_values_lists = defaultdict(list)
+    for k in sorted(ablation_results.keys()):
+        d = ablation_results[k]
+        for key in sorted(d.keys()):
+            if isinstance(d[key], int):
+                postfix = int_postfix
+            elif isinstance(d[key], float):
+                postfix = float_postfix
+            else:
+                raise TypeError((key, type(d[key]), d[key]))
+            value_key = "".join(
+                v.capitalize() if v[0] != v[0].capitalize() else v
+                for v in key.replace("_", "-").split("-")
+            )
+            latex_key = f"{k.short_description(latex=True)}{key}{postfix}"
+            latex_values[latex_key] = d[key]
+            if k.EQKE and k.EVOU:
+                summary_latex_values_lists[f"AblateAllImportant{key}"].append(d[key])
+            if k.EQKE or k.EVOU:
+                summary_latex_values_lists[f"AblateAnyImportant{key}"].append(d[key])
+            else:
+                summary_latex_values_lists[f"AblateOnlyNoise{key}"].append(d[key])
+    return latex_values | {
+        k: data_summary(v, float_postfix=float_postfix, int_postfix=int_postfix)
+        for k, v in summary_latex_values_lists.items()
+    }

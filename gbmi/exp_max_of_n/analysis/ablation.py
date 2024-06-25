@@ -244,14 +244,18 @@ def latexify_ablation_results(
                 v.capitalize() if v[0] != v[0].capitalize() else v
                 for v in key.replace("_", "-").split("-")
             )
-            latex_key = f"{k.short_description(latex=True)}{key}{postfix}"
+            latex_key = f"{k.short_description(latex=True)}{value_key}{postfix}"
             latex_values[latex_key] = d[key]
             if k.EQKE and k.EVOU:
-                summary_latex_values_lists[f"AblateAllImportant{key}"].append(d[key])
+                summary_latex_values_lists[f"AblateAllImportant{value_key}"].append(
+                    d[key]
+                )
             if k.EQKE or k.EVOU:
-                summary_latex_values_lists[f"AblateAnyImportant{key}"].append(d[key])
+                summary_latex_values_lists[f"AblateAnyImportant{value_key}"].append(
+                    d[key]
+                )
             else:
-                summary_latex_values_lists[f"AblateOnlyNoise{key}"].append(d[key])
+                summary_latex_values_lists[f"AblateOnlyNoise{value_key}"].append(d[key])
     return latex_values | {
         k: data_summary(v, float_postfix=float_postfix, int_postfix=int_postfix)
         for k, v in summary_latex_values_lists.items()

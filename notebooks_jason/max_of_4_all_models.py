@@ -710,11 +710,11 @@ def get_brute_force_for(seed: int, *, pbar: tqdm):
                 (loss, accuracy, size), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
                 total_duration += duration
                 # Accumulate loss and accuracy
-                start = time.time()
+                # start = time.time()
                 total_loss += loss * size
                 total_accuracy += accuracy * size
                 total_samples += size
-                total_duration += time.time() - start
+                # total_duration += time.time() - start
                 # all_incorrect_sequences.append(incorrect_sequences)
                 pbar.update(batch_size)
 

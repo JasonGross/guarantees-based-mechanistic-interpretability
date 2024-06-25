@@ -252,6 +252,19 @@ def latexify_ablation_results(
                 summary_lists[f"AblateAnyImportant{value_key}"].append(d[key])
             else:
                 summary_lists[f"AblateOnlyNoise{value_key}"].append(d[key])
+            for kind_descr, ablated in (
+                ("EQ", k.EU),
+                ("EQKE", k.EQKE),
+                ("EQKP", k.EQKP),
+                ("EV", k.EVOU),
+                ("PV", k.PVOU),
+            ):
+                if ablated:
+                    summary_lists[f"Ablate{kind_descr}Plus{value_key}"].append(d[key])
+                else:
+                    summary_lists[f"Ablate{kind_descr}Complement{value_key}"].append(
+                        d[key]
+                    )
     for k, v in summary_lists.items():
         latex_values |= data_summary(
             v, prefix=k, float_postfix=float_postfix, int_postfix=int_postfix

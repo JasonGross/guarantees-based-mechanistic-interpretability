@@ -662,7 +662,8 @@ for tok in range(model.cfg.d_vocab_out):
 # %%
 with memoshelve(
     partial(compute_ablations, model),
-    filename=cache_dir / f"{Path(__file__).name}.compute_ablations",
+    filename=cache_dir
+    / f"{Path(__file__).name}.compute_ablations-{cfg_hash_for_filename}",
     get_hash=get_hash_ascii,
     get_hash_mem=str,
 )() as memo_compute_ablations:

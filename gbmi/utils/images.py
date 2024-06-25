@@ -73,12 +73,14 @@ def optipng(
     level: int = 5,
     exhaustive: bool = False,
     save_bak: bool = True,
+    fix: bool = True,
 ):
     if not images:
         return
     if level == 5 and exhaustive:
         level = 7
     extra_args = [] if not exhaustive else ["-zm1-9"]
+    extra_args += ["-fix"] if fix else []
     remove_bak(*images, save_bak=save_bak)
     return subprocess.run(["optipng", f"-o{level}", *extra_args, *images], check=True)
 

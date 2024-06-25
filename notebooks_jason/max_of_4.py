@@ -672,7 +672,8 @@ with memoshelve(
 for k, d in ablation_results.items():
     for key in d.keys():
         value_key = "".join(
-            v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
+            v.capitalize() if v[0] != v[0].capitalize() else v
+            for v in key.replace("_", "-").split("-")
         )
         latex_key = f"{k.short_description(latex=True)}{value_key}Float"
         latex_values[latex_key] = d[key]

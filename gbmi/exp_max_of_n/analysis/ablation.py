@@ -230,7 +230,7 @@ def latexify_ablation_results(
     int_postfix: str = "",
 ) -> dict[str, float]:
     latex_values = {}
-    summary_latex_values_lists = defaultdict(list)
+    summary_lists = defaultdict(list)
     for k in sorted(ablation_results.keys(), key=AblationOptions.short_description):
         d = ablation_results[k]
         for key in sorted(d.keys()):
@@ -247,16 +247,13 @@ def latexify_ablation_results(
             latex_key = f"{k.short_description(latex=True)}{value_key}{postfix}"
             latex_values[latex_key] = d[key]
             if k.EQKE and k.EVOU:
-                summary_latex_values_lists[f"AblateAllImportant{value_key}"].append(
-                    d[key]
-                )
+                summary_lists[f"AblateAllImportant{value_key}"].append(d[key])
             if k.EQKE or k.EVOU:
-                summary_latex_values_lists[f"AblateAnyImportant{value_key}"].append(
-                    d[key]
-                )
+                summary_lists[f"AblateAnyImportant{value_key}"].append(d[key])
             else:
-                summary_latex_values_lists[f"AblateOnlyNoise{value_key}"].append(d[key])
-    return latex_values | {
-        k: data_summary(v, float_postfix=float_postfix, int_postfix=int_postfix)
-        for k, v in summary_latex_values_lists.items()
-    }
+                summary_lists[f"AblateOnlyNoise{value_key}"].append(d[key])
+    for k, v in summary_lists.items():
+        latex_values |= data_summary(
+            v, prefix=k, float_postfix=float_postfix, int_postfix=int_postfix
+        )
+    return latex_values

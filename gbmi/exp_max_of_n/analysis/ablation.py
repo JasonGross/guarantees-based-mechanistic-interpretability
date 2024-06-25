@@ -44,7 +44,7 @@ class AblationOptions:
         return hash((self.EU, self.EQKE, self.EQKP, self.EVOU, self.PVOU))
 
 
-@torch.no_grad
+@torch.no_grad()
 def compute_ablations(
     model: HookedTransformer, max_incorrect_sequences: int = 64
 ) -> Tuple[dict[AblationOptions, dict[str, Union[float, Sequence[int]]]], float]:

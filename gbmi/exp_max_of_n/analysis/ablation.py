@@ -231,7 +231,7 @@ def latexify_ablation_results(
 ) -> dict[str, float]:
     latex_values = {}
     summary_latex_values_lists = defaultdict(list)
-    for k in sorted(ablation_results.keys()):
+    for k in sorted(ablation_results.keys(), key=AblationOptions.short_description):
         d = ablation_results[k]
         for key in sorted(d.keys()):
             if isinstance(d[key], int):

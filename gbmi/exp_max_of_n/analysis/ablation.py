@@ -256,11 +256,11 @@ def latexify_ablation_results(
             else:
                 summary_lists[f"AblateOnlyNoise{value_key}"].append(d[key])
             for kind_descr, ablated in (
-                ("EQ", k.EU),
+                ("EU", k.EU),
                 ("EQKE", k.EQKE),
                 ("EQKP", k.EQKP),
-                ("EV", k.EVOU),
-                ("PV", k.PVOU),
+                ("EVOU", k.EVOU),
+                ("PVOU", k.PVOU),
             ):
                 if ablated:
                     summary_lists[f"Ablate{kind_descr}Plus{value_key}"].append(d[key])

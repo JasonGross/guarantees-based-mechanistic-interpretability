@@ -660,23 +660,23 @@ for tok in range(model.cfg.d_vocab_out):
 #                     cur_size + size,
 #                 )
 # %%
-# with memoshelve(
-#     partial(compute_ablations, model),
-#     filename=cache_dir / f"{Path(__file__).name}.compute_ablations",
-#     get_hash=get_hash_ascii,
-#     get_hash_mem=str,
-# )() as memo_compute_ablations:
-#     ablation_results, ablation_time = memo_compute_ablations()
+with memoshelve(
+    partial(compute_ablations, model),
+    filename=cache_dir / f"{Path(__file__).name}.compute_ablations",
+    get_hash=get_hash_ascii,
+    get_hash_mem=str,
+)() as memo_compute_ablations:
+    ablation_results, ablation_time = memo_compute_ablations()
 
-# # %%
-# for k, d in ablation_results.items():
-#     for key in d.keys():
-#         value_key = "".join(
-#             v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
-#         )
-#         latex_key = f"{k.short_description(latex=True)}{value_key}Float"
-#         latex_values[latex_key] = d[key]
-#         print((latex_key, d[key]))
+# %%
+for k, d in ablation_results.items():
+    for key in d.keys():
+        value_key = "".join(
+            v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
+        )
+        latex_key = f"{k.short_description(latex=True)}{value_key}Float"
+        latex_values[latex_key] = d[key]
+        print((latex_key, d[key]))
 
 
 # %% [markdown]

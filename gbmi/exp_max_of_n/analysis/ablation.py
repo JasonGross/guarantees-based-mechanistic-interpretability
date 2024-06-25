@@ -46,7 +46,9 @@ class AblationOptions:
 
 @torch.no_grad()
 def compute_ablations(
-    model: HookedTransformer, max_incorrect_sequences: int = 64
+    model: HookedTransformer,
+    max_incorrect_sequences: int = 64,
+    pbar: Optional[tqdm] = None,
 ) -> Tuple[dict[AblationOptions, dict[str, Union[float, Sequence[int]]]], float]:
     """
     Computes
@@ -116,11 +118,14 @@ def compute_ablations(
         if EU[qtok].argmax() >= qtok
     )
     only_EU_acc = only_EU_count_correct / d_vocab**n_ctx
+    max_tok_range = range(d_vocab)
+    if pbar is None:
+        max_tok_range = tqdm(max_tok_range, desc="maxtok for EU ablation")
     only_EU_loss = (
         EU[0].softmax(dim=-1)[0]
         + sum(
             (maxtok**n_ctx - (maxtok - 1) ** n_ctx) * EU[qtok].softmax(dim=-1)[maxtok]
-            for maxtok in tqdm(range(d_vocab), desc="maxtok for EU ablation")
+            for maxtok in max_tok_range
             for qtok in range(maxtok + 1)
         )
     ) / d_vocab**n_ctx
@@ -146,7 +151,12 @@ def compute_ablations(
                     EU=True, EVOU=True, PVOU=True, EQKE=ablate_EQKE, EQKP=ablate_EQKP
                 )
             ] = ablate_all_result
-    for qtok in tqdm(range(d_vocab), desc="qtok"):
+    qtok_range = range(d_vocab)
+    if pbar is None:
+        qtok_range = tqdm(qtok_range, desc="qtok")
+    for qtok in qtok_range:
+        if pbar is not None:
+            pbar.update(1)
         qEQKE, qEQKP, qEU = EQKE[qtok], EQKP[qtok], EU[qtok]
         all_sequences[:, -1] = qtok
         maxes = pre_query_maxes.clone()

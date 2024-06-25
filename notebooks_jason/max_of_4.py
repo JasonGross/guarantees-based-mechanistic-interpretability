@@ -658,7 +658,9 @@ for tok in range(model.cfg.d_vocab_out):
 #                     max(cur_loss, loss),
 #                     cur_accuracy and (int(round(accuracy * size)) == size),
 #                     cur_size + size,
-#                 )
+#
+# %% [markdown]
+# # Ablations)
 # %%
 with memoshelve(
     partial(compute_ablations, model),

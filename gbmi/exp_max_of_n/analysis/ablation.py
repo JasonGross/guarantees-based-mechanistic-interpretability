@@ -233,6 +233,9 @@ def latexify_ablation_results(
     summary_lists = defaultdict(list)
     for k in sorted(ablation_results.keys(), key=AblationOptions.short_description):
         d = ablation_results[k]
+        d["normalized_accuracy"] = (
+            d["accuracy"] / ablation_results[AblationOptions()]["accuracy"]
+        )
         for key in sorted(d.keys()):
             if isinstance(d[key], int):
                 postfix = int_postfix

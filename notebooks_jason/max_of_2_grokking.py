@@ -6,6 +6,15 @@
 #
 ### Setup
 # %%
+from IPython import get_ipython
+
+ipython = get_ipython()
+if ipython is not None:
+    ipython.run_line_magic("load_ext", "autoreload")
+    ipython.run_line_magic("autoreload", "2")
+else:
+    print("Not in IPython, not loading autoreload")
+# %%
 from tqdm.auto import tqdm
 import math
 import os
@@ -13,6 +22,7 @@ import imageio
 from gbmi.exp_max_of_n.plot import (
     compute_l2_norm,
     compute_QK,
+    compute_OV,
     display_basic_interpretation,
 )
 from gbmi.exp_max_of_n.train import (
@@ -139,7 +149,7 @@ runtime, model = train_or_load_model(cfg, force=force)
 
 # %%
 # load all model versions
-models = runtime.model_versions(cfg, max_count=3000, step=1)
+models = runtime.model_versions(cfg)#, max_count=3000, step=1)
 assert models is not None
 models = list(models)
 
@@ -215,10 +225,12 @@ def compute_traces_and_frames(
     max_value_attention = 0
     max_value_losses = 0
     max_value_accuracies = 0
+    max_value_ov_z = 0
     all_min_value_attention = []
     all_max_value_attention = []
     all_max_value_losses = []
     all_max_value_accuracies = []
+    all_values_ov_zmaxes = []
     regularizations = {}
     epochs_so_far = set()
 
@@ -228,6 +240,7 @@ def compute_traces_and_frames(
         epoch = old_runtime.epoch
         epochs_so_far.add(epoch)
         overlap = compute_QK(old_model)["data"]
+        ov = compute_OV(old_model, centered=False)["data"]
         regularizations[epoch] = weight_decay * compute_l2_norm(old_model)  # ** 2
 
         # kludge with None
@@ -300,13 +313,29 @@ def compute_traces_and_frames(
         )
         max_value_accuracies = max(max(training_accuracies), max(test_accuracies))
 
+        max_value_ov_z = max(max_value_ov_z, np.max(np.abs(ov)))
+
         # Update the max values for all plots
         all_min_value_attention.append(cur_min_attention)
         all_max_value_attention.append(max_value_attention)
         all_max_value_losses.append(max_value_losses)
         all_max_value_accuracies.append(max_value_accuracies)
+        all_values_ov_zmaxes.append(max_value_ov_z)
 
         cur_traces = [
+            # Attention OV plot trace
+            (
+                (
+                    go.Heatmap(
+                        z=ov,
+                        colorscale="Viridis",
+                        zmin=-max_value_ov_z,
+                        zmax=max_value_ov_z,
+                        name="(E+𝔼P)VOU",
+                    ),
+                ),
+                dict(row=1, col=1),
+            ),
             # Attention plot trace
             (
                 (
@@ -318,7 +347,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=1,
+                    row=2,
                     col=1,
                 ),
             ),
@@ -336,7 +365,7 @@ def compute_traces_and_frames(
                         ),
                     ),
                     dict(
-                        row=2,
+                        row=3,
                         col=1,
                     ),
                 ),
@@ -350,7 +379,7 @@ def compute_traces_and_frames(
                         ),
                     ),
                     dict(
-                        row=2,
+                        row=3,
                         col=1,
                     ),
                 ),
@@ -366,7 +395,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=2,
+                    row=3,
                     col=1,
                 ),
             ),
@@ -380,7 +409,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=2,
+                    row=3,
                     col=1,
                 ),
             ),
@@ -397,7 +426,7 @@ def compute_traces_and_frames(
                         ),
                     ),
                     dict(
-                        row=2,
+                        row=3,
                         col=1,
                     ),
                 ),
@@ -414,7 +443,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=3,
+                    row=4,
                     col=1,
                 ),
             ),
@@ -428,7 +457,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=3,
+                    row=4,
                     col=1,
                 ),
             ),
@@ -520,6 +549,7 @@ def compute_traces_and_frames(
         all_max_value_attention=all_max_value_attention,
         all_max_value_losses=all_max_value_losses,
         all_min_value_attention=all_min_value_attention,
+        all_values_ov_zmaxes=all_values_ov_zmaxes,
     )
 
 
@@ -556,7 +586,9 @@ for include_l2_regularization in [True, False]:
         include_l2_regularization
     ]["frames"]
     # Update layout for the figure
-    grokking_fig[include_l2_regularization].update_layout(**traces_and_frames[include_l2_regularization]["layout"])  # type: ignore
+    grokking_fig[include_l2_regularization].update_layout(
+        **traces_and_frames[include_l2_regularization]["layout"]
+    )  # type: ignore
     # Adjust the height of the figure (e.g., if the original height was 600, now set it to 1200)
     grokking_fig[include_l2_regularization].update_layout(width=600)
     grokking_fig[include_l2_regularization].update_layout(height=600)

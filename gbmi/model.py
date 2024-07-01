@@ -373,14 +373,18 @@ class RunData:
             ] = tuple(
                 (artifact, lazy(artifact.download)) for artifact in logged_artifacts
             )
-        relevant_model_versions = [
-            lazy(
+
+        def lazy_relevant_model_version(artifact, download):
+            return lazy(
                 lambda: (
                     artifact.version,
                     try_load_model_from_wandb_download(config, download.force()),
                     artifact,
                 )
             )
+
+        relevant_model_versions = [
+            lazy_relevant_model_version(artifact, download)
             for artifact, download in self._lazy_model_versions
             if artifact.type in types
         ]
@@ -573,6 +577,7 @@ def train_or_load_model(
     # If we aren't forcing a re-train:
     if force != "train":
         # Try loading the model locally
+        print(wandb_model_path)
         if os.path.exists(model_ckpt_path):
             res = _load_model(config, model_ckpt_path)
             if res is not None:

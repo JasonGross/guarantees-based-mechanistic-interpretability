@@ -613,10 +613,10 @@ def display_basic_interpretation(
         )
         if includes_eos:
             axis_limits[f"QK{attn_scale}_zmin"] = np.min(
-                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"].min()]
+                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"]["QK"].min()]
             )
             axis_limits[f"QK{attn_scale}_zmax"] = np.max(
-                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"].max()]
+                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"]["QK"].max()]
             )
             fig_qk = px.scatter(
                 pos_QK["data"],

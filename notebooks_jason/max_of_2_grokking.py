@@ -149,7 +149,7 @@ runtime, model = train_or_load_model(cfg, force=force)
 
 # %%
 # load all model versions
-models = runtime.model_versions(cfg)#, max_count=3000, step=1)
+models = runtime.model_versions(cfg)  # , max_count=3000, step=1)
 assert models is not None
 models = list(models)
 
@@ -160,7 +160,7 @@ models = list(models)
 # %%
 # @title display basic interpretation
 
-display_basic_interpretation(model)
+_ = display_basic_interpretation(model)
 
 
 # %% [markdown]
@@ -566,10 +566,11 @@ for include_l2_regularization in [True, False]:
 # @title plot
 for include_l2_regularization in [True, False]:
     grokking_fig[include_l2_regularization] = make_subplots(
-        rows=3,
+        rows=4,
         cols=1,
         subplot_titles=(
-            "Attention Plot",
+            "Attention (OV) Plot",
+            "Attention (QK) Plot",
             f"Loss{'+L2 Regularization' if include_l2_regularization else ''} Plot",
             "Accuracy Plot",
         ),
@@ -644,6 +645,12 @@ all_max_value_accuracies = traces_and_frames[include_l2_regularization][
     "all_max_value_accuracies"
 ]
 
+# Remove sliders and buttons
+grokking_fig[include_l2_regularization].update_layout(
+    updatemenus=[],  # Remove all buttons
+    sliders=[],  # Remove all sliders
+)
+
 filenames = []
 for i, frame in enumerate(tqdm(grokking_fig[include_l2_regularization].frames)):
     # Update data for each trace
@@ -653,9 +660,9 @@ for i, frame in enumerate(tqdm(grokking_fig[include_l2_regularization].frames)):
 
     # Update layout (axis bounds)
     grokking_fig[include_l2_regularization].update_layout(
-        yaxis={"range": [all_min_value_attention[i], all_max_value_attention[i]]},
-        yaxis2={"range": [0, all_max_value_losses[i]]},
-        yaxis3={"range": [0, all_max_value_accuracies[i]]},
+        yaxis2={"range": [all_min_value_attention[i], all_max_value_attention[i]]},
+        yaxis3={"range": [0, all_max_value_losses[i]]},
+        yaxis4={"range": [0, all_max_value_accuracies[i]]},
     )
 
     # Save as image

@@ -577,7 +577,6 @@ def train_or_load_model(
     # If we aren't forcing a re-train:
     if force != "train":
         # Try loading the model locally
-        print(wandb_model_path)
         if os.path.exists(model_ckpt_path):
             res = _load_model(config, model_ckpt_path)
             if res is not None:

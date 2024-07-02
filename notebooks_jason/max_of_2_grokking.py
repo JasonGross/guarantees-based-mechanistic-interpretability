@@ -90,6 +90,7 @@ if abs(training_ratio - expected_training_ratio) > 1e-5:
 batch_size = int(round(training_ratio * vocab**seq_len))
 epochs_to_train_for = 3000  # @param {type:"number"}
 include_biases = False  # @param {type:"boolean"}
+include_ov_plot: bool = True  # @param {type:"boolean"}
 cfg = Config(
     experiment=MaxOfN(
         model_config=HookedTransformerConfig(
@@ -323,20 +324,26 @@ def compute_traces_and_frames(
         all_max_value_accuracies.append(max_value_accuracies)
         all_values_ov_zmaxes.append(max_value_ov_z)
 
-        cur_traces = [
-            # Attention OV plot trace
-            (
+        cur_traces = []
+        cur_row = 1
+        if include_ov_plot:
+            cur_traces.append(
+                # Attention OV plot trace
                 (
-                    go.Heatmap(
-                        z=ov,
-                        colorscale="Viridis",
-                        zmin=-max_value_ov_z,
-                        zmax=max_value_ov_z,
-                        name="(E+𝔼P)VOU",
+                    (
+                        go.Heatmap(
+                            z=ov,
+                            colorscale="Viridis",
+                            zmin=-max_value_ov_z,
+                            zmax=max_value_ov_z,
+                            name="(E+𝔼P)VOU",
+                        ),
                     ),
-                ),
-                dict(row=1, col=1),
-            ),
+                    dict(row=cur_row, col=1),
+                )
+            )
+            cur_row += 1
+        cur_traces += [
             # Attention plot trace
             (
                 (
@@ -348,7 +355,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=2,
+                    row=cur_row + 1,
                     col=1,
                 ),
             ),
@@ -366,7 +373,7 @@ def compute_traces_and_frames(
                         ),
                     ),
                     dict(
-                        row=3,
+                        row=cur_row + 2,
                         col=1,
                     ),
                 ),
@@ -380,7 +387,7 @@ def compute_traces_and_frames(
                         ),
                     ),
                     dict(
-                        row=3,
+                        row=cur_row + 2,
                         col=1,
                     ),
                 ),
@@ -396,7 +403,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=3,
+                    row=cur_row + 2,
                     col=1,
                 ),
             ),
@@ -410,7 +417,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=3,
+                    row=cur_row + 2,
                     col=1,
                 ),
             ),
@@ -427,7 +434,7 @@ def compute_traces_and_frames(
                         ),
                     ),
                     dict(
-                        row=3,
+                        row=cur_row + 2,
                         col=1,
                     ),
                 ),
@@ -444,7 +451,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=4,
+                    row=cur_row + 3,
                     col=1,
                 ),
             ),
@@ -458,7 +465,7 @@ def compute_traces_and_frames(
                     ),
                 ),
                 dict(
-                    row=4,
+                    row=cur_row + 3,
                     col=1,
                 ),
             ),
@@ -469,19 +476,29 @@ def compute_traces_and_frames(
             traces = cur_traces
 
         # Create a frame combining all plots
+        if include_ov_plot:
+            layout = go.Layout(
+                yaxis2={
+                    "range": [cur_min_attention, max_value_attention]
+                },  # Attention plot
+                yaxis3={"range": [0, max_value_losses]},  # Loss plot
+                yaxis4={"range": [0, max_value_accuracies]},  # Accuracy plot
+            )
+        else:
+            layout = go.Layout(
+                yaxis={
+                    "range": [cur_min_attention, max_value_attention]
+                },  # Attention plot
+                yaxis2={"range": [0, max_value_losses]},  # Loss plot
+                yaxis3={"range": [0, max_value_accuracies]},  # Accuracy plot
+            )
         frame = go.Frame(
             data=[g for gs, _ in cur_traces for g in gs],
             name=str(epoch),
             traces=list(
                 range(len(cur_traces) + 3)
             ),  # Indices of the traces in this frame
-            layout=go.Layout(
-                yaxis={
-                    "range": [cur_min_attention, max_value_attention]
-                },  # Attention plot
-                yaxis2={"range": [0, max_value_losses]},  # Loss plot
-                yaxis3={"range": [0, max_value_accuracies]},  # Accuracy plot
-            ),
+            layout=layout,
         )
         frames.append(frame)
 
@@ -567,11 +584,11 @@ for include_l2_regularization in [True, False]:
 # @title plot
 for include_l2_regularization in [True, False]:
     grokking_fig[include_l2_regularization] = make_subplots(
-        rows=4,
+        rows=4 if include_ov_plot else 3,
         cols=1,
         subplot_titles=(
-            "Attention (OV) Plot",
-            "Attention (QK) Plot",
+            *(["Attention (OV) Plot"] if include_ov_plot else []),
+            f"Attention {'(QK) ' if include_ov_plot else ''}Plot",
             f"Loss{'+L2 Regularization' if include_l2_regularization else ''} Plot",
             "Accuracy Plot",
         ),
@@ -660,11 +677,18 @@ for i, frame in enumerate(tqdm(grokking_fig[include_l2_regularization].frames)):
         grokking_fig[include_l2_regularization].data[j].y = data.y
 
     # Update layout (axis bounds)
-    grokking_fig[include_l2_regularization].update_layout(
-        yaxis2={"range": [all_min_value_attention[i], all_max_value_attention[i]]},
-        yaxis3={"range": [0, all_max_value_losses[i]]},
-        yaxis4={"range": [0, all_max_value_accuracies[i]]},
-    )
+    if include_ov_plot:
+        grokking_fig[include_l2_regularization].update_layout(
+            yaxis2={"range": [all_min_value_attention[i], all_max_value_attention[i]]},
+            yaxis3={"range": [0, all_max_value_losses[i]]},
+            yaxis4={"range": [0, all_max_value_accuracies[i]]},
+        )
+    else:
+        grokking_fig[include_l2_regularization].update_layout(
+            yaxis={"range": [all_min_value_attention[i], all_max_value_attention[i]]},
+            yaxis2={"range": [0, all_max_value_losses[i]]},
+            yaxis3={"range": [0, all_max_value_accuracies[i]]},
+        )
 
     # Save as image
     filename = f"{frames_dir}/frame_{i}.png"

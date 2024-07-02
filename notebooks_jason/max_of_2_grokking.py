@@ -18,6 +18,7 @@ else:
 from tqdm.auto import tqdm
 import math
 import os
+from pathlib import Path
 import imageio
 from gbmi.exp_max_of_n.plot import (
     compute_l2_norm,
@@ -629,7 +630,7 @@ include_l2_regularization: bool = False  # @param {type:"boolean"}
 # Assuming 'fig', 'models', and the lists 'max_abs_value_attention', 'max_value_losses', 'max_value_accuracies' are defined
 
 # Prepare a directory to save frames
-frames_dir = "frames"
+frames_dir = Path(__file__).parent / "frames"
 os.makedirs(frames_dir, exist_ok=True)
 
 all_min_value_attention = traces_and_frames[include_l2_regularization][
@@ -678,7 +679,8 @@ for i, frame in enumerate(tqdm(grokking_fig[include_l2_regularization].frames)):
 # %%
 # @title make gif
 grokking_gif = (
-    f"max_of_2_grokking{'_regularized' if include_l2_regularization else ''}.gif"
+    Path(__file__).parent
+    / f"max_of_2_grokking{'_regularized' if include_l2_regularization else ''}.gif"
 )
 with imageio.get_writer(grokking_gif, mode="I", duration=0.5, loop=0) as writer:
     for filename in tqdm(filenames):

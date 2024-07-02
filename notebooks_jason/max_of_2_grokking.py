@@ -151,7 +151,7 @@ runtime, model = train_or_load_model(cfg, force=force)
 
 # %%
 # load all model versions
-models = runtime.model_versions(cfg)  # , max_count=3000, step=1)
+models = runtime.model_versions(cfg, max_count=3000, step=1)
 assert models is not None
 models = list(models)
 
@@ -668,6 +668,7 @@ grokking_fig[include_l2_regularization].update_layout(
     updatemenus=[],  # Remove all buttons
     sliders=[],  # Remove all sliders
 )
+grokking_fig[include_l2_regularization].layout["updatemenus"] = []
 
 filenames = []
 for i, frame in enumerate(tqdm(grokking_fig[include_l2_regularization].frames)):

@@ -704,7 +704,7 @@ for i, frame in enumerate(tqdm(grokking_fig[include_l2_regularization].frames)):
 # @title make gif
 grokking_gif = (
     Path(__file__).parent
-    / f"max_of_2_grokking{'_regularized' if include_l2_regularization else ''}.gif"
+    / f"max_of_2_grokking{'_regularized' if include_l2_regularization else ''}{'_with_ov' if include_ov_plot else ''}.gif"
 )
 with imageio.get_writer(grokking_gif, mode="I", duration=0.5, loop=0) as writer:
     for filename in tqdm(filenames):
@@ -728,7 +728,7 @@ if UPLOAD_TO_WANDB:
     assert run is not None
     run.log(
         {
-            f"grokking{'_regularized' if include_l2_regularization else ''}_gif": wandb.Video(
+            f"grokking{'_regularized' if include_l2_regularization else ''}{'_with_ov' if include_ov_plot else ''}_gif": wandb.Video(
                 grokking_gif, fps=2, format="gif"
             )
         }

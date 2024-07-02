@@ -90,7 +90,7 @@ if abs(training_ratio - expected_training_ratio) > 1e-5:
 batch_size = int(round(training_ratio * vocab**seq_len))
 epochs_to_train_for = 3000  # @param {type:"number"}
 include_biases = False  # @param {type:"boolean"}
-include_ov_plot: bool = True  # @param {type:"boolean"}
+include_ov_plot: bool = False  # @param {type:"boolean"}
 cfg = Config(
     experiment=MaxOfN(
         model_config=HookedTransformerConfig(
@@ -325,8 +325,9 @@ def compute_traces_and_frames(
         all_values_ov_zmaxes.append(max_value_ov_z)
 
         cur_traces = []
-        cur_row = 1
+        cur_row = 0
         if include_ov_plot:
+            cur_row += 1
             cur_traces.append(
                 # Attention OV plot trace
                 (
@@ -342,7 +343,6 @@ def compute_traces_and_frames(
                     dict(row=cur_row, col=1),
                 )
             )
-            cur_row += 1
         cur_traces += [
             # Attention plot trace
             (
@@ -899,3 +899,5 @@ if UPLOAD_TO_WANDB:
     assert run is not None
     run.log({f"essential_dynamics": fig6})
     wandb.finish()
+
+# %%

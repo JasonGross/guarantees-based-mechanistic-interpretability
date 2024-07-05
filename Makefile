@@ -89,6 +89,7 @@ sort-mailmap:
 .PHONY: pre-commit-install
 pre-commit-install:
 	$(PRE_COMMIT) install
+	git config --local filter.strip-notebook-output.clean "poetry run jupyter nbconvert --ClearOutputPreprocessor.enabled=True --ClearMetadataPreprocessor.enabled=True --to=notebook --stdin --stdout --log-level=ERROR"
 
 .PHONY: pre-commit
 pre-commit:

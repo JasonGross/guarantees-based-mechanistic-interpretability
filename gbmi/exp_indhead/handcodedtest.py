@@ -30,6 +30,7 @@ def armin(
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.set_default_device("cuda")
 runtime_model_1, model = train_or_load_model(ABCAB8_1H, force="load")
 model.to(device)
 c = 10
@@ -137,8 +138,9 @@ W_Q_1 = model.W_Q[1, 0]
 W_Q_0 = model.W_Q[0, 0]
 W_O_1 = model.W_O[1, 0]
 W_Q_0 = model.W_Q[0, 0]
+
 e_p = W_E.unsqueeze(dim=0) + W_pos.unsqueeze(dim=1)
-print(e_p.shape)
+
 everything = (
     einops.einsum(
         e_p,
@@ -150,26 +152,50 @@ everything = (
     / attn_scale_0
 )
 # %%
-table = torch.zeros((d_voc, d_voc, n_ctx, d_voc)) + float("nan")
-for p in range(2, n_ctx + 1):
+table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
+    "nan"
+)  # p Represents the position of 'b' at index + 1
+for p in range(2, n_ctx):  #
     tmp = torch.zeros((p, d_voc))
     for t_q in range(d_voc):
         tmp[-1, :] = everything[p - 1, t_q, p - 1, t_q]
         for t_k in range(d_voc):
             tmp[-2, :] = everything[p - 1, t_q, p - 2, t_k]
             tmp[:-2, :] = everything[p - 1, t_q, : p - 2, :]
+            if p == n_ctx:
+                print()
+                print(tmp, "TMP")
             tmp_sm = tmp.softmax(dim=0)
-            table[t_q, t_k, p - 1, :] = tmp_sm[-2, :]
-            if p < n_ctx and tmp_sm[-2, :].min(dim=-1).values <= 0.7:
-                print(
-                    p,
-                    t_q,
-                    t_k,
-                    tmp_sm[-2, :].min(dim=-1).indices,
-                    tmp_sm[:, tmp_sm[-2, :].min(dim=-1).indices],
-                    tmp[:, tmp_sm[-2, :].min(dim=-1).indices],
-                )
-                continue
+            table[t_q, t_k, p - 2, :] = tmp_sm[
+                -2, :
+            ]  # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is used as the first entry, at pth poisition
+
+# everything looks like EQKE, table looks like you're indexing by query, key, position (of key?), and other token in the sequence.
+# They you're computing softmax of d_voc - 2 copies of the other token, one copy of t_k in p-2, and the query in p-1.
+# Then you store the post-softmax attention paid to t_k.
+#
+#
+#
+##       xEQKE^tx^t
+#
+##
+#                               t_q vocab paying attention to t_k another letter, if other one gets spammed
+#
+##
+#
+#
+#
+##
+#
+#
+#
+#
+#
+#
+#
+#
+
+
 # %%
 o = W_O_0
 v = W_V_0
@@ -225,7 +251,7 @@ everything_1_2 = ein.array(
 # %%
 # px.imshow((W_E @ v).cpu())
 # %%
-
+print(q_1.device)
 everything_1_b = ein.array(
     lambda a, c, i_2, i_1, b: where(
         torch.logical_and(i_2 > i_1, i_1 >= 1),

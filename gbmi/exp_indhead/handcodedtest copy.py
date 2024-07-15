@@ -37,7 +37,7 @@ c = 10
 d = 10
 W_pos = model.W_pos
 W_E = model.W_E
-epsilon = 0.05
+epsilon = 0.2
 n_ctx = W_pos.shape[0]
 d_voc = W_E.shape[0]
 d_model = W_E.shape[1]
@@ -56,6 +56,7 @@ def add_noise(*ms):
 W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float().to(device) + noise(
     W_E
 )
+
 # %%
 W_pos = (
     ein.array(lambda i, j: ((i + d_voc) == j) * 1.0, sizes=[n_ctx, d_model])
@@ -121,9 +122,10 @@ W_K_1 = (
 W_K_1 = W_K_1 + noise(W_K_1)
 # %%
 # px.imshow((W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T).cpu())
-# %%
+
 W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
 W_U = W_U + noise(W_U)
+# %%
 attn_scale_0 = model.blocks[0].attn.attn_scale
 attn_scale_1 = model.blocks[1].attn.attn_scale
 W_pos = model.W_pos
@@ -138,7 +140,7 @@ W_Q_1 = model.W_Q[1, 0]
 W_Q_0 = model.W_Q[0, 0]
 W_O_1 = model.W_O[1, 0]
 W_Q_0 = model.W_Q[0, 0]
-
+# %%
 e_p = W_E.unsqueeze(dim=0) + W_pos.unsqueeze(dim=1)
 
 everything = (
@@ -154,7 +156,7 @@ everything = (
 # %%
 table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
     "nan"
-)  # p Represents the position of 'b' at p + 1, b can be in position between 2 and n_ctx-1 because trained on of the form aba
+)  # p Represents the position of 'b' at p, b can be in position between 2 and n_ctx-1 because trained on of the form aba
 for p in range(2, n_ctx):  #
     tmp = torch.zeros((p, d_voc))
     for t_q in range(d_voc):
@@ -162,14 +164,25 @@ for p in range(2, n_ctx):  #
         for t_k in range(d_voc):
             tmp[-2, :] = everything[p - 1, t_q, p - 2, t_k]
             tmp[:-2, :] = everything[p - 1, t_q, : p - 2, :]
-            if p == n_ctx:
-                print()
-                print(tmp, "TMP")
-            tmp_sm = tmp.softmax(dim=0)
-            table[t_q, t_k, p - 2, :] = tmp_sm[
-                -2, :
-            ]  # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is at pth poisition
 
+            tmp_sm = tmp.softmax(dim=0)
+            tmp_sm.shape
+            table[t_q, t_k, p - 2, :] = tmp_sm[-2, :]
+            if p == n_ctx - 2:
+                print(tmp_sm[:, torch.min(table[t_q][t_k][p - 2], dim=0)[1]], t_q, t_k)
+            # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is at pth poisition
+
+pos_embed = (W_E @ W_Q_0 @ W_K_0.T @ W_pos.T) / (attn_scale_0)
+pos_pos = W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T / (attn_scale_0)
+embed_pos = (W_pos @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
+embed_embed = (W_E @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
+mintable = torch.min(table, dim=-1)
+
+# %%
+p = 8
+
+pos_matrix = px.imshow((pos_pos[p - 1][:p] + pos_embed[:, :p]).detach().cpu()).show()
+# %%
 # everything looks like EQKE, table looks like you're indexing by query, key, position (of key?), and other token in the sequence.
 # They you're computing softmax of d_voc - 2 copies of the other token, one copy of t_k in p-2, and the query in p-1.
 # Then you store the post-softmax attention paid to t_k.
@@ -193,8 +206,19 @@ for p in range(2, n_ctx):  #
 #
 #
 #
+# %%
 #
+t_q = 10
+t_k = 5
+p = 8
+tmp = torch.zeros((p, d_voc))
+tmp[-1, :] = everything[p - 1, t_q, p - 1, t_q]
+for t_k in range(d_voc):
+    tmp[-2, :] = everything[p - 1, t_q, p - 2, t_k]
+    tmp[:-2, :] = everything[p - 1, t_q, : p - 2, :]
 
+    tmp_sm = tmp.softmax(dim=0)
+    print(tmp_sm)
 
 # %%
 o = W_O_0
@@ -216,7 +240,7 @@ everything_1_1 = ein.array(
 everything_1_1 = ein.array(
     lambda a, c, i_2, j, x: torch.where(
         (j < i_2) & (x != a),
-        (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o)
+        (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o + e_p[:, :] @ v @ o)
         @ q_1
         @ (k_1.T)
         @ (e_p[j, x].T)
@@ -226,6 +250,8 @@ everything_1_1 = ein.array(
     device=device,
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
+# %%
+
 # %%
 
 
@@ -242,6 +268,53 @@ everything_1_2 = ein.array(
     device=device,
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
+# %%
+e_p_average = e_p
+everything_no_pos = ein.array(
+    lambda a, c, i_2, y: (e_p[i_2, a] + e_p[i_2 - 1, c] @ v @ o)
+    @ q_1
+    @ k_1.T
+    @ ((W_E[y]) @ v @ o).T
+    * (1 / attn_scale_1),
+    device=device,
+    sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[1]],
+)
+everything_no_embed = ein.array(
+    lambda a, c, i_2, i: (e_p[i_2, a] + e_p[i_2 - 1, c] @ v @ o)
+    @ q_1
+    @ k_1.T
+    @ ((W_pos[i]) @ v @ o).T
+    * (1 / attn_scale_1),
+    device=device,
+    sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0]],
+)
+c = 1
+top_k = everything_no_pos[:, c, 7, :].topk(3, dim=-1)[0]
+bottom_k = ((-everything_no_pos[:, c, 7, :]).topk(3, dim=-1))[0]
+
+max_pos = (
+    top_k[:, 0] * 0.749
+    - 0.0933 * bottom_k[:, 0]
+    - 0.09 * bottom_k[:, 1]
+    + 0.05 * top_k[:, 1]
+)
+bottom_pos = top_k[:, 1]
+
+max_pos = (
+    0.749 * everything_no_embed[:, c, 7, 5]
+    + max_pos
+    + 0.05 * everything_no_embed[:, c, 7, 2]
+    + 0.09 * everything_no_embed[:, c, 7, 0]
+    + 0.09 * everything_no_embed[:, c, 7, 3]
+)
+bottom_pos = (
+    0.82 * everything_no_embed[:, c, 7, 4]
+    + bottom_pos
+    + 0.09 * everything_no_embed[:, c, 7, 2]
+    + 0.09 * everything_no_embed[:, c, 7, 1]
+)
+
+# %%
 # %%
 
 
@@ -265,10 +338,12 @@ everything_1_b = ein.array(
     device=device,
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
+
+
 # %%
 """
 armintable_1_1 = ein.array(
-    lambda a, c, i_2, j: ein.max(
+    lambda a, c, i_2, j: ein.max
         lambda x: torch.where(
             torch.logical_and(torch.logical_and(x != c, x != a), i_2 > j),
             everything_1_1[a, c, i_2, j, x],
@@ -463,6 +538,10 @@ EVOVOU = W_E @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U
 EVOU = W_E @ W_V_1 @ W_O_1 @ W_U
 # %%
 px.imshow(PVOU.detach().cpu())
+px.imshow(PVOVOU.detach().cpu()).show()
+
+px.imshow(EVOVOU.detach().cpu())
+px.imshow(EVOU.detach().cpu())
 
 
 # %%
@@ -480,7 +559,7 @@ def compute_worst_case_scenario_evou(b, attn_on_b):
     return attn_to_others
 
 
-attn_to_b = 0.6
+attn_to_b = 0.65
 pre_softmax = (
     compute_worst_case_scenario_pos(PVOU, 1, attn_to_b)
     + compute_worst_case_scenario_pos(PVOVOU, 1, attn_to_b)

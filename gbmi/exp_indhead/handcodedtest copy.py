@@ -29,6 +29,10 @@ def armin(
     return ein.apply(f, collect=lambda xs, d: xs.max(d).indices, sizes=sizes)
 
 
+def show(matrix):
+    px.imshow(matrix.detach().cpu()).show()
+
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_default_device("cuda")
 runtime_model_1, model = train_or_load_model(ABCAB8_1H, force="load")
@@ -182,6 +186,12 @@ mintable = torch.min(table, dim=-1)
 p = 8
 pos_matrix = pos_pos[p - 1][:p] + pos_embed[:, :p]
 soft_matrix = pos_matrix.softmax(dim=-1)
+
+
+p = 7
+pos_7_matrix = pos_pos[p - 1][:p] + pos_embed[:, :p]
+soft_7_matrix = pos_7_matrix.softmax(dim=-1)
+
 # %%
 # everything looks like EQKE, table looks like you're indexing by query, key, position (of key?), and other token in the sequence.
 # They you're computing softmax of d_voc - 2 copies of the other token, one copy of t_k in p-2, and the query in p-1.
@@ -251,7 +261,7 @@ everything_1_1 = ein.array(
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
 # %%
-
+torch.tensor([13, 15, 22, 21, 3, 5, 9, 5])
 # %%
 
 
@@ -269,7 +279,6 @@ everything_1_2 = ein.array(
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
 # %%
-e_p_average = e_p
 everything_no_pos = ein.array(
     lambda a, i_2, y: (e_p[i_2, a] + soft_matrix[a] @ W_pos @ v @ o)
     @ q_1
@@ -300,38 +309,45 @@ everything_no_embed_vo = ein.array(
 )
 
 everything_no_embed = ein.array(
-    lambda a, c, i_2, i: (e_p[i_2, a] + soft_matrix[a] @ W_pos @ v @ o)
+    lambda a, i_2, i: (e_p[i_2, a] + soft_matrix[a] @ W_pos @ v @ o)
     @ q_1
     @ k_1.T
     @ ((W_pos[i]) @ v @ o).T
     * (1 / attn_scale_1),
     device=device,
-    sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0]],
+    sizes=[e_p.shape[1], e_p.shape[0], e_p.shape[0]],
 )
-c = 1
-top_k = everything_no_pos[:, 6, :].topk(5, dim=-1)[0]
-print(top_k[:, 0])
-bottom_k = ((-everything_no_pos[:, 6, :]).topk(5, dim=-1))[0]
-print(bottom_k[:, 0])
+top_k = everything_no_pos[:, 7, :].topk(5, dim=-1)[0]
+bottom_k = ((-everything_no_pos[:, 7, :]).topk(5, dim=-1))[0]
+
+
+# a= 5 , b= 9
+
+
+# %%
+
+
 max_pos = (
-    top_k[:, 0] * 0.75
-    - 0.095 * bottom_k[:, 1]
-    - 0.095 * bottom_k[:, 2]
-    + 0.06 * top_k[:, 1]
+    top_k[:, 0] * 0.77
+    - 0.09 * bottom_k[:, 1]
+    - 0.09 * bottom_k[:, 2]
+    + 0.05 * top_k[:, 1]
 )
 bottom_pos = top_k[:, 1]
+
+
 max_pos = (
-    0.75 * (everything_no_embed[:, 6, 0, 5] + everything_no_embed_vo[:, 6, 6])
+    0.77 * (everything_no_embed[:, 7, 5] + everything_no_embed_vo[:, 7, 6])
     + max_pos
-    + 0.06 * (everything_no_embed[:, 6, 0, 2] + everything_no_embed_vo[:, 6, 3])
-    + 0.095 * (everything_no_embed[:, 6, 0, 0] + everything_no_embed_vo[:, 6, 1])
-    + 0.095 * (everything_no_embed[:, 6, 0, 3] + everything_no_embed_vo[:, 6, 4])
+    + 0.05 * (everything_no_embed[:, 7, 2] + everything_no_embed_vo[:, 7, 3])
+    + 0.09 * (everything_no_embed[:, 7, 0] + everything_no_embed_vo[:, 7, 1])
+    + 0.09 * (everything_no_embed[:, 7, 3] + everything_no_embed_vo[:, 7, 4])
 )
 bottom_pos = (
-    0.82 * (everything_no_embed[:, 6, 0, 4] + everything_no_embed_vo[:, 6, 5])
+    0.82 * (everything_no_embed[:, 7, 4] + everything_no_embed_vo[:, 7, 5])
     + bottom_pos
-    + 0.09 * (everything_no_embed[:, 6, 0, 2] + everything_no_embed_vo[:, 6, 3])
-    + 0.09 * (everything_no_embed[:, 6, 0, 1] + everything_no_embed_vo[:, 6, 2])
+    + 0.09 * (everything_no_embed[:, 7, 2] + everything_no_embed_vo[:, 7, 3])
+    + 0.09 * (everything_no_embed[:, 7, 1] + everything_no_embed_vo[:, 7, 2])
 )
 
 # %%

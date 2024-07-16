@@ -176,21 +176,76 @@ for p in range(2, n_ctx):  #
                 print(tmp_sm[:, torch.min(table[t_q][t_k][p - 2], dim=0)[1]], t_q, t_k)
             # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is at pth poisition
 
-pos_embed = (W_E @ W_Q_0 @ W_K_0.T @ W_pos.T) / (attn_scale_0)
-pos_pos = (W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T) / (attn_scale_0)
-embed_pos = (W_pos @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
-embed_embed = (W_E @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
+EQKP = (W_E @ W_Q_0 @ W_K_0.T @ W_pos.T) / (attn_scale_0)
+PQKP = (W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T) / (attn_scale_0)
+PQKE = (W_pos @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
+EQKE = (W_E @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
 mintable = torch.min(table, dim=-1)
 
 # %%
-p = 8
-pos_matrix = pos_pos[p - 1][:p] + pos_embed[:, :p]
-soft_matrix = pos_matrix.softmax(dim=-1)
+attn_matrix = PQKP + EQKP.unsqueeze(1)
+
+# PQKP is 8x8, and EQKP is 26x8. EQKP represents attention paid from E_b to the position of 'a'.
+# PQKP represents attention paid from Position of 'b' to Position of 'a'
+# unsqueeze is such that EQKP goes to 26x1x8, so that a copy of it gets added
+# for each possible position of 'b'.
+
+# attn_matrix is indexed by 'b' and position of 'b'. The output is a row which represents
+# typical pre-softmax attention scores for 'b' and position of 'b'.
+#
+#
+#
+
+b_position = 6  # 0-indexed.
+
+typical_attn_scores = attn_matrix[:, b_position, : (b_position + 1)]  # indexed by 'b'
+
+typical_softmax = typical_attn_scores.softmax(dim=-1)
+
+PQKE_tolerances = PQKE[
+    b_position, :
+]  # These are the possible attention scores that can get added at each position
+# Depending on the token which is at that position.
+# We know what the token is at b_position so can account for this
 
 
-p = 7
-pos_7_matrix = pos_pos[p - 1][:p] + pos_embed[:, :p]
-soft_7_matrix = pos_7_matrix.softmax(dim=-1)
+typical_attn_scores[:, b_position] = (
+    typical_attn_scores[:, b_position] + PQKE_tolerances + EQKE.diag()[:]
+)  # Adds attn scores due to known value of 'b'
+
+
+EQKE_max = torch.max(EQKE, dim=1)
+EQKE_min = torch.min(EQKE, dim=1)
+
+index_to_max_min = 2
+
+min_attn_scores = torch.zeros(typical_attn_scores.shape)
+max_attn_scores = torch.zeros(typical_attn_scores.shape)
+for index in range(b_position):
+    if index == index_to_max_min:
+        min_attn_scores[:, index] = EQKE_min[0][:] + typical_attn_scores[:, index]
+        max_attn_scores[:, index] = EQKE_max[0][:] + typical_attn_scores[:, index]
+    else:
+        min_attn_scores[:, index] = EQKE_max[0][:] + typical_attn_scores[:, index]
+        max_attn_scores[:, index] = EQKE_min[0][:] + typical_attn_scores[:, index]
+min_attn_scores[:, b_position] = typical_attn_scores[:, b_position]
+max_attn_scores[:, b_position] = typical_attn_scores[:, b_position]
+
+minimum_softmax = min_attn_scores.softmax(dim=-1)
+
+maximum_softmax = max_attn_scores.softmax(dim=-1)
+
+print(maximum_softmax, "max_softmax")
+
+print(minimum_softmax, "min_softmax")
+
+print(
+    (maximum_softmax - minimum_softmax)[:, index_to_max_min],
+    "\n\nDifferences between max and min softmax.",
+)
+
+typical_softmax = typical_attn_scores.softmax(dim=-1)
+
 
 # %%
 # everything looks like EQKE, table looks like you're indexing by query, key, position (of key?), and other token in the sequence.
@@ -359,6 +414,81 @@ bottom_pos = (
 
 # %%
 # px.imshow((W_E @ v).cpu())
+
+
+evo_ovpos = (
+    (W_E @ v @ o)
+    @ q_1
+    @ k_1.T
+    @ (o.T @ v.T @ W_pos[:7].T @ soft_7_matrix.T)
+    / (attn_scale_1)
+)
+
+evo_pos = (W_E @ v @ o) @ q_1 @ k_1.T @ (W_pos.T) / (attn_scale_1)
+
+evo_e = (W_E @ v @ o) @ q_1 @ k_1.T @ (W_E.T) / (attn_scale_1)
+
+evo_ove = (W_E @ v @ o) @ q_1 @ k_1.T @ (o.T @ v.T @ W_E.T) / (attn_scale_1)
+
+e_ovpos = (
+    (W_E) @ q_1 @ k_1.T @ (o.T @ v.T @ W_pos[:7].T @ soft_7_matrix.T) / (attn_scale_1)
+)
+
+e_pos = (W_E) @ q_1 @ k_1.T @ (W_pos.T) / (attn_scale_1)
+
+e_e = (W_E) @ q_1 @ k_1.T @ (W_E.T) / (attn_scale_1)  # NEED LOOKING AT
+
+e_ove = (W_E) @ q_1 @ k_1.T @ (o.T @ v.T @ W_E.T) / (attn_scale_1)  # NEED LOOKING AT
+
+
+pos_ove = (W_pos @ q_1 @ k_1.T @ o.T @ v.T @ W_E.T) / (
+    attn_scale_1
+)  #  NEED LOOKING AT  0.5ish           SAME UNIT
+
+
+pos_e = (W_pos @ q_1 @ k_1.T @ W_E.T) / (attn_scale_1)  # 0.01 ish
+
+posvo_ove = (soft_matrix @ W_pos @ v @ o @ q_1 @ k_1.T @ o.T @ v.T @ W_E.T) / (
+    attn_scale_1
+)
+# NEED LOOKING AT
+
+posvo_e = (soft_matrix @ W_pos @ v @ o @ q_1 @ k_1.T @ W_E.T) / (attn_scale_1)  # 0.5ish
+
+
+posvo_ovpos = (
+    soft_matrix
+    @ W_pos
+    @ v
+    @ o
+    @ q_1
+    @ k_1.T
+    @ o.T
+    @ v.T
+    @ W_pos[:7].T
+    @ soft_7_matrix.T
+) / (
+    attn_scale_1
+)  # =-0.5 roughly
+posvo_pos = (soft_matrix @ W_pos @ v @ o @ q_1 @ k_1.T @ W_pos.T) / (
+    attn_scale_1
+)  # Due to positional info
+pos_ovpos = (
+    W_pos @ q_1 @ k_1.T @ o.T @ v.T @ W_pos[:7].T @ soft_7_matrix.T
+) / (  # attention paid to b due to positional
+    attn_scale_1
+)
+
+
+pos_pos = (W_pos @ q_1 @ k_1.T @ W_pos.T) / (attn_scale_1)  # 0.1 max
+
+
+# embed_value_7 = (W_E@v@o)@q_1@k_1.T@(o.T@v.T@W_pos.T[:,:7]@soft_7_matrix.T)/(attn_scale_1)
+
+# t_line_7 = embed_no_value[:,5].unsqueeze(0) + embed_value_7[:,0].unsqueeze(0) # Line showing contribution from positional embeddings due to value functions
+# t_line_8 = embed_no_value[:, 6].unsqueeze(0) + embed_value_8[:, 0].unsqueeze(0)
+
+
 # %%
 print(q_1.device)
 everything_1_b = ein.array(

@@ -491,3 +491,15 @@ print(pre_softmax.softmax(dim=0))
 
 
 # %%
+everything = (
+    einops.einsum(
+        e_p,
+        W_V_0,
+        W_O_0,
+        W_Q_1,
+        W_K_1,
+        e_p,
+        "q_pos q_val k, k l, l m, m n, o n, k_pos k_val o -> q_pos q_val k_pos k_val",
+    )
+    / attn_scale_1
+)

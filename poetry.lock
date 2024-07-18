@@ -4557,13 +4557,13 @@ dev = ["seaborn"]
 
 [[package]]
 name = "tikzplotly"
-version = "0.1.6"
+version = "0.1.7"
 description = "Convert plotly figures to LaTeX / tikz figures"
 optional = false
 python-versions = "*"
 files = [
-    {file = "tikzplotly-0.1.6-py3-none-any.whl", hash = "sha256:91c59410457141fc81d95349d660c02605ba6bb32aa812ef4e3b3a8c799828c8"},
-    {file = "tikzplotly-0.1.6.tar.gz", hash = "sha256:2c8503ad719435f8f46f78a18985f2ead4368b8c08fcc9d8a90ef97518c61811"},
+    {file = "tikzplotly-0.1.7-py3-none-any.whl", hash = "sha256:b7f807d9ce10f5d54161838fe12a542eb41e7a6cf1061cd8eb399a391b45d4bb"},
+    {file = "tikzplotly-0.1.7.tar.gz", hash = "sha256:0add44f0620a68b68d7590f11108ad028576489e9b7cb1d5d6400a0bb93319e3"},
 ]
 
 [package.dependencies]

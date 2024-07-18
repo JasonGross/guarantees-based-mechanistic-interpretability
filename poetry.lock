@@ -1612,17 +1612,16 @@ arrow = ">=0.15.0"
 
 [[package]]
 name = "jaxtyping"
-version = "0.2.28"
+version = "0.2.33"
 description = "Type annotations and runtime checking for shape and dtype of JAX arrays, and PyTrees."
 optional = false
 python-versions = "~=3.9"
 files = [
-    {file = "jaxtyping-0.2.28-py3-none-any.whl", hash = "sha256:4a54eb964087cd46463d9a86c805b4e4f5c20cce5f22049d6f35a26d9f105bd3"},
-    {file = "jaxtyping-0.2.28.tar.gz", hash = "sha256:cd20bf1558a90c6d77c589354e35670ecc5b94925ef45bf1c020fde7b44fac8d"},
+    {file = "jaxtyping-0.2.33-py3-none-any.whl", hash = "sha256:918d6094c73f28d3196185ef55d1832cbcd2804d1d388f180060c4366a9e2107"},
+    {file = "jaxtyping-0.2.33.tar.gz", hash = "sha256:9a9cfccae4fe05114b9fb27a5ea5440be4971a5a075bbd0526f6dd7d2730f83e"},
 ]
 
 [package.dependencies]
-numpy = ">=1.20.0"
 typeguard = "2.13.3"
 
 [[package]]
@@ -5498,4 +5497,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "b2d043ad7bba4509f424ab06b046942f93d51d05cff68305e1f6c93be4c19b38"
+content-hash = "811d1858105b2b8427ccb796debe8b151b09737f8a4926a66bc0ac918fb42d94"

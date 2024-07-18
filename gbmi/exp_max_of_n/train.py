@@ -208,6 +208,38 @@ MAX_OF_10_CONFIG: Config[MaxOfN] = Config(
 )
 
 
+def MAX_OF_4_CONFIG(seed: int) -> Config[MaxOfN]:
+    return Config(
+        experiment=MaxOfN(
+            model_config=HookedTransformerConfig(
+                act_fn=None,
+                attn_only=True,
+                d_head=32,
+                d_mlp=None,
+                d_model=32,
+                d_vocab=64,
+                device="cpu",
+                n_ctx=4,
+                n_heads=1,
+                n_layers=1,
+                normalization_type=None,
+            ),
+            zero_biases=True,
+            use_log1p=True,
+            use_end_of_sequence=False,
+            seq_len=4,
+            optimizer="AdamW",
+            optimizer_kwargs={"lr": 0.001, "betas": (0.9, 0.999)},
+            train_dataset_cfg=IterableDatasetCfg(pick_max_first=False),
+            test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
+        ),
+        deterministic=True,
+        seed=seed,
+        batch_size=128,
+        train_for=(3000, "steps"),
+    )
+
+
 class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     def __init__(self, config: Config[MaxOfN], model: HookedTransformer):
         super().__init__(config, model)

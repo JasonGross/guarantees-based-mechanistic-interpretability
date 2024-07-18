@@ -1,3 +1,4 @@
+import os, sys
 import functorch
 import torch
 
@@ -107,8 +108,9 @@ tensor([[0, 0, 0, 0],
     # TODO: add a better warning for the following
     def test_ein_unbound_index_with_no_size_errors(self):
         A = torch.tensor([[0, 1], [2, 3]])
+        dimname = "dim" if os.name != "nt" else "d0"
         self.assertExpectedRaisesInline(
             ValueError,
             lambda: ein.array(lambda i, j: A[j, j]),
-            """dimension dim is unbound""",
+            f"""dimension {dimname} is unbound""",
         )

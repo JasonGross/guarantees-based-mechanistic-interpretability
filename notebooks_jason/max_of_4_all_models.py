@@ -868,7 +868,6 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
     runtime, model = runtime_models[seed]
     training_wrapper = training_wrappers[seed]
-    assert cfg.experiment.model_config.seed is not None
 
     # loop for computing overall loss and accuracy
     @torch.no_grad()
@@ -923,7 +922,7 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
 
 
 # \sum_{i=0}^{k} i^2 = k * (k+1) * (k*2+1) // 6
-ks = [cfgs[seed].experiment.model_config.d_vocab - 2 for seed in relevant_seeds]
+ks = [model_cfgs[seed].d_vocab - 2 for seed in relevant_seeds]
 total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
 with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
@@ -1552,11 +1551,8 @@ def try_all_proofs_subcubic(
     count_proof_pbar: tqdm,
 ) -> list[dict]:
     cfg = cfgs[seed]
-    cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
     runtime, model = runtime_models[seed]
-    training_wrapper = training_wrappers[seed]
-    assert cfg.experiment.model_config.seed is not None
 
     min_gaps_lists = {}
 

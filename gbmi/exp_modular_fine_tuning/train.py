@@ -12,7 +12,7 @@ from jaxtyping import Float, Integer
 from torch import Tensor
 from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-import argparse
+import simple_parsing
 
 from gbmi.model import (
     TrainingWrapper,
@@ -37,9 +37,15 @@ from gbmi.utils.sequences import generate_all_sequences
 
 @dataclass
 class ModularFineTuning(ExperimentConfig):
-    model_config: HookedTransformerConfig
     p: int  # the prime
     zero_biases: bool = True
+    seq_len: int = 2
+    d_model: int = 128
+    d_mlp: int = 512
+    n_layers: int = 1
+    n_heads: int = 4
+    act_fn: Literal["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"] = "relu"
+    normalization_type: Optional[str] = None
     attention_rate: float = 0  # 0 is use attention, 1 is uniformly constant attention
     n_train_samples: Optional[int] = None  # if none, infinite dataset
     n_test_samples: int = 1024
@@ -50,8 +56,8 @@ class ModularFineTuning(ExperimentConfig):
     version_number: int = 1
 
     @property
-    def seq_len(self) -> int:
-        return self.model_config.n_ctx - 1
+    def n_ctx(self) -> int:
+        return self.seq_len + 1
 
     def get_training_wrapper(self):
         return ModularFineTuningTrainingWrapper
@@ -61,36 +67,30 @@ class ModularFineTuning(ExperimentConfig):
 
     def get_summary_slug(self, config: Config[ModularFineTuning]) -> str:
         return (
-            f"ModularFineTuning-{config.experiment.model_config.n_ctx}-{config.train_for[0]}-"
+            f"ModularFineTuning-{config.experiment.n_ctx}-{config.train_for[0]}-"
             f"{config.train_for[1]}-attention-rate-{config.experiment.attention_rate}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
         )
 
-    def __post_init__(self):
-        self.model_config.d_vocab = self.p + 1
-        self.model_config.d_vocab_out = self.p
-        self.model_config.__post_init__()
+    # def __post_init__(self):
+    #     self.model_config.d_vocab = self.p + 1
+    #     self.model_config.d_vocab_out = self.p
+    #     self.model_config.__post_init__()
 
     def config_post_init(self, config: Config[ModularFineTuning]) -> None:
-        self.model_config.seed = reseed(config.seed, "model")
+        # self.model_config.seed = reseed(config.seed, "model")
         config.batch_size = int(self.p**self.seq_len * self.training_ratio)
 
 
 def modular_addition_config(attn_rate: float, p: int = 113):
     return Config(
         experiment=ModularFineTuning(
-            model_config=HookedTransformerConfig(
-                n_ctx=3,
-                d_model=128,
-                d_mlp=512,
-                d_head=32,
-                n_layers=1,
-                n_heads=4,
-                act_fn="relu",
-                init_weights=True,
-                attn_only=False,
-                normalization_type=None,
-            ),
+            seq_len=2,
+            d_model=128,
+            d_mlp=512,
+            n_layers=1,
+            n_heads=4,
+            act_fn="relu",
             p=p,
             zero_biases=True,
             attention_rate=attn_rate,
@@ -117,8 +117,30 @@ class ModularFineTuningTrainingWrapper(TrainingWrapper[ModularFineTuning]):
         self.config = config
 
     @staticmethod
+    def build_model_config(
+        config: Config[ModularFineTuning],
+    ) -> HookedTransformerConfig:
+        return HookedTransformerConfig(
+            d_vocab=config.experiment.p + 1,
+            d_vocab_out=config.experiment.p,
+            n_ctx=config.experiment.seq_len + 1,
+            d_model=config.experiment.d_model,
+            d_mlp=config.experiment.d_mlp,
+            d_head=config.experiment.d_model // config.experiment.n_heads,
+            n_layers=config.experiment.n_layers,
+            n_heads=config.experiment.n_heads,
+            act_fn=config.experiment.act_fn,
+            normalization_type=config.experiment.normalization_type,
+            init_weights=True,
+            attn_only=False,
+            seed=reseed(config.seed, "model"),
+        )
+
+    @staticmethod
     def build_model(config: Config[ModularFineTuning]) -> HookedTransformer:
-        model = HookedTransformer(config.experiment.model_config)
+        model = HookedTransformer(
+            ModularFineTuningTrainingWrapper.build_model_config(config)
+        )
         if config.experiment.zero_biases:
             for name, param in model.named_parameters():
                 if "b_" in name:
@@ -190,15 +212,13 @@ class ModularFineTuningDataModule(DataModule):
     def __init__(self, config: Config[ModularFineTuning]):
         super().__init__(config)
         self.config = config
-        self.model_config = config.experiment.model_config
-        self.seq_len = self.model_config.n_ctx
         self.dataset_seed = reseed(self.config.seed, "dataset_seed")
 
     def setup(self, stage: str):
         # Full dataset
         rng = np.random.default_rng(self.dataset_seed)
         pairs = generate_all_sequences(
-            self.config.experiment.p, self.model_config.n_ctx - 1
+            self.config.experiment.p, self.config.experiment.seq_len
         )
         # concat a special token of value self.config.experiment.p to the end of each sequence for '='
         equals_token = self.config.experiment.p
@@ -264,38 +284,24 @@ class ModularFineTuningDataModule(DataModule):
 
 
 def main(argv: List[str] = sys.argv):
-    parser = argparse.ArgumentParser(
+    parser = simple_parsing.ArgumentParser(
         description="Train a model with configurable attention rate."
     )
-    parser.add_argument("--p", type=int, default=113, help="The prime to use.")
-    parser.add_argument(
-        "--attention-rate", type=float, default=0, help="Attention rate for the model."
+    parser.add_arguments(
+        ModularFineTuning,
+        dest="experiment_config",
+        default=MODULAR_ADDITION_113_CLOCK_CONFIG.experiment,
     )
     add_force_argument(parser)
     add_no_save_argument(parser)
-    HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS = set(
-        (
-            "d_vocab",
-            "d_vocab_out",
-            "seed",
-        )
-    )
-    Config.add_arguments(parser)
-    add_HookedTransformerConfig_arguments(
-        parser, exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS
-    )
+    Config.add_arguments(parser, default=MODULAR_ADDITION_113_CLOCK_CONFIG)
+
     args = parser.parse_args(argv[1:])
 
-    config = modular_addition_config(attn_rate=args.attention_rate, p=args.p)
-    config.experiment.model_config = update_HookedTransformerConfig_from_args(
-        config,
-        config.experiment.model_config,
-        args,
-        exclude_arguments=HOOKED_TRANSFORMER_CONFIG_EXCLUDE_ARGS,
-    )
+    config = Config(args.experiment_config)
     config = config.update_from_args(args)
+    print("Model config:", ModularFineTuningTrainingWrapper.build_model_config(config))
     print("Training model:", config)
-
     train_or_load_model(config, force=args.force, save_to=args.save_to)
 
 

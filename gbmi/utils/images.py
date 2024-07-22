@@ -46,6 +46,21 @@ def remove_bak(*files: Union[str, Path], save_bak: bool = True, ext: str = ".bak
             bak_file.unlink()
 
 
+def batch_run(args, *images, batchsize=64, post_args=[], **kwargs):
+    if len(images) > batchsize:
+        return [
+            batch_run(
+                args,
+                *images[i : i + batchsize],
+                batchsize=batchsize,
+                post_args=post_args,
+                **kwargs,
+            )
+            for i in range(0, len(images), batchsize)
+        ]
+    return subprocess.run([*args, *images, *post_args], check=True, **kwargs)
+
+
 def ect(
     *images: Union[str, Path],
     level: Optional[int] = None,
@@ -65,7 +80,7 @@ def ect(
         extra_args.append("-strip")
     if strict:
         extra_args.append("--strict")
-    return subprocess.run(["ect", *extra_args, *images], check=True)
+    return batch_run(["ect", *extra_args], *images, check=True)
 
 
 def optipng(
@@ -82,7 +97,7 @@ def optipng(
     extra_args = [] if not exhaustive else ["-zm1-9"]
     extra_args += ["-fix"] if fix else []
     remove_bak(*images, save_bak=save_bak)
-    return subprocess.run(["optipng", f"-o{level}", *extra_args, *images], check=True)
+    return batch_run(["optipng", f"-o{level}", *extra_args], *images, check=True)
 
 
 def pngcrush(

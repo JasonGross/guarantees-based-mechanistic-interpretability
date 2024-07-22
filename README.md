@@ -6,7 +6,7 @@ Successor to https://github.com/JasonGross/neural-net-coq-interp.
 
 ## Writeups
 
-# Compact Proofs of Model Performance via Mechanistic Interpretability
+### Compact Proofs of Model Performance via Mechanistic Interpretability
 
 ```bibtex
 @misc{gross2024compact,

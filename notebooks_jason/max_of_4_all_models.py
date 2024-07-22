@@ -90,6 +90,9 @@ from gbmi.exp_max_of_n.train import (
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
+    MAX_OF_4_CONFIG,
+    SEEDS,
+    SELECTED_SEED,
 )
 from gbmi.model import Config
 import torch
@@ -216,7 +219,7 @@ parser = ArgumentParser()
 parser.add_argument(
     "--seeds",
     type=str,
-    default="50,104,123,519,742,913,1185,1283,1412,1490,1681,1696,1895,1951,2236,2306,2345,2549,2743,2773,3175,3254,3284,4157,4305,4430,4647,4729,4800,4810,5358,5615,5781,5928,6082,6155,6159,6204,6532,6549,6589,6910,7098,7238,7310,7467,7790,7884,8048,8299,8721,8745,8840,8893,9132,9134,9504,9816,10248,11124,11130,11498,11598,11611,12141,12287,12457,12493,12552,12561,13036,13293,13468,13654,13716,14095,14929,15043,15399,15622,15662,16069,16149,16197,16284,17080,17096,17194,17197,18146,18289,18668,19004,19093,19451,19488,19538,19917,20013,20294,20338,20415,20539,20751,20754,20976,21317,21598,22261,22286,22401,22545,23241,23367,23447,23633,23696,24144,24173,24202,24262,24438,24566,25516,26278,26374,26829,26932,27300,27484,27584,27671,27714,28090,28716,28778,29022,29052,29110,29195,29565,29725,29726,30371,30463,30684,30899,31308,32103,32374,32382",
+    default=",".join(sorted(map(str, SEEDS))),
     help="Comma-separated list of seeds to use",
 )
 parser.add_argument(
@@ -402,41 +405,13 @@ seeds = (
     if compute_expensive_average_across_many_models
     else []
 )
-if 123 in seeds:
-    seeds = [123] + [s for s in seeds if s != 123]
-cfgs = {
-    seed: Config(
-        experiment=MaxOfN(
-            model_config=HookedTransformerConfig(
-                act_fn=None,
-                attn_only=True,
-                d_head=32,
-                d_mlp=None,
-                d_model=32,
-                d_vocab=64,
-                device="cpu",
-                n_ctx=4,
-                n_heads=1,
-                n_layers=1,
-                normalization_type=None,
-            ),
-            zero_biases=True,
-            use_log1p=True,
-            use_end_of_sequence=False,
-            seq_len=4,
-            optimizer="AdamW",
-            optimizer_kwargs={"lr": 0.001, "betas": (0.9, 0.999)},
-            train_dataset_cfg=IterableDatasetCfg(pick_max_first=False),
-            test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
-        ),
-        deterministic=True,
-        seed=seed,
-        batch_size=128,
-        train_for=(3000, "steps"),
-    )
-    for seed in seeds
-}
+if SELECTED_SEED in seeds:
+    seeds = [SELECTED_SEED] + [s for s in seeds if s != SELECTED_SEED]
+cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in [SELECTED_SEED] + list(seeds)}
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
+model_cfgs = {
+    seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()
+}
 datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
 cfg_hashes_for_filename = {
     seed: f"{seed}_{cfg_hashes[seed].replace('/', '__SLASH__')}"
@@ -589,7 +564,7 @@ train_data = {
         "seed": seed,
         "loss": train_average_loss[seed],
         "accuracy": train_average_accuracy[seed],
-        "model-seed": cfgs[seed].experiment.model_config.seed,
+        "model-seed": model_cfgs[seed].seed,
         "dataset-seed": datamodules[seed].dataset_seed,
     }
     for seed in runtime_models.keys()
@@ -650,12 +625,8 @@ brute_force_data = {
 
 
 def get_brute_force_for(seed: int, *, pbar: tqdm):
-    cfg = cfgs[seed]
-    cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
-    runtime, model = runtime_models[seed]
     training_wrapper = training_wrappers[seed]
-    assert cfg.experiment.model_config.seed is not None
     all_tokens_dataset = all_tokens_datasets[seed]
     total_loss = 0.0
     total_accuracy = 0.0
@@ -897,7 +868,6 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
     runtime, model = runtime_models[seed]
     training_wrapper = training_wrappers[seed]
-    assert cfg.experiment.model_config.seed is not None
 
     # loop for computing overall loss and accuracy
     @torch.no_grad()
@@ -952,7 +922,7 @@ def _handle_cubic(seed: int, *, pbar: tqdm):
 
 
 # \sum_{i=0}^{k} i^2 = k * (k+1) * (k*2+1) // 6
-ks = [cfgs[seed].experiment.model_config.d_vocab - 2 for seed in relevant_seeds]
+ks = [model_cfgs[seed].d_vocab - 2 for seed in relevant_seeds]
 total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
 with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
@@ -1581,11 +1551,8 @@ def try_all_proofs_subcubic(
     count_proof_pbar: tqdm,
 ) -> list[dict]:
     cfg = cfgs[seed]
-    cfg_hash = cfg_hashes[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
     runtime, model = runtime_models[seed]
-    training_wrapper = training_wrappers[seed]
-    assert cfg.experiment.model_config.seed is not None
 
     min_gaps_lists = {}
 

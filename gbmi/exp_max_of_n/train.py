@@ -88,18 +88,13 @@ DatasetCfg = Union[IterableDatasetCfg, FullDatasetCfg]
 @dataclass
 class MaxOfN(ExperimentConfig):
     # Model config
-    model_config: HookedTransformerConfig = field(
-        default_factory=lambda: HookedTransformerConfig(
-            n_layers=1,
-            n_heads=1,
-            d_model=32,
-            d_head=32,
-            d_vocab=64,
-            attn_only=True,
-            normalization_type=None,
-            n_ctx=2,
-        )
-    )
+    n_layers: int = 1
+    n_heads: int = 1
+    d_model: int = 32
+    d_vocab_out: int = 64
+    attn_only: bool = True
+    d_mlp: Optional[int] = None
+    normalization_type: Optional[Literal["LN", "LNPre"]] = None
     zero_biases: bool = True
     use_log1p: bool = False
     # TODO(Euan, from Jason): Should this go in DatasetCfg?  In some shared dataset cfg?
@@ -127,25 +122,15 @@ class MaxOfN(ExperimentConfig):
     optimizer: Literal["Adam", "AdamW", "SGD"] = "Adam"
 
     def __post_init__(self):
-        self.model_config.n_ctx = self.seq_len
         self.logging_options.qpos = -1
-        self.model_config.init_weights = not self.use_kaiming_init
         if self.use_end_of_sequence:
-            self.model_config.n_ctx = self.seq_len + 1
-            self.model_config.d_vocab = self.model_config.d_vocab_out + 1
             self.logging_options.qtok = -1
         exclude = ("logging_options", "log_matrix_on_run_batch_prefixes")
-        if not self.use_kaiming_init:
-            exclude += ("use_kaiming_init",)
         setattr(self, _EXCLUDE, exclude)
-        self.model_config.__post_init__()
         self.logging_options.__post_init__()
 
-    def config_post_init(self, config: Config[MaxOfN]) -> None:
-        self.model_config.seed = reseed(config.seed, "model")
-
     def get_eos_token(self) -> Optional[int]:
-        return self.model_config.d_vocab - 1 if self.use_end_of_sequence else None
+        return self.d_vocab_out if self.use_end_of_sequence else None
 
     def get_training_wrapper(self):
         return MaxOfNTrainingWrapper
@@ -154,7 +139,7 @@ class MaxOfN(ExperimentConfig):
         return MaxOfNDataModule
 
     def get_summary_slug(self, config: Config[MaxOfN]) -> str:
-        n_layers = config.experiment.model_config.n_layers
+        n_layers = config.experiment.n_layers
         if isinstance(config.experiment.train_dataset_cfg, FullDatasetCfg):
             force_adjacent = ",".join(
                 map(str, config.experiment.train_dataset_cfg.force_adjacent)
@@ -211,19 +196,17 @@ MAX_OF_10_CONFIG: Config[MaxOfN] = Config(
 def MAX_OF_4_CONFIG(seed: int) -> Config[MaxOfN]:
     return Config(
         experiment=MaxOfN(
-            model_config=HookedTransformerConfig(
-                act_fn=None,
-                attn_only=True,
-                d_head=32,
-                d_mlp=None,
-                d_model=32,
-                d_vocab=64,
-                device="cpu",
-                n_ctx=4,
-                n_heads=1,
-                n_layers=1,
-                normalization_type=None,
-            ),
+            # act_fn=None,
+            attn_only=True,
+            # d_head=32,
+            d_mlp=None,
+            d_model=32,
+            d_vocab_out=64,
+            # device="cpu",
+            # n_ctx= 4,
+            n_heads=1,
+            n_layers=1,
+            normalization_type=None,
             zero_biases=True,
             use_log1p=True,
             use_end_of_sequence=False,
@@ -253,8 +236,41 @@ class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
         )
 
     @staticmethod
+    def build_model_config(config: Config[MaxOfN]) -> HookedTransformerConfig:
+        return HookedTransformerConfig(
+            n_layers=config.experiment.n_layers,
+            n_heads=config.experiment.n_heads,
+            d_model=config.experiment.d_model,
+            d_head=config.experiment.d_model // config.experiment.n_heads,
+            d_vocab=config.experiment.d_vocab_out
+            + (1 if config.experiment.use_end_of_sequence else 0),
+            n_ctx=config.experiment.seq_len
+            + (1 if config.experiment.use_end_of_sequence else 0),
+            d_vocab_out=config.experiment.d_vocab_out,
+            attn_only=config.experiment.attn_only,
+            normalization_type=config.experiment.normalization_type,
+            d_mlp=config.experiment.d_mlp,
+            seed=reseed(config.seed, "model"),
+            init_weights=not config.experiment.use_kaiming_init,
+            device="cpu" if config.deterministic else None,
+        )
+
+    @staticmethod
+    def update_config_from_model_config(
+        experiment: MaxOfN, config: HookedTransformerConfig
+    ) -> MaxOfN:
+        experiment.n_layers = config.n_layers
+        experiment.n_heads = config.n_heads
+        experiment.d_model = config.d_model
+        experiment.d_vocab_out = config.d_vocab_out
+        experiment.attn_only = config.attn_only
+        experiment.normalization_type = config.normalization_type
+        experiment.d_mlp = config.d_mlp
+        return experiment
+
+    @staticmethod
     def build_model(config: Config[MaxOfN]) -> HookedTransformer:
-        model = HookedTransformer(config.experiment.model_config)
+        model = HookedTransformer(MaxOfNTrainingWrapper.build_model_config(config))
         if config.experiment.use_kaiming_init:
             if model.cfg.seed is not None:
                 torch.manual_seed(model.cfg.seed)
@@ -395,11 +411,11 @@ class MaxOfNIterableDataset(
                 max_val = (
                     int(
                         torch.randint(
-                            0, self.config.experiment.model_config.d_vocab_out, tuple()
+                            0, self.config.experiment.d_vocab_out, tuple()
                         ).item()
                     )
                     if self.pick_max_first
-                    else self.config.experiment.model_config.d_vocab_out - 1
+                    else self.config.experiment.d_vocab_out - 1
                 )
                 val = torch.randint(
                     0,
@@ -442,14 +458,14 @@ class MaxOfNDataModule(DataModule):
     def __init__(self, config: Config[MaxOfN]):
         super().__init__(config)
         self.config = config
-        self.model_config = config.experiment.model_config
+        # self.model_config = MaxOfNTrainingWrapper.build_model_config(config)
         self.seq_len = config.experiment.seq_len
         self.dataset_seed = reseed(config.seed, "dataset_seed")
 
     @cache
     def get_full_dataset(self, force_adjacent: Sequence[int], training_ratio: float):
         rng = np.random.default_rng(self.dataset_seed)
-        data = generate_all_sequences(self.model_config.d_vocab_out, self.seq_len)
+        data = generate_all_sequences(self.config.experiment.d_vocab_out, self.seq_len)
         data = shuffle_data(data, rng)
 
         if force_adjacent:
@@ -641,8 +657,14 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
             | ({""} if args.log_matrix_interp else set()),
         },
     ).update_from_args(args)
-    config.experiment.model_config = update_HookedTransformerConfig_from_args(
-        config, config.experiment.model_config, args, HOOKED_TRANSFORMER_CONFIG_ARGS
+    config.experiment = MaxOfNTrainingWrapper.update_config_from_model_config(
+        config.experiment,
+        update_HookedTransformerConfig_from_args(
+            config,
+            MaxOfNTrainingWrapper.build_model_config(config),
+            args,
+            HOOKED_TRANSFORMER_CONFIG_ARGS,
+        ),
     )
     config.experiment.__post_init__()  # for seq_len, d_vocab
     if args.weight_decay is not None:

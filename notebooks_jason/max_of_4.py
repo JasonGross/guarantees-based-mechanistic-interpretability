@@ -88,6 +88,9 @@ from gbmi.exp_max_of_n.train import (
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
+    MAX_OF_4_CONFIG,
+    SEEDS,
+    SELECTED_SEED,
 )
 from gbmi.model import Config
 import torch
@@ -225,57 +228,15 @@ latex_only_externalize_tables: dict[str, bool] = {}
 
 # %%
 # %%
-# hack around newlines of black formatting
-seeds = (
-    sorted(
-        set(
-            map(
-                int,
-                "50,104,123,519,742,913,1185,1283,1412,1490,1681,1696,1895,1951,2236,2306,2345,2549,2743,2773,3175,3254,3284,4157,4305,4430,4647,4729,4800,4810,5358,5615,5781,5928,6082,6155,6159,6204,6532,6549,6589,6910,7098,7238,7310,7467,7790,7884,8048,8299,8721,8745,8840,8893,9132,9134,9504,9816,10248,11124,11130,11498,11598,11611,12141,12287,12457,12493,12552,12561,13036,13293,13468,13654,13716,14095,14929,15043,15399,15622,15662,16069,16149,16197,16284,17080,17096,17194,17197,18146,18289,18668,19004,19093,19451,19488,19538,19917,20013,20294,20338,20415,20539,20751,20754,20976,21317,21598,22261,22286,22401,22545,23241,23367,23447,23633,23696,24144,24173,24202,24262,24438,24566,25516,26278,26374,26829,26932,27300,27484,27584,27671,27714,28090,28716,28778,29022,29052,29110,29195,29565,29725,29726,30371,30463,30684,30899,31308,32103,32374,32382".split(
-                    ","
-                ),
-            )
-        )
-    )
-    if compute_expensive_average_across_many_models
-    else []
-)
-cfgs = {
-    seed: Config(
-        experiment=MaxOfN(
-            model_config=HookedTransformerConfig(
-                act_fn=None,
-                attn_only=True,
-                d_head=32,
-                d_mlp=None,
-                d_model=32,
-                d_vocab=64,
-                device="cpu",
-                n_ctx=4,
-                n_heads=1,
-                n_layers=1,
-                normalization_type=None,
-            ),
-            zero_biases=True,
-            use_log1p=True,
-            use_end_of_sequence=False,
-            seq_len=4,
-            optimizer="AdamW",
-            optimizer_kwargs={"lr": 0.001, "betas": (0.9, 0.999)},
-            train_dataset_cfg=IterableDatasetCfg(pick_max_first=False),
-            test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
-        ),
-        deterministic=True,
-        seed=seed,
-        batch_size=128,
-        train_for=(3000, "steps"),
-    )
-    for seed in [123] + list(seeds)
-}
+seeds = sorted(SEEDS) if compute_expensive_average_across_many_models else []
+cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in [SELECTED_SEED] + list(seeds)}
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
 cfg_hashes_for_filename = {
     seed: f"{seed}_{cfg_hashes[seed].replace('/', '__SLASH__')}"
     for seed, cfg in cfgs.items()
+}
+model_cfgs = {
+    seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()
 }
 datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
 # %%
@@ -385,15 +346,16 @@ print(f"Model Loss: {pm_round(avg_train_average_loss, std_dev_train_average_loss
 # import sys
 # sys.exit(0)
 # %%
-seed = 123
+seed = SELECTED_SEED
 cfg = cfgs[seed]
+model_cfg = model_cfgs[seed]
 cfg_hash = cfg_hashes[seed]
 cfg_hash_for_filename = cfg_hashes_for_filename[seed]
 runtime, model = runtime_models[seed]
 training_wrapper = training_wrappers[seed]
 latex_values["seed"] = seed
-assert cfg.experiment.model_config.seed is not None
-latex_values["ModelSeed"] = cfg.experiment.model_config.seed
+assert model_cfg.seed is not None
+latex_values["ModelSeed"] = model_cfg.seed
 latex_values["TrainAccuracyFloat"] = train_average_accuracy[seed]
 latex_values["TrainLossFloat"] = train_average_accuracy[seed]
 # %%

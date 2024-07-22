@@ -1,7 +1,29 @@
 # Guarantees-Based Mechanistic Interpretability
 
+
 This is the codebase for the [_Guarantees-Based Mechanistic Interpretability_](https://www.cambridgeaisafety.org/mars/jason-gross) MARS stream.
 Successor to https://github.com/JasonGross/neural-net-coq-interp.
+
+## Writeups
+
+# Compact Proofs of Model Performance via Mechanistic Interpretability
+
+```bibtex
+@misc{gross2024compact,
+  author      = {Jason Gross and Rajashree Agrawal and Thomas Kwa and Euan Ong and Chun Hei Yip and Alex Gibson and Soufiane Noubir and Lawrence Chan},
+  title       = {Compact Proofs of Model Performance via Mechanistic Interpretability},
+  year        = {2024},
+  month       = {June},
+  doi         = {10.48550/arxiv.2406.11779},
+  eprint      = {2406.11779},
+  url         = {https://arxiv.org/abs/2406.11779},
+  eprinttype  = {arXiv},
+}
+```
+
+- [Blog post](https://www.alignmentforum.org/posts/bRsKimQcPTX3tNNJZ/compact-proofs-of-model-performance-via-mechanistic)
+- [arXiv](https://arxiv.org/abs/2406.11779)
+- [ICML 2024 Mechanistic Interpretability Workshop Spotlight](https://openreview.net/forum?id=4B5Ovl9MLE)
 
 ## Setup
 

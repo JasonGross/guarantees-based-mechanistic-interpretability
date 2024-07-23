@@ -154,7 +154,7 @@ everything = (
 # %%
 table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
     "nan"
-)  # p Represents the position of 'b' at p + 1, b can be in position between 2 and n_ctx-1 because trained on of the form aba
+)  # p Represents the position of 'b' at index + 1
 for p in range(2, n_ctx):  #
     tmp = torch.zeros((p, d_voc))
     for t_q in range(d_voc):
@@ -168,7 +168,7 @@ for p in range(2, n_ctx):  #
             tmp_sm = tmp.softmax(dim=0)
             table[t_q, t_k, p - 2, :] = tmp_sm[
                 -2, :
-            ]  # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is at pth poisition
+            ]  # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is used as the first entry, at pth poisition
 
 # everything looks like EQKE, table looks like you're indexing by query, key, position (of key?), and other token in the sequence.
 # They you're computing softmax of d_voc - 2 copies of the other token, one copy of t_k in p-2, and the query in p-1.
@@ -194,7 +194,7 @@ for p in range(2, n_ctx):  #
 #
 #
 #
-
+attn_1 = table.min(dim=1).values.min(dim=2).values
 
 # %%
 o = W_O_0
@@ -491,7 +491,17 @@ print(pre_softmax.softmax(dim=0))
 
 
 # %%
-everything = (
+term_1 = (
+    einops.einsum(
+        e_p,
+        W_Q_1,
+        W_K_1,
+        e_p,
+        "q_pos q_val k, k l, m l, k_pos k_val m -> q_pos q_val k_pos k_val",
+    )
+    / attn_scale_1
+)
+term_2 = (
     einops.einsum(
         e_p,
         W_V_0,
@@ -503,3 +513,450 @@ everything = (
     )
     / attn_scale_1
 )
+
+term_3 = (
+    einops.einsum(
+        e_p,
+        W_Q_1,
+        W_K_1,
+        W_O_0,
+        W_V_0,
+        e_p,
+        "q_pos q_val k, k l, m l, n m, o n, k_pos k_val o -> q_pos q_val k_pos k_val",
+    )
+    / attn_scale_1
+)
+
+term_4 = (
+    einops.einsum(
+        e_p,
+        W_V_0,
+        W_O_0,
+        W_Q_1,
+        W_K_1,
+        W_O_0,
+        W_V_0,
+        e_p,
+        "q_pos q_val k, k l, l m, m n, o n, p o, q p, k_pos k_val q -> q_pos q_val k_pos k_val",
+    )
+    / attn_scale_1
+)
+# %%
+
+
+def least_attention(a, b, i_1, i_2, j):
+
+    if j != i_1 and j != 0 and j != 1:
+        t_1 = term_1[i_2, a, j, :].max()
+        c = torch.max(term_2[: i_2 - 1, :, j, :].max(), term_2[i_2, a, j, :].max())
+        if c > 0:
+            t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
+        else:
+            t_2 = 0
+        c = term_2[i_2 - 1, :, j, :].max()
+        if c > 0:
+            t_2 += c
+        else:
+            t_2 += attn_1[:, i_2 - 1].min() * c
+        if a != 0:
+            c = torch.tensor(
+                [
+                    term_3[i_2, a, : j - 1, :a].max(),
+                    term_3[i_2, a, : j - 1, a + 1 :].max(),
+                    term_3[i_2, a, j, :].max(),
+                ]
+            ).max()
+        else:
+            c = torch.tensor(
+                [
+                    term_3[i_2, a, : j - 1, a + 1 :].max(),
+                    term_3[i_2, a, j, :].max(),
+                ]
+            ).max()
+
+        if c > 0:
+            t_3 = (1 - attn_1[:, j - 1].min()) * c
+        else:
+            t_3 = 0
+
+        if a != 0:
+            c = torch.max(
+                term_3[i_2, a, j - 1, :a].max(), term_3[i_2, a, j - 1, a + 1 :].max()
+            )
+        else:
+            c = term_3[i_2, a, j - 1, a + 1 :].max()
+        if c > 0:
+            t_3 += c
+        else:
+            t_3 += attn_1[:, j - 1].min() * c
+        c = (
+            (1 - attn_1[:, j - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, : j - 1, :].max(),
+                    term_4[i_2, :, : j - 1, :].max(),
+                    term_4[: i_2 - 1, :, j, :].max(),
+                    term_4[i_2, :, j, :].max(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.max(
+            term_4[: i_2 - 1, :, j - 1, :].max(), term_4[i_2, a, j - 1, :].max()
+        )
+        e = (1 - attn_1[:, j - 1].min()) * torch.max(
+            term_4[i_2 - 1, :, : j - 1, :].max(), term_4[i_2 - 1, :, j, :].max()
+        )
+
+        if c > 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if d > 0:
+            t_4 += d
+
+        if e > 0:
+            t_4 += e
+
+        c = term_4[i_2 - 1, :, j - 1, :].max()
+        if c > 0:
+            t_4 += c
+        else:
+            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
+
+    if j != i_1 and j == 1:
+        t_1 = term_1[i_2, a, j, :].max()
+        c = torch.max(term_2[: i_2 - 1, :, j, :].max(), term_2[i_2, a, j, :].max())
+        if c > 0:
+            t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
+        else:
+            t_2 = 0
+        c = term_2[i_2 - 1, :, j, :].max()
+        if c > 0:
+            t_2 += c
+        else:
+            t_2 += attn_1[:, i_2 - 1].min() * c
+        c = term_3[i_2, a, j, :].max()
+        if c > 0:
+            t_3 = (1 - attn_1[:, j - 1].min()) * c
+        else:
+            t_3 = 0
+        if a != 0:
+
+            c = torch.max(
+                term_3[i_2, a, j - 1, :a].max(), term_3[i_2, a, j - 1, a + 1 :].max()
+            )
+
+        else:
+            c = term_3[i_2, a, j - 1, a + 1 :].max()
+        if c > 0:
+            t_3 += c
+        else:
+            t_3 += attn_1[:, j - 1].min() * c
+        c = (
+            (1 - attn_1[:, j - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, j, :].max(),
+                    term_4[i_2, :, j, :].max(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.max(
+            term_4[: i_2 - 1, :, j - 1, :].max(), term_4[i_2, a, j - 1, :].max()
+        )
+        e = (1 - attn_1[:, j - 1].min()) * term_4[i_2 - 1, :, j, :].max()
+
+        if c > 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if d > 0:
+            t_4 += d
+
+        if e > 0:
+            t_4 += e
+
+        c = term_4[i_2 - 1, :, j - 1, :].max()
+        if c > 0:
+            t_4 += c
+        else:
+            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
+
+    if j != i_1 and j == 0:
+        t_1 = term_1[i_2, a, j, :].max()
+        c = torch.max(term_2[: i_2 - 1, :, j, :].max(), term_2[i_2, a, j, :].max())
+        if c > 0:
+            t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
+        else:
+            t_2 = 0
+        c = term_2[i_2 - 1, :, j, :].max()
+        if c > 0:
+            t_2 += c
+        else:
+            t_2 += attn_1[:, i_2 - 1].min() * c
+        c = term_3[i_2, a, j, :].max()
+        if c > 0:
+            t_3 = c
+        else:
+            t_3 = 0
+
+        c = (1 - attn_1[:, i_2 - 1].min()) * torch.tensor(
+            [
+                term_4[: i_2 - 1, :, j, :].max(),
+                term_4[i_2, :, j, :].max(),
+            ]
+        ).max()
+
+        e = term_4[i_2 - 1, :, j, :].max()
+
+        if c > 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if e > 0:
+            t_4 += e
+
+    if j == i_1 and j != 1:
+        t_1 = term_1[i_2, a, j, b].min()
+        c = torch.min(term_2[: i_2 - 1, :, j, b].min(), term_2[i_2, a, j, b].min())
+        if c < 0:
+            t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
+        else:
+            t_2 = 0
+        c = term_2[i_2 - 1, :, j, b].min()
+        if c < 0:
+            t_2 += c
+        else:
+            t_2 += attn_1[:, i_2 - 1].min() * c
+        c = torch.min(term_3[i_2, a, : j - 1, a].min(), term_3[i_2, a, j, b].min())
+        if c < 0:
+            t_3 = (1 - attn_1[:, j - 1].min()) * c
+        else:
+            t_3 = 0
+        c = term_3[i_2, a, j - 1, a].min()
+        if c < 0:
+            t_3 += c
+        else:
+            t_3 += attn_1[:, j - 1].min() * c
+        c = (
+            (1 - attn_1[:, j - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, : j - 1, :].min(),
+                    term_4[i_2, :, : j - 1, :].min(),
+                    term_4[: i_2 - 1, :, j, b].min(),
+                    term_4[i_2, :, j, b].min(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.min(
+            term_4[: i_2 - 1, :, j - 1, a].min(), term_4[i_2, a, j - 1, a].min()
+        )
+        e = (1 - attn_1[:, j - 1].min()) * torch.min(
+            term_4[i_2 - 1, :, : j - 1, :].min(), term_4[i_2 - 1, :, j, b].min()
+        )
+
+        if c < 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if d < 0:
+            t_4 += d
+
+        if e < 0:
+            t_4 += e
+
+        c = term_4[i_2 - 1, :, j - 1, :].min()
+        if c < 0:
+            t_4 += c
+        else:
+            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
+
+    if j == i_1 and j == 1:
+        t_1 = term_1[i_2, a, j, b].min()
+        c = torch.min(term_2[: i_2 - 1, :, j, b].min(), term_2[i_2, a, j, b].min())
+        if c < 0:
+            t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
+        else:
+            t_2 = 0
+        c = term_2[i_2 - 1, :, j, b].min()
+        if c < 0:
+            t_2 += c
+        else:
+            t_2 += attn_1[:, i_2 - 1].min() * c
+        c = term_3[i_2, a, j, b].min()
+        if c < 0:
+            t_3 = (1 - attn_1[:, j - 1].min()) * c
+        else:
+            t_3 = 0
+        c = term_3[i_2, a, j - 1, a].min()
+        if c < 0:
+            t_3 += c
+        else:
+            t_3 += attn_1[:, j - 1].min() * c
+        c = (
+            (1 - attn_1[:, j - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, j, b].min(),
+                    term_4[i_2, :, j, b].min(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.min(
+            term_4[: i_2 - 1, :, j - 1, a].min(), term_4[i_2, a, j - 1, a].min()
+        )
+        e = (1 - attn_1[:, j - 1].min()) * term_4[i_2 - 1, :, j, b].min()
+
+        if c < 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if d < 0:
+            t_4 += d
+
+        if e < 0:
+            t_4 += e
+
+        c = term_4[i_2 - 1, :, j - 1, :].min()
+        if c < 0:
+            t_4 += c
+        else:
+            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
+    # print(t_1, t_2, t_3, t_4)
+    return t_1 + t_2 + t_3 + t_4
+
+
+"""
+
+def least_attention(a,b,i_1,i_2,j):
+    if j!=i_1 and j!=0:
+        t_1 = term_1[i_2,a,j,:].max()
+        t_2=0
+        for i in range(i_2+1):
+            c=term_2[i,:,j,:].max()
+            if i!=i_2-1:
+                if c>0:
+                    t_2+=(1-attn_1[:,i_2-1].min())*c
+            else:
+                if c>0:
+                    t_2+=c
+
+        t_3=0
+        for l in range(j+1):
+            c=term_3[i_2,a,l,:].max()
+            if l!=j-1
+                if c>0:
+                    t_3+=(1-attn_1[:,j-1].min())*c
+            else:
+                if c>0:
+                    t_3+=c
+        t_4=0
+        for k in range(i_2+1):
+            for l in range(j+1):
+                c=term_4[k,:,l,:].max()
+                if k!=i_2-1 and l!=j-1:
+                    if c>0:
+                        t_4+=(1-attn_1[:,i_2-1].min())*(1-attn_1[:,j-1].min())*c
+                if k==i_2-1 and l!=j-1:
+                    if c>0:
+                        t_4+=(1-attn_1[:,j-1].min())*c
+                if k!=i_2-1 and l==j-1:
+                    if c>0:
+                        t_4+=(1-attn_1[:,i_2-1].min())*c
+                if k!=i_2-1 and l!=j-1:
+                    if c>0:
+                        t_4+=c
+    if j!=i_1 and j==0:
+        t_1 = term_1[i_2,a,j,:].max()
+        t_2=0
+        for i in range(i_2+1):
+            c=term_2[i,:,j,:].max()
+            if i!=i_2-1:
+                if c>0:
+                    t_2+=(1-attn_1[:,i_2-1].min())*c
+            else:
+                if c>0:
+                    t_2+=c
+
+
+        t_3=term_3[i_2,:,0,:].max()
+
+
+        t_4=0
+        for k in range(i_2+1):
+
+            c=term_4[k,:,0,:].max()
+            if k!=i_2-1:
+                if c>0:
+                    t_4+=(1-attn_1[:,i_2-1].min())*c
+            if k==i_2-1:
+                if c>0:
+                    t_4+=c
+    if j==i_1:
+        t_1=term_1[i_2,a,j,:].min()
+        t_2=0
+        for i in range(i_2+1):
+            c=term_2[i,:,j,b].min()
+            if i!=i_2-1:
+                if c<0:
+                    t_2+=(1-attn_1[:,i_2-1].min())*c
+            else:
+                if c<0:
+                    t_2+=c
+        t_3=0
+        for l in range(j+1):
+            c=term_3[i_2,a,l,:].max()
+            if l!=j-1
+                if c>0:
+                    t_3+=(1-attn_1[:,j-1].min())*c
+            else:
+                if c>0:
+                    t_3+=c
+
+"""
+
+# %%
+for j in range(7):
+    print(least_attention(3, 2, 2, 6, j))
+# %%
+
+bound = ein.array(
+    lambda a, b, i_2, i_1, j: torch.where(
+        (i_1 < i_2) & (i_1 > 0) & (i_2 + 1 > j),
+        least_attention(a, b, i_1, i_2, j),
+        -torch.inf,
+    ),
+    device=device,
+    sizes=[
+        e_p.shape[1],
+        e_p.shape[1],
+        e_p.shape[0] - 1,
+        e_p.shape[0] - 1,
+        e_p.shape[0],
+    ],
+)
+
+# %%
+bound = (
+    torch.zeros((e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[0]))
+    - torch.inf
+)
+for a in tqdm(range(e_p.shape[1])):
+    for b in tqdm(range(e_p.shape[1])):
+        for i_2 in range(e_p.shape[0] - 1):
+            for i_1 in range(e_p.shape[0] - 1):
+                for j in range(i_2 + 1):
+                    if (i_1 < i_2) & (i_1 > 0) & (i_2 + 1 > j):
+                        bound[a, b, i_2, i_1, j] = least_attention(a, b, i_1, i_2, j)
+
+# %%

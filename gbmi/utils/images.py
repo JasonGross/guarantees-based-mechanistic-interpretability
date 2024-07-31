@@ -46,7 +46,7 @@ def remove_bak(*files: Union[str, Path], save_bak: bool = True, ext: str = ".bak
             bak_file.unlink()
 
 
-def batch_run(args, *images, batchsize=64, post_args=[], **kwargs):
+def batch_run(args, *images, batchsize=64, post_args=[], check: bool = True, **kwargs):
     if len(images) > batchsize:
         return [
             batch_run(
@@ -54,11 +54,12 @@ def batch_run(args, *images, batchsize=64, post_args=[], **kwargs):
                 *images[i : i + batchsize],
                 batchsize=batchsize,
                 post_args=post_args,
+                check=check,
                 **kwargs,
             )
             for i in range(0, len(images), batchsize)
         ]
-    return subprocess.run([*args, *images, *post_args], check=True, **kwargs)
+    return subprocess.run([*args, *images, *post_args], check=check, **kwargs)
 
 
 def ect(

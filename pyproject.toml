@@ -55,6 +55,7 @@ tikzplotlib-patched = "^0.10.1.post3"
 pre-commit = "^3.6.0"
 black = { extras = ["jupyter"], version = "^24.0.0" }
 flake8 = "^7.0.0"
+ipykernel = "^6.29.5"
 
 [build-system]
 requires = ["poetry-core"]

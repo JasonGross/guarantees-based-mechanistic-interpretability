@@ -10,6 +10,7 @@ for d_vocab_out in tqdm((64, 128), desc="d_vocab"):
                 set_params(
                     MAX_OF_4_CONFIG(seed),
                     {
+                        ("deterministic",): False,
                         ("experiment", "seq_len"): 10,
                         ("experiment", "d_vocab_out"): d_vocab_out,
                     },

@@ -4,11 +4,10 @@ from gbmi.utils import set_params
 
 with tqdm(SEEDS, desc="Seed") as pbar:
     for seed in pbar:
-        pbar.set_postfix_str(f"Seed {seed}")
-        runtime, model = train_or_load_model(
-            set_params(
-                MAX_OF_4_CONFIG(seed),
-                {("deterministic",): False, ("experiment", "seq_len"): 5},
-                post_init=True,
-            )
-        )  # , force="train"
+        cfg = set_params(
+            MAX_OF_4_CONFIG(seed),
+            {("deterministic",): False, ("experiment", "seq_len"): 5},
+            post_init=True,
+        )
+        pbar.set_postfix({"seed": seed, "cfg": cfg})
+        runtime, model = train_or_load_model(cfg)  # , force="train"

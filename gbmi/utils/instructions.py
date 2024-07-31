@@ -1414,6 +1414,9 @@ class CountTensorBackend(
     def is_float_type(self, x):
         return True
 
+    def transpose(self, x, axes):
+        return x.permute(axes)
+
     def reduce(self, x, operation, reduced_axes):
         if operation == "min":
             return x.amin(dim=reduced_axes)

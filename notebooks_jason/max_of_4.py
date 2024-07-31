@@ -40,6 +40,7 @@ from typing import (
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 from cycler import cycler
+from argparse import ArgumentParser, Namespace, BooleanOptionalAction
 from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
     hist_attention_difference_over_gap,
@@ -145,10 +146,41 @@ try:
     IN_COLAB = True
 except:
     IN_COLAB = False
-
-
 # %%
-DISPLAY_PLOTS: bool = True  # @param {type:"boolean"}
+
+parser = ArgumentParser()
+parser.add_argument(
+    "--seeds",
+    type=str,
+    default=",".join(sorted(map(str, SEEDS))),
+    help="Comma-separated list of seeds to use",
+)
+parser.add_argument(
+    "--seed",
+    type=str,
+    default=str(SELECTED_SEED),
+    help="The primary seed",
+)
+parser.add_argument(
+    "-j", dest="n_threads", type=int, default=1, help="number of threads"
+)
+parser.add_argument(
+    "--no-perf",
+    action="store_const",
+    const=True,
+    default=None,
+    help="Forcibly disable perf",
+)
+parser.add_argument(
+    "--plots",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Include plots",
+)
+cli_args = parser.parse_args(None if ipython is None else [])
+# %%
+DISPLAY_PLOTS: bool = False if ipython is None else True  # @param {type:"boolean"}
+SAVE_PLOTS: bool = cli_args.plots
 RENDERER: Optional[str] = "png"  # @param ["png", None]
 PLOT_WITH: Literal["plotly", "matplotlib"] = (  # @param ["plotly", "matplotlib"]
     "matplotlib"
@@ -181,7 +213,7 @@ SUBCUBIC_CSV_PATH = ALL_MODELS_PATH / "all-models-subcubic-values.csv"
 SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_ANALYSIS_CSV_PATH = ALL_MODELS_PATH / "all-models-subcubic-analysis-values.csv"
 SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-N_THREADS: Optional[int] = 2
+N_THREADS: Optional[int] = cli_args.n_threads
 default_colors = plt.rcParams["axes.prop_cycle"]
 matplotlib.rcParams["text.usetex"] = True
 matplotlib.rcParams[
@@ -225,20 +257,28 @@ latex_figures: dict[str, Union[go.Figure, matplotlib.figure.Figure]] = {}
 latex_externalize_tables: dict[str, bool] = {}
 latex_only_externalize_tables: dict[str, bool] = {}
 
-
+# %%
+if cli_args.no_perf:
+    PERF_WORKING = False
 # %%
 # %%
-seeds = sorted(SEEDS) if compute_expensive_average_across_many_models else []
-cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in [SELECTED_SEED] + list(seeds)}
+selected_seed = int(cli_args.seed)
+seeds = (
+    sorted(set(map(int, cli_args.seeds.split(","))))
+    if compute_expensive_average_across_many_models
+    else []
+)
+seeds = [selected_seed] + [s for s in seeds if s != selected_seed]
+cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in list(seeds)}
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
-cfg_hashes_for_filename = {
-    seed: f"{seed}_{cfg_hashes[seed].replace('/', '__SLASH__')}"
-    for seed, cfg in cfgs.items()
-}
 model_cfgs = {
     seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()
 }
 datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
+cfg_hashes_for_filename = {
+    seed: f"{seed}_{cfg_hashes[seed].replace('/', '__SLASH__')}"
+    for seed, cfg in cfgs.items()
+}
 # %%
 with memoshelve(
     train_or_load_model,
@@ -346,7 +386,7 @@ print(f"Model Loss: {pm_round(avg_train_average_loss, std_dev_train_average_loss
 # import sys
 # sys.exit(0)
 # %%
-seed = SELECTED_SEED
+seed = selected_seed
 cfg = cfgs[seed]
 model_cfg = model_cfgs[seed]
 cfg_hash = cfg_hashes[seed]

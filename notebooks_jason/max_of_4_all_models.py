@@ -407,7 +407,7 @@ seeds = (
 )
 if SELECTED_SEED in seeds:
     seeds = [SELECTED_SEED] + [s for s in seeds if s != SELECTED_SEED]
-cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in [SELECTED_SEED] + list(seeds)}
+cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in list(seeds)}
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
 model_cfgs = {
     seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()

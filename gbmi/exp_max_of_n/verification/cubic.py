@@ -125,9 +125,12 @@ def compute_extreme_softmaxed_right_attention_cubic_simple(
                     result[:, w_max, q_tok, max_tok, k_tok, n_copies_nonmax] = tmp_sm[
                         :, :n_copies_max_nonquery
                     ].sum(dim=-1) + (tmp_sm[:, -1] if q_tok == max_tok else 0)
-                    result[:, w_nmx, q_tok, max_tok, k_tok, n_copies_nonmax] = result[
-                        :, w_qry, q_tok, max_tok, k_tok, n_copies_nonmax
-                    ] = (tmp_sm[:, -1] if q_tok != max_tok else 0)
+                    result[:, w_nmx, q_tok, max_tok, k_tok, n_copies_nonmax] = tmp_sm[
+                        :, n_copies_max_nonquery:-1
+                    ].sum(dim=-1)
+                    result[:, w_qry, q_tok, max_tok, k_tok, n_copies_nonmax] = (
+                        tmp_sm[:, -1] if q_tok != max_tok else 0
+                    )
     return result
 
 

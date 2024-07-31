@@ -435,6 +435,8 @@ class CountTensor:
             self.global_count_at_creation = None
         else:
             self.global_count_at_creation = count_to_update.copy()
+        # work around torch.broadcast_shapes not working in cases like like torch.broadcast_shapes((32, 1), (np.int64(32), 32))
+        self.shape = tuple(map(int, self.shape))
 
     def __str__(self):
         return f"CountTensor(shape={self.shape}, count={self.count}, is_bool={self.is_bool}"

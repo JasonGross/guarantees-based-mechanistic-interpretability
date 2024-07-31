@@ -884,14 +884,8 @@ class CountTensor:
     def flip(self, *args, **kwargs) -> "CountTensor":
         return self.unary()
 
-    def permute(self, *args, **kwargs) -> "CountTensor":
-        return self._reshape(
-            tuple(
-                torch.tensor(self.shape, dtype=torch.long)
-                .permute(*args, **kwargs)
-                .tolist()
-            )
-        )
+    def permute(self, dims) -> "CountTensor":
+        return self._reshape(tuple(self.shape[i] for i in dims))
 
     def transpose(self, dim0: int, dim1: int) -> "CountTensor":
         new_shape = list(self.shape)

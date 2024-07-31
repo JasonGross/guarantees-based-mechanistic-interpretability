@@ -581,7 +581,7 @@ class CountTensor:
             count = InstructionCount(flop=int(np.prod(shape)) - 1)
             add_to_count(count)
             return CountTensor(
-                shape=[],
+                shape=(),
                 count=count,
                 is_bool=is_bool if is_bool is not None else self.is_bool,
                 # parents=CountTensor._parents_of_tuple((self,)),
@@ -1111,7 +1111,7 @@ class CountTensor:
         #     shape = [int(np.ceil((stop - start) / stride))]
         #     return CountTensor(shape=shape, count=self.count)
         # if isinstance(indices, int):
-        #     return CountTensor(shape=[], count=self.count)
+        #     return CountTensor(shape=(), count=self.count)
         # if isinstance(indices, tuple):
         #     t_shapes = [idx.shape[:-1] for idx in indices if isinstance(idx, CountTensor)]
         #     init_shape = torch.broadcast_shapes(*t_shapes)

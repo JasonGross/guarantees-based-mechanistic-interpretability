@@ -938,8 +938,8 @@ for seed, d in cubic_data.items():
         cubic_data_by_key[k][seed] = v
 
 assert len(cubic_data) == len(
-    brute_force_data
-), f"len(cubic_data) == {len(cubic_data)} != {len(brute_force_data)} == len(brute_force_data)"
+    runtime_models
+), f"len(cubic_data) == {len(cubic_data)} != {len(runtime_models)} == len(runtime_models)"
 for key, latex_key in (
     # ("loss", "CubicLoss"),
     ("accuracy-bound", "CubicAccuracy"),
@@ -1947,8 +1947,8 @@ update_csv_with_rows(
 # %%
 
 assert len(subcubic_data) == len(
-    brute_force_data
-), f"len(cubic_data) == {len(subcubic_data)} != {len(brute_force_data)} == len(brute_force_data)"
+    runtime_models
+), f"len(cubic_data) == {len(subcubic_data)} != {len(runtime_models)} == len(runtime_models)"
 
 
 def leading_complexity(tricks: LargestWrongLogitQuadraticConfig):

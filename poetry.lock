@@ -629,13 +629,13 @@ files = [
 
 [[package]]
 name = "cirron"
-version = "0.2.1"
+version = "0.3"
 description = "Cirron measures how many CPU instructions and system calls a piece of Python code executes."
 optional = false
 python-versions = ">=3.6"
 files = [
-    {file = "Cirron-0.2.1-py3-none-any.whl", hash = "sha256:dff675d947a19128ad414f68706a756826f676820a1e3fbdb7ecc2542d9f1253"},
-    {file = "cirron-0.2.1.tar.gz", hash = "sha256:382a53468c89176bde889e4ddc0535b1efffc2d55d7c3387be6f24d59c03b7cf"},
+    {file = "Cirron-0.3-py3-none-any.whl", hash = "sha256:2002b5550b0cdbae191ad6c0b603f3dc80410daac65edd6ae87fff22ee3bbece"},
+    {file = "Cirron-0.3.tar.gz", hash = "sha256:72656a62bf2900a89f2598f8a361cb7354b0530eb0ef9300a0ab00a422e4e3ba"},
 ]
 
 [[package]]
@@ -5610,4 +5610,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "29ae121d99da2c83cf22f2f60dee4e3b86c944d4a81e919a5bb0af3b189df3af"
+content-hash = "b0354701df287df90290542e5a24b6a3336fbd997545cfff3a9d07798e0db0ac"

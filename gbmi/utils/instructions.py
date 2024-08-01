@@ -33,6 +33,7 @@ from typing import (
 from types import EllipsisType
 import numpy as np
 import torch
+import torch.nn.functional
 from torch import empty as torch_empty  # for stability under hot patching
 from torch import ones as torch_ones  # for stability under hot patching
 from transformer_lens import HookedTransformer
@@ -762,7 +763,14 @@ class CountTensor:
             is_bool=self.is_bool,
         )
 
-    def reshape(self, new_shape: Sequence[int]) -> "CountTensor":
+    def reshape(self, *new_shape: int | Sequence[int]) -> "CountTensor":
+        if len(new_shape) == 1 and hasattr(new_shape[0], "__iter__"):
+            new_shape = new_shape[0]
+        return self._reshape(new_shape)
+
+    def view(self, *new_shape: int | Sequence[int]) -> "CountTensor":
+        if len(new_shape) == 1 and hasattr(new_shape[0], "__iter__"):
+            new_shape = new_shape[0]
         return self._reshape(new_shape)
 
     def expand(self, *sizes: Union[int, Sequence[int]]) -> "CountTensor":
@@ -891,6 +899,13 @@ class CountTensor:
         new_shape = list(self.shape)
         new_shape[dim0], new_shape[dim1] = new_shape[dim1], new_shape[dim0]
         return self._reshape(tuple(new_shape))
+
+    def linear(
+        input,
+        weight: Union["CountTensor", np.ndarray, torch.Tensor],
+        bias: Union["CountTensor", np.ndarray, torch.Tensor],
+    ) -> "CountTensor":
+        return input @ weight.T + bias
 
     @property
     def T(self) -> "CountTensor":
@@ -1495,6 +1510,8 @@ class PatchTorch:
         "svd": True,
     }
     _torch_linalg_count_name = {"svd": "linalg_svd"}
+    _torch_nn_functional_is_static = {"linear": False}
+    _torch_nn_functional_name = {"linear": "linear"}
 
     def __init__(self, **kwargs: bool):
         self.torch_patches = tuple(
@@ -1504,6 +1521,11 @@ class PatchTorch:
             name
             for name in PatchTorch._torch_linalg_is_static
             if kwargs.get(f"linalg_{name}", True)
+        )
+        self.torch_nn_functional_patches = tuple(
+            name
+            for name in PatchTorch._torch_nn_functional_is_static
+            if kwargs.get(f"nn_functional_{name}", True)
         )
 
     def __enter__(self):
@@ -1529,12 +1551,25 @@ class PatchTorch:
                     static=PatchTorch._torch_linalg_is_static[name],
                 ),
             )
+        for name in self.torch_nn_functional_patches:
+            setattr(
+                torch.nn.functional,
+                name,
+                DefaultCountTensorWrapper(
+                    torch.nn.functional,
+                    name,
+                    count_name=PatchTorch._torch_nn_functional_name.get(name),
+                    static=PatchTorch._torch_nn_functional_is_static[name],
+                ),
+            )
 
     def __exit__(self, exc_type, exc_value, traceback):
         for name in self.torch_patches:
             getattr(torch, name).unwrap()
         for name in self.torch_linalg_patches:
             getattr(torch.linalg, name).unwrap()
+        for name in self.torch_nn_functional_patches:
+            getattr(torch.nn.functional, name).unwrap()
 
 
 class CountHookedTransformer(HookedTransformer):

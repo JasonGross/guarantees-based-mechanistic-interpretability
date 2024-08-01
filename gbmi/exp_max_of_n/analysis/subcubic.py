@@ -15,6 +15,7 @@ from gbmi.exp_max_of_n.analysis.quadratic import (
     W_EP_direction_for_tricks,
     find_min_gaps,
     find_EKQE_error_directions,
+    W_EP_direction_for_tricks_kwargs,
 )
 from gbmi.exp_max_of_n.verification.subcubic import decompose_EQKE_error
 
@@ -131,3 +132,56 @@ def find_min_gaps_with_EQKE_kwargs(model: HookedTransformer):
         "W_U": W_U,
         "attn_scale": attn_scale,
     }
+
+
+@torch.no_grad()
+def find_proof_shared(model: HookedTransformer) -> dict:
+    shared_proof_search_duration = 0.0
+    start = time.time()
+    W_EP_direction_kwargs = W_EP_direction_for_tricks_kwargs(model)
+    find_min_gaps_kwargs = find_min_gaps_with_EQKE_kwargs(model)
+    size_and_query_directions_kwargs = find_EKQE_error_directions(model)
+    shared_proof_search_duration += time.time() - start
+    return {
+        "W_EP_direction_kwargs": W_EP_direction_kwargs,
+        "find_min_gaps_kwargs": find_min_gaps_kwargs,
+        "size_and_query_directions_kwargs": size_and_query_directions_kwargs,
+        "shared_proof_search_duration": shared_proof_search_duration,
+    }
+
+
+@torch.no_grad()
+def find_proof(
+    model: HookedTransformer,
+    tricks: LargestWrongLogitQuadraticConfig,
+    *,
+    W_EP_direction_kwargs,
+    find_min_gaps_kwargs,
+    size_and_query_directions_kwargs,
+    shared_proof_search_duration: float = 0,
+    record_time: bool = False,
+    **find_min_gaps_with_EQKE_extra_kwargs,
+) -> Union[dict, Tuple[dict, float]]:
+    proof_search_duration: float
+    min_gaps, proof_search_duration = find_min_gaps_with_EQKE(
+        model=model,
+        **find_min_gaps_kwargs,  # type: ignore
+        **size_and_query_directions_kwargs,
+        tricks=tricks,
+        **find_min_gaps_with_EQKE_extra_kwargs,
+        record_time=True,
+    )
+    proof_search_duration += shared_proof_search_duration
+    start = time.time()
+    W_EP_direction = W_EP_direction_for_tricks(**W_EP_direction_kwargs, tricks=tricks)
+    proof_search_duration += time.time() - start
+
+    result = {
+        "W_EP_direction": W_EP_direction,
+        "min_gaps": min_gaps,
+        "tricks": tricks,
+        **size_and_query_directions_kwargs,
+    }
+    if record_time:
+        return result, proof_search_duration
+    return result

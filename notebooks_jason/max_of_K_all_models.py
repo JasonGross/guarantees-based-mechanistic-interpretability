@@ -339,8 +339,16 @@ cfg_hashes_for_filename = {
     for seed, cfg in cfgs.items()
 }
 # %%
+
+
+def train_or_load_model_cpu(*args, **kwargs):
+    runtime_data, model = train_or_load_model(*args, **kwargs)
+    model.to("cpu")
+    return runtime_data, model
+
+
 with memoshelve(
-    train_or_load_model,
+    train_or_load_model_cpu,
     filename=cache_dir
     / f"{SHARED_CACHE_STEM}.train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}",
     get_hash=get_hash_ascii,
@@ -419,9 +427,9 @@ def _run_train_batch_loss_accuracy(
 ) -> Tuple[float, float, int]:
     xs, ys = next(dataloader_iter)
     device = default_device(deterministic=train_measurement_deterministic)
-    xs.to(device)
-    ys.to(device)
-    loss, accuracy = training_wrappers[seed].run_batch((xs, ys), log_output=False)
+    loss, accuracy = training_wrappers[seed].run_batch(
+        (xs, ys), log_output=False, device=device
+    )
     loss = loss.item()
     return loss, accuracy, batch_size
 

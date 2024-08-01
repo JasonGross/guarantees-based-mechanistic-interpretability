@@ -11,148 +11,95 @@ if ipython is not None:
 else:
     print("Not in IPython, not loading autoreload")
 # %%
+import csv
+import gc
+import math
+import os
+import re
+import subprocess
+import sys
+import time
+
+# %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
 # %%
 import traceback
-import gc
-import csv
+from argparse import ArgumentParser, BooleanOptionalAction
 from collections import defaultdict
-import sys
-import os
-import re
-from contextlib import contextmanager
-import time
-import subprocess
-import pandas as pd
-from itertools import chain
-from functools import partial
 from concurrent.futures import ThreadPoolExecutor
-import math
-import matplotlib
-from typing import (
-    Any,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-    Iterator,
-    Callable,
-)
+from contextlib import contextmanager
+from functools import partial
+from itertools import chain
+from pathlib import Path
+from typing import Any, Callable, Iterator, Literal, Optional, Tuple, Union
 
-import plotly.graph_objects as go
-import matplotlib.figure
-import tikzplotlib
 import matplotlib
-from gbmi.analysis_tools.utils import (
-    data_summary,
-    data_summary_percentiles,
-)
-from gbmi.analysis_tools.plot import (
-    colorbar,
-    remove_titles,
-    remove_axis_labels,
-    remove_colorbars,
-    remove_axis_ticklabels,
-)
-from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
-from gbmi.utils.dataclass import enumerate_dataclass_values
-import gbmi.utils.images as image_utils
-from gbmi.utils.memoshelve import memoshelve
-from gbmi.utils.latex_export import (
-    to_latex_defs,
-    format_float_full_precision,
-)
-from gbmi.exp_max_of_n.analysis import (
-    analyze_EVOU,
-)
-from gbmi.exp_max_of_n.plot import display_basic_interpretation
-from gbmi.exp_max_of_n.train import (
-    MaxOfNDataModule,
-    MaxOfNTrainingWrapper,
-    train_or_load_model,
-    MAX_OF_5_CONFIG,
-    SEEDS,
-    SELECTED_SEED,
-)
-import torch
-from tqdm.auto import tqdm
+import matplotlib.figure
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import tikzplotlib
+import torch
+from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
-from pathlib import Path
-from gbmi.utils import default_device
-from gbmi.utils.sequences import (
-    SequenceDataset,
-)
 
-from gbmi.utils.hashing import get_hash_ascii
-import gbmi.utils.git as git
-import gbmi.exp_max_of_n.verification.cubic as cubic
-import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-import gbmi.utils.instructions as instructions
-from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
-from gbmi.utils.dataclass import enumerate_dataclass_values
-from gbmi.utils.memoshelve import memoshelve
+import gbmi.exp_max_of_n.verification.subcubic as subcubic
+import gbmi.utils.ein as ein
+import gbmi.utils.git as git
+import gbmi.utils.images as image_utils
+import gbmi.utils.instructions as instructions
 from gbmi.analysis_tools.plot import (
+    Colorscale,
     EVOU_max_logit_diff,
+    colorbar,
+    combine_interpolate_color_mapping,
+    hist_EVOU_max_logit_diff,
+    remove_axis_labels,
+    remove_axis_ticklabels,
+    remove_colorbars,
+    remove_titles,
 )
+from gbmi.analysis_tools.utils import data_summary, data_summary_percentiles
+from gbmi.exp_max_of_n.analysis import analyze_EVOU
 from gbmi.exp_max_of_n.plot import (
     EVOU_max_minus_diag_logit_diff,
     attention_difference_over_gap,
-    make_better_slides_plots_00,
+    display_basic_interpretation,
     display_EQKE_SVD_analysis,
+    hist_attention_difference_over_gap,
+    hist_EVOU_max_minus_diag_logit_diff,
+    make_better_slides_plots_00,
+    scatter_attention_difference_vs_gap,
 )
-
 from gbmi.exp_max_of_n.train import (
+    MAX_OF_5_CONFIG,
+    SEEDS,
+    SELECTED_SEED,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
 )
-import torch
-from tqdm.auto import tqdm
-import numpy as np
-from transformer_lens import HookedTransformer
-from pathlib import Path
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils import default_device
-from gbmi.utils.sequences import (
-    SequenceDataset,
-)
-from gbmi.utils.latex_export import (
-    to_latex_defs,
-)
-from gbmi.exp_max_of_n.plot import (
-    scatter_attention_difference_vs_gap,
-    hist_attention_difference_over_gap,
-    hist_EVOU_max_minus_diag_logit_diff,
-)
-from gbmi.analysis_tools.plot import (
-    hist_EVOU_max_logit_diff,
-    Colorscale,
-    combine_interpolate_color_mapping,
-)
-from gbmi.utils import default_device
+from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.hashing import get_hash_ascii
-import gbmi.utils.git as git
-import gbmi.exp_max_of_n.verification.cubic as cubic
-import gbmi.exp_max_of_n.verification.subcubic as subcubic
-import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
-import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-from argparse import ArgumentParser, BooleanOptionalAction
-import gbmi.utils.ein as ein
-import gbmi.utils.instructions as instructions
 from gbmi.utils.instructions import (
-    InstructionCount,
-    CountTensor,
-    PatchTorch,
-    CountHookedTransformer,
-    int_or_value,
-    CountTensorOperations,
     PERF_WORKING,
+    CountHookedTransformer,
+    CountTensor,
+    CountTensorOperations,
+    InstructionCount,
+    PatchTorch,
+    int_or_value,
 )
+from gbmi.utils.latex_export import format_float_full_precision, to_latex_defs
+from gbmi.utils.memoshelve import memoshelve
+from gbmi.utils.sequences import SequenceDataset
 
 # %%
 parser = ArgumentParser()

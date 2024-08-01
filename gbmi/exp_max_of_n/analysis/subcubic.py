@@ -143,10 +143,10 @@ def find_proof_shared(model: HookedTransformer) -> Tuple[dict, dict, dict, float
     size_and_query_directions_kwargs = find_EKQE_error_directions(model)
     shared_proof_search_duration += time.time() - start
     return (
-        shared_proof_search_duration,
         W_EP_direction_kwargs,
         find_min_gaps_kwargs,
         size_and_query_directions_kwargs,
+        shared_proof_search_duration,
     )
 
 
@@ -154,9 +154,9 @@ def find_proof_shared(model: HookedTransformer) -> Tuple[dict, dict, dict, float
 def find_proof_specific(
     model: HookedTransformer,
     tricks: LargestWrongLogitQuadraticConfig,
-    W_EP_direction_kwargs,
-    find_min_gaps_kwargs,
-    size_and_query_directions_kwargs,
+    W_EP_direction_kwargs: dict,
+    find_min_gaps_kwargs: dict,
+    size_and_query_directions_kwargs: dict,
     shared_proof_search_duration: float = 0,
     *,
     record_time: bool = False,

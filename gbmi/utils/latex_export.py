@@ -39,6 +39,10 @@ def get_precision(f: float, base: int = 10) -> int:
 
 
 def format_float_full_precision(f: float) -> str:
+    if np.isnan(f):
+        return "nan"
+    if np.isinf(f):
+        return "inf" if f > 0 else "-inf"
     precision = get_precision(f)
     return f"{f:.{precision}f}".rstrip("0").rstrip(".")
 

@@ -82,7 +82,9 @@ from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
 )
 from gbmi.exp_max_of_n.train import (
+    MAX_OF_4_CONFIG,
     MAX_OF_5_CONFIG,
+    MAX_OF_10_CONFIG,
     SEEDS,
     SELECTED_SEED,
     MaxOfNDataModule,
@@ -142,6 +144,12 @@ parser.add_argument(
     type=int,
     default=5,
     help="Sequence length",
+)
+parser.add_argument(
+    "--d_vocab",
+    type=int,
+    default=64,
+    help="Number of tokens",
 )
 parser.add_argument(
     "--brute-force",
@@ -309,7 +317,18 @@ seeds = (
 )
 if SELECTED_SEED in seeds:
     seeds = [SELECTED_SEED] + [s for s in seeds if s != SELECTED_SEED]
-cfgs = {seed: MAX_OF_5_CONFIG(seed) for seed in list(seeds)}
+match seq_len:
+    case 4:
+        cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in list(seeds)}
+    case 5:
+        cfgs = {seed: MAX_OF_5_CONFIG(seed) for seed in list(seeds)}
+    case 10:
+        cfgs = {
+            seed: MAX_OF_10_CONFIG(seed, d_vocab_out=cli_args.d_vocab)
+            for seed in list(seeds)
+        }
+    case _:
+        raise ValueError(f"Unsupported seq_len: {seq_len}")
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
 model_cfgs = {
     seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()

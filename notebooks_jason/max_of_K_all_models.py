@@ -159,7 +159,8 @@ parser.add_argument(
 )
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
-seq_len = cli_args.K
+seq_len: int = cli_args.K
+D_VOCAB: int = cli_args.d_vocab
 adjusted_file_path = Path(__file__).parent / Path(__file__).name.replace(
     "_K_", f"_{seq_len}_"
 )
@@ -324,8 +325,7 @@ match seq_len:
         cfgs = {seed: MAX_OF_5_CONFIG(seed) for seed in list(seeds)}
     case 10:
         cfgs = {
-            seed: MAX_OF_10_CONFIG(seed, d_vocab_out=cli_args.d_vocab)
-            for seed in list(seeds)
+            seed: MAX_OF_10_CONFIG(seed, d_vocab_out=D_VOCAB) for seed in list(seeds)
         }
     case _:
         raise ValueError(f"Unsupported seq_len: {seq_len}")
@@ -341,7 +341,8 @@ cfg_hashes_for_filename = {
 # %%
 with memoshelve(
     train_or_load_model,
-    filename=cache_dir / f"{SHARED_CACHE_STEM}.train_or_load_model",
+    filename=cache_dir
+    / f"{SHARED_CACHE_STEM}.train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}",
     get_hash=get_hash_ascii,
 )() as memo_train_or_load_model:
     runtime_models = {}

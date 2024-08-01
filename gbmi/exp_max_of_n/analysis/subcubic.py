@@ -135,30 +135,30 @@ def find_min_gaps_with_EQKE_kwargs(model: HookedTransformer):
 
 
 @torch.no_grad()
-def find_proof_shared(model: HookedTransformer) -> dict:
+def find_proof_shared(model: HookedTransformer) -> Tuple[dict, dict, dict, float]:
     shared_proof_search_duration = 0.0
     start = time.time()
     W_EP_direction_kwargs = W_EP_direction_for_tricks_kwargs(model)
     find_min_gaps_kwargs = find_min_gaps_with_EQKE_kwargs(model)
     size_and_query_directions_kwargs = find_EKQE_error_directions(model)
     shared_proof_search_duration += time.time() - start
-    return {
-        "W_EP_direction_kwargs": W_EP_direction_kwargs,
-        "find_min_gaps_kwargs": find_min_gaps_kwargs,
-        "size_and_query_directions_kwargs": size_and_query_directions_kwargs,
-        "shared_proof_search_duration": shared_proof_search_duration,
-    }
+    return (
+        shared_proof_search_duration,
+        W_EP_direction_kwargs,
+        find_min_gaps_kwargs,
+        size_and_query_directions_kwargs,
+    )
 
 
 @torch.no_grad()
 def find_proof_specific(
     model: HookedTransformer,
     tricks: LargestWrongLogitQuadraticConfig,
-    *,
     W_EP_direction_kwargs,
     find_min_gaps_kwargs,
     size_and_query_directions_kwargs,
     shared_proof_search_duration: float = 0,
+    *,
     record_time: bool = False,
     **find_min_gaps_with_EQKE_extra_kwargs,
 ) -> Union[dict, Tuple[dict, float]]:
@@ -195,11 +195,11 @@ def find_proof(
     record_time: bool = False,
     **find_min_gaps_with_EQKE_extra_kwargs,
 ) -> Union[dict, Tuple[dict, float]]:
-    shared_kwargs = find_proof_shared(model)
+    shared_args = find_proof_shared(model)
     return find_proof_specific(
-        model=model,
-        tricks=tricks,
+        model,
+        tricks,
+        *shared_args,
         record_time=record_time,
-        **shared_kwargs,
         **find_min_gaps_with_EQKE_extra_kwargs,
     )

@@ -1984,11 +1984,12 @@ cmodel = CountHookedTransformer(model)
 # err_exact = W_E_query_err2 @ W_Q_err @ W_K_errT @ W_E_key_err2T
 min_gaps_lists = {}
 with torch.no_grad():
-    W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(model)
-    find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
-    size_and_query_directions_kwargs = analysis_quadratic.find_EKQE_error_directions(
-        model
-    )
+    (
+        W_EP_direction_kwargs,
+        find_min_gaps_kwargs,
+        size_and_query_directions_kwargs,
+        shared_proof_search_duration,
+    ) = analysis_subcubic.find_proof_shared(model)
     with memoshelve(
         (
             lambda cfg: (

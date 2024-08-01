@@ -1558,26 +1558,8 @@ def try_all_proofs_subcubic(
 
     rows = []
 
-    def _shared_proof_search(seed: int):
-        shared_proof_search_duration = 0.0
-        start = time.time()
-        W_EP_direction_kwargs = analysis_quadratic.W_EP_direction_for_tricks_kwargs(
-            model
-        )
-        find_min_gaps_kwargs = analysis_subcubic.find_min_gaps_with_EQKE_kwargs(model)
-        size_and_query_directions_kwargs = (
-            analysis_quadratic.find_EKQE_error_directions(model)
-        )
-        shared_proof_search_duration += time.time() - start
-        return (
-            W_EP_direction_kwargs,
-            find_min_gaps_kwargs,
-            size_and_query_directions_kwargs,
-            shared_proof_search_duration,
-        )
-
     with memoshelve(
-        _shared_proof_search,
+        (lambda seed: analysis_subcubic.find_proof_shared(model)),
         # cache={},
         filename=cache_dir
         / f"{SHARED_CACHE_STEM}.shared_proof_search-{cfg_hash_for_filename}",

@@ -755,13 +755,29 @@ class CountTensor:
 
     triu = tril
 
-    def _reshape(self, new_shape: Sequence[int]) -> "CountTensor":
+    def _reshape_unchecked(self, new_shape: Sequence[int]) -> "CountTensor":
         """explicitly does not check the number of elements"""
         return CountTensor(
             shape=new_shape,
             # parents=CountTensor._parents_of_tuple((self,)),
             is_bool=self.is_bool,
         )
+
+    def _reshape(self, new_shape: Sequence[int]) -> "CountTensor":
+        """explicitly does not check the number of elements"""
+        if any(s == -1 for s in new_shape):
+            nelem = np.prod(self.shape)
+            n_new_elem = np.prod([s for s in new_shape if s != -1])
+            assert (
+                nelem % n_new_elem == 0
+            ), f"Cannot reshape {self.shape} to {new_shape}"
+            assert (
+                new_shape.count(-1) <= 1
+            ), f"Can only specify one unknown dimension in {self}._reshape({new_shape})"
+            new_shape = tuple(
+                s if s != -1 else int(nelem // n_new_elem) for s in new_shape
+            )
+        return self._reshape_unchecked(new_shape)
 
     def reshape(self, *new_shape: int | Sequence[int]) -> "CountTensor":
         if len(new_shape) == 1 and hasattr(new_shape[0], "__iter__"):
@@ -901,11 +917,22 @@ class CountTensor:
         return self._reshape(tuple(new_shape))
 
     def linear(
-        input,
+        self,
         weight: Union["CountTensor", np.ndarray, torch.Tensor],
         bias: Union["CountTensor", np.ndarray, torch.Tensor],
     ) -> "CountTensor":
-        return input @ weight.T + bias
+        return self @ weight.T + bias
+
+    def addmm(
+        self,
+        mat1: Union["CountTensor", np.ndarray, torch.Tensor],
+        mat2: Union["CountTensor", np.ndarray, torch.Tensor],
+        *,
+        alpha=1,
+        beta=1,
+    ) -> "CountTensor":
+        return self + mat1 @ mat2
+        # return beta * input + alpha * mat1 @ mat2
 
     @property
     def T(self) -> "CountTensor":
@@ -1503,6 +1530,7 @@ class PatchTorch:
         "cat": True,
         "svd": False,
         "matmul": False,
+        "addmm": False,
     }
     _torch_count_name = {"matmul": "__matmul__"}
     _torch_linalg_is_static = {
@@ -1511,7 +1539,7 @@ class PatchTorch:
     }
     _torch_linalg_count_name = {"svd": "linalg_svd"}
     _torch_nn_functional_is_static = {"linear": False}
-    _torch_nn_functional_name = {"linear": "linear"}
+    _torch_nn_functional_name: dict[str, str] = {}
 
     def __init__(self, **kwargs: bool):
         self.torch_patches = tuple(

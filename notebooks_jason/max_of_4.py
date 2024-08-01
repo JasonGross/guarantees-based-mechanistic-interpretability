@@ -19,13 +19,11 @@ import re
 import time
 import subprocess
 from itertools import chain
-from functools import reduce, partial, cache
+from functools import partial, cache
 from concurrent.futures import ThreadPoolExecutor
 import math
-from scipy import stats
 from contextlib import contextmanager
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import matplotlib.figure
 import tikzplotlib
 import matplotlib
@@ -40,7 +38,7 @@ from typing import (
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 from cycler import cycler
-from argparse import ArgumentParser, Namespace, BooleanOptionalAction
+from argparse import ArgumentParser, BooleanOptionalAction
 from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
     hist_attention_difference_over_gap,
@@ -53,8 +51,6 @@ from gbmi.analysis_tools.plot import (
     weighted_histogram,
     Colorscale,
     combine_interpolate_color_mapping,
-    colorscale_to_cmap,
-    imshow,
     line,
     remove_titles,
 )
@@ -84,8 +80,6 @@ from gbmi.exp_max_of_n.analysis import (
 )
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
-    IterableDatasetCfg,
-    MaxOfN,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
@@ -93,7 +87,6 @@ from gbmi.exp_max_of_n.train import (
     SEEDS,
     SELECTED_SEED,
 )
-from gbmi.model import Config
 import torch
 from tqdm.auto import tqdm
 import numpy as np
@@ -101,9 +94,9 @@ from jaxtyping import Float, Integer
 from torch import Tensor
 import pandas as pd
 import plotly.express as px
-from transformer_lens import HookedTransformerConfig, HookedTransformer
+from transformer_lens import HookedTransformer
 from pathlib import Path
-from gbmi.utils import default_device, shuffle_tensor
+from gbmi.utils import default_device
 from gbmi.utils.sequences import (
     SequenceDataset,
 )

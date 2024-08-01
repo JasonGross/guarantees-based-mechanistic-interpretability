@@ -17,7 +17,6 @@ import traceback
 import gc
 import csv
 from collections import defaultdict
-import random
 import sys
 import os
 import re
@@ -26,11 +25,10 @@ import time
 import subprocess
 import pandas as pd
 from itertools import chain
-from functools import partial, reduce
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 import math
 import matplotlib
-import scipy.stats as stats
 from typing import (
     Any,
     Literal,
@@ -41,24 +39,15 @@ from typing import (
     Callable,
 )
 
-from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import matplotlib.figure
-import seaborn as sns
-import tikzplotly
 import tikzplotlib
 import matplotlib
-from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.utils import (
-    pm_round,
-    pm_mean_std,
     data_summary,
     data_summary_percentiles,
 )
 from gbmi.analysis_tools.plot import (
-    scatter,
     colorbar,
     remove_titles,
     remove_axis_labels,
@@ -67,26 +56,17 @@ from gbmi.analysis_tools.plot import (
 )
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.dataclass import enumerate_dataclass_values
-from gbmi.utils.lowrank import LowRankTensor
-import gbmi.utils.ein as ein
 import gbmi.utils.images as image_utils
-from gbmi.utils.images import trim_plotly_figure
 from gbmi.utils.memoshelve import memoshelve
 from gbmi.utils.latex_export import (
     to_latex_defs,
-    latex_values_of_counter,
-    latex_values_of_instruction_count,
     format_float_full_precision,
 )
 from gbmi.exp_max_of_n.analysis import (
-    find_second_singular_contributions,
-    find_size_and_query_direction,
     analyze_EVOU,
 )
 from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
-    IterableDatasetCfg,
-    MaxOfN,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
@@ -94,48 +74,30 @@ from gbmi.exp_max_of_n.train import (
     SEEDS,
     SELECTED_SEED,
 )
-from gbmi.model import Config
 import torch
 from tqdm.auto import tqdm
 import numpy as np
-from jaxtyping import Float, Integer
 from torch import Tensor
 import pandas as pd
 import plotly.express as px
-from transformer_lens import HookedTransformerConfig, HookedTransformer
+from transformer_lens import HookedTransformer
 from pathlib import Path
-from gbmi.utils import default_device, shuffle_tensor
+from gbmi.utils import default_device
 from gbmi.utils.sequences import (
     SequenceDataset,
 )
-from gbmi.verification_tools.decomp import (
-    factor_contribution,
-    bound_max_row_diff_by_SVD,
-)
 
-from gbmi.verification_tools.general import EU_PU
-from gbmi.verification_tools.l1h1 import (
-    all_EQKE,
-    all_EQKP,
-    all_EVOU,
-    all_PVOU,
-)
-from gbmi.verification_tools.utils import complexity_of
 from gbmi.utils.hashing import get_hash_ascii
 import gbmi.utils.git as git
 import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
-import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
 import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 import gbmi.utils.instructions as instructions
-from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
-from gbmi.verification_tools.general import EU_PU
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
 from gbmi.utils.dataclass import enumerate_dataclass_values
-from gbmi.utils.memoshelve import memoshelve, uncache as memoshelve_uncache
+from gbmi.utils.memoshelve import memoshelve
 from gbmi.analysis_tools.plot import (
     EVOU_max_logit_diff,
 )
@@ -145,24 +107,17 @@ from gbmi.exp_max_of_n.plot import (
     make_better_slides_plots_00,
     display_EQKE_SVD_analysis,
 )
-from gbmi.exp_max_of_n.analysis import (
-    find_second_singular_contributions,
-    find_size_and_query_direction,
-)
 
 from gbmi.exp_max_of_n.train import (
-    IterableDatasetCfg,
-    MaxOfN,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
 )
-from gbmi.model import Config
 import torch
 from tqdm.auto import tqdm
 import numpy as np
 from torch import Tensor
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from transformer_lens import HookedTransformer
 from pathlib import Path
 from gbmi.utils import default_device
 from gbmi.utils.sequences import (
@@ -170,8 +125,6 @@ from gbmi.utils.sequences import (
 )
 from gbmi.utils.latex_export import (
     to_latex_defs,
-    latex_values_of_counter,
-    latex_values_of_instruction_count,
 )
 from gbmi.exp_max_of_n.plot import (
     scatter_attention_difference_vs_gap,
@@ -180,15 +133,10 @@ from gbmi.exp_max_of_n.plot import (
 )
 from gbmi.analysis_tools.plot import (
     hist_EVOU_max_logit_diff,
-    weighted_histogram,
     Colorscale,
     combine_interpolate_color_mapping,
-    colorscale_to_cmap,
-    imshow,
-    line,
 )
-from gbmi.utils import default_device, dropnan, shuffle_tensors, shuffle_tensor
-from gbmi.utils.gc import PeriodicGarbageCollector
+from gbmi.utils import default_device
 from gbmi.utils.hashing import get_hash_ascii
 import gbmi.utils.git as git
 import gbmi.exp_max_of_n.verification.cubic as cubic
@@ -199,7 +147,7 @@ from gbmi.exp_max_of_n.analysis.ablation import (
     compute_ablations,
     latexify_ablation_results,
 )
-from argparse import ArgumentParser, Namespace, BooleanOptionalAction
+from argparse import ArgumentParser, BooleanOptionalAction
 import gbmi.utils.ein as ein
 import gbmi.utils.instructions as instructions
 from gbmi.utils.instructions import (
@@ -207,8 +155,6 @@ from gbmi.utils.instructions import (
     CountTensor,
     PatchTorch,
     CountHookedTransformer,
-    PerfCounter,
-    PerfCollector,
     int_or_value,
     CountTensorOperations,
     PERF_WORKING,

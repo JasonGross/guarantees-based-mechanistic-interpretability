@@ -975,7 +975,7 @@ latex_values["CubicOldDroppedSequencesFracFloat"] = cubic_old_dropped_sequences_
 # %% [markdown]
 # # Plots
 # %%
-if DISPLAY_PLOTS:
+if DISPLAY_PLOTS or SAVE_PLOTS:
     figs, axis_limits = display_basic_interpretation(
         model,
         include_uncentered=True,
@@ -985,6 +985,7 @@ if DISPLAY_PLOTS:
         tok_dtick=10,
         plot_with=PLOT_WITH,
         renderer=RENDERER,
+        show=DISPLAY_PLOTS,
     )
     for attn_scale in ("", "WithAttnScale"):
         for fig in (
@@ -1098,13 +1099,15 @@ def make_FAR_slides_plots(
             zmax=zmax,
             labels=labels,
         )
-        fig.show(renderer)
+        if DISPLAY_PLOTS:
+            fig.show(renderer)
         # remove title
         fig.update_layout(title_text="")
         fig.update(layout_coloraxis_showscale=False)
         # crop whitespace
         fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
-        fig.show(renderer)
+        if DISPLAY_PLOTS:
+            fig.show(renderer)
 
 
 ## %%
@@ -1117,7 +1120,7 @@ if DISPLAY_PLOTS:
 
 
 ## %%
-if DISPLAY_PLOTS:
+if DISPLAY_PLOTS or SAVE_PLOTS:
     figs = make_better_slides_plots_00(
         model,
         OV_colorscale=default_OV_colorscale,
@@ -1221,7 +1224,8 @@ def make_better_slides_plots_2024_03_26(
             yaxis_visible=False,
             margin=dict(l=0, r=0, b=0, t=0),
         )
-        fig.show(renderer)
+        if DISPLAY_PLOTS:
+            fig.show(renderer)
     for m, title, colorscale, zmax, labels in (
         (
             EPU,
@@ -1275,16 +1279,22 @@ def make_better_slides_plots_2024_03_26(
             labels=labels,
             **(dict(zmin=-zmax, zmax=zmax) if zmax is not None else {}),
         )
-        fig.show(renderer)
+        if DISPLAY_PLOTS:
+            fig.show(renderer)
         # remove title
         fig.update_layout(title_text="")
         fig.update(layout_coloraxis_showscale=False)
         # crop whitespace
         fig.update_layout(margin=dict(l=0, r=0, b=0, t=0))
         trim_plotly_figure(fig)
-        fig.show(renderer)
+        if DISPLAY_PLOTS:
+            fig.show(renderer)
     _, figs = find_size_and_query_direction(
-        model, plot_heatmaps=True, renderer=renderer, colorscale=QK_colorscale
+        model,
+        plot_heatmaps=True,
+        renderer=renderer,
+        colorscale=QK_colorscale,
+        show=DISPLAY_PLOTS,
     )
     assert figs is not None
     for k, fig in figs.items():
@@ -1293,7 +1303,7 @@ def make_better_slides_plots_2024_03_26(
 
 
 ## %%
-if DISPLAY_PLOTS:
+if DISPLAY_PLOTS or SAVE_PLOTS:
     figs = make_better_slides_plots_2024_03_26(model, renderer=RENDERER)
     # for k, fig in figs.items():
     #     latex_figures[f"Decomposition-{k}"] = fig
@@ -1303,9 +1313,9 @@ latex_values |= analyze_EVOU(model)
 # %% [markdown]
 # # Back of the envelope math for sub-cubic
 # %%
-if DISPLAY_PLOTS:
+if DISPLAY_PLOTS or SAVE_PLOTS:
     latex_figures["EVOU-hist-max-row-diff"], max_logit_diff = hist_EVOU_max_logit_diff(
-        model, plot_with=PLOT_WITH, renderer=RENDERER
+        model, plot_with=PLOT_WITH, renderer=RENDERER, show=DISPLAY_PLOTS
     )
     remove_titles(latex_figures["EVOU-hist-max-row-diff"])
     latex_values["EVOUMeanMaxRowDiffFloat"] = max_logit_diff.mean().item()
@@ -1320,6 +1330,7 @@ if DISPLAY_PLOTS:
                 duplicate_by_sequence_count=duplicate_by_sequence_count,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
+                show=DISPLAY_PLOTS,
             )
         )
         remove_titles(latex_figures[key])
@@ -1357,13 +1368,14 @@ if DISPLAY_PLOTS:
 
 
 # %%
-if DISPLAY_PLOTS:
+if DISPLAY_PLOTS or SAVE_PLOTS:
     latex_figures["EQKE-scatter-attention-difference-vs-gap"] = (
         scatter_attention_difference_vs_gap(
             model,
             renderer=RENDERER,
             plot_with=PLOT_WITH,
             # plot_with="plotly",
+            show=DISPLAY_PLOTS,
         )  # this one is too big to export to TeX
     )
     for duplicate_by_sequence_count in [False, True]:
@@ -1372,6 +1384,7 @@ if DISPLAY_PLOTS:
             duplicate_by_sequence_count=duplicate_by_sequence_count,
             plot_with=PLOT_WITH,
             renderer=RENDERER,
+            show=DISPLAY_PLOTS,
         )
         key = "EQKE-hist-attention-difference-over-gap" + (
             "-dup-by-seq-count" if duplicate_by_sequence_count else ""
@@ -1496,7 +1509,7 @@ if DISPLAY_PLOTS:
 # # more plots
 # %%
 
-if DISPLAY_PLOTS:
+if DISPLAY_PLOTS or SAVE_PLOTS:
     figs, values = display_EQKE_SVD_analysis(
         model,
         plot_with=PLOT_WITH,
@@ -1505,7 +1518,7 @@ if DISPLAY_PLOTS:
         tok_dtick=10,
         renderer=RENDERER,
         include_figures=True,
-        show=True,
+        show=DISPLAY_PLOTS,
         do_print=True,
     )
     key_pairs = {}
@@ -1543,7 +1556,7 @@ if DISPLAY_PLOTS:
         QK_colorscale=default_QK_colorscale_2024_03_26,
         QK_SVD_colorscale=default_QK_colorscale_2024_03_26,
         include_figures=True,
-        show=True,
+        show=DISPLAY_PLOTS,
         do_print=True,
     )
     print(
@@ -1631,7 +1644,7 @@ if DISPLAY_PLOTS:
 # %%
 # random resampling of EQKE_err
 
-# if DISPLAY_PLOTS:
+# if DISPLAY_PLOTS or SAVE_PLOTS:
 #     figs, values = resample_EQKE_err(
 #         (
 #             W_E_query_err2,
@@ -2113,7 +2126,7 @@ with torch.no_grad():
             left_behind / total_sequences
         )
 
-    if DISPLAY_PLOTS:
+    if DISPLAY_PLOTS or SAVE_PLOTS:
         d_vocab_q, d_vocab_max, n_ctx_nonmax_copies = min_gaps_lists[0][1].shape
         weights = torch.zeros(
             (d_vocab_q, d_vocab_max, n_ctx_nonmax_copies), dtype=torch.long
@@ -2176,6 +2189,7 @@ with torch.no_grad():
                     num_bins=v.max().item(),
                     plot_with=PLOT_WITH,
                     renderer=RENDERER,
+                    show=DISPLAY_PLOTS,
                 )
                 latex_figures[f"Subcubic{postkey}GapHistogram"] = fig
             except Exception as e:
@@ -2463,23 +2477,24 @@ if HAS_CSVS:
     data = double_singleton_groups(
         data.drop_duplicates(), column="attention_error_handling"
     )
-    fig = px.scatter(
-        data,
-        y="normalized-accuracy-bound",
-        x="EQKERatioFirstTwoSingularFloat",
-        color="attention_error_handling",
-        title="Normalized Accuracy Bound vs EQKE Ratio First Two Singular",
-        labels={
-            "normalized-accuracy-bound": "Normalized Accuracy Bound",
-            "EQKERatioFirstTwoSingularFloat": "EQKE Ratio First Two Singular",
-        },
-    )
-    # fig.update_layout(showlegend=False)
-    fig.update_layout(
-        legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5)
-    )
-    # Show the plot
-    fig.show("png")
+    if DISPLAY_PLOTS:
+        fig = px.scatter(
+            data,
+            y="normalized-accuracy-bound",
+            x="EQKERatioFirstTwoSingularFloat",
+            color="attention_error_handling",
+            title="Normalized Accuracy Bound vs EQKE Ratio First Two Singular",
+            labels={
+                "normalized-accuracy-bound": "Normalized Accuracy Bound",
+                "EQKERatioFirstTwoSingularFloat": "EQKE Ratio First Two Singular",
+            },
+        )
+        # fig.update_layout(showlegend=False)
+        fig.update_layout(
+            legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5)
+        )
+        # Show the plot
+        fig.show("png")
 # %%
 # plt.set_prop_cycle(color=['red', 'green', 'blue'])
 # default_colors
@@ -2588,6 +2603,7 @@ if HAS_CSVS:
             color_order=sorted_attn_err_handling,
             renderer=RENDERER,
             plot_with=PLOT_WITH,
+            show=DISPLAY_PLOTS,
             # plot_with="plotly"
         )
         # fig.update_layout(showlegend=False)
@@ -2694,6 +2710,7 @@ if HAS_CSVS:
         yaxis="Unexplained Dimension (Estimated)",
         plot_with=PLOT_WITH,
         renderer=RENDERER,
+        show=DISPLAY_PLOTS,
     )
     latex_externalize_tables["EffectiveDimensionVsFLOPDiscontinuousXY"] = True
     latex_figures["EffectiveDimensionVsFLOPDiscontinuousXY"] = fig = scatter(
@@ -2720,6 +2737,7 @@ if HAS_CSVS:
         ),
         plot_with=PLOT_WITH,
         renderer=RENDERER,
+        show=DISPLAY_PLOTS,
     )
 
 
@@ -2761,6 +2779,7 @@ if HAS_CSVS:
                 color_order=[category_name_remap[c] for c in category_order],
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
+                show=DISPLAY_PLOTS,
             )
             latex_externalize_tables[f"{key}DiscontinuousX"] = True
             latex_figures[f"{key}DiscontinuousX"] = fig = scatter(
@@ -2777,6 +2796,7 @@ if HAS_CSVS:
                 discontinuous_x=discontinuous_x,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
+                show=DISPLAY_PLOTS,
             )
 
 
@@ -2795,22 +2815,23 @@ if HAS_CSVS:
         ].copy()
         data = double_singleton_groups(data.drop_duplicates(), column="group")
         # data["group"] = data["group"].map({k:k[:7] for k in set(data["group"])})
-        fig = px.scatter(
-            data,
-            x="proof-flop-estimate",
-            y=f"{norm}accuracy-bound",
-            symbol="group",
-            title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
-            log_x=True,
-            color="tricks",
-            # symbol_map={True: "diamond", False: "circle"},
-            # legend=False,
-        )
-        fig.update_layout(showlegend=False)
-        # Flip the x-axis
-        fig.update_layout(xaxis=dict(autorange="reversed"))
+        if DISPLAY_PLOTS:
+            fig = px.scatter(
+                data,
+                x="proof-flop-estimate",
+                y=f"{norm}accuracy-bound",
+                symbol="group",
+                title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
+                log_x=True,
+                color="tricks",
+                # symbol_map={True: "diamond", False: "circle"},
+                # legend=False,
+            )
+            fig.update_layout(showlegend=False)
+            # Flip the x-axis
+            fig.update_layout(xaxis=dict(autorange="reversed"))
 
-        fig.show()
+            fig.show()
 
 # TRAIN_CSV_PATH = ALL_MODELS_PATH / "all-models-train-values.csv"
 # TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)

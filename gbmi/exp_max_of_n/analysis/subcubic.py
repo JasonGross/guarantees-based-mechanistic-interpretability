@@ -151,7 +151,7 @@ def find_proof_shared(model: HookedTransformer) -> dict:
 
 
 @torch.no_grad()
-def find_proof(
+def find_proof_specific(
     model: HookedTransformer,
     tricks: LargestWrongLogitQuadraticConfig,
     *,
@@ -185,3 +185,21 @@ def find_proof(
     if record_time:
         return result, proof_search_duration
     return result
+
+
+@torch.no_grad()
+def find_proof(
+    model: HookedTransformer,
+    tricks: LargestWrongLogitQuadraticConfig,
+    *,
+    record_time: bool = False,
+    **find_min_gaps_with_EQKE_extra_kwargs,
+) -> Union[dict, Tuple[dict, float]]:
+    shared_kwargs = find_proof_shared(model)
+    return find_proof_specific(
+        model=model,
+        tricks=tricks,
+        record_time=record_time,
+        **shared_kwargs,
+        **find_min_gaps_with_EQKE_extra_kwargs,
+    )

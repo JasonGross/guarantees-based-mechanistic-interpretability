@@ -11,127 +11,115 @@ if ipython is not None:
 else:
     print("Not in IPython, not loading autoreload")
 # %%
+import math
+import re
+import subprocess
+import sys
+import time
+
+# %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
 # %%
 import traceback
-import sys
-import re
-import time
-import subprocess
-from itertools import chain
-from functools import partial, cache
-from concurrent.futures import ThreadPoolExecutor
-import math
-from contextlib import contextmanager
-import matplotlib.pyplot as plt
-import matplotlib.figure
-import tikzplotlib
-import matplotlib
-from typing import (
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-    Any,
-    Iterator,
-)
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
-from cycler import cycler
 from argparse import ArgumentParser, BooleanOptionalAction
-from gbmi.exp_max_of_n.plot import (
-    scatter_attention_difference_vs_gap,
-    hist_attention_difference_over_gap,
-    hist_EVOU_max_minus_diag_logit_diff,
-    make_better_slides_plots_00,
-    display_EQKE_SVD_analysis,
-)
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from functools import cache, partial
+from itertools import chain
+from pathlib import Path
+from typing import Any, Iterator, Literal, Optional, Tuple, Union
+
+import matplotlib
+import matplotlib.figure
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import tikzplotlib
+import torch
+from cycler import cycler
+from jaxtyping import Float, Integer
+from plotly.subplots import make_subplots
+from torch import Tensor
+from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer
+
+import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
+import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
+import gbmi.exp_max_of_n.verification.cubic as cubic
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
+import gbmi.exp_max_of_n.verification.subcubic as subcubic
+import gbmi.utils.ein as ein
+import gbmi.utils.git as git
+import gbmi.utils.images as image_utils
+import gbmi.utils.instructions as instructions
+from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
 from gbmi.analysis_tools.plot import (
-    hist_EVOU_max_logit_diff,
-    weighted_histogram,
     Colorscale,
     combine_interpolate_color_mapping,
+    hist_EVOU_max_logit_diff,
     line,
     remove_titles,
+    scatter,
+    weighted_histogram,
 )
-from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-from gbmi.analysis_tools.utils import pm_round, pm_mean_std, data_summary
-from gbmi.analysis_tools.plot import scatter
-from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
-from gbmi.utils.dataclass import enumerate_dataclass_values
-from gbmi.utils.lowrank import LowRankTensor
-import gbmi.utils.ein as ein
-import gbmi.utils.images as image_utils
-from gbmi.utils.images import trim_plotly_figure
-from gbmi.utils.memoshelve import memoshelve
+from gbmi.analysis_tools.utils import data_summary, pm_mean_std, pm_round
+from gbmi.exp_max_of_n.analysis import (
+    analyze_EVOU,
+    find_second_singular_contributions,
+    find_size_and_query_direction,
+)
 from gbmi.exp_max_of_n.analysis.ablation import (
     compute_ablations,
     latexify_ablation_results,
 )
-from gbmi.utils.latex_export import (
-    to_latex_defs,
-    latex_values_of_counter,
-    latex_values_of_instruction_count,
+from gbmi.exp_max_of_n.plot import (
+    display_basic_interpretation,
+    display_EQKE_SVD_analysis,
+    hist_attention_difference_over_gap,
+    hist_EVOU_max_minus_diag_logit_diff,
+    make_better_slides_plots_00,
+    scatter_attention_difference_vs_gap,
 )
-from gbmi.exp_max_of_n.analysis import (
-    find_second_singular_contributions,
-    find_size_and_query_direction,
-    analyze_EVOU,
-)
-from gbmi.exp_max_of_n.plot import display_basic_interpretation
 from gbmi.exp_max_of_n.train import (
-    MaxOfNDataModule,
-    MaxOfNTrainingWrapper,
-    train_or_load_model,
     MAX_OF_4_CONFIG,
     SEEDS,
     SELECTED_SEED,
+    MaxOfNDataModule,
+    MaxOfNTrainingWrapper,
+    train_or_load_model,
 )
-import torch
-from tqdm.auto import tqdm
-import numpy as np
-from jaxtyping import Float, Integer
-from torch import Tensor
-import pandas as pd
-import plotly.express as px
-from transformer_lens import HookedTransformer
-from pathlib import Path
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils import default_device
-from gbmi.utils.sequences import (
-    SequenceDataset,
-)
-from gbmi.verification_tools.decomp import (
-    factor_contribution,
-    bound_max_row_diff_by_SVD,
-)
-
-from gbmi.verification_tools.general import EU_PU
-from gbmi.verification_tools.l1h1 import (
-    all_EQKE,
-    all_EQKP,
-    all_EVOU,
-    all_PVOU,
-)
-from gbmi.verification_tools.utils import complexity_of
+from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.hashing import get_hash_ascii
-import gbmi.utils.git as git
-import gbmi.exp_max_of_n.verification.cubic as cubic
-import gbmi.exp_max_of_n.verification.subcubic as subcubic
-import gbmi.exp_max_of_n.verification.quadratic as quadratic
-import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic
-import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
-import gbmi.utils.instructions as instructions
+from gbmi.utils.images import trim_plotly_figure
 from gbmi.utils.instructions import (
-    InstructionCount,
-    CountTensor,
-    PatchTorch,
-    CountHookedTransformer,
-    PerfCounter,
-    PerfCollector,
-    CountTensorOperations,
     PERF_WORKING,
+    CountHookedTransformer,
+    CountTensor,
+    CountTensorOperations,
+    InstructionCount,
+    PatchTorch,
+    PerfCollector,
+    PerfCounter,
 )
-
+from gbmi.utils.latex_export import (
+    latex_values_of_counter,
+    latex_values_of_instruction_count,
+    to_latex_defs,
+)
+from gbmi.utils.lowrank import LowRankTensor
+from gbmi.utils.memoshelve import memoshelve
+from gbmi.utils.sequences import SequenceDataset
+from gbmi.verification_tools.decomp import (
+    bound_max_row_diff_by_SVD,
+    factor_contribution,
+)
+from gbmi.verification_tools.general import EU_PU
+from gbmi.verification_tools.l1h1 import all_EQKE, all_EQKP, all_EVOU, all_PVOU
+from gbmi.verification_tools.utils import complexity_of
 
 try:
     import google.colab

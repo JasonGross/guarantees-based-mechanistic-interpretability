@@ -459,13 +459,18 @@ def _adjust_statedict_to_model(state_dict: Optional[dict]) -> Optional[dict]:
 
 
 def _load_model(
-    config: Config, model_pth_path: Path, wandb_id: Optional[str] = None
+    config: Config,
+    model_pth_path: Path,
+    wandb_id: Optional[str] = None,
+    map_location: Optional[str | torch.device] = None,
 ) -> Tuple[RunData, HookedTransformer]:
     model = config.experiment.get_training_wrapper().build_model(config)
     try:
         cached_data = torch.load(
             str(model_pth_path),
-            map_location=torch.device("cpu") if not torch.cuda.is_available() else None,
+            map_location=(
+                torch.device("cpu") if not torch.cuda.is_available() else map_location
+            ),
         )
         model.load_state_dict(
             cached_data.get(
@@ -495,18 +500,22 @@ def _load_model(
 
 
 def try_load_model_from_wandb_download(
-    config: Config, model_dir: Union[str, Path]
+    config: Config,
+    model_dir: Union[str, Path],
+    map_location: Optional[str | torch.device] = None,
 ) -> Optional[Tuple[RunData, HookedTransformer]]:
     model_dir = Path(model_dir)
     for model_path in list(model_dir.glob("*.pth")) + list(model_dir.glob("*.ckpt")):
-        res = _load_model(config, model_path)
+        res = _load_model(config, model_path, map_location=map_location)
         if res is not None:
             return res
     return None
 
 
 def try_load_model_from_wandb(
-    config: Config, wandb_model_path: str
+    config: Config,
+    wandb_model_path: str,
+    map_location: Optional[str | torch.device] = None,
 ) -> Optional[Tuple[RunData, HookedTransformer]]:
     # Try loading the model from wandb
     model_dir = None
@@ -517,7 +526,9 @@ def try_load_model_from_wandb(
     except Exception as e:
         logging.warning(f"Could not download model {wandb_model_path} from wandb:\n{e}")
     if model_dir is not None:
-        return try_load_model_from_wandb_download(config, model_dir)
+        return try_load_model_from_wandb_download(
+            config, model_dir, map_location=map_location
+        )
     else:
         return None
 
@@ -533,6 +544,7 @@ def train_or_load_model(
     model_description: str = "trained model",  # uploaded to wandba
     accelerator: str = "auto",
     model_version: str = "latest",
+    map_location: Optional[str | torch.device] = None,
 ) -> Tuple[RunData, HookedTransformer]:
     """
     Train model, or load from disk / wandb.
@@ -578,11 +590,13 @@ def train_or_load_model(
     if force != "train":
         # Try loading the model locally
         if os.path.exists(model_ckpt_path):
-            res = _load_model(config, model_ckpt_path)
+            res = _load_model(config, model_ckpt_path, map_location=map_location)
             if res is not None:
                 return res
 
-        res2 = try_load_model_from_wandb(config, wandb_model_path)
+        res2 = try_load_model_from_wandb(
+            config, wandb_model_path, map_location=map_location
+        )
         if res2 is not None:
             return res2
 
@@ -721,6 +735,9 @@ def train_or_load_model(
 
     if run is not None:
         run.finish()
+
+    if map_location is not None:
+        wrapped_model.model.to(map_location)
 
     return (
         RunData(

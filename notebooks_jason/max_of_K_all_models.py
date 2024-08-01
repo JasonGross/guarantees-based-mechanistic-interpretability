@@ -341,14 +341,8 @@ cfg_hashes_for_filename = {
 # %%
 
 
-def train_or_load_model_cpu(*args, **kwargs):
-    runtime_data, model = train_or_load_model(*args, **kwargs)
-    model.to("cpu")
-    return runtime_data, model
-
-
 with memoshelve(
-    train_or_load_model_cpu,
+    partial(train_or_load_model, map_location=torch.device("cpu")),
     filename=cache_dir
     / f"{SHARED_CACHE_STEM}.train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}",
     get_hash=get_hash_ascii,

@@ -41,6 +41,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import tikzplotlib
 import torch
+from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
@@ -66,6 +67,10 @@ from gbmi.analysis_tools.plot import (
 )
 from gbmi.analysis_tools.utils import data_summary, data_summary_percentiles
 from gbmi.exp_max_of_n.analysis import analyze_EVOU
+from gbmi.exp_max_of_n.analysis.ablation import (
+    compute_ablations,
+    latexify_ablation_results,
+)
 from gbmi.exp_max_of_n.plot import (
     EVOU_max_minus_diag_logit_diff,
     attention_difference_over_gap,
@@ -132,55 +137,76 @@ parser.add_argument(
     default=True,
     help="Include plots",
 )
+parser.add_argument(
+    "--K",
+    type=int,
+    default=5,
+    help="Sequence length",
+)
+parser.add_argument(
+    "--brute-force",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Include brute force and ablations",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
-cache_dir = Path(__file__).parent / ".cache"
+seq_len = cli_args.K
+adjusted_file_path = Path(__file__).parent / Path(__file__).name.replace(
+    "_K_", f"_{seq_len}_"
+)
+cache_dir = adjusted_file_path.parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
-TRAIN_CSV_PATH = Path(__file__).with_suffix("") / "all-models-train-values.csv"
+TRAIN_CSV_PATH = adjusted_file_path.with_suffix("") / "all-models-train-values.csv"
 TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+INCLUDE_BRUTE_FORCE: bool = cli_args.brute_force  # @param {type:"boolean"}
 BRUTE_FORCE_CSV_PATH = (
-    Path(__file__).with_suffix("") / "all-models-brute-force-values.csv"
+    adjusted_file_path.with_suffix("") / "all-models-brute-force-values.csv"
 )
 BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-CUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-cubic-values.csv"
+CUBIC_CSV_PATH = adjusted_file_path.with_suffix("") / "all-models-cubic-values.csv"
 CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-SUBCUBIC_CSV_PATH = Path(__file__).with_suffix("") / "all-models-subcubic-values.csv"
+SUBCUBIC_CSV_PATH = (
+    adjusted_file_path.with_suffix("") / "all-models-subcubic-values.csv"
+)
 SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_ANALYSIS_CSV_PATH = (
-    Path(__file__).with_suffix("") / "all-models-subcubic-analysis-values.csv"
+    adjusted_file_path.with_suffix("") / "all-models-subcubic-analysis-values.csv"
 )
 SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 PYTHON_VERSION_PATH = (
-    Path(__file__).with_suffix("") / "all-models-values-python-version.txt"
+    adjusted_file_path.with_suffix("") / "all-models-values-python-version.txt"
 )
 PYTHON_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
 TORCH_VERSION_PATH = (
-    Path(__file__).with_suffix("") / "all-models-values-torch-version.txt"
+    adjusted_file_path.with_suffix("") / "all-models-values-torch-version.txt"
 )
 TORCH_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
-GIT_DIFF_PATH = Path(__file__).with_suffix("") / "all-models-values-git-diff-info.diff"
+GIT_DIFF_PATH = (
+    adjusted_file_path.with_suffix("") / "all-models-values-git-diff-info.diff"
+)
 GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
-GIT_SHA_PATH = Path(__file__).with_suffix("") / "all-models-values-git-sha.txt"
+GIT_SHA_PATH = adjusted_file_path.with_suffix("") / "all-models-values-git-sha.txt"
 GIT_SHA_PATH.parent.mkdir(exist_ok=True, parents=True)
 GIT_SHA_SHORT_PATH = (
-    Path(__file__).with_suffix("") / "all-models-values-git-sha-short.txt"
+    adjusted_file_path.with_suffix("") / "all-models-values-git-sha-short.txt"
 )
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_VALUES_PATH = Path(__file__).with_suffix("") / "all-models-values.tex"
+LATEX_VALUES_PATH = adjusted_file_path.with_suffix("") / "all-models-values.tex"
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_VALUES_DATATABLE_PATH = (
-    Path(__file__).with_suffix("") / "all-models-all-values.csv"
+    adjusted_file_path.with_suffix("") / "all-models-all-values.csv"
 )
 LATEX_VALUES_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_FIGURE_PATH = Path(__file__).with_suffix("") / "figures"
+LATEX_FIGURE_PATH = adjusted_file_path.with_suffix("") / "figures"
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
-    Path(__file__).with_suffix("") / "tikzplotlib-preamble.tex"
+    adjusted_file_path.with_suffix("") / "tikzplotlib-preamble.tex"
 )
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-SHARED_CACHE_STEM = Path(__file__).name.replace("_all_models", "")
+SHARED_CACHE_STEM = adjusted_file_path.name.replace("_all_models", "")
 N_THREADS: Optional[int] = cli_args.n_threads
 DISPLAY_PLOTS: bool = False  # @param {type:"boolean"}
 SAVE_PLOTS: bool = cli_args.plots
@@ -253,7 +279,7 @@ for name, (args, kwargs) in [
     except Exception as e:
         print(f"Error running {name}: {e}")
     else:
-        with open(Path(__file__).with_suffix("") / f"{name}.txt", "w") as f:
+        with open(adjusted_file_path.with_suffix("") / f"{name}.txt", "w") as f:
             f.write(result)
 
 with open(GIT_DIFF_PATH, "w") as f:
@@ -467,10 +493,255 @@ latex_values |= data_summary(train_average_loss, prefix="TrainLoss")
 # %% [markdown]
 # # Brute Force Proof
 # %%
-all_tokens_datasets = {
-    seed: SequenceDataset(seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab)
-    for seed, (_runtime, model) in runtime_models.items()
-}
+if INCLUDE_BRUTE_FORCE:
+    all_tokens_datasets = {
+        seed: SequenceDataset(seq_len=model.cfg.n_ctx, vocab_size=model.cfg.d_vocab)
+        for seed, (_runtime, model) in runtime_models.items()
+    }
+# %%
+if INCLUDE_BRUTE_FORCE:
+    brute_force_columns = [
+        "seed",
+        "loss",
+        "accuracy",
+        "num_correct",
+        "num_incorrect",
+        "cpu",
+        "duration",
+    ]
+    if os.path.exists(BRUTE_FORCE_CSV_PATH):
+        brute_force_results = pd.read_csv(BRUTE_FORCE_CSV_PATH)
+    else:
+        brute_force_results = pd.DataFrame(columns=brute_force_columns)
+
+    brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
+
+    batch_size = 4096  # 16_384 # 8182
+
+    all_seeds = set(runtime_models.keys())
+    unknown_seeds = all_seeds - set(brute_force_results["seed"])
+    known_seeds = all_seeds - unknown_seeds
+    relevant_seeds = all_seeds if OVERWRITE_CSV_FROM_CACHE else unknown_seeds
+    brute_force_data = {
+        seed: brute_force_results[brute_force_results["seed"] == seed].iloc[0].to_dict()
+        for seed in known_seeds
+    }
+
+    def get_brute_force_for(seed: int, *, pbar: tqdm):
+        cfg_hash_for_filename = cfg_hashes_for_filename[seed]
+        training_wrapper = training_wrappers[seed]
+        all_tokens_dataset = all_tokens_datasets[seed]
+        total_loss = 0.0
+        total_accuracy = 0.0
+        total_samples = 0
+        total_duration = 0.0
+        # all_incorrect_sequences = []
+
+        # loop for computing overall loss and accuracy
+        @torch.no_grad()
+        def _run_batch_loss_accuracy(
+            i: int, batch_size: int, return_incorrect_sequences: bool = True
+        ) -> Tuple[
+            Union[Tuple[float, float, int], Tuple[Tuple[float, float, int], Tensor]],
+            float,
+        ]:
+            batch = all_tokens_dataset[i : i + batch_size]
+            size = batch.shape[0]
+            device = default_device(deterministic=brute_force_proof_deterministic)
+            batch.to(device)
+            duration = 0.0
+            start = time.time()
+            labels = training_wrapper.config.experiment.get_ground_truth(batch)
+            xs, ys, y_preds = training_wrapper.compute_batch(
+                (batch, labels), device=device
+            )
+            loss = training_wrapper.loss_fn(
+                y_preds, ys, log_softmax=training_wrapper.log_softmax
+            ).item()
+            full_accuracy = training_wrapper.acc_fn_per_seq(y_preds, ys)
+            accuracy = full_accuracy.float().mean().item()
+            duration += time.time() - start
+            if return_incorrect_sequences:
+                return ((loss, accuracy, size), xs[~full_accuracy]), duration
+            return (loss, accuracy, size), duration
+
+        with memoshelve(
+            _run_batch_loss_accuracy,
+            filename=cache_dir
+            / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+            get_hash_mem=(lambda x: x[0]),
+            get_hash=str,
+            cache={},
+        )() as run_batch_loss_accuracy_heavy:
+
+            def _run_batch_loss_accuracy_lightweight(*args, **kwargs):
+                res = run_batch_loss_accuracy_heavy(*args, **kwargs)
+                ((loss, accuracy, size), incorrect_sequences), duration = res
+                return (loss, accuracy, size), duration
+
+            with memoshelve(
+                _run_batch_loss_accuracy_lightweight,
+                filename=cache_dir
+                / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-lightweight-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+                get_hash_mem=(lambda x: x[0]),
+                get_hash=str,
+            )() as run_batch_loss_accuracy:
+                for i in range(0, len(all_tokens_dataset), batch_size):
+                    (loss, accuracy, size), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
+                    total_duration += duration
+                    # Accumulate loss and accuracy
+                    # start = time.time()
+                    total_loss += loss * size
+                    total_accuracy += accuracy * size
+                    total_samples += size
+                    # total_duration += time.time() - start
+                    # all_incorrect_sequences.append(incorrect_sequences)
+                    pbar.update(batch_size)
+
+        # Calculate average loss and accuracy
+        average_loss = total_loss / total_samples
+        average_accuracy = total_accuracy / total_samples
+        # incorrect_sequences = torch.cat(all_incorrect_sequences, dim=0)
+        num_correct_sequences = int(round(average_accuracy * all_tokens_dataset.length))
+        num_incorrect_sequences = all_tokens_dataset.length - num_correct_sequences
+
+        row = {
+            "seed": seed,
+            "cpu": brute_force_proof_deterministic,
+            "loss": average_loss,
+            "accuracy": average_accuracy,
+            "num_correct": num_correct_sequences,
+            "num_incorrect": num_incorrect_sequences,
+            "duration": total_duration,
+        }
+        return row
+
+    def _handle_brute_force_for(seed: int, *, pbar: tqdm):
+        try:
+            brute_force_data[seed] = get_brute_force_for(seed, pbar=pbar)
+        except Exception as e:
+            print(f"Error computing brute force proof for seed {seed}: {e}")
+            traceback.print_exc()
+
+    lengths = [
+        len(
+            SequenceDataset(
+                seq_len=runtime_models[seed][1].cfg.n_ctx,
+                vocab_size=runtime_models[seed][1].cfg.d_vocab,
+            )
+        )
+        for seed in relevant_seeds
+    ]
+
+    total_batches = sum(
+        length - length % batch_size + (batch_size if length % batch_size != 0 else 0)
+        for length in lengths
+    )
+
+    with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
+        # with PeriodicGarbageCollector(60):
+        maybe_parallel_map(
+            partial(_handle_brute_force_for, pbar=pbar), sorted(relevant_seeds)
+        )
+
+    update_csv(BRUTE_FORCE_CSV_PATH, brute_force_data, columns=brute_force_columns)
+
+# %%
+if INCLUDE_BRUTE_FORCE:
+    assert len(brute_force_data) == len(
+        runtime_models
+    ), f"len(brute_force_data) == {len(brute_force_data)} != {len(runtime_models)} == len(runtime_models)"
+    all_tokens_datasets_lens = {seed: len(d) for seed, d in all_tokens_datasets.items()}
+    assert (
+        len(set(all_tokens_datasets_lens.values())) == 1
+    ), f"Multiple dataset lengths! {set(all_tokens_datasets_lens.values())}"
+    latex_values["BruteForceCPU"] = brute_force_proof_deterministic
+    latex_values["BruteForceBatchSize"] = batch_size
+    latex_values["BruteForceNumBatches"] = int(
+        math.ceil(list(all_tokens_datasets_lens.values())[0] / batch_size)
+    )
+
+    brute_force_data_by_key = defaultdict(dict)
+    for seed, d in brute_force_data.items():
+        for k, v in d.items():
+            brute_force_data_by_key[k][seed] = v
+
+    for key, latex_key in (
+        ("loss", "BruteForceLoss"),
+        ("accuracy", "BruteForceAccuracy"),
+        ("num_correct", "BruteForceNumCorrect"),
+        ("num_incorrect", "BruteForceNumIncorrect"),
+        ("duration", "BruteForceTime"),
+    ):
+        latex_values |= data_summary(brute_force_data_by_key[key], prefix=latex_key)
+        assert all(
+            isinstance(seed, int) for seed in brute_force_data_by_key[key].keys()
+        )
+        latex_all_values_by_value[f"{latex_key}Float"] = brute_force_data_by_key[key]
+
+# %% [markdown]
+# # Ablations
+# %%
+if INCLUDE_BRUTE_FORCE:
+    ablation_data = {}
+
+    def get_ablation_for(seed: int, *, pbar: tqdm):
+        cfg = cfgs[seed]
+        cfg_hash = cfg_hashes[seed]
+        cfg_hash_for_filename = cfg_hashes_for_filename[seed]
+        runtime, model = runtime_models[seed]
+
+        with memoshelve(
+            partial(compute_ablations, model, pbar=pbar),
+            filename=cache_dir
+            / f"{SHARED_CACHE_STEM}.compute_ablations-{cfg_hash_for_filename}",
+            get_hash=get_hash_ascii,
+            get_hash_mem=str,
+        )() as memo_compute_ablations:
+            ablation_results, ablation_time = memo_compute_ablations()
+        return latexify_ablation_results(
+            ablation_results, float_postfix="", int_postfix=""
+        )
+
+    def _handle_ablation_for(seed: int, *, seed_pbar: tqdm, pbar: tqdm):
+        try:
+            seed_pbar.set_postfix(dict(seed=seed))
+            seed_pbar.update(1)
+            ablation_data[seed] = get_ablation_for(seed, pbar=pbar)
+        except Exception as e:
+            print(f"Error computing ablation for seed {seed}: {e}")
+            traceback.print_exc()
+
+    all_d_vocabs = [model.cfg.d_vocab for _runtime, model in runtime_models.values()]
+    assert len(set(all_d_vocabs)) == 1, f"Multiple d_vocabs: {all_d_vocabs}"
+
+    with tqdm(
+        total=len(all_d_vocabs),
+        desc="seeds for ablations",
+        position=0,
+    ) as seed_pbar:
+        with tqdm(
+            total=sum(all_d_vocabs),
+            desc="batches for ablations",
+            position=1,
+        ) as pbar:
+            # with PeriodicGarbageCollector(60):
+            maybe_parallel_map(
+                partial(_handle_ablation_for, seed_pbar=seed_pbar, pbar=pbar),
+                sorted(all_seeds),
+            )
+# %%
+if INCLUDE_BRUTE_FORCE:
+    ablation_data_by_key = defaultdict(dict)
+    for seed, d in ablation_data.items():
+        for k, v in d.items():
+            ablation_data_by_key[k][seed] = v
+
+    for key, values in ablation_data_by_key.items():
+        latex_values |= data_summary(values, prefix=key)
+        assert all(isinstance(seed, int) for seed in values.keys())
+        latex_all_values_by_value[f"{key}Float"] = values
+
 
 # %% [markdown]
 # # Cubic proof
@@ -542,12 +813,17 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
     return {
         "seed": seed,
         "accuracy-bound": cubic_proof_results["accuracy_lower_bound"],
-        # "normalized-accuracy-bound": cubic_proof_results["accuracy_lower_bound"]
-        # / brute_force_data_by_key["accuracy"][seed],
         "correct-count-lower-bound": cubic_proof_results["correct_count_lower_bound"],
         "duration-proof-search": duration_proof_search,
         "duration": cubic_proof_results["prooftime"],
-    }
+    } | (
+        {
+            "normalized-accuracy-bound": cubic_proof_results["accuracy_lower_bound"]
+            / brute_force_data_by_key["accuracy"][seed],
+        }
+        if INCLUDE_BRUTE_FORCE
+        else {}
+    )
 
 
 def _handle_cubic(seed: int, *, pbar: tqdm):
@@ -1449,27 +1725,36 @@ def try_all_proofs_subcubic(
                 analyze_gaps(tricks)
             )
 
-        row = {
-            "seed": seed,
-            "accuracy-bound": accuracy_bound,
-            # "normalized-accuracy-bound": accuracy_bound
-            # / brute_force_data_by_key["accuracy"][seed],
-            "duration-proof-search": proof_search_duration,
-            "duration": prooftime,
-            "tricks": tricks.short_description(latex=True),
-            "err-upper-bound": err_upper_bound_value,
-            "err-upper-bound-is-max": err_upper_bound_is_max,
-            "total-sequences": total_sequences,
-            "dropped-sequences": left_behind,
-            "dropped-sequences-frac": left_behind / total_sequences,
-            "most-gap-below-value": most_below_value,
-            "most-gap-below-value-frac": frac_below,
-            "most-gap-below-value-num-std": num_std,
-            "max-gap": v.max().item(),
-            "proof-flop-estimate": subcubic_instruction_count.flop,
-            "proof-int-op-estimate": subcubic_instruction_count.int_op,
-            "proof-branch-estimate": subcubic_instruction_count.branch,
-        } | perf_results
+        row = (
+            {
+                "seed": seed,
+                "accuracy-bound": accuracy_bound,
+                "duration-proof-search": proof_search_duration,
+                "duration": prooftime,
+                "tricks": tricks.short_description(latex=True),
+                "err-upper-bound": err_upper_bound_value,
+                "err-upper-bound-is-max": err_upper_bound_is_max,
+                "total-sequences": total_sequences,
+                "dropped-sequences": left_behind,
+                "dropped-sequences-frac": left_behind / total_sequences,
+                "most-gap-below-value": most_below_value,
+                "most-gap-below-value-frac": frac_below,
+                "most-gap-below-value-num-std": num_std,
+                "max-gap": v.max().item(),
+                "proof-flop-estimate": subcubic_instruction_count.flop,
+                "proof-int-op-estimate": subcubic_instruction_count.int_op,
+                "proof-branch-estimate": subcubic_instruction_count.branch,
+            }
+            | perf_results
+            | (
+                {
+                    "normalized-accuracy-bound": accuracy_bound
+                    / brute_force_data_by_key["accuracy"][seed],
+                }
+                if INCLUDE_BRUTE_FORCE
+                else {}
+            )
+        )
 
         rows.append(row)
         proof_pbar.update(1)

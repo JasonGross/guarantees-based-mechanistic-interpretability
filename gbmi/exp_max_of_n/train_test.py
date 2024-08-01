@@ -1,6 +1,6 @@
 import torch
 
-from gbmi.exp_max_of_n.train import MAX_OF_10_CONFIG
+from gbmi.exp_max_of_n.train import MAX_OF_10_SINGLE_CONFIG
 from gbmi.model import train_or_load_model
 from gbmi.utils import ein
 from gbmi.utils.testing import TestCase
@@ -8,14 +8,14 @@ from gbmi.utils.testing import TestCase
 
 class TestMaxOfN(TestCase):
     def test_gen_output(self):
-        cfg = MAX_OF_10_CONFIG
+        cfg = MAX_OF_10_SINGLE_CONFIG
         data = torch.tensor([[1, 2, 3, 4, 3, 2], [2, 3, 4, 5, 4, 3]])
         self.assertExpectedPretty(
             cfg.experiment.get_ground_truth(data), """tensor([4, 5])"""
         )
 
     def test_max_of_k(self):
-        cfg = MAX_OF_10_CONFIG
+        cfg = MAX_OF_10_SINGLE_CONFIG
         cfg.experiment.nth_max = 4
         data = torch.tensor([[1, 2, 3, 4, 3, 2], [2, 3, 4, 5, 4, 3]])
         self.assertExpectedPretty(
@@ -25,7 +25,7 @@ class TestMaxOfN(TestCase):
 
 class TestOneLayerTransformer(TestCase):
     def test_forward_pass(self):
-        model = MAX_OF_10_CONFIG.build_model()
+        model = MAX_OF_10_SINGLE_CONFIG.build_model()
         model.to("cpu")
         W_U, W_E, W_pos, W_Q, W_K, W_V, W_O = [
             i.squeeze().clone().detach()

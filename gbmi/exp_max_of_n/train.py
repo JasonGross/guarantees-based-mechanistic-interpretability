@@ -1,54 +1,35 @@
 # %%
 from __future__ import annotations
+
 import argparse
 import sys
-import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
-from functools import cache, partial
-
-from wandb.sdk.wandb_run import Run
-from gbmi.utils.hashing import _EXCLUDE
-from gbmi.training_tools.logging import ModelMatrixLoggingOptions, log_tensor
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Literal,
-    Sequence,
-    Tuple,
-    Union,
-    overload,
-)
+from functools import cache
+from typing import Any, Callable, Dict, Literal, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
-from jaxtyping import Float, Integer, Bool
-from torch import Tensor
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, IterableDataset, TensorDataset
+from jaxtyping import Bool, Float, Integer
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset, IterableDataset, TensorDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
+import gbmi.utils as utils
 from gbmi.model import (
-    TrainingWrapper,
     Config,
-    ExperimentConfig,
-    add_HookedTransformerConfig_arguments,
-    train_or_load_model,
     DataModule,
+    ExperimentConfig,
+    TrainingWrapper,
     add_force_argument,
+    add_HookedTransformerConfig_arguments,
     add_no_save_argument,
+    train_or_load_model,
     update_HookedTransformerConfig_from_args,
 )
-import gbmi.utils as utils
-from gbmi.utils import (
-    shuffle_data,
-    SingleTensorDataset,
-    TupleCollectionDataset,
-    reseed,
-    set_params,
-    ein,
-)
+from gbmi.training_tools.logging import ModelMatrixLoggingOptions
+from gbmi.utils import reseed, set_params, shuffle_data
+from gbmi.utils.hashing import _EXCLUDE
 from gbmi.utils.sequences import generate_all_sequences
 
 SEEDS = tuple(
@@ -182,7 +163,7 @@ MAX_OF_2_CONFIG: Config[MaxOfN] = Config(
     ),
     validate_every=None,
 )
-MAX_OF_10_CONFIG: Config[MaxOfN] = Config(
+MAX_OF_10_SINGLE_CONFIG: Config[MaxOfN] = Config(
     experiment=MaxOfN(
         train_dataset_cfg=IterableDatasetCfg(n_samples=None, pick_max_first=False),
         test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
@@ -220,6 +201,28 @@ def MAX_OF_4_CONFIG(seed: int) -> Config[MaxOfN]:
         seed=seed,
         batch_size=128,
         train_for=(3000, "steps"),
+    )
+
+
+def MAX_OF_5_CONFIG(seed: int, *, deterministic: bool = False) -> Config[MaxOfN]:
+    return set_params(
+        MAX_OF_4_CONFIG(seed),
+        {("deterministic",): deterministic, ("experiment", "seq_len"): 5},
+        post_init=True,
+    )
+
+
+def MAX_OF_10_CONFIG(
+    seed: int, d_vocab_out: int = 64, *, deterministic: bool = False
+) -> Config[MaxOfN]:
+    return set_params(
+        MAX_OF_4_CONFIG(seed),
+        {
+            ("deterministic",): deterministic,
+            ("experiment", "seq_len"): 10,
+            ("experiment", "d_vocab_out"): d_vocab_out,
+        },
+        post_init=True,
     )
 
 
@@ -642,7 +645,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[MaxOfN], dict]:
     args = parser.parse_args(argv[1:])
 
     config = set_params(
-        (MAX_OF_2_CONFIG if args.max_of <= 2 else MAX_OF_10_CONFIG),
+        (MAX_OF_2_CONFIG if args.max_of <= 2 else MAX_OF_10_SINGLE_CONFIG),
         {
             ("experiment", "seq_len"): args.max_of,
             ("experiment", "use_end_of_sequence"): args.use_end_of_sequence,

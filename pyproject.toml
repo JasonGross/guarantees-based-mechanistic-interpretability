@@ -49,7 +49,7 @@ ipympl = "^0.9.3"
 dill = "^0.3.8"
 tqdm-multiprocess = "^0.0.11"
 cirron = "^0.3"
-tikzplotlib-patched = "^0.10.1.post3"
+tikzplotlib-patched = "^0.10.1.post4"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"

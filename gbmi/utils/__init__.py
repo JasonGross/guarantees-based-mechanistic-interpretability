@@ -1,53 +1,55 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
 import subprocess
 import sys
 from contextlib import contextmanager
-
+from dataclasses import dataclass, is_dataclass
+from functools import partial
 from pathlib import Path
 from typing import (
+    Any,
     Callable,
     Collection,
-    Iterator,
-    Literal,
-    Optional,
-    Tuple,
-    TypeVar,
-    List,
-    Iterable,
     Dict,
     Hashable,
-    Any,
-    Union,
+    Iterator,
+    List,
+    Literal,
+    Optional,
     Sequence,
-    Generic,
+    Tuple,
+    TypeVar,
+    Union,
 )
-
-from jaxtyping import Float
-from torch.utils.data import Dataset, IterableDataset
 
 import numpy as np
 import torch
+from jaxtyping import Float
 from lightning import Callback
 from numpy.random import Generator
 from torch import Tensor
+from torch.utils.data import Dataset, IterableDataset
 from transformer_lens import HookedTransformer
 from transformer_lens.components import (
-    RMSNorm,
-    RMSNormPre,
+    MLP,
+    Attention,
     LayerNorm,
     LayerNormPre,
-    Attention,
-    MLP,
+    RMSNorm,
+    RMSNormPre,
 )
+
 from gbmi.utils import ein
+from gbmi.utils.dataclass import dataclass_map
 from gbmi.utils.hashing import get_hash
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_WANDB_ENTITY = "gbmi"
 
+A = TypeVar("A")
 T = TypeVar("T")
 K = TypeVar("K")
 V = TypeVar("V")
@@ -298,7 +300,7 @@ def cross_entropy(
 cross_entropy.__doc__ = torch.nn.functional.cross_entropy.__doc__
 
 
-def deep_getattr_or_item(obj: T, key: Union[str, Sequence[str]]) -> Any:
+def deep_getattr_or_item(obj: object, key: Union[str, Sequence[str]]) -> Any:
     if isinstance(key, str):
         return getattr_or_item(obj, key)
     elif len(key) == 1:
@@ -307,7 +309,9 @@ def deep_getattr_or_item(obj: T, key: Union[str, Sequence[str]]) -> Any:
         return deep_getattr_or_item(getattr_or_item(obj, key[0]), key[1:])
 
 
-def deep_setattr_or_item(obj: T, key: Union[str, Sequence[str]], value: Any) -> None:
+def deep_setattr_or_item(
+    obj: object, key: Union[str, Sequence[str]], value: Any
+) -> None:
     if isinstance(key, str):
         setattr_or_item(obj, key, value)
     elif len(key) == 1:
@@ -316,14 +320,14 @@ def deep_setattr_or_item(obj: T, key: Union[str, Sequence[str]], value: Any) -> 
         deep_setattr_or_item(getattr_or_item(obj, key[0]), key[1:], value)
 
 
-def setattr_or_item(obj: T, key: str, value: Any) -> None:
+def setattr_or_item(obj: object, key: str, value: Any) -> None:
     if hasattr(obj, "__setitem__"):  # dict-like
         obj[key] = value  # type: ignore
     else:
         setattr(obj, key, value)
 
 
-def getattr_or_item(obj: Any, key: str) -> Any:
+def getattr_or_item(obj: object, key: str) -> Any:
     if hasattr(obj, "__getitem__"):  # dict-like
         return obj[key]  # type: ignore
     else:
@@ -458,3 +462,104 @@ def bits_of_type(dtype) -> int:
     raise TypeError(
         f"Unsupported dtype {dtype}. Please provide a NumPy or PyTorch floating point type."
     )
+
+
+def to_device(
+    obj: A,
+    device: Union[str, torch.device],
+    *,
+    ignore_types: Tuple[type, ...] = (type(None), int, str, float),
+    print_details: bool = True,
+) -> A:
+    """
+    Recursively moves any subobject with a `.to` method to the specified device.
+    This function skips objects of types specified in `ignore_types`.
+
+    Args:
+        obj (A): The object to move.
+        device (Union[str, torch.device]): The device to move the object to.
+        ignore_types (Sequence[type]): A sequence of types to ignore.
+
+    Returns:
+        A: The object with elements moved to the specified device.
+    """
+    if isinstance(obj, ignore_types):
+        return obj
+
+    if hasattr(obj, "to"):
+        # if hasattr(obj, "device"):
+        #     print(f"Moving object of type {type(obj)} from device {obj.device} to {device}")
+        if isinstance(device, HookedTransformer):
+            return obj.to(device, print_details=print_details)
+        return obj.to(device)
+
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(
+            to_device(
+                item, device, ignore_types=ignore_types, print_details=print_details
+            )
+            for item in obj
+        )
+
+    if isinstance(obj, dict):
+        return type(obj)(
+            {
+                key: to_device(
+                    value,
+                    device,
+                    ignore_types=ignore_types,
+                    print_details=print_details,
+                )
+                for key, value in obj.items()
+            }
+        )
+
+    if is_dataclass(obj):
+        return dataclass_map(
+            partial(
+                to_device,
+                device=device,
+                ignore_types=ignore_types,
+                print_details=print_details,
+            ),
+            obj,
+        )
+
+    logging.warning("Skipping object of type %s: %s", type(obj), obj)
+
+    return obj
+
+
+@contextmanager
+def patch_map(
+    obj: object, mapping: dict[str | Sequence[str], Callable] = {}, **kwargs: Callable
+):
+    """
+    Temporarily patches an object with new methods or attributes.
+
+    Args:
+        obj (object): The object to patch.
+        mapping (dict[str | Sequence[str], Callable]): A mapping of attribute names to functions.
+    """
+    mapping = mapping | kwargs
+    original = {}
+    for key, upd in mapping.items():
+        original[key] = value = deep_getattr_or_item(obj, key)
+        deep_setattr_or_item(obj, key, upd(value))
+    try:
+        yield
+    finally:
+        for key, value in original.items():
+            deep_setattr_or_item(obj, key, value)
+
+
+def patch(obj: object, mapping: dict[str | Sequence[str], Any] = {}, **kwargs: Any):
+    """
+    Temporarily patches an object with new methods or attributes.
+
+    Args:
+        obj (object): The object to patch.
+        mapping (dict[str | Sequence[str], Any]): A mapping of attribute names to values.
+    """
+    mapping = mapping | kwargs
+    return patch_map(obj, {k: lambda x: v for k, v in mapping.items()})

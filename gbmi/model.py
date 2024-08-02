@@ -1,65 +1,61 @@
 from __future__ import annotations
-from argparse import ArgumentParser, Namespace, BooleanOptionalAction
 
 import datetime
-import logging
 import json
+import logging
 import os
 import re
-from torch import Tensor
-from tqdm.auto import tqdm
 from abc import ABC, abstractmethod
+from argparse import ArgumentParser, BooleanOptionalAction, Namespace
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-from jaxtyping import Float, Integer
-import re
-from transformer_lens import HookedTransformerConfig
-from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
-from typing_extensions import override
 from typing import (
     Any,
     Callable,
     Collection,
+    Dict,
+    Generic,
     Iterable,
     List,
-    TypeVar,
-    Generic,
-    Optional,
     Literal,
+    Mapping,
+    Optional,
+    Sequence,
     Tuple,
     Type,
-    Dict,
-    Mapping,
-    Sequence,
+    TypeVar,
     Union,
 )
 
+import lightning.pytorch as pl
+import rich.progress
 import torch
 import wandb
-import wandb.apis.public.runs
 import wandb.apis.public.artifacts
-from wandb.sdk.lib.paths import FilePathStr
-from lightning import LightningModule, LightningDataModule, Trainer, seed_everything
+import wandb.apis.public.runs
+from lightning import LightningDataModule, LightningModule, Trainer, seed_everything
 from lightning.pytorch.callbacks import (
-    RichProgressBar,
-    ModelCheckpoint,
     LearningRateMonitor,
+    ModelCheckpoint,
     RichModelSummary,
+    RichProgressBar,
 )
-import rich.progress
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning import Callback
-import lightning.pytorch as pl
-from transformer_lens import HookedTransformer
-from gbmi.utils.lazy import lazy
+from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+from transformer_lens.HookedTransformerConfig import SUPPORTED_ACTIVATIONS
+from typing_extensions import override
+from wandb.sdk.lib.paths import FilePathStr
+
 from gbmi.utils import (
-    get_trained_model_dir,
     DEFAULT_WANDB_ENTITY,
     MetricsCallback,
+    get_trained_model_dir,
     handle_size_warnings_and_prompts,
 )
-from gbmi.utils.hashing import get_hash, _json_dumps, _EXCLUDE
+from gbmi.utils.hashing import _EXCLUDE, _json_dumps, get_hash
+from gbmi.utils.lazy import lazy
 
 ConfigT = TypeVar("ConfigT")
 ExpT = TypeVar("ExpT", bound="ExperimentConfig")

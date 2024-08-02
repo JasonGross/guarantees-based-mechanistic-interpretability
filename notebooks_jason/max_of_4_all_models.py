@@ -90,7 +90,7 @@ from gbmi.exp_max_of_n.train import (
     train_or_load_model,
 )
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
-from gbmi.utils import default_device
+from gbmi.utils import default_device, patch
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.hashing import get_hash_ascii
 from gbmi.utils.instructions import (
@@ -310,21 +310,23 @@ cfg_hashes_for_filename = {
     for seed, cfg in cfgs.items()
 }
 # %%
-with memoshelve(
-    train_or_load_model,
-    filename=cache_dir / f"{SHARED_CACHE_STEM}.train_or_load_model",
-    get_hash=get_hash_ascii,
-)() as memo_train_or_load_model:
-    runtime_models = {}
+# patch torch.load so that when loading cache from non-CPU devices we can still load
+with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
+    with memoshelve(
+        train_or_load_model,
+        filename=cache_dir / f"{SHARED_CACHE_STEM}.train_or_load_model",
+        get_hash=get_hash_ascii,
+    )() as memo_train_or_load_model:
+        runtime_models = {}
 
-    def _handle_memo_train_or_load_model(arg):
-        seed, cfg = arg
-        try:
-            runtime_models[seed] = memo_train_or_load_model(cfg, force="load")
-        except Exception as e:
-            print(f"Error loading model for seed {seed}: {e}")
+        def _handle_memo_train_or_load_model(arg):
+            seed, cfg = arg
+            try:
+                runtime_models[seed] = memo_train_or_load_model(cfg, force="load")
+            except Exception as e:
+                print(f"Error loading model for seed {seed}: {e}")
 
-    maybe_parallel_map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
+        maybe_parallel_map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
 # %%
 training_wrappers = {
     seed: MaxOfNTrainingWrapper(cfgs[seed], model)

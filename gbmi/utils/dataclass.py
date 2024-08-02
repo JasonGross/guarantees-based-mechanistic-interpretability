@@ -1,26 +1,31 @@
 # %%
 # Written in part by ChatGPT 4
 # from __future__ import annotations
-from dataclasses import dataclass, fields
 import dataclasses
+import itertools
+from dataclasses import fields, is_dataclass, replace
 from typing import (
+    TYPE_CHECKING,
     Any,
+    Callable,
+    Generic,
     List,
-    Union,
     Literal,
+    Mapping,
+    TypeVar,
+    Union,
     get_args,
     get_origin,
-    TypeVar,
-    Generic,
-    Mapping,
 )
-from beartype.door import TypeHint, LiteralTypeHint, UnionTypeHint
-import itertools
 
-from typing import TYPE_CHECKING
+from beartype.door import LiteralTypeHint, TypeHint, UnionTypeHint
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
+
+    A = TypeVar("A", bound=DataclassInstance)
+else:
+    A = TypeVar("A")
 
 V = TypeVar("V")
 
@@ -74,3 +79,23 @@ def enumerate_dataclass_values(dc: type):
     # Create combinations of all field values
     for combination in itertools.product(*field_values):
         yield dc(*combination)
+
+
+def dataclass_map(func: Callable, obj: A) -> A:
+    """
+    Applies a given function to all fields of a dataclass and returns a new instance with updated fields.
+
+    Args:
+        obj (A): The dataclass instance.
+        func (Callable): The function to apply to each field.
+
+    Returns:
+        A: A new instance of the dataclass with updated fields.
+    """
+    if not is_dataclass(obj):
+        raise ValueError("The provided object is not a dataclass instance.")
+
+    updated_fields = {
+        field.name: func(getattr(obj, field.name)) for field in fields(obj)
+    }
+    return replace(obj, **updated_fields)

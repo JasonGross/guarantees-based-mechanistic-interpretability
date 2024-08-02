@@ -888,9 +888,12 @@ assert len(cubic_data) == len(
 for key, latex_key in (
     # ("loss", "CubicLoss"),
     ("accuracy-bound", "CubicAccuracy"),
-    ("normalized-accuracy-bound", "CubicNormalizedAccuracy"),
     ("correct-count-lower-bound", "CubicCorrectCount"),
     ("duration", "CubicProofTime"),
+) + (
+    (("normalized-accuracy-bound", "NormalizedAccuracy"),)
+    if INCLUDE_BRUTE_FORCE
+    else ()
 ):
     latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
     assert all(isinstance(seed, int) for seed in cubic_data_by_key[key].keys())

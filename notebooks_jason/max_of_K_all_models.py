@@ -368,6 +368,13 @@ with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
 
         maybe_parallel_map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
 # %%
+assert all(
+    model.cfg.d_vocab == D_VOCAB for _runtime, model in runtime_models.values()
+), {seed: model.cfg.d_vocab for seed, (_runtime, model) in runtime_models.items()}
+assert all(model.cfg.n_ctx == seq_len for _runtime, model in runtime_models.values()), {
+    seed: model.cfg.n_ctx for seed, (_runtime, model) in runtime_models.items()
+}
+# %%
 if __name__ == "__main__" and QUIT_AFTER_MODEL_DOWNLOAD:
     sys.exit(0)
 # %%

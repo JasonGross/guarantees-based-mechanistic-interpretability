@@ -1426,7 +1426,9 @@ def _subcubic_count_verify_proof(
 
 
 # %%
-_some_runtime, some_model = runtime_models[123]
+_some_runtime, some_model = runtime_models[
+    SELECTED_SEED if SELECTED_SEED in all_seeds else list(sorted(all_seeds))[0]
+]
 d_vocab, n_ctx = some_model.cfg.d_vocab, some_model.cfg.n_ctx
 latex_values["BruteForceEffectiveDimensionalityEstimate"] = brute_force_ed = (
     d_vocab ** (n_ctx + 1)

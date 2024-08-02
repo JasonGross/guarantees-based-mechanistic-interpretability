@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import pickle
+import logging
 from contextlib import contextmanager
 from functools import partial
 from inspect import signature
@@ -106,18 +107,21 @@ def _apply_single_dim(
     collect: Callable[[DTensor, Dim], TensorLike],
     no_dim: Callable[[TensorLike, Dim], TensorLike],
     size: Optional[int] = None,
-    device=None,
+    device: Optional[str | torch.device] = None,
+    use_cache: bool = True,
 ) -> TensorLike:
     # no_dim is called if the dim we're 'iterating' over isn't in the returned expression
     c: Dict[str, TensorLike]
     with tensor_cache.access() as c:
-        key = lambda_hash((f, collect, no_dim, hash(size)))
-        if key in c:
-            return c[key]
+        if use_cache:
+            key = lambda_hash((f, collect, no_dim, hash(size)))
+            if key in c:
+                return c[key]
 
         idx = ConstraintTrackingTensor(torch.tensor(0))
-        reified = f(idx)  # type: ignore
+        reified = None
         if size is None:
+            reified = f(idx)  # type: ignore
             constraints = getattr(idx, "_constraints", [])
             if len(constraints) > 1:
                 # TODO: name the dimension argument with the error
@@ -132,8 +136,27 @@ def _apply_single_dim(
 
         dim = dims(sizes=[size])
         if size is not None:
-            idx = torch.arange(size).to(reified.device if device is None else device)
-            xs = f(idx[dim])  # type: ignore
+            idx = torch.arange(size)  # type: ignore
+            if device is not None:
+                idx = idx.to(device)  # type: ignore
+            elif reified is not None:
+                idx = idx.to(reified.device)  # type: ignore
+            try:
+                xs = f(idx[dim])  # type: ignore
+            except RuntimeError as e:
+                if (
+                    device is not None
+                    or reified is not None
+                    or "same device" not in str(e)
+                ):
+                    raise e
+                reified = f(idx)  # type: ignore
+                idx = idx.to(reified.device)  # type: ignore
+                xs = f(idx[dim])  # type: ignore
+                # warn only if running it a second time actually works
+                logging.warning(
+                    f"Ran ein function twice just to get target device, try passing device={reified.device!r}"
+                )
         else:
             xs = f(dim)
         if isinstance(xs, DTensor) and hash(dim) in [hash(i) for i in xs.dims]:
@@ -141,7 +164,8 @@ def _apply_single_dim(
         else:
             result = no_dim(xs, dim)
 
-        c[key] = result
+        if use_cache:
+            c[key] = result
         return result
 
 
@@ -150,7 +174,8 @@ def _apply(
     collect: Callable[[Tensor, Dim], Tensor],
     no_dim: Callable[[Tensor, Dim], Tensor],
     sizes: Optional[List[Optional[int]]] = None,
-    device=None,
+    device: Optional[str | torch.device] = None,
+    use_cache: bool = True,
 ) -> Tensor:
     n_args = len(signature(f).parameters)
     if sizes is None:
@@ -159,19 +184,32 @@ def _apply(
 
     return _apply_single_dim(
         (
-            (lambda dim: _apply(partial(f, dim), collect, no_dim, sizes[1:], device))
+            (
+                lambda dim: _apply(
+                    partial(f, dim),
+                    collect,
+                    no_dim,
+                    sizes[1:],
+                    device=device,
+                    use_cache=use_cache,
+                )
+            )
             if len(sizes) > 1
             else f
         ),
         collect,
         no_dim,
         sizes[0],
-        device,
+        device=device,
+        use_cache=use_cache,
     )
 
 
 def sum(
-    f: Callable[..., Tensor], sizes: Optional[List[Optional[int]]] = None, device=None
+    f: Callable[..., Tensor],
+    sizes: Optional[List[Optional[int]]] = None,
+    device: Optional[str | torch.device] = None,
+    use_cache: bool = True,
 ) -> Tensor:
     return _apply(
         f,
@@ -179,11 +217,15 @@ def sum(
         no_dim=lambda xs, d: xs * d.size,
         sizes=sizes,
         device=device,
+        use_cache=use_cache,
     )
 
 
 def min(
-    f: Callable[..., Tensor], sizes: Optional[List[Optional[int]]] = None, device=None
+    f: Callable[..., Tensor],
+    sizes: Optional[List[Optional[int]]] = None,
+    device: Optional[str | torch.device] = None,
+    use_cache: bool = True,
 ) -> Tensor:
     return _apply(
         f,
@@ -191,11 +233,15 @@ def min(
         no_dim=lambda xs, d: xs,
         sizes=sizes,
         device=device,
+        use_cache=use_cache,
     )
 
 
 def max(
-    f: Callable[..., Tensor], sizes: Optional[List[Optional[int]]] = None, device=None
+    f: Callable[..., Tensor],
+    sizes: Optional[List[Optional[int]]] = None,
+    device: Optional[str | torch.device] = None,
+    use_cache: bool = True,
 ) -> Tensor:
     return _apply(
         f,
@@ -203,11 +249,15 @@ def max(
         no_dim=lambda xs, d: xs,
         sizes=sizes,
         device=device,
+        use_cache=use_cache,
     )
 
 
 def array(
-    f: Callable[..., Tensor], sizes: Optional[List[Optional[int]]] = None, device=None
+    f: Callable[..., Tensor],
+    sizes: Optional[List[Optional[int]]] = None,
+    device: Optional[str | torch.device] = None,
+    use_cache: bool = True,
 ) -> Tensor:
     return _apply(
         f,
@@ -215,4 +265,5 @@ def array(
         no_dim=lambda xs, d: xs.unsqueeze(0).repeat(d.size, *[1 for _ in xs.shape]),
         sizes=sizes,
         device=device,
+        use_cache=use_cache,
     )

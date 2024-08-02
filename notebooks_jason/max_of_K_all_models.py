@@ -157,6 +157,12 @@ parser.add_argument(
     default=False,
     help="Include brute force and ablations",
 )
+parser.add_argument(
+    "--only-download",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Only download models, then quit",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 seq_len: int = cli_args.K
@@ -171,6 +177,7 @@ compute_expensive_average_across_many_models: bool = True  # @param {type:"boole
 TRAIN_CSV_PATH = adjusted_file_path.with_suffix("") / "all-models-train-values.csv"
 TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 INCLUDE_BRUTE_FORCE: bool = cli_args.brute_force  # @param {type:"boolean"}
+QUIT_AFTER_MODEL_DOWNLOAD: bool = cli_args.only_download  # @param {type:"boolean"}
 BRUTE_FORCE_CSV_PATH = (
     adjusted_file_path.with_suffix("") / "all-models-brute-force-values.csv"
 )
@@ -357,6 +364,9 @@ with memoshelve(
             print(f"Error loading model for seed {seed}: {e}")
 
     maybe_parallel_map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
+# %%
+if __name__ == "__main__" and QUIT_AFTER_MODEL_DOWNLOAD:
+    sys.exit(0)
 # %%
 training_wrappers = {
     seed: MaxOfNTrainingWrapper(cfgs[seed], model)

@@ -102,6 +102,8 @@ from gbmi.utils.instructions import (
     CountTensorOperations,
     InstructionCount,
     PatchTorch,
+    PerfCollector,
+    PerfCounter,
     int_or_value,
 )
 from gbmi.utils.latex_export import format_float_full_precision, to_latex_defs
@@ -723,6 +725,52 @@ if INCLUDE_BRUTE_FORCE:
             isinstance(seed, int) for seed in brute_force_data_by_key[key].keys()
         )
         latex_all_values_by_value[f"{latex_key}Float"] = brute_force_data_by_key[key]
+
+# %%
+# @torch.no_grad()
+# def single_batch_instruction_count(
+#     model: HookedTransformer, batch_size: int
+# ) -> Tuple[InstructionCount, PerfCounter]:
+#     with PerfCollector() as collector:
+#         if PERF_WORKING:
+#             _run_batch_loss_accuracy(0, batch_size, return_incorrect_sequences=False)
+#     perf_instruction_count = collector.counters
+
+#     with CountTensorOperations() as result:
+#         batch = CountTensor.from_numpy(all_tokens_dataset[:batch_size])
+#         size = batch.shape[0]
+#         labels: CountTensor = training_wrapper.config.experiment.get_ground_truth(batch)  # type: ignore
+#         xs, ys = batch, labels
+#         y_preds: CountTensor = CountHookedTransformer(model)(xs)
+#         loss: CountTensor = training_wrapper.loss_fn(
+#             y_preds, ys, log_softmax=CountTensor.log_softmax  # type: ignore
+#         )  # type: ignore
+#         full_accuracy: CountTensor = training_wrapper.acc_fn_per_seq(y_preds, ys)  # type: ignore
+#         accuracy: CountTensor = full_accuracy.float().mean()
+
+#     return result, perf_instruction_count
+
+
+# def brute_force_instruction_count(
+#     model: HookedTransformer, batch_size: int
+# ) -> Tuple[InstructionCount, PerfCounter]:
+#     n_full_batches = len(all_tokens_dataset) // batch_size
+#     final_batch_size = len(all_tokens_dataset) % batch_size
+#     single_batch, single_batch_perf = single_batch_instruction_count(model, batch_size)
+#     result = single_batch * n_full_batches
+#     result_perf = single_batch_perf * n_full_batches
+#     if final_batch_size != 0:
+#         final_batch, final_batch_perf = single_batch_instruction_count(
+#             model, final_batch_size
+#         )
+#         result += final_batch
+#         result_perf += final_batch_perf
+#     return result, result_perf
+
+
+# brute_force_count, brute_force_perf = brute_force_instruction_count(model, batch_size)
+# latex_values |= latex_values_of_instruction_count("BruteForce", brute_force_count)
+# latex_values |= latex_values_of_counter("BruteForce", brute_force_perf)
 
 # %% [markdown]
 # # Ablations

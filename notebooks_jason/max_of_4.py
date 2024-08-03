@@ -11,15 +11,13 @@ if ipython is not None:
 else:
     print("Not in IPython, not loading autoreload")
 # %%
+#!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
+# %%
 import math
 import re
 import subprocess
 import sys
 import time
-
-# %%
-#!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
-# %%
 import traceback
 from argparse import ArgumentParser, BooleanOptionalAction
 from concurrent.futures import ThreadPoolExecutor

@@ -1,5 +1,5 @@
 import math
-from typing import Union
+from typing import Optional, Union
 from functools import cache
 import numpy as np
 import torch
@@ -9,17 +9,19 @@ from transformer_lens import HookedTransformer
 from jaxtyping import Float
 
 from gbmi.verification_tools.general import EU_PU
+import gbmi.utils.ein as ein
 
 
 @torch.no_grad()
 def all_EVOU_nocache(
-    model: HookedTransformer,
+    model: HookedTransformer, bias: bool = True
 ) -> Float[Tensor, "d_vocab d_vocab_out"]:  # noqa: F722
     """
     Returns all OV results, ignoring position, of shape (d_vocab, d_vocab_out)
     Complexity: O(d_vocab * (d_model * d_head + d_model * d_vocab_out)) ~ O(d_vocab^2 * d_model)
     """
     W_E, W_O, W_V, W_U = model.W_E, model.W_O, model.W_V, model.W_U
+    b_O, b_V, b_U = model.b_O, model.b_V, model.b_U
     d_model, d_vocab, d_head, d_vocab_out = (
         model.cfg.d_model,
         model.cfg.d_vocab,
@@ -30,10 +32,19 @@ def all_EVOU_nocache(
     assert W_O.shape == (1, 1, d_model, d_head)
     assert W_V.shape == (1, 1, d_head, d_model)
     assert W_U.shape == (d_model, d_vocab_out)
+    assert b_O.shape == (1, d_model)
+    assert b_V.shape == (1, 1, d_head)
+    assert b_U.shape == (d_vocab_out,)
+
+    if not bias:
+        b_O = torch.zeros_like(b_O)
+        b_V = torch.zeros_like(b_V)
+        b_U = torch.zeros_like(b_U)
 
     EVOU = (
-        (W_E @ W_V[0, 0, :, :]) @ W_O[0, 0, :, :]
-    ) @ W_U  # (d_vocab, d_vocab). EVOU[i, j] is how copying i affects j.
+        (W_E @ W_V[0, 0, :, :] + (b_V[0, 0, :] if bias else 0)) @ W_O[0, 0, :, :]
+        + b_O[0, :]
+    ) @ W_U + b_U  # (d_vocab, d_vocab). EVOU[i, j] is how copying i affects j.
     assert EVOU.shape == (
         d_vocab,
         d_vocab_out,
@@ -47,12 +58,14 @@ all_EVOU = cache(all_EVOU_nocache)
 @torch.no_grad()
 def all_PVOU_nocache(
     model: HookedTransformer,
+    bias: bool = False,
 ) -> Float[Tensor, "n_ctx d_vocab_out"]:  # noqa: F722
     """
     Returns all OV results, position only, of shape (n_ctx, d_vocab_out)
     Complexity: O(n_ctx * (d_model * d_head + d_model * d_vocab_out)) ~ O(n_ctx * d_vocab * d_model)
     """
     W_pos, W_O, W_V, W_U = model.W_pos, model.W_O, model.W_V, model.W_U
+    b_O, b_V, b_U = model.b_O, model.b_V, model.b_U
     d_model, n_ctx, d_head, d_vocab_out = (
         model.cfg.d_model,
         model.cfg.n_ctx,
@@ -63,10 +76,18 @@ def all_PVOU_nocache(
     assert W_O.shape == (1, 1, d_model, d_head)
     assert W_V.shape == (1, 1, d_head, d_model)
     assert W_U.shape == (d_model, d_vocab_out)
+    assert b_O.shape == (1, d_model)
+    assert b_V.shape == (1, 1, d_head)
+    assert b_U.shape == (d_vocab_out,)
+
+    if not bias:
+        b_O = torch.zeros_like(b_O)
+        b_V = torch.zeros_like(b_V)
+        b_U = torch.zeros_like(b_U)
 
     PVOU = (
-        (W_pos @ W_V[0, 0, :, :]) @ W_O[0, 0, :, :]
-    ) @ W_U  # (n_ctx, d_vocab_out). PVOU[i, j] is how copying at position i affects logit j.
+        (W_pos @ W_V[0, 0, :, :] + b_V[0, 0, :]) @ W_O[0, 0, :, :] + b_O[0, :]
+    ) @ W_U + b_U  # (n_ctx, d_vocab_out). PVOU[i, j] is how copying at position i affects logit j.
     assert PVOU.shape == (
         n_ctx,
         d_vocab_out,
@@ -79,13 +100,14 @@ all_PVOU = cache(all_PVOU_nocache)
 
 @torch.no_grad()
 def all_attention_scores(
-    model: HookedTransformer,
+    model: HookedTransformer, bias: bool = True
 ) -> Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]:  # noqa: F722
     """
     Returns pre-softmax attention of shape (n_ctx_k, d_vocab_q, d_vocab_k)
     Complexity: O(d_vocab^2 * d_model * n_ctx)
     """
     W_E, W_pos, W_Q, W_K = model.W_E, model.W_pos, model.W_Q, model.W_K
+    b_Q, b_K = model.b_Q, model.b_K
     d_model, n_ctx, d_vocab, d_head = (
         model.cfg.d_model,
         model.cfg.n_ctx,
@@ -96,6 +118,12 @@ def all_attention_scores(
     assert W_pos.shape == (n_ctx, d_model)
     assert W_Q.shape == (1, 1, d_model, d_head)
     assert W_K.shape == (1, 1, d_model, d_head)
+    assert b_Q.shape == (1, 1, d_head)
+    assert b_K.shape == (1, 1, d_head)
+
+    if not bias:
+        b_Q = torch.zeros_like(b_Q)
+        b_K = torch.zeros_like(b_K)
 
     last_resid = (
         W_E + W_pos[-1]
@@ -112,15 +140,18 @@ def all_attention_scores(
         d_vocab,
         d_model,
     ), f"key_tok_resid.shape = {key_tok_resid.shape} != {(n_ctx, d_vocab, d_model)} = (n_ctx, d_vocab, d_model)"
-    q = last_resid @ W_Q[0, 0, :, :]  # (d_vocab, d_head).
+    q = last_resid @ W_Q[0, 0, :, :] + b_Q[0, 0]  # (d_vocab, d_head).
     assert q.shape == (
         d_vocab,
         d_head,
     ), f"q.shape = {q.shape} != {(d_vocab, d_head)} = (d_vocab, d_head)"
-    k = einsum(
-        "n_ctx d_vocab d_head, d_head d_model_k -> n_ctx d_model_k d_vocab",
-        key_tok_resid,
-        W_K[0, 0, :, :],
+    k = (
+        einsum(
+            "n_ctx d_vocab d_head, d_head d_model_k -> n_ctx d_model_k d_vocab",
+            key_tok_resid,
+            W_K[0, 0, :, :],
+        )
+        + b_K[0, 0]
     )
     assert k.shape == (
         n_ctx,
@@ -143,12 +174,14 @@ def all_attention_scores(
 @torch.no_grad()
 def all_EQKE(
     model: HookedTransformer,
+    bias: bool = True,
 ) -> Float[Tensor, "d_vocab_q d_vocab_k"]:  # noqa: F722
     """
     Returns pre-softmax attention of shape (d_vocab_q, d_vocab_k)
     Complexity: O(d_vocab^2 * d_model)
     """
     W_E, W_pos, W_Q, W_K = model.W_E, model.W_pos, model.W_Q, model.W_K
+    b_Q, b_K = model.b_Q, model.b_K
     d_model, n_ctx, d_vocab, d_head = (
         model.cfg.d_model,
         model.cfg.n_ctx,
@@ -159,19 +192,28 @@ def all_EQKE(
     assert W_pos.shape == (n_ctx, d_model)
     assert W_Q.shape == (1, 1, d_model, d_head)
     assert W_K.shape == (1, 1, d_model, d_head)
+    assert b_Q.shape == (1, 1, d_head)
+    assert b_K.shape == (1, 1, d_head)
 
-    return (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ W_E.T
+    if not bias:
+        b_Q = torch.zeros_like(b_Q)
+        b_K = torch.zeros_like(b_K)
+
+    return ((W_E + W_pos[-1]) @ W_Q[0, 0] + b_Q[0, 0]) @ (W_E @ W_K[0, 0] + b_K[0, 0]).T
 
 
 @torch.no_grad()
 def all_EQKP(
     model: HookedTransformer,
+    biasQ: bool = True,
+    bias: bool = False,
 ) -> Float[Tensor, "d_vocab_q n_ctx_k"]:  # noqa: F722
     """
     Returns pre-softmax attention of shape (d_vocab_q, n_ctx_k)
     Complexity: O(d_vocab * d_model * n_ctx)
     """
     W_E, W_pos, W_Q, W_K = model.W_E, model.W_pos, model.W_Q, model.W_K
+    b_Q, b_K = model.b_Q, model.b_K
     d_model, n_ctx, d_vocab, d_head = (
         model.cfg.d_model,
         model.cfg.n_ctx,
@@ -182,8 +224,17 @@ def all_EQKP(
     assert W_pos.shape == (n_ctx, d_model)
     assert W_Q.shape == (1, 1, d_model, d_head)
     assert W_K.shape == (1, 1, d_model, d_head)
+    assert b_Q.shape == (1, 1, d_head)
+    assert b_K.shape == (1, 1, d_head)
 
-    return (W_E + W_pos[-1]) @ W_Q[0, 0] @ W_K[0, 0].T @ W_pos.T
+    if not biasQ:
+        b_Q = torch.zeros_like(b_Q)
+    if not bias:
+        b_K = torch.zeros_like(b_K)
+
+    return ((W_E + W_pos[-1]) @ W_Q[0, 0] + b_Q[0, 0]) @ (
+        W_pos @ W_K[0, 0] + b_K[0, 0]
+    ).T
 
 
 @torch.no_grad()
@@ -316,3 +367,46 @@ def EU_PU_PVOU(
     ), f"result.shape = {result.shape} != {(batch, d_vocab, d_vocab_out)} = (batch, d_vocab, d_vocab_out)"
 
     return result
+
+
+# @torch.no_grad()
+# def run_model_cached(
+#     model: HookedTransformer,
+#     inputs: Tensor,
+#     *,
+#     cache: Optional[dict[str, Tensor]] = None,
+# ) -> Tensor:
+#     """
+#     Runs the model on the given inputs, caching matrices for amortized speedup
+#     Complexity: O(|inputs| * n_ctx * d_vocab_out + d_vocab^2 * d_model + n_ctx * d_model * d_vocab)
+#     """
+#     if cache is None:
+#         cache = {}
+#     n_ctx, d_vocab = model.cfg.n_ctx, model.cfg.d_vocab
+#     all_attn: Float[Tensor, "n_ctx_k d_vocab_q d_vocab_k"]  # noqa: F722
+#     all_attn_exp: Float[Tensor, "n_ctx_k d_vocab_max d_vocab_q d_vocab_k"]  # noqa: F722
+#     EVOU: Float[Tensor, "d_vocab d_vocab_out"]  # noqa: F722
+#     PVOU: Float[Tensor, "n_ctx d_vocab_out"]  # noqa: F722
+#     EUPU: Float[Tensor, "d_vocab d_vocab_out"]
+#     if "attn_exp" not in cache:
+#         all_attn = all_attention_scores(model, bias=True)
+#         all_attn_exp = ein.array(
+#             lambda pos, m, q, k: (all_attn[pos, q, k] - all_attn[pos, q, m]).exp(),
+#             sizes=[n_ctx, d_vocab, d_vocab, d_vocab],
+#             device=all_attn.device,
+#         )
+#         cache["attn_exp"] = all_attn_exp
+#     else:
+#         all_attn_exp = cache["attn_exp"]
+#     EVOU = cache["EVOU"] = (
+#         cache["EVOU"] if "EVOU" in cache else all_EVOU_nocache(model, bias=True)
+#     )
+#     PVOU = cache["PVOU"] = (
+#         cache["PVOU"] if "PVOU" in cache else all_PVOU_nocache(model, bias=False)
+#     )
+#     EUPU = cache["EUPU"] = (
+#         cache["EUPU"] if "EUPU" in cache else EU_PU(model, bias=False)
+#     )
+#     EPVOU_scaled = ein.array(lambda pos, )
+
+#     return model(inputs)

@@ -3,7 +3,7 @@ from typing import Iterable, Optional, Tuple
 import torch
 from torch import Tensor
 
-from gbmi.utils.sequences import count_sequences
+from gbmi.utils.sequences import count_sequences, generate_all_sequences
 
 
 def probability_mass_for(
@@ -62,3 +62,74 @@ def sample(
             n_ctx, d_vocab, num_copies_nonmax, max_nonmax_tok
         )
         nsamples += 1
+
+
+def all_keys_cubic(
+    n_ctx: int, d_vocab: int
+) -> Iterable[Tuple[int, int, int, Optional[int]]]:
+    """
+    Generates all keys for the cubic model, in the order (max token, query token, number of copies of the nonmax token, largest nonmax token).  The largest nonmax token is None if the number of copies of the nonmax token is 0.
+    """
+    for max_tok in range(d_vocab):
+        for query_tok in range(max_tok + 1):
+            for num_copies_nonmax in range(
+                1 if max_tok == 0 else n_ctx if max_tok == query_tok else n_ctx - 1
+            ):
+                if max_tok == 0 or num_copies_nonmax == 0:
+                    yield max_tok, query_tok, 0, None
+                    continue
+
+                for largest_nonmax_tok in range(max_tok):
+                    yield max_tok, query_tok, num_copies_nonmax, largest_nonmax_tok
+
+
+def sample_include_all_keys(
+    n_ctx: int,
+    d_vocab: int,
+    nsamples_per_key: int,
+    *,
+    generator: Optional[torch.Generator] = None,
+    device: Optional[str | torch.device] = None,
+) -> Iterable[Tuple[Tensor, float]]:
+    """
+    Generates samples according to importance sampling, based on max token, largest nonmax token, query token, and number of copies of the nonmax token.  The pair of (sample, weight) is returned for each sample.
+    """
+    randints = lambda high, size: torch.randint(
+        0, high, size, generator=generator, dtype=torch.long
+    )
+    nsequences = d_vocab**n_ctx
+    for max_tok, query_tok, num_copies_nonmax, largest_nonmax_tok in all_keys_cubic(
+        n_ctx, d_vocab
+    ):
+        if max_tok == 0 or num_copies_nonmax == 0:
+            seq = torch.full((n_ctx,), max_tok, dtype=torch.long)
+            seq[-1] = query_tok
+            yield seq.to(device=device), 1.0 / nsequences
+            continue
+
+        assert largest_nonmax_tok is not None, (max_tok, query_tok, num_copies_nonmax)
+
+        seq_count = count_sequences(
+            n_ctx - 1,
+            num_copies_nonmax,
+            largest_nonmax_tok + 1,
+            nonmax_strict=True,
+        )
+
+        other_tokens_generator: Tensor | Iterable[Tensor] = (
+            generate_all_sequences(largest_nonmax_tok + 1, num_copies_nonmax - 1)
+            if seq_count <= nsamples_per_key
+            else (
+                randints(largest_nonmax_tok + 1, (num_copies_nonmax - 1,))
+                for _ in range(nsamples_per_key)
+            )
+        )
+
+        for other_tokens in other_tokens_generator:
+            seq = torch.full((n_ctx,), max_tok, dtype=torch.long)
+            seq[-1] = query_tok
+            seq[: num_copies_nonmax - 1] = other_tokens
+            seq[num_copies_nonmax - 1] = largest_nonmax_tok
+            # TODO: don't shuffle tokens when seq_count <= nsamples_per_key, only interleave max with non-max then
+            seq[:-1] = seq[torch.randperm(n_ctx - 1, generator=generator)]
+            yield seq.to(device), seq_count / nsequences

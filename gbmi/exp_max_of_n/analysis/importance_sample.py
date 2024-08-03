@@ -29,6 +29,7 @@ def sample(
     n_ctx: int,
     d_vocab: int,
     max_samples: Optional[int] = None,
+    *,
     generator: Optional[torch.Generator] = None,
     device: Optional[str | torch.device] = None,
 ) -> Iterable[Tuple[Tensor, float]]:

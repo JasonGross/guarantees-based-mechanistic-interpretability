@@ -10,6 +10,81 @@ if ipython is not None:
     ipython.run_line_magic("autoreload", "2")
 else:
     print("Not in IPython, not loading autoreload")
+
+# %%
+from argparse import ArgumentParser, BooleanOptionalAction
+
+from gbmi.exp_max_of_n import SEEDS, SELECTED_SEED
+
+parser = ArgumentParser()
+parser.add_argument(
+    "--seeds",
+    type=str,
+    default=",".join(sorted(map(str, SEEDS))),
+    help="Comma-separated list of seeds to use",
+)
+parser.add_argument(
+    "-j", dest="n_threads", type=int, default=1, help="number of threads"
+)
+parser.add_argument(
+    "--no-perf",
+    action="store_const",
+    const=True,
+    default=None,
+    help="Forcibly disable perf",
+)
+parser.add_argument(
+    "--ignore-csv",
+    action="store_const",
+    const=True,
+    default=None,
+    help="Recompute seeds that appear in csvs",
+)
+parser.add_argument(
+    "--plots",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Include plots",
+)
+parser.add_argument(
+    "--K",
+    type=int,
+    default=5,
+    help="Sequence length",
+)
+parser.add_argument(
+    "--d_vocab",
+    type=int,
+    default=64,
+    help="Number of tokens",
+)
+parser.add_argument(
+    "--brute-force",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Include brute force and ablations",
+)
+parser.add_argument(
+    "--only-download",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Only download models, then quit",
+)
+parser.add_argument(
+    "--print-cache-glob",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Print glob for cache files for these seeds",
+)
+parser.add_argument(
+    "--print-cache-glob-absolute",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Print glob for cache files for these seeds, with absolute paths",
+)
+cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
+# %%
+#!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
 # %%
 import csv
 import gc
@@ -19,12 +94,7 @@ import re
 import subprocess
 import sys
 import time
-
-# %%
-#!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
-# %%
 import traceback
-from argparse import ArgumentParser, BooleanOptionalAction
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -85,8 +155,6 @@ from gbmi.exp_max_of_n.train import (
     MAX_OF_4_CONFIG,
     MAX_OF_5_CONFIG,
     MAX_OF_10_CONFIG,
-    SEEDS,
-    SELECTED_SEED,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
@@ -110,62 +178,6 @@ from gbmi.utils.latex_export import format_float_full_precision, to_latex_defs
 from gbmi.utils.memoshelve import memoshelve
 from gbmi.utils.sequences import SequenceDataset
 
-# %%
-parser = ArgumentParser()
-parser.add_argument(
-    "--seeds",
-    type=str,
-    default=",".join(sorted(map(str, SEEDS))),
-    help="Comma-separated list of seeds to use",
-)
-parser.add_argument(
-    "-j", dest="n_threads", type=int, default=1, help="number of threads"
-)
-parser.add_argument(
-    "--no-perf",
-    action="store_const",
-    const=True,
-    default=None,
-    help="Forcibly disable perf",
-)
-parser.add_argument(
-    "--ignore-csv",
-    action="store_const",
-    const=True,
-    default=None,
-    help="Recompute seeds that appear in csvs",
-)
-parser.add_argument(
-    "--plots",
-    action=BooleanOptionalAction,
-    default=True,
-    help="Include plots",
-)
-parser.add_argument(
-    "--K",
-    type=int,
-    default=5,
-    help="Sequence length",
-)
-parser.add_argument(
-    "--d_vocab",
-    type=int,
-    default=64,
-    help="Number of tokens",
-)
-parser.add_argument(
-    "--brute-force",
-    action=BooleanOptionalAction,
-    default=False,
-    help="Include brute force and ablations",
-)
-parser.add_argument(
-    "--only-download",
-    action=BooleanOptionalAction,
-    default=False,
-    help="Only download models, then quit",
-)
-cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 seq_len: int = cli_args.K
 D_VOCAB: int = cli_args.d_vocab
@@ -282,6 +294,79 @@ def maybe_parallel_map(func, *args):
 
 
 # %%
+# hack around newlines of black formatting
+seeds = (
+    sorted(set(map(int, cli_args.seeds.split(","))))
+    if compute_expensive_average_across_many_models
+    else []
+)
+if SELECTED_SEED in seeds:
+    seeds = [SELECTED_SEED] + [s for s in seeds if s != SELECTED_SEED]
+match seq_len:
+    case 4:
+        cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in list(seeds)}
+    case 5:
+        cfgs = {seed: MAX_OF_5_CONFIG(seed) for seed in list(seeds)}
+    case 10:
+        cfgs = {
+            seed: MAX_OF_10_CONFIG(seed, d_vocab_out=D_VOCAB) for seed in list(seeds)
+        }
+    case _:
+        raise ValueError(f"Unsupported seq_len: {seq_len}")
+cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
+model_cfgs = {
+    seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()
+}
+datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
+cfg_hashes_for_filename = {
+    seed: f"{seed}_{cfg_hashes[seed].replace('/', '__SLASH__')}"
+    for seed, cfg in cfgs.items()
+}
+# %%
+if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
+    sub_glob = (
+        "{" + ",".join(cfg_hash for cfg_hash in cfg_hashes_for_filename.values()) + "}"
+    )
+    train_or_load_model_glob = (
+        f".train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}"
+    )
+    stem = cache_dir / SHARED_CACHE_STEM
+    if not cli_args.print_cache_glob_absolute:
+        stem = stem.relative_to(Path.cwd())
+    print(f"{stem}" + "{" + f"{train_or_load_model_glob},*{sub_glob}*" + "}")
+    sys.exit(0)
+
+# %%
+# patch torch.load so that when loading cache from non-CPU devices we can still load
+with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
+    with memoshelve(
+        train_or_load_model,
+        filename=cache_dir
+        / f"{SHARED_CACHE_STEM}.train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}",
+        get_hash=get_hash_ascii,
+    )() as memo_train_or_load_model:
+        runtime_models = {}
+
+        def _handle_memo_train_or_load_model(arg):
+            seed, cfg = arg
+            try:
+                runtime_models[seed] = memo_train_or_load_model(cfg, force="load")
+            except Exception as e:
+                print(f"Error loading model for seed {seed}: {e}")
+
+        maybe_parallel_map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
+# %%
+assert all(
+    model.cfg.d_vocab == D_VOCAB for _runtime, model in runtime_models.values()
+), {seed: model.cfg.d_vocab for seed, (_runtime, model) in runtime_models.items()}
+assert all(model.cfg.n_ctx == seq_len for _runtime, model in runtime_models.values()), {
+    seed: model.cfg.n_ctx for seed, (_runtime, model) in runtime_models.items()
+}
+# %%
+if __name__ == "__main__" and QUIT_AFTER_MODEL_DOWNLOAD:
+    sys.exit(0)
+
+# %%
 
 
 # %%
@@ -316,69 +401,6 @@ with open(TORCH_VERSION_PATH, "w") as f:
     f.write(torch.__version__)
 
 
-# %%
-
-# %%
-# hack around newlines of black formatting
-seeds = (
-    sorted(set(map(int, cli_args.seeds.split(","))))
-    if compute_expensive_average_across_many_models
-    else []
-)
-if SELECTED_SEED in seeds:
-    seeds = [SELECTED_SEED] + [s for s in seeds if s != SELECTED_SEED]
-match seq_len:
-    case 4:
-        cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in list(seeds)}
-    case 5:
-        cfgs = {seed: MAX_OF_5_CONFIG(seed) for seed in list(seeds)}
-    case 10:
-        cfgs = {
-            seed: MAX_OF_10_CONFIG(seed, d_vocab_out=D_VOCAB) for seed in list(seeds)
-        }
-    case _:
-        raise ValueError(f"Unsupported seq_len: {seq_len}")
-cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
-model_cfgs = {
-    seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()
-}
-datamodules = {seed: MaxOfNDataModule(cfg) for seed, cfg in cfgs.items()}
-cfg_hashes_for_filename = {
-    seed: f"{seed}_{cfg_hashes[seed].replace('/', '__SLASH__')}"
-    for seed, cfg in cfgs.items()
-}
-# %%
-
-
-# %%
-# patch torch.load so that when loading cache from non-CPU devices we can still load
-with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
-    with memoshelve(
-        train_or_load_model,
-        filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}",
-        get_hash=get_hash_ascii,
-    )() as memo_train_or_load_model:
-        runtime_models = {}
-
-        def _handle_memo_train_or_load_model(arg):
-            seed, cfg = arg
-            try:
-                runtime_models[seed] = memo_train_or_load_model(cfg, force="load")
-            except Exception as e:
-                print(f"Error loading model for seed {seed}: {e}")
-
-        maybe_parallel_map(_handle_memo_train_or_load_model, tqdm(cfgs.items()))
-# %%
-assert all(
-    model.cfg.d_vocab == D_VOCAB for _runtime, model in runtime_models.values()
-), {seed: model.cfg.d_vocab for seed, (_runtime, model) in runtime_models.items()}
-assert all(model.cfg.n_ctx == seq_len for _runtime, model in runtime_models.values()), {
-    seed: model.cfg.n_ctx for seed, (_runtime, model) in runtime_models.items()
-}
-# %%
-if __name__ == "__main__" and QUIT_AFTER_MODEL_DOWNLOAD:
-    sys.exit(0)
 # %%
 training_wrappers = {
     seed: MaxOfNTrainingWrapper(cfgs[seed], model)

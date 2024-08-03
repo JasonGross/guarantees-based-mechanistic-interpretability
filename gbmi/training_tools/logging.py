@@ -413,6 +413,8 @@ class ModelMatrixLoggingOptions:
             W_E_v: dict[int, Float[Tensor, "d_vocab d_model"]] = {}  # noqa: F722
             W_pos_v: dict[int, Float[Tensor, "n_ctx d_model"]] = {}  # noqa: F722
 
+            bias: dict[int, Literal["tok", "pos"]] = {}
+
             for l in range(-1, W_Q.shape[0]):
                 add_mean: Optional[Literal["pos_to_tok", "tok_to_pos"]] = (
                     self.add_mean
@@ -621,76 +623,119 @@ class ModelMatrixLoggingOptions:
                 sPv[l] = f"P"
                 match add_mean:
                     case "pos_to_tok":
+                        bias[l] = "tok"
                         W_E_v[l] = W_E_v[l] + W_pos_v[l].mean(dim=0)
                         W_pos_v[l] = W_pos_v[l] - W_pos_v[l].mean(dim=0)
                         sEv[l] = f"({sEv[l]}+{str_mean(sPv[l])})"
                         sPv[l] = f"({sPv[l]}-{str_mean(sPv[l])})"
                     case "tok_to_pos":
+                        bias[l] = "pos"
                         W_pos_v[l] = W_pos_v[l] + W_E_v[l].mean(dim=0)
                         W_E_v[l] = W_E_v[l] - W_E_v[l].mean(dim=0)
                         sPv[l] = f"({sPv[l]}+{str_mean(sEv[l])})"
                         sEv[l] = f"({sEv[l]}-{str_mean(sEv[l])})"
                     case None:
+                        bias[l] = "pos"
                         pass
                 sPk[l] = f"{sPk[l]}ᵀ"
                 sEk[l] = f"{sEk[l]}ᵀ"
 
             def apply_U(
-                x: Float[Tensor, "... d_model"]  # noqa: F722
+                x: Float[Tensor, "... d_model"],  # noqa: F722
+                bias: bool = True,
             ) -> Float[Tensor, "... d_vocab_out"]:  # noqa: F722
-                return x @ W_U + b_U
+                return x @ W_U + (b_U if bias else 0)
 
             def apply_VO(
-                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+                x: Float[Tensor, "... a d_model"],  # noqa: F722
+                l: int,
+                h: int,
+                bias: bool = True,
             ) -> Float[Tensor, "... a d_model"]:  # noqa: F722
-                return (x @ W_V[l, h, :, :] + b_V[l, h, None, :]) @ W_O[
-                    l, h, :, :
-                ] + b_O[l, None, None, :]
+                return (x @ W_V[l, h, :, :] + b_V[l, h, None, :]) @ W_O[l, h, :, :] + (
+                    b_O[l, None, None, :] if bias else 0
+                )
 
             def apply_Q(
-                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+                x: Float[Tensor, "... a d_model"],  # noqa: F722
+                l: int,
+                h: int,
+                bias: bool = True,
             ) -> Float[Tensor, "... a d_head"]:  # noqa: F722
-                return x @ W_Q[l, h, :, :] + b_Q[l, h, None, :]
+                return x @ W_Q[l, h, :, :] + (b_Q[l, h, None, :] if bias else 0)
 
             def apply_KT(
-                x: Float[Tensor, "... a d_model"], l: int, h: int  # noqa: F722
+                x: Float[Tensor, "... a d_model"],  # noqa: F722
+                l: int,
+                h: int,
+                bias: bool = True,
             ) -> Float[Tensor, "... d_head a"]:  # noqa: F722
-                return (x @ W_K[l, h, :, :] + b_K[l, h, None, :]).transpose(-1, -2)
+                return (
+                    x @ W_K[l, h, :, :] + (b_K[l, h, None, :] if bias else 0)
+                ).transpose(-1, -2)
 
             if self.EU:
-                yield f"{sEq[-1]}U", apply_U(W_E_q[-1])
+                yield f"{sEq[-1]}U", apply_U(W_E_q[-1], bias=False)
             if self.PU and (sPq[-1] != "0" or self.log_zeros):
-                yield f"{sPq[-1]}U", apply_U(W_pos_q[-1])
+                yield f"{sPq[-1]}U", apply_U(W_pos_q[-1], bias=False)
 
             for l in range(W_Q.shape[0]):
                 for h in range(W_Q.shape[1]):
                     for (
-                        (qx, qx_direct, qsx, qsx_direct, qskip_composition),
-                        (kx, kx_direct, ksx, ksx_direct, kskip_composition),
+                        (qx, qx_direct, qsx, qsx_direct, qskip_composition, qbias),
+                        (kx, kx_direct, ksx, ksx_direct, kskip_composition, kbias),
                         test,
                         nanify_above_diagonal_if_query_direct,
                     ) in (
                         (
-                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
-                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
+                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False, "tok"),
+                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False, "tok"),
                             self.EQKE,
                             False,
                         ),
                         (
-                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False),
-                            (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
+                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False, "tok"),
+                            (
+                                W_pos_v[l],
+                                W_pos_k[l],
+                                sPv[l],
+                                sPk[l],
+                                self.shortformer,
+                                "pos",
+                            ),
                             self.EQKP,
                             False,
                         ),
                         (
-                            (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
-                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False),
+                            (
+                                W_pos_v[l],
+                                W_pos_q[l],
+                                sPv[l],
+                                sPq[l],
+                                self.shortformer,
+                                "pos",
+                            ),
+                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False, "tok"),
                             self.PQKE,
                             False,
                         ),
                         (
-                            (W_pos_v[l], W_pos_q[l], sPv[l], sPq[l], self.shortformer),
-                            (W_pos_v[l], W_pos_k[l], sPv[l], sPk[l], self.shortformer),
+                            (
+                                W_pos_v[l],
+                                W_pos_q[l],
+                                sPv[l],
+                                sPq[l],
+                                self.shortformer,
+                                "pos",
+                            ),
+                            (
+                                W_pos_v[l],
+                                W_pos_k[l],
+                                sPv[l],
+                                sPk[l],
+                                self.shortformer,
+                                "pos",
+                            ),
                             self.PQKP,
                             self.nanify_causal_attn
                             and model.cfg.attention_dir == "causal",
@@ -703,7 +748,11 @@ class ModelMatrixLoggingOptions:
                                 v_q,
                                 is_direct_q,
                             ) in ModelMatrixLoggingOptions.compute_paths(
-                                apply_VO,
+                                (
+                                    lambda x, l, h: apply_VO(
+                                        x, l, h, bias=bias[l] == qbias
+                                    )
+                                ),
                                 model.cfg.n_heads,
                                 x=qx,
                                 x_direct=qx_direct,
@@ -719,7 +768,11 @@ class ModelMatrixLoggingOptions:
                                     v_k,
                                     is_direct_k,
                                 ) in ModelMatrixLoggingOptions.compute_paths(
-                                    apply_VO,
+                                    (
+                                        lambda x, l, h: apply_VO(
+                                            x, l, h, bias=bias[l] == kbias
+                                        )
+                                    ),
                                     model.cfg.n_heads,
                                     x=kx,
                                     x_direct=kx_direct,
@@ -730,9 +783,9 @@ class ModelMatrixLoggingOptions:
                                     skip_composition=kskip_composition,
                                 ):
                                     if sq != "0" or self.log_zeros:
-                                        matrix = apply_Q(v_q, l, h) @ apply_KT(
-                                            v_k, l, h
-                                        )
+                                        matrix = apply_Q(
+                                            v_q, l, h, bias=bias[l] == qbias
+                                        ) @ apply_KT(v_k, l, h, bias=bias[l] == kbias)
                                         if (
                                             nanify_above_diagonal_if_query_direct
                                             and is_direct_q
@@ -749,7 +802,7 @@ class ModelMatrixLoggingOptions:
                                         )
                     if self.EVOU:
                         for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
-                            apply_VO,
+                            (lambda x, l, h: apply_VO(x, l, h, bias=bias[l] == "tok")),
                             model.cfg.n_heads,
                             x=W_E_v[l],
                             x_direct=W_E_v[l],
@@ -760,11 +813,14 @@ class ModelMatrixLoggingOptions:
                         ):
                             yield (
                                 f"{sv}VOU<br>.{lh_v}l{l}h{h}",
-                                apply_U(apply_VO(v, l, h)),
+                                apply_U(
+                                    apply_VO(v, l, h, bias=bias[l] == "tok"),
+                                    bias=bias[l] == "tok",
+                                ),
                             )
                     if self.PVOU:
                         for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
-                            apply_VO,
+                            (lambda x, l, h: apply_VO(x, l, h, bias=bias[l] == "pos")),
                             model.cfg.n_heads,
                             x=W_pos_v[l],
                             x_direct=W_pos_v[l],
@@ -776,7 +832,10 @@ class ModelMatrixLoggingOptions:
                         ):
                             yield (
                                 f"{sv}VOU<br>.{lh_v}l{l}h{h}",
-                                apply_U(apply_VO(v, l, h)),
+                                apply_U(
+                                    apply_VO(v, l, h, bias=bias[l] == "pos"),
+                                    bias=bias[l] == "pos",
+                                ),
                             )
 
     @torch.no_grad()

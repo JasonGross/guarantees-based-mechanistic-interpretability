@@ -139,7 +139,7 @@ def sample_include_all_keys(
                             seq = torch.full((n_ctx,), max_tok, dtype=torch.long)
                             seq[-1] = query_tok
                             seq[list(nonmax_tok_pos)] = other_tokens
-                            yield seq.to(device), seq_count / nsequences
+                            yield seq.to(device), 1.0 / nsequences
         else:
             for _ in range(nsamples_per_key):
                 other_tokens = randints(
@@ -150,4 +150,4 @@ def sample_include_all_keys(
                 seq[: num_copies_nonmax - 1] = other_tokens
                 seq[num_copies_nonmax - 1] = largest_nonmax_tok
                 seq[:-1] = seq[torch.randperm(n_ctx - 1, generator=generator)]
-                yield seq.to(device), seq_count / nsequences
+                yield seq.to(device), (seq_count / nsamples_per_key) / nsequences

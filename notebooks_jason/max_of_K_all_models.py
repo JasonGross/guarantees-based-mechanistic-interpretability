@@ -405,6 +405,7 @@ def update_csv_with_rows(
             subset=subset, keep="last"
         )
     results.to_csv(csv_path, index=False)
+    return results
 
 
 def update_csv(
@@ -415,7 +416,7 @@ def update_csv(
     subset: str | list[str] = "seed",
 ):
     new_data = [data[seed] for seed in sorted(data.keys())]
-    update_csv_with_rows(csv_path, new_data, columns=columns, subset=subset)
+    return update_csv_with_rows(csv_path, new_data, columns=columns, subset=subset)
 
 
 # %%
@@ -514,7 +515,7 @@ train_data = {
     for seed in runtime_models.keys()
 }
 
-update_csv(TRAIN_CSV_PATH, train_data, columns=train_columns)
+all_train_data = update_csv(TRAIN_CSV_PATH, train_data, columns=train_columns)
 
 # %%
 num_seeds = len(train_average_loss)
@@ -686,7 +687,9 @@ if INCLUDE_BRUTE_FORCE:
             partial(_handle_brute_force_for, pbar=pbar), sorted(relevant_seeds)
         )
 
-    update_csv(BRUTE_FORCE_CSV_PATH, brute_force_data, columns=brute_force_columns)
+    all_brute_force_data = update_csv(
+        BRUTE_FORCE_CSV_PATH, brute_force_data, columns=brute_force_columns
+    )
 
 # %%
 if INCLUDE_BRUTE_FORCE:
@@ -882,7 +885,7 @@ total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
 with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
     maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
-update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
+all_cubic_data = update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
 # %% [markdown]
 # Summary satistics cubic
@@ -1085,7 +1088,7 @@ for k, v in EQKE_SVD_analyses_by_key.items():
         assert len(vals) == 1, f"Too many values for {k}: {vals}"
         latex_values[k] = list(vals)[0]
 
-update_csv_with_rows(
+all_subcubic_analysis_data = update_csv_with_rows(
     SUBCUBIC_ANALYSIS_CSV_PATH,
     new_data,
     columns=["seed"] + list(EQKE_SVD_analyses_by_key.keys()),
@@ -1888,7 +1891,7 @@ new_data = []
 for seed in sorted(subcubic_data.keys()):
     new_data.extend(subcubic_data[seed])
 
-update_csv_with_rows(
+all_subcubic_data = update_csv_with_rows(
     SUBCUBIC_CSV_PATH, new_data, columns=subcubic_columns, subset=["seed", "tricks"]
 )
 
@@ -2058,6 +2061,604 @@ for seed, rows in subcubic_data.items():
                 latex_all_values_by_value[f"{row['tricks']}{latex_key}Float"][seed] = (
                     row[key]
                 )
+# %%
+# Approximating effective dimensionality
+# %%
+# if INCLUDE_BRUTE_FORCE:
+#     brute_force_df = all_brute_force_data
+#     brute_force_ext_df = brute_force_df.copy()
+#     assert "BruteForceInstructionCount" in latex_values:
+#         # print("Warning: falling back on old value for BruteForceInstructionCount")
+#     # brute_force_ext_df["proof-flop-estimate"] = latex_values.get(
+#     #     "BruteForceInstructionCount", 876123000832
+#     # )
+#     brute_force_ext_df["proof-flop-estimate"] = latex_values[
+#         "BruteForceInstructionCount"]
+#     brute_force_ext_df["normalized-accuracy-bound"] = (
+#         brute_force_ext_df["accuracy"] / brute_force_ext_df["accuracy"]
+#     )
+#     brute_force_ext_df["accuracy-bound"] = brute_force_ext_df["accuracy"]
+#     brute_force_ext_df["group"] = "brute-force"
+#     brute_force_ext_df["effective-dimension-estimate"] = brute_force_ed
+#     brute_force_ext_df["leading-complexity"] = "brute-force"
+#     brute_force_ext_df["tricks"] = ""
+
+# cubic_df = all_cubic_data
+# subcubic_df = all_subcubic_data
+
+# cubic_ext_df = cubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
+# if "CubicInstructionCount" not in latex_values:
+#     print("Warning: falling back on old value for CubicInstructionCount")
+# cubic_ext_df["proof-flop-estimate"] = latex_values.get(
+#     "CubicInstructionCount", 35181664
+# )
+# cubic_ext_df["normalized-accuracy-bound"] = (
+#     cubic_ext_df["accuracy-bound"] / cubic_ext_df["accuracy"]
+# )
+# cubic_ext_df["group"] = "cubic"
+# cubic_ext_df["leading-complexity"] = "cubic"
+# cubic_ext_df["effective-dimension-estimate"] = cubic_ed
+# cubic_ext_df["tricks"] = ""
+
+# subcubic_PVOU_cost = d_vocab
+# subcubic_EPQKP_cost = 0
+
+# subcubic_ext_df = subcubic_df.merge(brute_force_df[["seed", "accuracy"]], on="seed")
+# subcubic_ext_df["normalized-accuracy-bound"] = (
+#     subcubic_ext_df["accuracy-bound"] / subcubic_ext_df["accuracy"]
+# )
+# warned = False
+
+# @cache
+# def parse_tricks_legacy(tricks):
+#     if tricks.startswith("ExactEQKE"):
+#         global warned
+#         if not warned:
+#             print(f"Warning: legacy {tricks}")
+#         warned = True
+#         tricks = tricks[len("ExactEQKE") :]
+#         assert tricks.endswith("AttnErrMaxDiffExact"), tricks
+#         tricks = (
+#             tricks[: -len("AttnErrMaxDiffExact")] + "AttnErrExactEqkeMaxDiffExact"
+#         )
+#     return LargestWrongLogitQuadraticConfig.parse(tricks, latex=True)
+
+# def subcubic_approx_effective_dimension(row, df):
+#     _, model = runtime_models[row["seed"]]
+#     tricks = parse_tricks_legacy(row["tricks"])
+#     return (
+#         int(tricks.effective_dimension_estimate(model.cfg))
+#         + subcubic_PVOU_cost
+#         + subcubic_EPQKP_cost
+#         + EVOU_cost
+#     )
+
+# def leading_complexity(row, df):
+#     tricks = parse_tricks_legacy(row["tricks"])
+#     return (
+#         "almost-quadratic"
+#         if tricks.is_quadratic
+#         else (
+#             "vocab-model-squared"
+#             if tricks.is_subcubic_no_quadratic_vocab
+#             else "subcubic" if tricks.is_subcubic else "fake-cubic"
+#         )
+#     )
+
+# def subcubic_group(row, df):
+#     tricks = parse_tricks_legacy(row["tricks"])
+#     EUPU_str = (
+#         "direct-quadratic"
+#         if tricks.EUPU_handling_quadratic
+#         else (
+#             "direct-vocab-model-squared"
+#             if tricks.EUPU_handling_subcubic_no_quadratic_vocab
+#             else None if tricks.EUPU_handling_subcubic else "direct-cubic"
+#         )
+#     )
+#     EPQKE_str = (
+#         "attention-quadratic"
+#         if tricks.attention_error_handling_quadratic
+#         and tricks.attention_handling_quadratic
+#         else (
+#             "attention-vocab-model-squared"
+#             if tricks.attention_error_handling_subcubic_no_quadratic_vocab
+#             and tricks.attention_handling_subcubic_no_quadratic_vocab
+#             else (
+#                 None
+#                 if tricks.attention_error_handling_subcubic
+#                 and tricks.attention_handling_subcubic
+#                 else "attention-cubic-reference"
+#             )
+#         )
+#     )
+#     strs = [s for s in (EPQKE_str, EUPU_str) if s is not None]
+#     return "subcubic" + (f" ({', '.join(strs)})" if strs else "")
+
+# subcubic_ext_df["group"] = subcubic_ext_df.apply(
+#     subcubic_group, args=(subcubic_ext_df,), axis=1
+# )
+# subcubic_ext_df["effective-dimension-estimate"] = subcubic_ext_df.apply(
+#     subcubic_approx_effective_dimension, args=(subcubic_ext_df,), axis=1
+# )
+# subcubic_ext_df["leading-complexity"] = subcubic_ext_df.apply(
+#     leading_complexity, args=(subcubic_ext_df,), axis=1
+# )
+
+# # Combine all data into a single DataFrame
+# combined_df = pd.concat(
+#     [
+#         subcubic_ext_df[
+#             [
+#                 "proof-flop-estimate",
+#                 "normalized-accuracy-bound",
+#                 "accuracy-bound",
+#                 "seed",
+#                 "effective-dimension-estimate",
+#                 "leading-complexity",
+#                 "group",
+#                 "tricks",
+#             ]
+#         ],
+#         brute_force_ext_df[
+#             [
+#                 "proof-flop-estimate",
+#                 "normalized-accuracy-bound",
+#                 "accuracy-bound",
+#                 "seed",
+#                 "effective-dimension-estimate",
+#                 "leading-complexity",
+#                 "group",
+#                 "tricks",
+#             ]
+#         ],
+#         cubic_ext_df[
+#             [
+#                 "proof-flop-estimate",
+#                 "normalized-accuracy-bound",
+#                 "accuracy-bound",
+#                 "seed",
+#                 "effective-dimension-estimate",
+#                 "leading-complexity",
+#                 "group",
+#                 "tricks",
+#             ]
+#         ],
+#     ],
+#     ignore_index=True,
+# )
+
+# def is_frontier(row, df):
+#     seed_group = df[df["seed"] == row["seed"]]
+#     for _, other in seed_group.iterrows():
+#         if (
+#             other["normalized-accuracy-bound"] > row["normalized-accuracy-bound"]
+#             and other["proof-flop-estimate"] < row["proof-flop-estimate"]
+#         ):
+#             return False
+#     return True
+
+# combined_df["frontier"] = combined_df.apply(
+#     is_frontier, args=(combined_df,), axis=1
+# )
+
+
+# # %%
+# def double_singleton_groups(data: pd.DataFrame, column: str) -> pd.DataFrame:
+#     # hack around https://github.com/nschloe/tikzplotlib/issues/594
+#     group_counts = data[column].value_counts()
+#     single_row_groups = group_counts[group_counts == 1].index
+#     for group in single_row_groups:
+#         single_row = data[data[column] == group]
+#         data = pd.concat([data, single_row], ignore_index=True)
+#     return data
+
+
+# # %%
+
+# # %%
+# if HAS_CSVS:
+#     subcubic_sing_df = subcubic_ext_df.merge(
+#         subcubic_analysis_df[["seed", "EQKERatioFirstTwoSingularFloat"]], on="seed"
+#     )[["seed", "normalized-accuracy-bound", "tricks", "EQKERatioFirstTwoSingularFloat"]]
+#     tricks = set(subcubic_sing_df["tricks"])
+#     for trick in tricks:
+#         if "AttnErrExactEqke" in trick:
+#             subcubic_sing_df = subcubic_sing_df[subcubic_sing_df["tricks"] != trick]
+#     subcubic_sing_df["attention_error_handling"] = subcubic_sing_df.apply(
+#         (
+#             lambda row: LargestWrongLogitQuadraticConfig.parse(
+#                 row["tricks"], latex=True
+#             ).attention_error_handling.replace("_", "-")
+#         ),
+#         axis=1,
+#     )
+#     subcubic_sing_df["attention_handling"] = subcubic_sing_df.apply(
+#         (
+#             lambda row: LargestWrongLogitQuadraticConfig.parse(
+#                 row["tricks"], latex=True
+#             ).attention_handling.replace("_", "-")
+#         ),
+#         axis=1,
+#     )
+#     subcubic_sing_df["EUPU_handling"] = subcubic_sing_df.apply(
+#         (
+#             lambda row: LargestWrongLogitQuadraticConfig.parse(
+#                 row["tricks"], latex=True
+#             ).EUPU_handling.replace("_", "-")
+#         ),
+#         axis=1,
+#     )
+#     subcubic_sing_df = subcubic_sing_df.loc[
+#         subcubic_sing_df.groupby(["seed", "attention_error_handling"])[
+#             "normalized-accuracy-bound"
+#         ].idxmax()
+#     ]
+#     data = subcubic_sing_df[
+#         [
+#             "normalized-accuracy-bound",
+#             "EQKERatioFirstTwoSingularFloat",
+#             "attention_error_handling",
+#         ]
+#     ]
+#     data = double_singleton_groups(
+#         data.drop_duplicates(), column="attention_error_handling"
+#     )
+#     if DISPLAY_PLOTS:
+#         fig = px.scatter(
+#             data,
+#             y="normalized-accuracy-bound",
+#             x="EQKERatioFirstTwoSingularFloat",
+#             color="attention_error_handling",
+#             title="Normalized Accuracy Bound vs EQKE Ratio First Two Singular",
+#             labels={
+#                 "normalized-accuracy-bound": "Normalized Accuracy Bound",
+#                 "EQKERatioFirstTwoSingularFloat": "EQKE Ratio First Two Singular",
+#             },
+#         )
+#         # fig.update_layout(showlegend=False)
+#         fig.update_layout(
+#             legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5)
+#         )
+#         # Show the plot
+#         fig.show("png")
+# # %%
+# # plt.set_prop_cycle(color=['red', 'green', 'blue'])
+# # default_colors
+# # cycler(color=plt.cm.Paired.colors)
+# # cycler(color=plt.cm.tab20c.colors)
+# # %%
+# plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors[::-1])
+# if HAS_CSVS:
+#     subcubic_sing_df = subcubic_ext_df.merge(
+#         subcubic_analysis_df[["seed", "EQKERatioFirstTwoSingularFloat"]], on="seed"
+#     )[["seed", "normalized-accuracy-bound", "tricks", "EQKERatioFirstTwoSingularFloat"]]
+#     subcubic_sing_df["attention_error_handling"] = subcubic_sing_df.apply(
+#         (
+#             lambda row: LargestWrongLogitQuadraticConfig.parse(
+#                 row["tricks"], latex=True
+#             ).attention_error_handling.replace("_", "-")
+#         ),
+#         axis=1,
+#     )
+#     subcubic_sing_df["attention_handling"] = subcubic_sing_df.apply(
+#         (
+#             lambda row: LargestWrongLogitQuadraticConfig.parse(
+#                 row["tricks"], latex=True
+#             ).attention_handling.replace("_", "-")
+#         ),
+#         axis=1,
+#     )
+#     subcubic_sing_df["EUPU_handling"] = subcubic_sing_df.apply(
+#         (
+#             lambda row: LargestWrongLogitQuadraticConfig.parse(
+#                 row["tricks"], latex=True
+#             ).EUPU_handling.replace("_", "-")
+#         ),
+#         axis=1,
+#     )
+#     tricks = set(subcubic_sing_df["tricks"])
+#     for trick in tricks:
+#         if (
+#             "exact_EQKE"
+#             in LargestWrongLogitQuadraticConfig.parse(
+#                 trick, latex=True
+#             ).attention_error_handling
+#         ):
+#             subcubic_sing_df = subcubic_sing_df[subcubic_sing_df["tricks"] != trick]
+
+#     # subcubic_sing_df = subcubic_sing_df.loc[
+#     #     subcubic_sing_df.groupby(["seed", "attention_error_handling"])[
+#     #         "normalized-accuracy-bound"
+#     #     ].idxmax()
+#     # ]
+
+#     for best_bound_only in (True, False):
+#         df = subcubic_sing_df.copy()
+#         if best_bound_only:
+#             print(f"len before: {len(df)}")
+#             df = df.loc[
+#                 df.groupby(["seed", "attention_error_handling"])[
+#                     "normalized-accuracy-bound"
+#                 ].idxmax()
+#             ]
+#             print(f"len after: {len(df)}")
+
+#         # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
+#         df = df[
+#             [
+#                 "normalized-accuracy-bound",
+#                 "EQKERatioFirstTwoSingularFloat",
+#                 "attention_error_handling",
+#             ]
+#         ].sort_values(
+#             by=[
+#                 "attention_error_handling",
+#                 "normalized-accuracy-bound",
+#                 "EQKERatioFirstTwoSingularFloat",
+#             ]
+#         )
+#         # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for each group
+#         max_bound_by_group = df.groupby("attention_error_handling")[
+#             "normalized-accuracy-bound"
+#         ].max()
+
+#         # Sort the groups by max 'normalized-accuracy-bound'
+#         sorted_groups = max_bound_by_group.sort_values(ascending=False)
+
+#         # Extract the sorted list of 'attention_error_handling' categories
+#         sorted_attn_err_handling = sorted_groups.index.tolist()
+
+#         key = f"NormalizedAccuracyBound{'AllSecondaryTricks' if not best_bound_only else ''}VsEPQKESingularRatio"
+#         latex_externalize_tables[key] = True
+#         df = double_singleton_groups(
+#             df.drop_duplicates(), column="attention_error_handling"
+#         )
+#         latex_figures[key] = fig = scatter(
+#             df,
+#             yrange=(0, 1),
+#             y="normalized-accuracy-bound",
+#             x="EQKERatioFirstTwoSingularFloat",
+#             color="attention_error_handling",
+#             # title='Normalized Accuracy Bound vs EQKE Ratio First Two Singular',
+#             yaxis="Normalized Accuracy Bound",
+#             xaxis=r"EPQKE Singular Ratio: $\sigma_1 / \sigma_2$",
+#             # labels={
+#             #     'normalized-accuracy-bound': 'Normalized Accuracy Bound',
+#             #     'EQKERatioFirstTwoSingularFloat': 'EQKE Ratio First Two Singular'
+#             # }
+#             color_order=sorted_attn_err_handling,
+#             renderer=RENDERER,
+#             plot_with=PLOT_WITH,
+#             show=DISPLAY_PLOTS,
+#             # plot_with="plotly"
+#         )
+#         # fig.update_layout(showlegend=False)
+#         # fig.update_layout(
+#         #     legend=dict(
+#         #         orientation="h",
+#         #         yanchor="top",
+#         #         y=-0.3,
+#         #         xanchor="center",
+#         #         x=0.5
+#         #     )
+#         # )
+#         # # Show the plot
+#         # fig.show()
+
+
+# # %%
+# if HAS_CSVS:
+#     for descr, df in (
+#         (
+#             "all subcubic",
+#             subcubic_ext_df[subcubic_ext_df["leading-complexity"] != "fake-cubic"][
+#                 "proof-flop-estimate"
+#             ],
+#         ),
+#         (
+#             "mainly subcubic",
+#             subcubic_ext_df[subcubic_ext_df["leading-complexity"] == "subcubic"][
+#                 "proof-flop-estimate"
+#             ],
+#         ),
+#         (
+#             "almost quadratic",
+#             subcubic_ext_df[
+#                 subcubic_ext_df["leading-complexity"] == "almost-quadratic"
+#             ]["proof-flop-estimate"],
+#         ),
+#     ):
+#         prekey = (
+#             f"ProofFlopEstimate{''.join([s.capitalize() for s in descr.split(' ')])}"
+#         )
+#         latex_values[f"{prekey}Mean"] = df.mean()
+#         latex_values[f"{prekey}StdDev"] = df.std()
+#         print(f"{descr}: {pm_mean_std(df)}")
+# # %%
+# if HAS_CSVS:
+#     df_sorted = combined_df.sort_values(by="normalized-accuracy-bound", ascending=False)
+#     category_order = df_sorted["group"].unique().tolist()
+#     category_name_remap = {
+#         "brute-force": f"brute force (acc: {pm_mean_std(brute_force_df['accuracy'])})",
+#         "cubic": f"cubic (rel acc: {pm_mean_std(cubic_ext_df['normalized-accuracy-bound'])})",
+#     }
+#     category_name_remap_short = {
+#         "brute-force": f"brute force",
+#         "cubic": f"cubic",
+#     }
+#     max_rows = subcubic_ext_df.loc[
+#         subcubic_ext_df.groupby(["seed", "group"])["normalized-accuracy-bound"].idxmax()
+#     ]
+#     result = (
+#         max_rows.groupby("group")["normalized-accuracy-bound"]
+#         .agg(["mean", "std"])
+#         .reset_index()
+#     )
+#     for group_name in category_order:
+#         if group_name not in category_name_remap:
+#             avg, std = result[result["group"] == group_name][["mean", "std"]].iloc[0]
+#             new_group_name = group_name[len("subcubic (") : -1]
+#             new_group_name = "subcubic" if not new_group_name else new_group_name
+#             new_group_name = new_group_name.replace(
+#                 "vocab-model-squared", r"$d_{\mathrm{vocab}}d_{\mathrm{model}}^2$"
+#             )
+#             category_name_remap[group_name] = (
+#                 f"{new_group_name} (rel acc: {pm_round(avg, std)})"
+#             )
+#             category_name_remap_short[group_name] = new_group_name
+
+
+# # PLOT_WITH = "matplotlib"
+# # %%
+# plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors)
+# if HAS_CSVS:
+#     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
+#     data = combined_df[
+#         ["proof-flop-estimate", "effective-dimension-estimate", "group"]
+#     ].copy()
+#     data = double_singleton_groups(data.drop_duplicates(), column="group")
+#     data = data.sort_values(
+#         by=["group", "proof-flop-estimate", "effective-dimension-estimate"]
+#     )
+#     data["group"] = data["group"].map(category_name_remap_short)
+#     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
+#     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
+#         data,
+#         x="proof-flop-estimate",
+#         y="effective-dimension-estimate",
+#         color="group",
+#         title="",
+#         log_x=2,
+#         log_y=2,
+#         reverse_xaxis=False,
+#         color_order=[category_name_remap_short[c] for c in category_order],
+#         xaxis="FLOPs to Verify Proof (approximate)",
+#         yaxis="Unexplained Dimension (Estimated)",
+#         plot_with=PLOT_WITH,
+#         renderer=RENDERER,
+#         show=DISPLAY_PLOTS,
+#     )
+#     latex_externalize_tables["EffectiveDimensionVsFLOPDiscontinuousXY"] = True
+#     latex_figures["EffectiveDimensionVsFLOPDiscontinuousXY"] = fig = scatter(
+#         data,
+#         x="proof-flop-estimate",
+#         y="effective-dimension-estimate",
+#         color="group",
+#         title="",
+#         log_x=2,
+#         log_y=2,
+#         reverse_xaxis=False,
+#         color_order=[category_name_remap_short[c] for c in category_order],
+#         xaxis="FLOPs to Verify Proof (approximate)",
+#         yaxis="Unexplained Dimension (Estimated)",
+#         discontinuous_x=(
+#             data[(data["group"] == "brute force") | (data["group"] == "cubic")][
+#                 "proof-flop-estimate"
+#             ].mean(),
+#         ),
+#         discontinuous_y=(
+#             data[(data["group"] == "brute force") | (data["group"] == "cubic")][
+#                 "effective-dimension-estimate"
+#             ].mean(),
+#         ),
+#         plot_with=PLOT_WITH,
+#         renderer=RENDERER,
+#         show=DISPLAY_PLOTS,
+#     )
+
+
+# # %%
+# plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors)
+# if HAS_CSVS:
+#     for frontier_only in (True, False):
+#         for norm, normt in (("", ""), ("normalized-", "Normalized ")):
+#             key = f"{normt.strip()}AccuracyBoundVsFLOPs{'FrontierOnly' if frontier_only else ''}"
+#             data = (
+#                 combined_df[combined_df["frontier"] == True]
+#                 if frontier_only
+#                 else combined_df
+#             )
+#             data = data[
+#                 ["proof-flop-estimate", f"{norm}accuracy-bound", "group"]
+#             ].copy()
+#             data = double_singleton_groups(data.drop_duplicates(), column="group")
+#             data = data.sort_values(
+#                 by=["group", f"{norm}accuracy-bound", "proof-flop-estimate"]
+#             )
+#             discontinuous_x = (
+#                 data[(data["group"] == "brute force") | (data["group"] == "cubic")][
+#                     "proof-flop-estimate"
+#                 ].mean(),
+#             )
+#             data["group"] = data["group"].map(category_name_remap)
+#             latex_externalize_tables[key] = True
+#             latex_figures[key] = fig = scatter(
+#                 data,
+#                 x="proof-flop-estimate",
+#                 y=f"{norm}accuracy-bound",
+#                 color="group",
+#                 title="",  # "Pareto Frontier" if frontier_only else "",
+#                 log_x=2,
+#                 reverse_xaxis=False,
+#                 xaxis="FLOPs to Verify Proof (approximate)",
+#                 yaxis=f"{normt}Accuracy Bound",
+#                 color_order=[category_name_remap[c] for c in category_order],
+#                 plot_with=PLOT_WITH,
+#                 renderer=RENDERER,
+#                 show=DISPLAY_PLOTS,
+#             )
+#             latex_externalize_tables[f"{key}DiscontinuousX"] = True
+#             latex_figures[f"{key}DiscontinuousX"] = fig = scatter(
+#                 data,
+#                 x="proof-flop-estimate",
+#                 y=f"{norm}accuracy-bound",
+#                 color="group",
+#                 title="",  # "Pareto Frontier" if frontier_only else "",
+#                 log_x=2,
+#                 reverse_xaxis=False,
+#                 xaxis="FLOPs to Verify Proof (approximate)",
+#                 yaxis=f"{normt}Accuracy Bound",
+#                 color_order=[category_name_remap[c] for c in category_order],
+#                 discontinuous_x=discontinuous_x,
+#                 plot_with=PLOT_WITH,
+#                 renderer=RENDERER,
+#                 show=DISPLAY_PLOTS,
+#             )
+
+
+# # %%
+# if HAS_CSVS:
+#     for norm, normt in (("", ""), ("normalized-", "Normalized ")):
+
+#         data = combined_df[
+#             [
+#                 "proof-flop-estimate",
+#                 f"{norm}accuracy-bound",
+#                 "group",
+#                 "frontier",
+#                 "tricks",
+#             ]
+#         ].copy()
+#         data = double_singleton_groups(data.drop_duplicates(), column="group")
+#         # data["group"] = data["group"].map({k:k[:7] for k in set(data["group"])})
+#         if DISPLAY_PLOTS:
+#             fig = px.scatter(
+#                 data,
+#                 x="proof-flop-estimate",
+#                 y=f"{norm}accuracy-bound",
+#                 symbol="group",
+#                 title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
+#                 log_x=True,
+#                 color="tricks",
+#                 # symbol_map={True: "diamond", False: "circle"},
+#                 # legend=False,
+#             )
+#             fig.update_layout(showlegend=False)
+#             # Flip the x-axis
+#             fig.update_layout(xaxis=dict(autorange="reversed"))
+
+#             fig.show()
 
 # %%
 latex_values["AllModelsHEADSHA"] = git.get_head_sha(short=False)

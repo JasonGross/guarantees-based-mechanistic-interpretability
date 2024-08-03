@@ -120,6 +120,7 @@ import gbmi.exp_max_of_n.analysis.subcubic as analysis_subcubic
 import gbmi.exp_max_of_n.verification.cubic as cubic
 import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
+from gbmi.exp_max_of_n.analysis.importance_sample_cubic import sample_include_all_keys
 import gbmi.utils.ein as ein
 import gbmi.utils.git as git
 import gbmi.utils.images as image_utils

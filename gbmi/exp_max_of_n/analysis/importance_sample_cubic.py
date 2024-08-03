@@ -1,3 +1,4 @@
+from itertools import combinations
 from typing import Iterable, Optional, Tuple
 
 import torch
@@ -116,20 +117,33 @@ def sample_include_all_keys(
             nonmax_strict=True,
         )
 
-        other_tokens_generator: Tensor | Iterable[Tensor] = (
-            generate_all_sequences(largest_nonmax_tok + 1, num_copies_nonmax - 1)
-            if seq_count <= nsamples_per_key
-            else (
-                randints(largest_nonmax_tok + 1, (num_copies_nonmax - 1,))
-                for _ in range(nsamples_per_key)
-            )
-        )
-
-        for other_tokens in other_tokens_generator:
-            seq = torch.full((n_ctx,), max_tok, dtype=torch.long)
-            seq[-1] = query_tok
-            seq[: num_copies_nonmax - 1] = other_tokens
-            seq[num_copies_nonmax - 1] = largest_nonmax_tok
-            # TODO: don't shuffle tokens when seq_count <= nsamples_per_key, only interleave max with non-max then
-            seq[:-1] = seq[torch.randperm(n_ctx - 1, generator=generator)]
-            yield seq.to(device), seq_count / nsequences
+        if seq_count <= nsamples_per_key:
+            for num_smaller_nonmax in range(num_copies_nonmax):
+                for other_small_tokens in generate_all_sequences(
+                    largest_nonmax_tok, num_smaller_nonmax
+                ):
+                    for smaller_nonmax_tok_pos in combinations(
+                        range(num_copies_nonmax), num_smaller_nonmax
+                    ):
+                        other_tokens = torch.full(
+                            (num_copies_nonmax, 1), largest_nonmax_tok, dtype=torch.long
+                        )
+                        other_tokens[smaller_nonmax_tok_pos] = other_small_tokens
+                        for nonmax_tok_pos in combinations(
+                            range(n_ctx - 1), num_copies_nonmax
+                        ):
+                            seq = torch.full((n_ctx,), max_tok, dtype=torch.long)
+                            seq[-1] = query_tok
+                            seq[nonmax_tok_pos] = other_tokens
+                            yield seq.to(device), seq_count / nsequences
+        else:
+            for _ in range(nsamples_per_key):
+                other_tokens = randints(
+                    largest_nonmax_tok + 1, (num_copies_nonmax - 1,)
+                )
+                seq = torch.full((n_ctx,), max_tok, dtype=torch.long)
+                seq[-1] = query_tok
+                seq[: num_copies_nonmax - 1] = other_tokens
+                seq[num_copies_nonmax - 1] = largest_nonmax_tok
+                seq[:-1] = seq[torch.randperm(n_ctx - 1, generator=generator)]
+                yield seq.to(device), seq_count / nsequences

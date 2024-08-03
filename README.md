@@ -47,6 +47,14 @@ Notes
     - `sudo apt-get install libgdbm-dev python3-gdbm`
     - If you are using `conda` or some other Python version management, you can inspect the output of `dpkg -L python3-gdbm` and copy the `lib-dynload/_gdbm.cpython-*-x86_64-linux-gnu.so` file to the corresponding `lib/` directory associated to the python you are using.
 
+## Data Cache
+
+A cache for pre-computed data for the Max-of-K experiments is available on branches of [JasonGross/guarantees-based-mechanistic-interpretability-with-data](https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-with-data):
+[`max-of-4-cache`](https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-with-data/tree/max-of-4-cache/notebooks_jason/.cache)
+[`max-of-5-cache`](https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-with-data/tree/max-of-5-cache/notebooks_jason/.cache)
+[`max-of-10-cache`](https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-with-data/tree/max-of-10-cache/notebooks_jason/.cache)
+[`max-of-10-dvocab-128-cache`](https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-with-data/tree/max-of-10-dvocab-128-cache/notebooks_jason/.cache)
+
 ## Running notebooks
 
 To open a Jupyter notebook, run

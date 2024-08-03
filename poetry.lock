@@ -943,6 +943,17 @@ files = [
 ]
 
 [[package]]
+name = "eintorch"
+version = "0.2.5"
+description = "An alternative interface for torchdim"
+optional = false
+python-versions = "<4.0,>=3.8"
+files = [
+    {file = "eintorch-0.2.5-py3-none-any.whl", hash = "sha256:824f809cc5c2a19ed2e8f956f8bab7fbcaa13f58d2011458551d5f106d5ade87"},
+    {file = "eintorch-0.2.5.tar.gz", hash = "sha256:f7f0eb55bf4cb414b77423f851f291c19c1aab5e3a0827cf856e087e2d13f994"},
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.2.1"
 description = "Backport of PEP 654 (exception groups)"
@@ -5575,4 +5586,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "0dd55030e038012e8c5902b370c3f6f3b86276af3a410d37961ffd9072a7a98b"
+content-hash = "bbe48be89768b60f3ecda14802bf1088e30ffda99b46a549ca62f979f540c13c"

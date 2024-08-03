@@ -1044,20 +1044,28 @@ for k, v in EVOU_analyses_by_key.items():
 
 
 # %%
-with memoshelve(
-    (
-        lambda seed: display_EQKE_SVD_analysis(
-            runtime_models[seed][1], include_figures=False, show=False, do_print=False
-        )[1]
-    ),
-    filename=cache_dir / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis",
-    get_hash_mem=(lambda x: x[0]),
-    get_hash=str,
-)() as memo_compute_EQKE_SVD_analysis:
-    EQKE_SVD_analyses = {
-        seed: memo_compute_EQKE_SVD_analysis(seed)
-        for seed in tqdm(list(sorted(runtime_models.keys())), desc="SVD analysis")
-    }
+def handle_compute_EQKE_SVD_analysis(seed: int):
+    runtime, model = runtime_models[seed]
+    cfg_hash_for_filename = cfg_hashes_for_filename[seed]
+    with memoshelve(
+        (
+            lambda seed: display_EQKE_SVD_analysis(
+                model, include_figures=False, show=False, do_print=False
+            )[1]
+        ),
+        filename=cache_dir
+        / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis-{cfg_hash_for_filename}",
+        get_hash_mem=(lambda x: x[0]),
+        get_hash=str,
+    )() as memo_compute_EQKE_SVD_analysis:
+        return memo_compute_EQKE_SVD_analysis(seed)
+
+
+EQKE_SVD_analyses = {
+    seed: handle_compute_EQKE_SVD_analysis(seed)
+    for seed in tqdm(list(sorted(runtime_models.keys())), desc="SVD analysis")
+}
+
 # %%
 EQKE_SVD_analyses_by_key = defaultdict(dict)
 for seed, d in EQKE_SVD_analyses.items():

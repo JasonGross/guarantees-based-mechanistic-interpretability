@@ -75,27 +75,39 @@ class ThunkedDataset(Generic[T], Dataset[Callable[[], T]]):
 
 
 def count_sequences(
-    sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
+    sequence_length: int,
+    nonmax_count: int,
+    num_nonmax_tok_choices: int,
+    nonmax_strict: bool = False,
 ) -> int:
     """
-    Count the number of sequences of length sequence_length with exactly nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    Count the number of sequences of length sequence_length with exactly nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters.
+    If nonmax_strict is true, then at least one of the nonmax tokens must be equal to num_nonmax_tok_choices - 1
     """
     combinations = math.comb(sequence_length, nonmax_count)
     token_variations = (
         num_nonmax_tok_choices**nonmax_count if num_nonmax_tok_choices > 0 else 0
     )
+    if nonmax_strict and num_nonmax_tok_choices > 1:
+        token_variations -= (num_nonmax_tok_choices - 1) ** nonmax_count
     return combinations * token_variations
 
 
 def count_sequences_instructions(
-    sequence_length: int, nonmax_count: int, num_nonmax_tok_choices: int
+    sequence_length: int,
+    nonmax_count: int,
+    num_nonmax_tok_choices: int,
+    nonmax_strict: bool = False,
 ) -> InstructionCount:
     """
-    Count the number of sequences of length sequence_length with exactly nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters
+    Count the number of sequences of length sequence_length with exactly nonmax_count items less than or equal to max_nonmax_tok and the remaining tokens equal to a fixed value, where order matters.
+    If nonmax_strict is true, then at least one of the nonmax tokens must be equal to num_nonmax_tok_choices - 1
     """
     # math.comb(sequence_length, nonmax_count)
     combinations = InstructionCount(int_op=sequence_length)
-    token_variations = InstructionCount(int_op=2, branch=1)
+    token_variations = InstructionCount(int_op=3, branch=2)
+    if nonmax_strict and num_nonmax_tok_choices > 1:
+        token_variations += InstructionCount(int_op=3)
     return combinations + token_variations + InstructionCount(int_op=1)
 
 

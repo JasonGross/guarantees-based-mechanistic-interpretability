@@ -1139,12 +1139,11 @@ with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
     maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
 
-if not INCLUDE_BRUTE_FORCE:
-    # do this externally, because importance sampling is subject to change
-    for seed, row in cubic_data.items():
-        row["normalized-accuracy-bound"] = (
-            row["accuracy-bound"] / brute_force_data_by_key["accuracy"][seed]
-        )
+# do this externally, because importance sampling is subject to change
+for seed, row in cubic_data.items():
+    row["normalized-accuracy-bound"] = (
+        row["accuracy-bound"] / brute_force_data_by_key["accuracy"][seed]
+    )
 
 all_cubic_data = update_csv(CUBIC_CSV_PATH, cubic_data, columns=cubic_columns)
 
@@ -2203,13 +2202,12 @@ for seed in subcubic_data:
             LargestWrongLogitQuadraticConfig.parse(row["tricks"], latex=True),
         )
 
-if not INCLUDE_BRUTE_FORCE:
-    # do this externally, because importance sampling is subject to change
-    for seed in subcubic_data:
-        for row in subcubic_data[seed]:
-            row["normalized-accuracy-bound"] = (
-                row["accuracy-bound"] / brute_force_data_by_key["accuracy"][seed]
-            )
+# do this externally, because importance sampling is subject to change
+for seed in subcubic_data:
+    for row in subcubic_data[seed]:
+        row["normalized-accuracy-bound"] = (
+            row["accuracy-bound"] / brute_force_data_by_key["accuracy"][seed]
+        )
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):

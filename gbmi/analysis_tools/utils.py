@@ -22,10 +22,10 @@ def pm_round(
     sep: str = " ± ",
 ) -> str:
     if total_digits is None:
-        if np.isnan(std):
+        total_digits_f = 1 + extra_digits - np.log10(std)
+        if np.isnan(total_digits_f):
             return f"{mean}{sep}{std}"
-        else:
-            total_digits = int(1 + extra_digits - np.log10(std))
+        total_digits = int(total_digits_f)
     if total_digits < 0:
         mean, std = round(mean, total_digits), round(std, total_digits)
         total_digits = 0

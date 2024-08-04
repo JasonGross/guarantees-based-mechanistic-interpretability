@@ -1213,7 +1213,7 @@ def _cubic_count_verify_proof(
 with memoshelve(
     partial(_cubic_count_verify_proof, some_model, sanity_check_instructions=False),
     filename=cache_dir
-    / f"{Path(__file__).name}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}-n_ctx_{seq_len}",
+    / f"{SHARED_CACHE_STEM}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}-n_ctx_{seq_len}",
     get_hash_mem=(lambda x: 0),
     get_hash=(lambda x: "0"),
 )() as count_verify_proof:

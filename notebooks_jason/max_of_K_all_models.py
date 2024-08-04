@@ -85,7 +85,7 @@ parser.add_argument(
 parser.add_argument(
     "--nsamples-per-key",
     type=int,
-    default=20,
+    default=50,
     help="Number of samples per key for importance sampling estimation of accuracy and loss",
 )
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
@@ -746,7 +746,13 @@ else:
         _runtime, model = runtime_models[seed]
 
         with memoshelve(
-            partial(importance_sample, model, batch_size=batch_size, pbar=pbar),
+            partial(
+                importance_sample,
+                model,
+                batch_size=batch_size,
+                pbar=pbar,
+                seed=reseed(seed, "importance_sample"),
+            ),
             filename=cache_dir
             / f"{SHARED_CACHE_STEM}.importance-sample-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
             get_hash_mem=(lambda x: x[0]),
@@ -787,6 +793,11 @@ else:
                 sorted(relevant_seeds),
             )
 
+    total_importance_sampled_sequences = (
+        brute_force_data[some_seed]["num_correct"]
+        + brute_force_data[some_seed]["num_incorrect"]
+    )
+
 all_brute_force_data = update_csv(
     BRUTE_FORCE_CSV_PATH, brute_force_data, columns=brute_force_columns
 )
@@ -809,6 +820,9 @@ if INCLUDE_BRUTE_FORCE:
     )
 else:
     latex_values["ImportanceSamplingNSamplesPerKey"] = N_SAMPLES_PER_KEY
+    latex_values["ImportanceSamplingTotalSequences"] = (
+        total_importance_sampled_sequences
+    )
 
 
 brute_force_data_by_key = defaultdict(dict)
@@ -900,23 +914,38 @@ latex_values |= latex_values_of_counter("BruteForce", brute_force_perf)
 def importance_sample_instruction_count(
     model: HookedTransformer,
     batch_size: int,
-    nsamples_per_key: int,
+    nsamples: int,
     *,
     pbar: Optional[tqdm] = None,
 ) -> Tuple[InstructionCount, PerfCounter]:
+    cache = {}
+    with PerfCollector() as collector:
+        if PERF_WORKING:
+            importance_sample(model, 0, batch_size=batch_size, pbar=pbar, cache=cache)
+    perf_instruction_count_shared = collector.counters
     with PerfCollector() as collector:
         if PERF_WORKING:
             importance_sample(
-                model, (nsamples_per_key, "per_key"), batch_size=batch_size, pbar=pbar
+                model, batch_size, batch_size=batch_size, pbar=pbar, cache=cache
             )
-    perf_instruction_count = collector.counters
+    perf_instruction_count_per_batch = collector.counters
 
-    with CountTensorOperations() as result:
+    cache = {}
+
+    with CountTensorOperations() as result_shared:
+        importance_sample(model, 0, batch_size=batch_size, pbar=pbar, cache=cache)
+    print(cache)
+    with CountTensorOperations() as result_per_batch:
         importance_sample(
-            model, (nsamples_per_key, "per_key"), batch_size=batch_size, pbar=pbar
+            model, batch_size, batch_size=batch_size, pbar=pbar, cache=cache
         )
 
-    return result, perf_instruction_count
+    num_batches = nsamples // batch_size
+
+    return (
+        result_shared + result_per_batch * num_batches,
+        perf_instruction_count_shared + perf_instruction_count_per_batch * num_batches,
+    )
 
 
 if not INCLUDE_BRUTE_FORCE:
@@ -929,7 +958,9 @@ if not INCLUDE_BRUTE_FORCE:
             get_hash=str,
         )() as memo_importance_sample_instruction_count:
             importance_sample_count, importance_sample_perf = (
-                memo_importance_sample_instruction_count(N_SAMPLES_PER_KEY, batch_size)
+                memo_importance_sample_instruction_count(
+                    batch_size, total_importance_sampled_sequences
+                )
             )
     latex_values |= latex_values_of_instruction_count(
         brute_force_key_prefix, importance_sample_count
@@ -1134,7 +1165,7 @@ for key, latex_key in (
     ("correct-count-lower-bound", "CubicCorrectCount"),
     ("duration", "CubicProofTime"),
     # ) + (
-    (("normalized-accuracy-bound", "NormalizedAccuracy"),),
+    ("normalized-accuracy-bound", "NormalizedAccuracy"),
     # if INCLUDE_BRUTE_FORCE
     # else ()
 ) + (

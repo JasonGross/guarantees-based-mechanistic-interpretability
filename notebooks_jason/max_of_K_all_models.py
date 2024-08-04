@@ -927,7 +927,7 @@ if not INCLUDE_BRUTE_FORCE:
             / f"{SHARED_CACHE_STEM}.importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
-        ) as memo_importance_sample_instruction_count:
+        )() as memo_importance_sample_instruction_count:
             importance_sample_count, importance_sample_perf = (
                 memo_importance_sample_instruction_count(N_SAMPLES_PER_KEY, batch_size)
             )

@@ -20,7 +20,7 @@ def run_model_cached(
     inputs: Float[Tensor, "batch n_ctx"],  # noqa: F722
     *,
     cache: Optional[dict[str, Tensor]] = None,
-) -> Tensor:
+) -> Float[Tensor, "batch d_vocab"]:  # noqa: F722
     """
     Runs the model on the given inputs, caching matrices for amortized speedup
     Complexity: O(|inputs| * n_ctx * d_vocab_out + d_vocab^2 * d_model + n_ctx * d_model * d_vocab)
@@ -70,6 +70,10 @@ def run_model_cached(
     maxes = inputs.amax(dim=-1, keepdim=True)
     queries = inputs[..., -1].unsqueeze(-1)
     sequences = torch.arange(n_ctx, device=EPVOU_scaled.device)
-    return EPVOU_scaled[sequences, maxes, queries, inputs] / (
-        all_attn_exp[sequences, maxes, queries, inputs].sum(dim=-1, keepdim=True)
+    EPVOU_scaled_batch: Float[Tensor, "batch n_ctx_k d_vocab_out"]  # noqa: F722
+    EPVOU_scaled_batch = EPVOU_scaled[sequences, maxes, queries, inputs]
+    scale_factor: Float[Tensor, "batch 1"]  # noqa: F722
+    scale_factor = all_attn_exp[sequences, maxes, queries, inputs].sum(
+        dim=-1, keepdim=True
     )
+    return EPVOU_scaled_batch.sum(dim=-2) / scale_factor

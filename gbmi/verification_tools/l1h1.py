@@ -145,21 +145,14 @@ def all_attention_scores(
         d_vocab,
         d_head,
     ), f"q.shape = {q.shape} != {(d_vocab, d_head)} = (d_vocab, d_head)"
-    k = (
-        einsum(
-            "n_ctx d_vocab d_head, d_head d_model_k -> n_ctx d_model_k d_vocab",
-            key_tok_resid,
-            W_K[0, 0, :, :],
-        )
-        + b_K[0, 0]
-    )
+    k = key_tok_resid @ W_K[0, 0, :, :] + b_K[0, 0, :]
     assert k.shape == (
         n_ctx,
-        d_head,
         d_vocab,
-    ), f"k.shape = {k.shape} != {(n_ctx, d_head, d_vocab)} = (n_ctx, d_head, d_vocab)"
+        d_head,
+    ), f"k.shape = {k.shape} != {(n_ctx, d_vocab, d_head)} = (n_ctx, d_vocab, d_head)"
     x_scores = einsum(
-        "d_vocab_q d_head, n_ctx d_head d_vocab_k -> n_ctx d_vocab_q d_vocab_k", q, k
+        "d_vocab_q d_head, n_ctx d_vocab_k d_head -> n_ctx d_vocab_q d_vocab_k", q, k
     )
     assert x_scores.shape == (
         n_ctx,

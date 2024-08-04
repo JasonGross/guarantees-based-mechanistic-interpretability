@@ -875,7 +875,7 @@ def _cubic_count_verify_proof(
             with CountTensorOperations() as cubic_instruction_count:
                 cubic_proof_instruction_count_results = cubic.verify_proof(
                     cmodel,
-                    cubic_proof_args,
+                    proof_args,
                     print_complexity=False,
                     print_results=False,
                     sanity_check=False,

@@ -8,13 +8,16 @@ import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, is_dataclass
 from functools import partial
+from itertools import islice
 from pathlib import Path
 from typing import (
     Any,
     Callable,
     Collection,
     Dict,
+    Generic,
     Hashable,
+    Iterable,
     Iterator,
     List,
     Literal,
@@ -53,6 +56,26 @@ A = TypeVar("A")
 T = TypeVar("T")
 K = TypeVar("K")
 V = TypeVar("V")
+
+if sys.version_info >= (3, 12):
+    from itertools import batched
+else:
+
+    class batched(Iterator[Tuple[T, ...]], Generic[T]):
+        def __init__(self, iterable: Iterable[T], n: int):
+            if n < 1:
+                raise ValueError("n must be at least one")
+            self.iterator = iter(iterable)
+            self.n = n
+
+        def __iter__(self) -> "batched[T]":
+            return self
+
+        def __next__(self) -> Tuple[T, ...]:
+            batch = tuple(islice(self.iterator, self.n))
+            if not batch:
+                raise StopIteration
+            return batch
 
 
 def get_trained_model_dir(create: bool = True) -> Path:

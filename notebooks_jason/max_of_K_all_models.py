@@ -85,7 +85,7 @@ parser.add_argument(
 parser.add_argument(
     "--nsamples-per-key",
     type=int,
-    default=50,
+    default=None,
     help="Number of samples per key for importance sampling estimation of accuracy and loss",
 )
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
@@ -259,7 +259,18 @@ LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
 )
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 SHARED_CACHE_STEM = adjusted_file_path.name.replace("_all_models", "")
-N_SAMPLES_PER_KEY: int = cli_args.nsamples_per_key
+N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
+if N_SAMPLES_PER_KEY is None:
+    match seq_len:
+        case 4:
+            N_SAMPLES_PER_KEY = 50
+        case 5:
+            N_SAMPLES_PER_KEY = 30
+        case 10:
+            N_SAMPLES_PER_KEY = 10
+        case _:
+            N_SAMPLES_PER_KEY = 100 // seq_len
+assert isinstance(N_SAMPLES_PER_KEY, int), (N_SAMPLES_PER_KEY, type(N_SAMPLES_PER_KEY))
 N_THREADS: Optional[int] = cli_args.n_threads
 DISPLAY_PLOTS: bool = False  # @param {type:"boolean"}
 SAVE_PLOTS: bool = cli_args.plots

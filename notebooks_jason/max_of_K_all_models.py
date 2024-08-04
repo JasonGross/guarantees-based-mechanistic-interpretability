@@ -210,46 +210,67 @@ cache_dir = adjusted_file_path.parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
-TRAIN_CSV_PATH = adjusted_file_path.with_suffix("") / "all-models-train-values.csv"
+EXTRA_D_VOCAB_FILE_SUFFIX: str = f"_d_vocab_{D_VOCAB}" if D_VOCAB != 64 else ""
+TRAIN_CSV_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-train-values.csv"
+)
 TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 INCLUDE_BRUTE_FORCE: bool = cli_args.brute_force  # @param {type:"boolean"}
 QUIT_AFTER_MODEL_DOWNLOAD: bool = cli_args.only_download  # @param {type:"boolean"}
 BRUTE_FORCE_CSV_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-brute-force-values.csv"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-brute-force-values.csv"
 )
 BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-CUBIC_CSV_PATH = adjusted_file_path.with_suffix("") / "all-models-cubic-values.csv"
+CUBIC_CSV_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-cubic-values.csv"
+)
 CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_CSV_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-subcubic-values.csv"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-subcubic-values.csv"
 )
 SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 SUBCUBIC_ANALYSIS_CSV_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-subcubic-analysis-values.csv"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-subcubic-analysis-values.csv"
 )
 SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
 PYTHON_VERSION_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-values-python-version.txt"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-python-version.txt"
 )
 PYTHON_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
 TORCH_VERSION_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-values-torch-version.txt"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-torch-version.txt"
 )
 TORCH_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
 GIT_DIFF_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-values-git-diff-info.diff"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-diff-info.diff"
 )
 GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
-GIT_SHA_PATH = adjusted_file_path.with_suffix("") / "all-models-values-git-sha.txt"
+GIT_SHA_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-sha.txt"
+)
 GIT_SHA_PATH.parent.mkdir(exist_ok=True, parents=True)
 GIT_SHA_SHORT_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-values-git-sha-short.txt"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-sha-short.txt"
 )
 GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_VALUES_PATH = adjusted_file_path.with_suffix("") / "all-models-values.tex"
+LATEX_VALUES_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values.tex"
+)
 LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_VALUES_DATATABLE_PATH = (
-    adjusted_file_path.with_suffix("") / "all-models-all-values.csv"
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-all-values.csv"
 )
 LATEX_VALUES_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_FIGURE_PATH = adjusted_file_path.with_suffix("") / "figures"
@@ -361,9 +382,7 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
     sub_glob = (
         "{" + ",".join(cfg_hash for cfg_hash in cfg_hashes_for_filename.values()) + "}"
     )
-    train_or_load_model_glob = (
-        f".train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}"
-    )
+    train_or_load_model_glob = f".train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}"
     stem = cache_dir / SHARED_CACHE_STEM
     if not cli_args.print_cache_glob_absolute:
         stem = stem.relative_to(Path.cwd())
@@ -376,7 +395,7 @@ with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
     with memoshelve(
         train_or_load_model,
         filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.train_or_load_model{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}",
+        / f"{SHARED_CACHE_STEM}.train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}",
         get_hash=get_hash_ascii,
     )() as memo_train_or_load_model:
         runtime_models = {}
@@ -964,7 +983,7 @@ if not INCLUDE_BRUTE_FORCE:
         with memoshelve(
             partial(importance_sample_instruction_count, some_model, pbar=pbar),
             filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
+            / f"{SHARED_CACHE_STEM}.importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{EXTRA_D_VOCAB_FILE_SUFFIX}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         )() as memo_importance_sample_instruction_count:
@@ -1223,7 +1242,7 @@ def _cubic_count_verify_proof(
 with memoshelve(
     partial(_cubic_count_verify_proof, some_model, sanity_check_instructions=False),
     filename=cache_dir
-    / f"{SHARED_CACHE_STEM}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{f'_d_vocab_{D_VOCAB}' if D_VOCAB != 64 else ''}-n_ctx_{seq_len}",
+    / f"{SHARED_CACHE_STEM}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{EXTRA_D_VOCAB_FILE_SUFFIX}-n_ctx_{seq_len}",
     get_hash_mem=(lambda x: 0),
     get_hash=(lambda x: "0"),
 )() as count_verify_proof:

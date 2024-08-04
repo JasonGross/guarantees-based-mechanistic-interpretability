@@ -164,9 +164,21 @@ def data_summary(
     float_postfix: str = "Float",
     int_postfix: str = "",
 ):
+    def process_value(value):
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                pass
+            try:
+                return float(value)
+            except ValueError:
+                pass
+        return value
+
     if isinstance(data, dict):
         keys = list(sorted(data.keys()))
-        values = [data[k] for k in keys]
+        values = [process_value(data[k]) for k in keys]
         weights = None if sample_weight is None else [sample_weight[k] for k in keys]
     else:
         keys = None

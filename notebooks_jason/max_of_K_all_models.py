@@ -2205,10 +2205,11 @@ for seed in subcubic_data:
 
 if not INCLUDE_BRUTE_FORCE:
     # do this externally, because importance sampling is subject to change
-    for seed, row in subcubic_data.items():
-        row["normalized-accuracy-bound"] = (
-            row["accuracy-bound"] / brute_force_data_by_key["accuracy"][seed]
-        )
+    for seed in subcubic_data:
+        for row in subcubic_data[seed]:
+            row["normalized-accuracy-bound"] = (
+                row["accuracy-bound"] / brute_force_data_by_key["accuracy"][seed]
+            )
 
 new_data = []
 for seed in sorted(subcubic_data.keys()):

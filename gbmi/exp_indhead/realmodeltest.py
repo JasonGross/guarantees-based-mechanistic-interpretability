@@ -712,7 +712,17 @@ def least_attention(a, b, i_1, i_2, j):
             t_2 += c
         else:
             t_2 += attn_1[:, i_2 - 1].min() * c
-        c = term_3[i_2, a, j, :].max()
+
+        if a != 0 and a != d_voc - 1:
+            c = torch.max(
+                term_3[i_2, a, j, :a].max(), term_3[i_2, a, j - 1, a + 1 :].max()
+            )
+        if a == 0:
+            c = term_3[i_2, a, j, a + 1 :].max()
+
+        if a == d_voc - 1:
+            c = term_3[i_2, a, j, :a].max()
+
         if c > 0:
             t_3 = c
         else:
@@ -972,7 +982,7 @@ for a in tqdm(range(e_p.shape[1])):
         for i_2 in range(e_p.shape[0] - 1):
             for i_1 in range(e_p.shape[0] - 1):
                 for j in range(i_2 + 1):
-                    if (i_1 < i_2) & (i_1 > 0) & (i_2 + 1 > j):
+                    if (i_1 < i_2) & (i_1 > 1) & (i_2 + 1 > j):
                         bound[a, b, i_2, i_1, j] = least_attention(a, b, i_1, i_2, j)
 
 

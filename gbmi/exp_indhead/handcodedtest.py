@@ -150,7 +150,7 @@ everything = (
         e_p,
         "q_pos q_val k, k l, m l, k_pos k_val m -> q_pos q_val k_pos k_val",
     )
-    / attn_scale_0
+    / 1
 )
 # %%
 table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
@@ -217,11 +217,7 @@ everything_1_1 = ein.array(
 everything_1_1 = ein.array(
     lambda a, c, i_2, j, x: torch.where(
         (j < i_2) & (x != a),
-        (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o)
-        @ q_1
-        @ (k_1.T)
-        @ (e_p[j, x].T)
-        * (1 / attn_scale_1),
+        (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o) @ q_1 @ (k_1.T) @ (e_p[j, x].T),
         -torch.inf,
     ),
     device=device,
@@ -236,8 +232,7 @@ everything_1_2 = ein.array(
         (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o)
         @ q_1
         @ k_1.T
-        @ ((e_p[j - 1, y]) @ v @ o).T
-        * (1 / attn_scale_1),
+        @ ((e_p[j - 1, y]) @ v @ o).T,
         -torch.inf,
     ),
     device=device,
@@ -259,8 +254,7 @@ everything_1_b = ein.array(
         (e_p[i_2, a] + (e_p[i_2 - 1, c]) @ v @ o)
         @ q_1
         @ k_1.T
-        @ ((e_p[i_1, b] + (e_p[i_1 - 1, a]) @ v @ o).T)
-        * (1 / attn_scale_1),
+        @ ((e_p[i_1, b] + (e_p[i_1 - 1, a]) @ v @ o).T),
         torch.inf,
     ),
     device=device,
@@ -500,7 +494,7 @@ term_1 = (
         e_p,
         "q_pos q_val k, k l, m l, k_pos k_val m -> q_pos q_val k_pos k_val",
     )
-    / attn_scale_1
+    / 1
 )
 term_2 = (
     einops.einsum(
@@ -512,7 +506,7 @@ term_2 = (
         e_p,
         "q_pos q_val k, k l, l m, m n, o n, k_pos k_val o -> q_pos q_val k_pos k_val",
     )
-    / attn_scale_1
+    / 1
 )
 
 term_3 = (
@@ -525,7 +519,7 @@ term_3 = (
         e_p,
         "q_pos q_val k, k l, m l, n m, o n, k_pos k_val o -> q_pos q_val k_pos k_val",
     )
-    / attn_scale_1
+    / 1
 )
 
 term_4 = (
@@ -540,7 +534,7 @@ term_4 = (
         e_p,
         "q_pos q_val k, k l, l m, m n, o n, p o, q p, k_pos k_val q -> q_pos q_val k_pos k_val",
     )
-    / attn_scale_1
+    / 1
 )
 
 
@@ -713,7 +707,17 @@ def least_attention(a, b, i_1, i_2, j):
             t_2 += c
         else:
             t_2 += attn_1[:, i_2 - 1].min() * c
-        c = term_3[i_2, a, j, :].max()
+
+        if a != 0 and a != d_voc - 1:
+            c = torch.max(
+                term_3[i_2, a, j, :a].max(), term_3[i_2, a, j - 1, a + 1 :].max()
+            )
+        if a == 0:
+            c = term_3[i_2, a, j, a + 1 :].max()
+
+        if a == d_voc - 1:
+            c = term_3[i_2, a, j, :a].max()
+
         if c > 0:
             t_3 = c
         else:
@@ -973,7 +977,7 @@ for a in tqdm(range(e_p.shape[1])):
         for i_2 in range(e_p.shape[0] - 1):
             for i_1 in range(e_p.shape[0] - 1):
                 for j in range(i_2 + 1):
-                    if (i_1 < i_2) & (i_1 > 0) & (i_2 + 1 > j):
+                    if (i_1 < i_2) & (i_1 > 1) & (i_2 + 1 > j):
                         bound[a, b, i_2, i_1, j] = least_attention(a, b, i_1, i_2, j)
 
 

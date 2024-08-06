@@ -171,6 +171,7 @@ from gbmi.exp_max_of_n.train import (
     MAX_OF_4_CONFIG,
     MAX_OF_5_CONFIG,
     MAX_OF_10_CONFIG,
+    MAX_OF_20_CONFIG,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
@@ -365,6 +366,10 @@ match seq_len:
     case 10:
         cfgs = {
             seed: MAX_OF_10_CONFIG(seed, d_vocab_out=D_VOCAB) for seed in list(seeds)
+        }
+    case 20:
+        cfgs = {
+            seed: MAX_OF_20_CONFIG(seed, d_vocab_out=D_VOCAB) for seed in list(seeds)
         }
     case _:
         raise ValueError(f"Unsupported seq_len: {seq_len}")

@@ -917,8 +917,8 @@ def brute_force_instruction_count(
     model: HookedTransformer,
     batch_size: int,
 ) -> Tuple[InstructionCount, PerfCounter]:
-    n_full_batches = len(all_tokens_dataset) // batch_size
-    final_batch_size = len(all_tokens_dataset) % batch_size
+    n_full_batches = (model.cfg.d_vocab_out**model.cfg.n_ctx) // batch_size
+    final_batch_size = (model.cfg.d_vocab_out**model.cfg.n_ctx) % batch_size
     single_batch, single_batch_perf = single_batch_instruction_count(
         all_tokens_dataset, training_wrapper, model, batch_size
     )

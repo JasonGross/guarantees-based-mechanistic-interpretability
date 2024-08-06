@@ -212,6 +212,20 @@ def MAX_OF_10_CONFIG(
     )
 
 
+def MAX_OF_20_CONFIG(
+    seed: int, d_vocab_out: int = 64, *, deterministic: bool = False
+) -> Config[MaxOfN]:
+    return set_params(
+        MAX_OF_4_CONFIG(seed),
+        {
+            ("deterministic",): deterministic,
+            ("experiment", "seq_len"): 20,
+            ("experiment", "d_vocab_out"): d_vocab_out,
+        },
+        post_init=True,
+    )
+
+
 class MaxOfNTrainingWrapper(TrainingWrapper[MaxOfN]):
     def __init__(self, config: Config[MaxOfN], model: HookedTransformer):
         super().__init__(config, model)

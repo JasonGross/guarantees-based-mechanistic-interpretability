@@ -131,10 +131,9 @@ def pngcrush(
     args = ["pngcrush"]
     args += ["-brute"] if brute else []
     args += ["-d", str(tmpdir_path)]
-    args += [str(image) for image in images]
 
     # Run pngcrush with the specified arguments
-    subprocess.run(args, check=True)
+    batch_run(args, *map(str, images), check=True)
 
     # Replace original images with crushed images if they are smaller
     for old_f in map(Path, images):

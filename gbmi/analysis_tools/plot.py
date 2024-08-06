@@ -526,6 +526,9 @@ def scatter_matplotlib(
                 cur_x, cur_y = [], []
                 next_points = []
                 for x, y in remaining_points:
+                    # convert to float so we don't overflow int64 when looking at min, max below
+                    x = float(x) if isinstance(x, int) else x
+                    y = float(y) if isinstance(y, int) else y
                     if x_lbound < x <= x_ubound and y_lbound < y <= y_ubound:
                         cur_x.append(x)
                         cur_y.append(y)

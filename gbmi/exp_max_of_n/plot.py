@@ -720,11 +720,19 @@ def EVOU_max_minus_diag_logit_diff(
     if duplicate_by_sequence_count:
         n_ctx = model.cfg.n_ctx
         indices = torch.arange(max_logit_minus_diag.size(0))
-        # duplication_factors = (indices + 1) ** n_ctx - indices**n_ctx
-        duplication_factors = sum(
-            (math.comb(n_ctx, k) * indices**k for k in range(n_ctx)),
-            start=torch.zeros_like(indices),
-        )
+        if n_ctx >= math.log(np.iinfo(np.int64).max, base=max_logit_minus_diag.size(0)):
+            print(
+                f"Warning: n_ctx={n_ctx} is too large for {max_logit_minus_diag.size(0)}, using int"
+            )
+            duplication_factors = torch.tensor(
+                [
+                    sum(math.comb(n_ctx, k) * int(idx) ** k for k in range(n_ctx))
+                    for idx in indices
+                ],
+                dtype=torch.float64,
+            )
+        else:
+            duplication_factors = (indices + 1) ** n_ctx - indices**n_ctx
     else:
         duplication_factors = torch.ones_like(max_logit_minus_diag)
     return max_logit_minus_diag, duplication_factors

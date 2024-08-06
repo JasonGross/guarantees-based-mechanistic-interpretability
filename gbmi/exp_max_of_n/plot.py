@@ -720,7 +720,7 @@ def EVOU_max_minus_diag_logit_diff(
     if duplicate_by_sequence_count:
         n_ctx = model.cfg.n_ctx
         indices = torch.arange(max_logit_minus_diag.size(0))
-        if n_ctx >= math.log(np.iinfo(np.int64).max, base=max_logit_minus_diag.size(0)):
+        if n_ctx >= math.log(np.iinfo(np.int64).max, max_logit_minus_diag.size(0)):
             print(
                 f"Warning: n_ctx={n_ctx} is too large for {max_logit_minus_diag.size(0)}, using int"
             )

@@ -841,14 +841,14 @@ all_brute_force_data = update_csv(
 assert len(brute_force_data) == len(
     runtime_models
 ), f"len(brute_force_data) == {len(brute_force_data)} != {len(runtime_models)} == len(runtime_models)"
-all_tokens_datasets_lens = {seed: len(d) for seed, d in all_tokens_datasets.items()}
-assert (
-    len(set(all_tokens_datasets_lens.values())) == 1
-), f"Multiple dataset lengths! {set(all_tokens_datasets_lens.values())}"
 brute_force_key_prefix = "BruteForce" if INCLUDE_BRUTE_FORCE else "ImportanceSampling"
 latex_values[f"{brute_force_key_prefix}BatchSize"] = batch_size
 
 if INCLUDE_BRUTE_FORCE:
+    all_tokens_datasets_lens = {seed: len(d) for seed, d in all_tokens_datasets.items()}
+    assert (
+        len(set(all_tokens_datasets_lens.values())) == 1
+    ), f"Multiple dataset lengths! {set(all_tokens_datasets_lens.values())}"
     latex_values["BruteForceCPU"] = brute_force_proof_deterministic
     latex_values["BruteForceNumBatches"] = int(
         math.ceil(list(all_tokens_datasets_lens.values())[0] / batch_size)

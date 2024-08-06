@@ -1195,7 +1195,7 @@ assert len(cubic_data) == len(
 ), f"len(cubic_data) == {len(cubic_data)} != {len(runtime_models)} == len(runtime_models)"
 for key in ("accuracy-bound", "duration", "normalized-accuracy-bound"):
     print(
-        f"Cubic {key}: {pm_mean_std(np.array(cubic_data_by_key[key].values(), dtype=np.float64))}"
+        f"Cubic {key}: {pm_mean_std(np.array(list(cubic_data_by_key[key].values()), dtype=np.float64))}"
     )
 
 for key, latex_key in (

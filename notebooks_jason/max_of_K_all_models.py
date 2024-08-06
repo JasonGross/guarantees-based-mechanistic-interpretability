@@ -291,7 +291,7 @@ if N_SAMPLES_PER_KEY is None:
         case 10:
             N_SAMPLES_PER_KEY = 10
         case _:
-            N_SAMPLES_PER_KEY = 100 // seq_len
+            N_SAMPLES_PER_KEY = max(1, 100 // seq_len)
 assert isinstance(N_SAMPLES_PER_KEY, int), (N_SAMPLES_PER_KEY, type(N_SAMPLES_PER_KEY))
 N_THREADS: Optional[int] = cli_args.n_threads
 DISPLAY_PLOTS: bool = False  # @param {type:"boolean"}

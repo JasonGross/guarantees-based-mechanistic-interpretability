@@ -1,9 +1,11 @@
-from typing import Optional, Literal, Union, Sequence, Collection
+from typing import Collection, Literal, Optional, Sequence, Union
+
 import numpy as np
 import scipy.stats as stats
-from torch import Tensor
-from jaxtyping import Integer, Float
 import torch
+from jaxtyping import Float, Integer
+from torch import Tensor
+from transformer_lens.utils import to_numpy
 
 
 def _item(obj):
@@ -33,13 +35,13 @@ def pm_round(
 
 
 def pm_range(values, round: bool = True):
-    maxv, minv = _item(values.max()), _item(values.min())
+    maxv, minv = _item(to_numpy(values).max()), _item(to_numpy(values).min())
     mid, half_range = (maxv + minv) / 2.0, (maxv - minv) / 2.0
     return pm_round(mid, half_range) if round else f"{mid} ± {half_range}"
 
 
 def pm_mean_std(values, round: bool = True):
-    mean, std = _item(values.mean()), _item(values.std())
+    mean, std = _item(to_numpy(values).mean()), _item(to_numpy(values).std())
     return pm_round(mean, std) if round else f"{mean} ± {std}"
 
 

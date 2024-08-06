@@ -1215,7 +1215,7 @@ for key, latex_key in (
     if PERF_WORKING
     else ()
 ):
-    print(print(f"Cubic {key}: {pm_mean_std(cubic_data_by_key[key])}"))
+    print(print(f"Cubic {key}: {pm_mean_std(cubic_data_by_key[key].values())}"))
     latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
     assert all(isinstance(seed, int) for seed in cubic_data_by_key[key].keys())
     latex_all_values_by_value[f"{latex_key}Float"] = cubic_data_by_key[key]

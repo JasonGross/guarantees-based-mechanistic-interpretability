@@ -1215,7 +1215,9 @@ for key, latex_key in (
     if PERF_WORKING
     else ()
 ):
-    latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
+    cur_summary = data_summary(cubic_data_by_key[key], prefix=latex_key)
+    print(cur_summary)
+    latex_values |= cur_summary
     assert all(isinstance(seed, int) for seed in cubic_data_by_key[key].keys())
     latex_all_values_by_value[f"{latex_key}Float"] = cubic_data_by_key[key]
 

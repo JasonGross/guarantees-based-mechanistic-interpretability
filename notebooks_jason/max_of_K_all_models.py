@@ -1193,6 +1193,11 @@ for seed, d in cubic_data.items():
 assert len(cubic_data) == len(
     runtime_models
 ), f"len(cubic_data) == {len(cubic_data)} != {len(runtime_models)} == len(runtime_models)"
+for key in ("accuracy-bound", "duration", "normalized-accuracy-bound"):
+    print(
+        f"Cubic {key}: {pm_mean_std(np.array(cubic_data_by_key[key].values(), dtype=np.float64))}"
+    )
+
 for key, latex_key in (
     # ("loss", "CubicLoss"),
     ("accuracy-bound", "CubicAccuracy"),
@@ -1215,11 +1220,6 @@ for key, latex_key in (
     if PERF_WORKING
     else ()
 ):
-    print(
-        print(
-            f"Cubic {key}: {pm_mean_std(np.array(cubic_data_by_key[key].values(), dtype=np.float64))}"
-        )
-    )
     latex_values |= data_summary(cubic_data_by_key[key], prefix=latex_key)
     assert all(isinstance(seed, int) for seed in cubic_data_by_key[key].keys())
     latex_all_values_by_value[f"{latex_key}Float"] = cubic_data_by_key[key]

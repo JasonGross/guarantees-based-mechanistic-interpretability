@@ -1162,7 +1162,7 @@ def weighted_histogram(
     bins = np.linspace(data.min(), data.max(), num=num_bins)
 
     # Calculate counts for each bin
-    hist_counts = np.zeros(len(bins) - 1, dtype=int)
+    hist_counts = np.zeros(len(bins) - 1, dtype=np.int128)
     for i, value in enumerate(data):
         factor = weights[i]
         index = np.digitize(value, bins) - 1

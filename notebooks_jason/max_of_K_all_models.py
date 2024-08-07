@@ -120,6 +120,8 @@ import plotly.graph_objects as go
 import tikzplotlib
 import torch
 from cycler import cycler
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
@@ -2775,10 +2777,36 @@ for best_bound_only in (True, False):
     sorted_attn_err_handling = sorted_groups.index.tolist()
 
     key = f"NormalizedAccuracyBound{'AllSecondaryTricks' if not best_bound_only else ''}VsEPQKESingularRatio"
+
+    for attn_err_handling_key, group in df.groupby("attention_error_handling"):
+        X = group["EQKERatioFirstTwoSingularFloat"].values.reshape(-1, 1)
+        y = np.array(group["normalized-accuracy-bound"].values)
+
+        model = LinearRegression().fit(X, y)
+        slope = model.coef_[0]
+        intercept = model.intercept_
+        r_squared = r2_score(y, model.predict(X))
+        attn_err_handling_key_latex = (
+            LargestWrongLogitQuadraticConfig.transform_description(
+                attn_err_handling_key, latex=True
+            )
+        )
+        if best_bound_only:
+            print(
+                f"{attn_err_handling_key}:\tbound ≈ {intercept} + {slope} (σ₁/σ₂),\tr^2: {r_squared}"
+            )
+
+        latex_values[f"{key}{attn_err_handling_key_latex}LinearFitSlope"] = slope
+        latex_values[f"{key}{attn_err_handling_key_latex}LinearFitIntercept"] = (
+            intercept
+        )
+        latex_values[f"{key}{attn_err_handling_key_latex}LinearFitRSquared"] = r_squared
+
     latex_externalize_tables[key] = True
     df = double_singleton_groups(
         df.drop_duplicates(), column="attention_error_handling"
     )
+
     if DISPLAY_PLOTS or SAVE_PLOTS:
         latex_figures[key] = fig = scatter(
             df,

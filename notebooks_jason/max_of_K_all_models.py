@@ -2778,29 +2778,39 @@ for best_bound_only in (True, False):
 
     key = f"NormalizedAccuracyBound{'AllSecondaryTricks' if not best_bound_only else ''}VsEPQKESingularRatio"
 
-    for attn_err_handling_key, group in df.groupby("attention_error_handling"):
-        X = group["EQKERatioFirstTwoSingularFloat"].values.reshape(-1, 1)
-        y = np.array(group["normalized-accuracy-bound"].values)
+    for sing_upper_bound, sing_upper_bound_descr in ((375, "OnlySmallest"), (None, "")):
+        for attn_err_handling_key, group in df.groupby("attention_error_handling"):
+            subgroup = group
+            if sing_upper_bound is not None:
+                subgroup = subgroup[
+                    subgroup["EQKERatioFirstTwoSingularFloat"] < sing_upper_bound
+                ]
+            X = subgroup["EQKERatioFirstTwoSingularFloat"].values.reshape(-1, 1)
+            y = subgroup["normalized-accuracy-bound"].values
 
-        model = LinearRegression().fit(X, y)
-        slope = model.coef_[0]
-        intercept = model.intercept_
-        r_squared = r2_score(y, model.predict(X))
-        attn_err_handling_key_latex = (
-            LargestWrongLogitQuadraticConfig.transform_description(
-                attn_err_handling_key, latex=True
+            model = LinearRegression().fit(X, y)
+            slope = model.coef_[0]
+            intercept = model.intercept_
+            r_squared = r2_score(y, model.predict(X))
+            attn_err_handling_key_latex = (
+                LargestWrongLogitQuadraticConfig.transform_description(
+                    attn_err_handling_key, latex=True
+                )
             )
-        )
-        if best_bound_only:
-            print(
-                f"{attn_err_handling_key}:\tbound ≈ {intercept} + {slope} (σ₁/σ₂),\tr^2: {r_squared}"
-            )
+            if best_bound_only:
+                print(
+                    f"{attn_err_handling_key}{sing_upper_bound_descr}:\tbound ≈ {intercept} + {slope} (σ₁/σ₂),\tr^2: {r_squared}"
+                )
 
-        latex_values[f"{key}{attn_err_handling_key_latex}LinearFitSlope"] = slope
-        latex_values[f"{key}{attn_err_handling_key_latex}LinearFitIntercept"] = (
-            intercept
-        )
-        latex_values[f"{key}{attn_err_handling_key_latex}LinearFitRSquared"] = r_squared
+            latex_values[
+                f"{key}{sing_upper_bound_descr}{attn_err_handling_key_latex}LinearFitSlope"
+            ] = slope
+            latex_values[
+                f"{key}{sing_upper_bound_descr}{attn_err_handling_key_latex}LinearFitIntercept"
+            ] = intercept
+            latex_values[f"{key}{attn_err_handling_key_latex}LinearFitRSquared"] = (
+                r_squared
+            )
 
     latex_externalize_tables[key] = True
     df = double_singleton_groups(

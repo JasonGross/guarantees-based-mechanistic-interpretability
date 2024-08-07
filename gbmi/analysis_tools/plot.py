@@ -1163,7 +1163,7 @@ def weighted_histogram(
 
     # Calculate counts for each bin
     hist_counts_dtype = np.uint64
-    if data.sum() > np.iinfo(np.uint64).max:
+    if sum(weights) > np.iinfo(np.uint64).max:
         hist_counts_dtype = float
     hist_counts = np.zeros(len(bins) - 1, dtype=hist_counts_dtype)
     for i, value in enumerate(data):

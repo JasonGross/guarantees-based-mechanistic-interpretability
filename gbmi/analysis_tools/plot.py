@@ -1,4 +1,5 @@
 # %%
+from itertools import zip_longest
 import math
 from functools import partial
 from pathlib import Path
@@ -1166,8 +1167,7 @@ def weighted_histogram(
     if sum(weights) > np.iinfo(np.uint64).max:
         hist_counts_dtype = float
     hist_counts = np.zeros(len(bins) - 1, dtype=hist_counts_dtype)
-    for i, value in enumerate(data):
-        factor = weights[i]
+    for factor, value in zip_longest(weights, data, fillvalue=0):
         index = np.digitize(value, bins) - 1
         if 0 <= index < len(hist_counts):
             hist_counts[index] += factor

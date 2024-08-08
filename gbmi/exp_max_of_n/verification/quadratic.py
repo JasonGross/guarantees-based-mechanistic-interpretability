@@ -484,14 +484,20 @@ def decompose_EQKE_error_quadratic(
     # The naive computation is O(d_vocab^2 * d_model), and we can only get this down to O(d_vocab * d_model^2) by using SVD
     # To improve our error bounds a bit, first we again peel off the leading singular values
     W_E_second_key, W_E_key_err2 = factor_contribution(
-        W_E_key_err, second_key_direction, sanity_check=sanity_check
+        W_E_key_err,
+        second_key_direction,
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
     )  # O(d_vocab * d_model)
     W_E_second_key.setcheckparams(atol=1e-4)
     (
         W_E_second_query,
         W_E_query_err2,
     ) = factor_contribution(
-        W_E_query_err, second_query_direction, sanity_check=sanity_check
+        W_E_query_err,
+        second_query_direction,
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
     )  # O(d_vocab * d_model)
     W_E_second_query.setcheckparams(atol=1e-4)
     EQKE_err_second_query_key = (W_E_second_query @ W_Q[layer, head]) @ (
@@ -509,11 +515,17 @@ def decompose_EQKE_error_quadratic(
 
     # Now we peel off the first singular vectors of W_Q and W_K
     W_Q_rank1, W_Q_err = factor_contribution(
-        W_Q[layer, head], W_Q_U.squeeze(), sanity_check=sanity_check
+        W_Q[layer, head],
+        W_Q_U.squeeze(),
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
     )  # O(d_model * d_model)
     W_Q_rank1.setcheckparams(atol=1e-4)
     W_K_rank1, W_K_err = factor_contribution(
-        W_K[layer, head], W_K_U.squeeze(), sanity_check=sanity_check
+        W_K[layer, head],
+        W_K_U.squeeze(),
+        sanity_check=sanity_check,
+        checkparams=dict(atol=atol),
     )  # O(d_model * d_model)
     W_K_rank1.setcheckparams(atol=1e-4)
 

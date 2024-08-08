@@ -192,7 +192,7 @@ PIZZA_CONFIG = Config(
         training_ratio=0.8,
         use_end_of_sequence=False,
         attention_rate=1,
-        logging_options=ModelMatrixLoggingOptions.all(
+        logging_options=ModelMatrixLoggingOptions.none(
             EVOU=False,
             PVOU=False,
         ),

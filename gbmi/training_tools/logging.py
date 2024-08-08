@@ -248,6 +248,12 @@ class ModelMatrixLoggingOptions:
             ),  # type: ignore
         )
 
+    @staticmethod
+    def none(**kwargs) -> ModelMatrixLoggingOptions:
+        return ModelMatrixLoggingOptions(
+            **kwargs,
+        )
+
     def __post_init__(self):
         if self.shortformer:
             self.PVOU = False

@@ -1,9 +1,10 @@
-from typing import Literal, Optional, Tuple, Union, overload
 from functools import reduce
-from torch import Tensor
-from jaxtyping import Float
-import torch
+from typing import Any, Literal, Optional, Tuple, Union, overload
+
 import numpy as np
+import torch
+from jaxtyping import Float
+from torch import Tensor
 
 # from transformer_lens import FactoredMatrix
 from gbmi.utils.FactoredMatrix import FactoredMatrix
@@ -16,7 +17,7 @@ def factor_right_contribution(
     v: Union[Float[Tensor, "c"], Float[Tensor, "c n"]],  # noqa: F821, F722
     sanity_check: bool = True,
     show: bool = True,
-    checkparams: Optional[dict] = None,
+    checkparams: Optional[dict[str, Any]] = None,
 ) -> Tuple[Float[LowRankTensor, "r c"], Float[Tensor, "r c"]]:  # noqa: F722
     """Returns the contribution of v to m, and the residual
     Complexity: O(r c n)
@@ -39,6 +40,7 @@ def factor_right_contribution(
         assert contrib.check(
             torch.stack([(row @ v) @ v.transpose(-2, -1) for row in m], dim=0),
             do_assert=True,
+            **(checkparams or {}),
         )
     # global gcontrib
     # global gm

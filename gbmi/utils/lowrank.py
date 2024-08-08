@@ -173,7 +173,8 @@ class LowRankTensor(FactoredMatrix):
                 f"{self.A} @ {self.B} == {self.AB} != {other} ({full_kwargs})\n"
                 f"diff.abs() == {(self.AB - other).abs()}\n"
                 f"rtol={(self.AB - other).abs() / ((self.AB.abs() + other.abs())/2 + 1e-10)}\n"
-                f"atol.max()={(self.AB - other).abs().max()}\n"
+                f"atol.max={(self.AB - other).abs().max()}\n"
+                f"rtol.max={((self.AB - other).abs() / ((self.AB.abs() + other.abs())/2 + 1e-10)).max()}\n"
             )
         return False
 

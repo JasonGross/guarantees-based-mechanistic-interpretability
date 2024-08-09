@@ -2785,6 +2785,9 @@ for best_bound_only in (True, False):
                 subgroup = subgroup[
                     subgroup["EQKERatioFirstTwoSingularFloat"] < sing_upper_bound
                 ]
+            # if there are not enough data points, skip the group
+            if len(subgroup) < 2:
+                continue
             X = subgroup["EQKERatioFirstTwoSingularFloat"].values.reshape(-1, 1)
             y = subgroup["normalized-accuracy-bound"].values
 

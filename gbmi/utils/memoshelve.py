@@ -1,11 +1,33 @@
+import os
 import shelve
-from frozendict import frozendict
-from pathlib import Path
-from typing import Union, TypeVar, Any, Callable, Dict, Optional
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, TypeVar, Union
+
+from frozendict import frozendict
+
 from gbmi.utils.hashing import get_hash_ascii
+from gbmi.utils import backup as backup_file
 
 memoshelve_cache: Dict[str, Dict[str, Any]] = {}
+
+
+def compact(filename: Union[Path, str], backup: bool = True):
+    entries = {}
+    with shelve.open(filename) as db:
+        for k in db.keys():
+            entries[k] = db[k]
+    if backup:
+        backup_name = backup_file(filename)
+    else:
+        backup_name = None
+        os.remove(filename)
+    with shelve.open(filename) as db:
+        for k in entries.keys():
+            db[k] = entries[k]
+    if backup_name:
+        assert backup_name != filename, backup_name
+        os.remove(backup_name)
 
 
 def memoshelve(

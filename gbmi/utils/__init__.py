@@ -27,6 +27,7 @@ from typing import (
     TypeVar,
     Union,
 )
+from jaxtyping import Integer
 
 import numpy as np
 import torch
@@ -586,3 +587,103 @@ def patch(obj: object, mapping: dict[str | Sequence[str], Any] = {}, **kwargs: A
     """
     mapping = mapping | kwargs
     return patch_map(obj, {k: lambda x: v for k, v in mapping.items()})
+
+
+def is_valid_torch_dtype_for(*values, dtype: torch.dtype) -> bool:
+    vmin, vmax = min(values), max(values)
+    if isinstance(vmin, torch.Tensor):
+        vmin = vmin.item()
+    if isinstance(vmax, torch.Tensor):
+        vmax = vmax.item()
+    try:
+        torch.tensor(vmin, dtype=dtype)
+        torch.tensor(vmax, dtype=dtype)
+        return True
+    except (TypeError, RuntimeError):
+        return False
+
+
+def is_valid_torch_dtype(dtype: Any) -> bool:
+    try:
+        torch.tensor(0, dtype=dtype)
+        return True
+    except (TypeError, RuntimeError):
+        return False
+
+
+def get_int_dtypes(
+    mod,
+    only_signed: bool = False,
+    allow_signed: bool = False,
+    check: Optional[Callable[[int, Any], bool]] = lambda k, dtype: np.log2(k) % 1 == 0,
+) -> tuple:
+    prefixes = (["uint"] if not only_signed else []) + (
+        ["int"] if only_signed or allow_signed else []
+    )
+    dtype_names = {
+        (int(n[len(prefix) :]), prefix): n
+        for prefix in prefixes
+        for n in dir(mod)
+        if n.startswith(prefix) and n[len(prefix) :].isdigit()
+    }
+    if check:
+        dtype_names = {
+            (bits, p): v
+            for (bits, p), v in dtype_names.items()
+            if check(bits, getattr(mod, v))
+        }
+    return tuple([getattr(mod, dtype_names[k]) for k in sorted(dtype_names.keys())])
+
+
+def smallest_dtype_holding(
+    *values: int, allow_negative: bool = True, only_signed: bool = False
+) -> torch.dtype:
+    """
+    Returns the smallest torch dtype that can hold the given integer value.
+
+    Parameters:
+    - *values (int): The integer values to check.
+    - allow_negative (bool): Whether the value is allowed to be negative.
+
+    Returns:
+    - torch.dtype: The smallest dtype that can hold the value.
+    """
+
+    # Define possible data types to check in order of increasing size
+    dtypes = get_int_dtypes(
+        torch, allow_signed=allow_negative, only_signed=only_signed, check=None
+    )
+
+    vmin, vmax = min(values), max(values)
+
+    for dtype in dtypes:
+        if is_valid_torch_dtype_for(vmin, vmax, dtype=dtype):
+            return dtype
+
+    raise ValueError(
+        f"Values {values} ({vmin} to {vmax}) are out of range for any standard PyTorch integer dtype ({dtypes})."
+    )
+
+
+def compress_int_tensor(
+    v: Tensor, allow_negative: bool = True, only_signed: bool = False
+) -> Tensor:
+    dtype: torch.dtype = smallest_dtype_holding(
+        v.min().item(),
+        v.max().item(),
+        allow_negative=allow_negative,
+        only_signed=only_signed,
+    )
+    return v.to(dtype=dtype)
+
+
+def backup(filename: str | Path, ext: str = ".bak") -> Optional[Path]:
+    filename = Path(filename)
+    assert ext != ""
+    backup_name = filename.with_suffix(filename.suffix + ext)
+    if filename.exists():
+        if backup_name.exists():
+            backup(backup_name, ext=ext)
+            assert not backup_name.exists()
+            filename.rename(backup_name)
+            return backup_name

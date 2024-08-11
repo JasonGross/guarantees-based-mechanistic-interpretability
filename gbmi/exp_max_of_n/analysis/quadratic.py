@@ -16,6 +16,7 @@ from gbmi.exp_max_of_n.verification.quadratic import (
     compute_largest_wrong_logit_quadratic,
     decompose_EQKE_error_quadratic,
 )
+from gbmi.utils import compress_int_tensor
 
 
 @torch.no_grad()
@@ -79,7 +80,8 @@ def find_min_gaps(
         if pbar is not None:
             pbar.update(1)
 
-    return min_gaps
+    # we compact the tensor to take up less space on disk, since it's pretty big
+    return compress_int_tensor(min_gaps, allow_negative=False)
 
 
 @torch.no_grad()

@@ -198,3 +198,5 @@ notebooks_jason/max_of_2_grokking_regularized.html
 *_cache.pkl.lock
 
 lightning_logs/
+
+gbmi/exp_modular_arithmetic/models/

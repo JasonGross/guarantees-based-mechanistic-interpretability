@@ -2440,9 +2440,13 @@ brute_force_ext_df["normalized-accuracy-bound"] = (
     brute_force_ext_df["accuracy"] / brute_force_ext_df["accuracy"]
 )
 brute_force_ext_df["accuracy-bound"] = brute_force_ext_df["accuracy"]
-brute_force_ext_df["group"] = "brute-force"
+brute_force_ext_df["group"] = (
+    "brute-force" if INCLUDE_BRUTE_FORCE else "importance-sampling"
+)
 brute_force_ext_df["effective-dimension-estimate"] = brute_force_ed
-brute_force_ext_df["leading-complexity"] = "brute-force"
+brute_force_ext_df["leading-complexity"] = (
+    "brute-force" if INCLUDE_BRUTE_FORCE else "importance-sampling"
+)
 brute_force_ext_df["tricks"] = ""
 
 cubic_df = all_cubic_data
@@ -2884,10 +2888,12 @@ df_sorted = combined_df.sort_values(by="normalized-accuracy-bound", ascending=Fa
 category_order = df_sorted["group"].unique().tolist()
 category_name_remap = {
     "brute-force": f"brute force (acc: {pm_mean_std(brute_force_df['accuracy'])})",
+    "importance-sampling": f"importance sampling (acc: {pm_mean_std(brute_force_df['accuracy'])})",
     "cubic": f"cubic (rel acc: {pm_mean_std(cubic_ext_df['normalized-accuracy-bound'])})",
 }
 category_name_remap_short = {
     "brute-force": f"brute force",
+    "importance-sampling": f"importance sampling",
     "cubic": f"cubic",
 }
 max_rows = subcubic_ext_df.loc[
@@ -3369,3 +3375,5 @@ if SAVE_PLOTS:
         print(f"Total errors: {len(errs)}")
     for e in errs:
         raise e
+
+# %%

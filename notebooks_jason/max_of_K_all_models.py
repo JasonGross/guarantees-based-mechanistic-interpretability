@@ -2997,6 +2997,23 @@ for frontier_only in (True, False):
                 "proof-flop-estimate"
             ].mean(),
         )
+        compress_data = lambda values: (
+            f"{values.item() / 2 ** int(math.log2(values.item()))} \\cdot 2^{{{int(math.log2(values.item()))}}}"
+            if len(values) == 1
+            else f"({pm_mean_std(values / 2 ** int(math.log2(values.mean())))}) \\cdot 2^{{{int(math.log2(values.mean()))}}}"
+        )
+        print(
+            [
+                (
+                    compress_data(
+                        data[data["group"] == c]["proof-flop-estimate"].unique()
+                    ),
+                    category_name_remap[c],
+                )
+                for c in category_order
+                if len(data[data["group"] == c]["proof-flop-estimate"]) > 0
+            ]
+        )
         data["group"] = data["group"].map(category_name_remap)
         if DISPLAY_PLOTS or SAVE_PLOTS:
             latex_externalize_tables[key] = True

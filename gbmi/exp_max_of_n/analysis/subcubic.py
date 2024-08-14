@@ -13,6 +13,7 @@ from gbmi.exp_max_of_n.analysis.quadratic import (
     W_EP_direction_for_tricks_kwargs,
     find_EKQE_error_directions,
     find_min_gaps,
+    compress_min_gaps_over_query,
 )
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.subcubic import decompose_EQKE_error
@@ -170,7 +171,11 @@ def find_proof_specific(
         **find_min_gaps_with_EQKE_extra_kwargs,
         record_time=True,
     )
-    proof_search_duration += shared_proof_search_duration
+    # TODO: if we want to do this, we'd need to fix the counting procedure and finish threading this argument through
+    # compressed_min_gaps, extra_proof_search_duration = compress_min_gaps_over_query(
+    #     min_gaps, record_time=True
+    # )
+    proof_search_duration += shared_proof_search_duration  # extra_proof_search_duration
     start = time.time()
     W_EP_direction = W_EP_direction_for_tricks(**W_EP_direction_kwargs, tricks=tricks)
     proof_search_duration += time.time() - start
@@ -178,6 +183,7 @@ def find_proof_specific(
     result = {
         "W_EP_direction": W_EP_direction,
         "min_gaps": min_gaps,
+        # "compressed_min_gaps": compressed_min_gaps,
         "tricks": tricks,
         **size_and_query_directions_kwargs,
     }

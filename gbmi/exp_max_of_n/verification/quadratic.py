@@ -1,10 +1,12 @@
-from typing import Tuple, Union, Optional
 import math
+from typing import Optional, Tuple, Union
+
 import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from transformer_lens import HookedTransformer
+
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.utils.lowrank import LowRankTensor
 from gbmi.utils.sequences import count_sequences

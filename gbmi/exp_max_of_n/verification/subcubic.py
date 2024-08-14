@@ -1,27 +1,29 @@
-from typing import Callable, Union, Optional, Tuple
-from functools import reduce
 import time
+from functools import reduce
+from typing import Callable, Optional, Tuple, Union
+
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from transformer_lens import HookedTransformer
+
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+from gbmi.utils.instructions import (
+    CountTensor,
+    InstructionCount,
+    PerfCollector,
+    PerfCounter,
+)
 from gbmi.utils.lowrank import LowRankTensor
 from gbmi.verification_tools.decomp import split_SVD
-from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
-import gbmi.exp_max_of_n.verification.quadratic as quadratic
-from gbmi.verification_tools.utils import complexity_of
 from gbmi.verification_tools.l1h1 import (
     all_EVOU,
-    all_PVOU,
     all_EVOU_nocache,
+    all_PVOU,
     all_PVOU_nocache,
 )
-from gbmi.utils.instructions import (
-    InstructionCount,
-    CountTensor,
-    PerfCounter,
-    PerfCollector,
-)
+from gbmi.verification_tools.utils import complexity_of
 
 
 @torch.no_grad()

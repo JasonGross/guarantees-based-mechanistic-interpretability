@@ -3016,6 +3016,9 @@ for frontier_only in (True, False):
         )
         data["group"] = data["group"].map(category_name_remap)
         if DISPLAY_PLOTS or SAVE_PLOTS:
+            markersize = (
+                plt.rcParams["lines.markersize"] / 2 if not frontier_only else None
+            )
             latex_externalize_tables[key] = True
             latex_figures[key] = fig = scatter(
                 data,
@@ -3028,6 +3031,7 @@ for frontier_only in (True, False):
                 xaxis="FLOPs to Verify Proof (approximate)",
                 yaxis=f"{normt}Accuracy Bound",
                 color_order=[category_name_remap[c] for c in category_order],
+                markersize=markersize,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
                 show=DISPLAY_PLOTS,
@@ -3044,6 +3048,7 @@ for frontier_only in (True, False):
                 xaxis="FLOPs to Verify Proof (approximate)",
                 yaxis=f"{normt}Accuracy Bound",
                 color_order=[category_name_remap[c] for c in category_order],
+                markersize=markersize,
                 discontinuous_x=discontinuous_x,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,

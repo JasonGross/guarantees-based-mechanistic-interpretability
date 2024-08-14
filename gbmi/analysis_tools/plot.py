@@ -441,6 +441,7 @@ def scatter_plotly(
     discontinuous_x: Sequence[float] = (),
     discontinuous_y: Sequence[float] = (),
     # prop_cycle: dict[str, Any] = {},
+    markersize: Optional[float] = None,
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -458,6 +459,8 @@ def scatter_plotly(
                 x=0.5,
             )
         )
+    if markersize:
+        fig.update_traces(marker=dict(size=markersize))
     if reverse_yaxis:
         fig.update_layout(yaxis=dict(autorange="reversed"))
     if reverse_xaxis:
@@ -495,6 +498,7 @@ def scatter_matplotlib(
     discontinuous_x: Sequence[float] = (),
     discontinuous_y: Sequence[float] = (),
     # prop_cycle: dict[str, Any] = {},
+    markersize: Optional[float] = None,
     **kwargs,
 ):
     # x = utils.to_numpy(x)
@@ -508,6 +512,9 @@ def scatter_matplotlib(
     )
     if not show:
         plt.close()
+    if markersize is not None:
+        # units are pt^2 as per https://stackoverflow.com/questions/14827650/pyplot-scatter-plot-marker-size
+        kwargs["s"] = markersize**2
     # for ax in axes:
     #     ax.set_prop_cycle(cycler(**prop_cycle))
     data_minx: dict[int, float] = defaultdict(lambda: np.inf)

@@ -2727,6 +2727,7 @@ if HAS_CSVS:
 plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors)
 if HAS_CSVS:
     for frontier_only in (True, False):
+        markersize = plt.rcParams["lines.markersize"] / 2 if not frontier_only else None
         for norm, normt in (("", ""), ("normalized-", "Normalized ")):
             key = f"{normt.strip()}AccuracyBoundVsFLOPs{'FrontierOnly' if frontier_only else ''}"
             data = (
@@ -2759,6 +2760,7 @@ if HAS_CSVS:
                 xaxis="FLOPs to Verify Proof (approximate)",
                 yaxis=f"{normt}Accuracy Bound",
                 color_order=[category_name_remap[c] for c in category_order],
+                markersize=markersize,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
                 show=DISPLAY_PLOTS,
@@ -2776,6 +2778,7 @@ if HAS_CSVS:
                 yaxis=f"{normt}Accuracy Bound",
                 color_order=[category_name_remap[c] for c in category_order],
                 discontinuous_x=discontinuous_x,
+                markersize=markersize,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
                 show=DISPLAY_PLOTS,

@@ -206,6 +206,7 @@ def compute_largest_wrong_logit_quadratic(
             cur_min_gap = (
                 min_gap
                 if isinstance(min_gap, int)
+                # TODO: check: should this be max?
                 else int(min_gap[: max_tok + 1, max_tok, n_copies_nonmax].min().item())
             )
             if max_tok < cur_min_gap:

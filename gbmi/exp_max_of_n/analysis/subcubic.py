@@ -1,23 +1,22 @@
-from typing import Union, Optional, Tuple
 import time
 from functools import reduce
+from typing import Optional, Tuple, Union
+
 import torch
-from tqdm.auto import tqdm
 from jaxtyping import Float, Integer
 from torch import Tensor
+from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
-from gbmi.verification_tools.l1h1 import (
-    all_EVOU,
-    all_PVOU,
-)
-from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+
 from gbmi.exp_max_of_n.analysis.quadratic import (
     W_EP_direction_for_tricks,
-    find_min_gaps,
-    find_EKQE_error_directions,
     W_EP_direction_for_tricks_kwargs,
+    find_EKQE_error_directions,
+    find_min_gaps,
 )
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.subcubic import decompose_EQKE_error
+from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 
 
 @torch.no_grad()

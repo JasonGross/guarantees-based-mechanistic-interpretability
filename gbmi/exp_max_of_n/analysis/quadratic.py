@@ -1,14 +1,17 @@
-from typing import Union, Optional
+import time
+from typing import Optional, Tuple, Union
+
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
+
+from gbmi.analysis_tools.decomp import split_svd_contributions
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
 )
-from gbmi.analysis_tools.decomp import split_svd_contributions
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.quadratic import (
     compute_extreme_right_attention_quadratic,
@@ -86,11 +89,21 @@ def find_min_gaps(
 
 @torch.no_grad()
 def compress_min_gaps_over_query(
-    min_gaps: Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
-) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+    min_gaps: Integer[
+        Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"  # noqa: F722
+    ],
+    record_time=False,
+) -> Union[
+    Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"],  # noqa: F722
+    Tuple[
+        Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"],  # noqa: F722
+        float,
+    ],
+]:
     """We don't have the compute budget to treat min gaps separately for each (query, max, copies) triplet.  So we compress over the query dimension.  We do this by computing how many sequences would succeed for each choice of gap (all the queries with gap <= the given gap) and how many sequences we pick up (max - gap) ** (num copies nonmax) * (nctx - 1 choose num copies nonmax - 1).
     The (nctx - 1 choose num copies nonmax - 1) factor is the same and doesn't impact sorting order, so we can ignore it.
     """
+    start = time.time()
     sorted_min_gaps = min_gaps.sort(dim=0).values
     _, d_vocab, n_ctx = sorted_min_gaps.shape
     num_choices = (
@@ -101,9 +114,13 @@ def compress_min_gaps_over_query(
     ).clamp(min=0)
     num_queries = (1 + torch.arange(d_vocab, device=min_gaps.device))[:, None, None]
     num_sequences_including_queries = num_sequences * num_queries
-    return sorted_min_gaps.gather(
+    result = sorted_min_gaps.gather(
         0, num_sequences_including_queries.argmax(dim=0).unsqueeze(0)
     ).squeeze(0)
+    duration = time.time() - start
+    if record_time:
+        return result, duration
+    return result
 
 
 @torch.no_grad()

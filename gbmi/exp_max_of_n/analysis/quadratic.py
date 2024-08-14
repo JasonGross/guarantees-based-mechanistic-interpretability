@@ -85,6 +85,28 @@ def find_min_gaps(
 
 
 @torch.no_grad()
+def compress_min_gaps_over_query(
+    min_gaps: Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
+) -> Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]:  # noqa: F722
+    """We don't have the compute budget to treat min gaps separately for each (query, max, copies) triplet.  So we compress over the query dimension.  We do this by computing how many sequences would succeed for each choice of gap (all the queries with gap <= the given gap) and how many sequences we pick up (max - gap) ** (num copies nonmax) * (nctx - 1 choose num copies nonmax - 1).
+    The (nctx - 1 choose num copies nonmax - 1) factor is the same and doesn't impact sorting order, so we can ignore it.
+    """
+    sorted_min_gaps = min_gaps.sort(dim=0).values
+    _, d_vocab, n_ctx = sorted_min_gaps.shape
+    num_choices = (
+        torch.arange(d_vocab, device=min_gaps.device)[None, :, None] - sorted_min_gaps
+    ).clamp(min=0)
+    num_sequences = num_choices ** (
+        torch.arange(n_ctx, device=min_gaps.device)[None, None, :] - 1
+    ).clamp(min=0)
+    num_queries = (1 + torch.arange(d_vocab, device=min_gaps.device))[:, None, None]
+    num_sequences_including_queries = num_sequences * num_queries
+    return sorted_min_gaps.gather(
+        0, num_sequences_including_queries.argmax(dim=0).unsqueeze(0)
+    ).squeeze(0)
+
+
+@torch.no_grad()
 def W_EP_direction_for_tricks_kwargs(model: HookedTransformer):
     W_EP: Float[Tensor, "d_vocab d_model"] = model.W_E + model.W_pos.mean(  # noqa: F722
         dim=0, keepdim=True

@@ -3017,7 +3017,7 @@ for frontier_only in (True, False):
         data["group"] = data["group"].map(category_name_remap)
         if DISPLAY_PLOTS or SAVE_PLOTS:
             markersize = (
-                plt.rcParams["lines.markersize"] / 2 if not frontier_only else None
+                plt.rcParams["lines.markersize"] / 16 if not frontier_only else None
             )
             latex_externalize_tables[key] = True
             latex_figures[key] = fig = scatter(

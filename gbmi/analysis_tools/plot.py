@@ -512,11 +512,9 @@ def scatter_matplotlib(
     )
     if not show:
         plt.close()
-    if markersize is not None:
-        # units are pt^2 as per https://stackoverflow.com/questions/14827650/pyplot-scatter-plot-marker-size
-        kwargs["s"] = markersize**2
     # for ax in axes:
     #     ax.set_prop_cycle(cycler(**prop_cycle))
+    lgnd = None
     data_minx: dict[int, float] = defaultdict(lambda: np.inf)
     data_maxx: dict[int, float] = defaultdict(lambda: -np.inf)
     data_miny: dict[int, float] = defaultdict(lambda: np.inf)
@@ -524,6 +522,9 @@ def scatter_matplotlib(
     missing: dict[Tuple[int, int], bool] = defaultdict(lambda: False)
 
     def axes_scatter(all_x, all_y, **kwargs):
+        if markersize is not None:
+            # units are pt^2 as per https://stackoverflow.com/questions/14827650/pyplot-scatter-plot-marker-size
+            kwargs["s"] = markersize**2
         remaining_points = list(zip(all_x, all_y))
         y_ubounds = [-np.inf] + list(discontinuous_y) + [np.inf]
         x_ubounds = [-np.inf] + list(discontinuous_x) + [np.inf]
@@ -580,7 +581,7 @@ def scatter_matplotlib(
             right_ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
 
             # Put a legend to the right of the current axis
-            right_ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+            lgnd = right_ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
     elif (
         len(data) == 1
         and isinstance(data[0], pd.DataFrame)
@@ -614,13 +615,15 @@ def scatter_matplotlib(
                 kwargs[sns_remap[k]] = kwargs.pop(k)
         on_all_axes(lambda ax: sns.scatterplot(*data, ax=ax, **kwargs))
     if legend_at_bottom:
-        right_ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True)
+        lgnd = right_ax.legend(
+            loc="upper center", bbox_to_anchor=(0.5, -0.2), shadow=True
+        )
     elif legend:
         box = right_ax.get_position()
         right_ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
 
         # Put a legend to the right of the current axis
-        right_ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+        lgnd = right_ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
         # ax.legend(loc='upper right', bbox_to_anchor=(0, 0, 1, 1))
     rmid = axes.shape[0] // 2
     cmid = axes.shape[1] // 2
@@ -681,6 +684,18 @@ def scatter_matplotlib(
     for row in axes[1:]:
         for ax in row:
             ax.spines.top.set_visible(False)
+    if lgnd is not None:
+        if markersize is not None:
+            lgnd_handles = (
+                lgnd.legendHandles
+                if hasattr(lgnd, "legendHandles")
+                else lgnd.legend_handles
+            )
+            for handle in lgnd_handles:
+                handle._sizes = [
+                    plt.rcParams["legend.markerscale"]
+                    * plt.rcParams["lines.markersize"] ** 2
+                ]
     on_all_axes(lambda ax: ax.tick_params(labeltop="off", labelright="off"))
 
     def adjust_range(lo, hi, log_base):

@@ -3017,7 +3017,7 @@ for frontier_only in (True, False):
         data["group"] = data["group"].map(category_name_remap)
         if DISPLAY_PLOTS or SAVE_PLOTS:
             markersize = (
-                plt.rcParams["lines.markersize"] / 16 if not frontier_only else None
+                plt.rcParams["lines.markersize"] / 8 if not frontier_only else None
             )
             latex_externalize_tables[key] = True
             latex_figures[key] = fig = scatter(
@@ -3233,17 +3233,33 @@ def texify_matplotlib_title(
     orig_titles = [ax.get_title() for ax in fig.axes if fig.axes]
     orig_xlabels = [ax.get_xlabel() for ax in fig.axes if fig.axes]
     orig_ylabels = [ax.get_ylabel() for ax in fig.axes if fig.axes]
-    orig_legend_handles_labels = [
-        ax.get_legend_handles_labels() if ax.get_legend() else ([], [])
-        for ax in fig.axes
+    orig_legends = [ax.get_legend() for ax in fig.axes if fig.axes]
+    orig_legends_handles = [
+        (
+            lgnd.legendHandles
+            if hasattr(lgnd, "legendHandles")
+            else lgnd.legend_handles if lgnd is not None else []
+        )
+        for lgnd in orig_legends
+    ]
+    orig_legends_sizes = [
+        [h._sizes for h in handles] for handles in orig_legends_handles
+    ]
+    orig_legend_handles_labels_sizes = [
+        (
+            (ax.get_legend_handles_labels(), sizes)
+            if ax.get_legend()
+            else (([], []), sizes)
+        )
+        for ax, sizes in zip(fig.axes, orig_legends_sizes)
     ]
     new_suptitle = texify(orig_suptitle)
     new_titles = [texify(t) for t in orig_titles]
     new_xlabels = [texify(t) for t in orig_xlabels]
     new_ylabels = [texify(t) for t in orig_ylabels]
-    new_legend_handles_labels = [
-        (handles, [(texify(label) or label) for label in labels])
-        for handles, labels in orig_legend_handles_labels
+    new_legend_handles_labels_sizes = [
+        ((handles, [(texify(label) or label) for label in labels]), sizes)
+        for (handles, labels), sizes in orig_legend_handles_labels_sizes
     ]
     try:
         if new_suptitle is not None:
@@ -3254,13 +3270,13 @@ def texify_matplotlib_title(
                 new_title,
                 new_xlabel,
                 new_ylabel,
-                (new_leg_handles, new_leg_labels),
+                ((new_leg_handles, new_leg_labels), new_leg_sizes),
             ) in zip(
                 fig.axes,
                 new_titles,
                 new_xlabels,
                 new_ylabels,
-                new_legend_handles_labels,
+                new_legend_handles_labels_sizes,
             ):
                 if new_title is not None:
                     ax.set_title(new_title)
@@ -3269,7 +3285,14 @@ def texify_matplotlib_title(
                 if new_ylabel is not None:
                     ax.set_ylabel(new_ylabel)
                 if new_leg_labels:
-                    ax.legend(new_leg_handles, new_leg_labels)
+                    lgnd = ax.legend(new_leg_handles, new_leg_labels)
+                    lgnd_handles = (
+                        lgnd.legendHandles
+                        if hasattr(lgnd, "legendHandles")
+                        else lgnd.legend_handles
+                    )
+                    for h, s in zip(lgnd_handles, new_leg_sizes):
+                        h.set_sizes(s)
         yield fig
     finally:
         if new_suptitle is not None:
@@ -3280,13 +3303,13 @@ def texify_matplotlib_title(
                 orig_title,
                 orig_xlabel,
                 orig_ylabel,
-                (orig_leg_handles, orig_leg_labels),
+                ((orig_leg_handles, orig_leg_labels), orig_leg_sizes),
             ) in zip(
                 fig.axes,
                 orig_titles,
                 orig_xlabels,
                 orig_ylabels,
-                orig_legend_handles_labels,
+                orig_legend_handles_labels_sizes,
             ):
                 if orig_title is not None:
                     ax.set_title(orig_title)
@@ -3295,7 +3318,14 @@ def texify_matplotlib_title(
                 if orig_ylabel is not None:
                     ax.set_ylabel(orig_ylabel)
                 if orig_leg_labels:
-                    ax.legend(orig_leg_handles, orig_leg_labels)
+                    lgnd = ax.legend(orig_leg_handles, orig_leg_labels)
+                    lgnd_handles = (
+                        lgnd.legendHandles
+                        if hasattr(lgnd, "legendHandles")
+                        else lgnd.legend_handles
+                    )
+                    for h, s in zip(lgnd_handles, orig_leg_sizes):
+                        h.set_sizes(s)
 
 
 if SAVE_PLOTS:
@@ -3331,14 +3361,14 @@ if SAVE_PLOTS:
             )
             # if not unsupported_by_tikzplotly:
             #     p = LATEX_FIGURE_PATH / f"{k}.tex"
-            #     print(f"Saving {p}...")
+            #     print(f"Saving {p} ...")
             #     p.parent.mkdir(parents=True, exist_ok=True)
             #     tikzplotly.save(p, fig)
             with texify_title(fig, replace_with_macros=False) as fig:
                 if True or unsupported_by_tikzplotly:
                     for ext in (".pdf", ".svg"):
                         p = LATEX_FIGURE_PATH / f"{k}{ext}"
-                        print(f"Saving {p}...")
+                        print(f"Saving {p} ...")
                         p.parent.mkdir(parents=True, exist_ok=True)
                         fig.write_image(p)
                         if ext == ".pdf":
@@ -3350,7 +3380,7 @@ if SAVE_PLOTS:
             if externalize_this_table:
                 if not latex_only_externalize_tables.get(k, False):
                     p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
-                print(f"Saving {p}...")
+                print(f"Saving {p} ...")
                 with texify_matplotlib_title(fig) as fig:
                     tikzplotlib.save(
                         p,
@@ -3359,14 +3389,14 @@ if SAVE_PLOTS:
                         table_row_sep=table_row_sep,
                     )
             p = LATEX_FIGURE_PATH / f"{k}.tex"
-            print(f"Saving {p}...")
+            print(f"Saving {p} ...")
             with texify_matplotlib_title(fig, replace_with_macros=True) as fig:
                 tikzplotlib.save(
                     p, fig, externalize_tables=False, table_row_sep=table_row_sep
                 )
             for ext in (".pdf", ".svg"):
                 p = LATEX_FIGURE_PATH / f"{k}{ext}"
-                print(f"Saving {p}...")
+                print(f"Saving {p} ...")
                 p.parent.mkdir(parents=True, exist_ok=True)
                 fig.savefig(p)
                 if ext == ".pdf":

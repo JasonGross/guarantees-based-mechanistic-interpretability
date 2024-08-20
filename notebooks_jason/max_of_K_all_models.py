@@ -764,7 +764,7 @@ if INCLUDE_BRUTE_FORCE:
         for length in lengths
     )
 
-    def _handle_brute_force_for(seed: int, *, pbar: tqdm, subpbar: tqdm):
+    def _handle_brute_force_for(seed: int, *, pbar: tqdm):
         try:
             brute_force_data[seed] = get_brute_force_for(seed, pbar=pbar)
         except Exception as e:
@@ -813,7 +813,9 @@ else:
         row = {"seed": seed, **results}
         return row
 
-    def _handle_brute_force_for(seed: int, *, pbar: tqdm, subpbar: tqdm):
+    def _handle_brute_force_via_importance_sampling_for(
+        seed: int, *, pbar: tqdm, subpbar: tqdm
+    ):
         pbar.update(1)
         pbar.set_postfix({"seed": seed})
         try:
@@ -826,7 +828,11 @@ else:
         with tqdm(desc="importance sampling", position=1) as subpbar:
             # with PeriodicGarbageCollector(60):
             maybe_parallel_map(
-                partial(_handle_brute_force_for, pbar=pbar, subpbar=subpbar),
+                partial(
+                    _handle_brute_force_via_importance_sampling_for,
+                    pbar=pbar,
+                    subpbar=subpbar,
+                ),
                 sorted(relevant_seeds),
             )
 

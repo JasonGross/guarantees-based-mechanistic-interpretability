@@ -150,7 +150,7 @@ class Multifun(ExperimentConfig):
             x = x[..., :-1]
         kind, x = x[..., 0].long() - self.d_vocab, x[..., 1:]
         # Create masks for each function type
-        funcs = torch.tensor(self.funcs)
+        funcs = np.array(self.funcs)
         max_mask = funcs[kind] == "max"
         min_mask = funcs[kind] == "min"
         sum_mask = funcs[kind] == "sum"

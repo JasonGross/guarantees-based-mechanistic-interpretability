@@ -1,1 +1,1 @@
-from gbmi.exp_multifun import SEEDS, SELECTED_SEED
+from gbmi.exp_max_of_n import SEEDS, SELECTED_SEED

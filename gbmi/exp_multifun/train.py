@@ -148,22 +148,47 @@ class Multifun(ExperimentConfig):
     ) -> Integer[Tensor, "..."]:  # noqa: F722
         if self.use_end_of_sequence:
             x = x[..., :-1]
-        kind, x = int(x[..., 0].item()) - self.d_vocab, x[..., 1:]
-        match self.funcs[kind]:
-            case "max":
-                return x.max(dim=-1).values
-            case "min":
-                return x.min(dim=-1).values
-            case "sum":
-                return x.sum(dim=-1)
-            case "argmax":
-                return x.max(dim=-1).indices
-            case "argmin":
-                return x.min(dim=-1).indices
-            case "summod":
-                return x.sum(dim=-1) % self.d_vocab
-            case _:
-                raise ValueError(f"Unknown function {kind}")
+        kind, x = x[..., 0].long() - self.d_vocab, x[..., 1:]
+        # Create masks for each function type
+        funcs = torch.tensor(self.funcs)
+        max_mask = funcs[kind] == "max"
+        min_mask = funcs[kind] == "min"
+        sum_mask = funcs[kind] == "sum"
+        argmax_mask = funcs[kind] == "argmax"
+        argmin_mask = funcs[kind] == "argmin"
+        summod_mask = funcs[kind] == "summod"
+
+        results = torch.empty(x.shape[:-1], dtype=x.dtype)
+
+        if max_mask.any():
+            results[max_mask] = x[max_mask].max(dim=-1).values
+        if min_mask.any():
+            results[min_mask] = x[min_mask].min(dim=-1).values
+        if sum_mask.any():
+            results[sum_mask] = x[sum_mask].sum(dim=-1)
+        if argmax_mask.any():
+            results[argmax_mask] = x[argmax_mask].argmax(dim=-1)
+        if argmin_mask.any():
+            results[argmin_mask] = x[argmin_mask].argmin(dim=-1)
+        if summod_mask.any():
+            results[summod_mask] = x[summod_mask].sum(dim=-1) % self.d_vocab
+
+        assert (
+            max_mask | min_mask | sum_mask | argmax_mask | argmin_mask | summod_mask
+        ).all(), funcs[
+            kind[
+                ~(
+                    max_mask
+                    | min_mask
+                    | sum_mask
+                    | argmax_mask
+                    | argmin_mask
+                    | summod_mask
+                )
+            ]
+        ]
+
+        return results
 
 
 MULTIFUN_OF_2_CONFIG: Config[Multifun] = Config(

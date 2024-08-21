@@ -1,7 +1,6 @@
 # %%
 from __future__ import annotations
 
-import argparse
 import sys
 from dataclasses import dataclass, field
 from functools import cache
@@ -23,33 +22,30 @@ from gbmi.model import (
     ExperimentConfig,
     TrainingWrapper,
     add_force_argument,
-    add_HookedTransformerConfig_arguments,
     add_no_save_argument,
     train_or_load_model,
-    update_HookedTransformerConfig_from_args,
 )
 from gbmi.training_tools.logging import ModelMatrixLoggingOptions
 from gbmi.utils import reseed, set_params, shuffle_data
 from gbmi.utils.hashing import _EXCLUDE
 from gbmi.utils.sequences import generate_all_sequences
-from gbmi.exp_multifun import SEEDS, SELECTED_SEED
 
 
-@dataclass
-class IterableDatasetCfg:
-    n_samples: Optional[int] = None
+# @dataclass
+# class IterableDatasetCfg:
+#     n_samples: Optional[int] = None
 
 
-@dataclass
-class FullDatasetCfg:
-    force_adjacent: Sequence[int] = tuple()
-    # only for n_ctx=2: for all i in force_adjacent, force all sequences (n, n±i) to be in training set
-    # bounds: Optional[Tuple[int, int]] = None
-    # range of vocab tokens within which to sample
-    training_ratio: float = 0.7
+# @dataclass
+# class FullDatasetCfg:
+#     force_adjacent: Sequence[int] = tuple()
+#     # only for n_ctx=2: for all i in force_adjacent, force all sequences (n, n±i) to be in training set
+#     # bounds: Optional[Tuple[int, int]] = None
+#     # range of vocab tokens within which to sample
+#     training_ratio: float = 0.7
 
 
-DatasetCfg = Union[IterableDatasetCfg, FullDatasetCfg]
+# DatasetCfg = Union[IterableDatasetCfg, FullDatasetCfg]
 
 FUNCS = Sequence[Literal["max", "min", "sum", "argmax", "argmin", "summod"]]
 
@@ -78,12 +74,8 @@ class Multifun(ExperimentConfig):
         default_factory=ModelMatrixLoggingOptions
     )
 
-    train_dataset_cfg: DatasetCfg = field(
-        default_factory=lambda: IterableDatasetCfg(n_samples=None)
-    )
-    test_dataset_cfg: DatasetCfg = field(
-        default_factory=lambda: IterableDatasetCfg(n_samples=1024)
-    )
+    train_dataset_n_samples: Optional[int] = None
+    test_dataset_n_samples: Optional[int] = None
     optimizer_kwargs: Dict[str, Any] = field(
         default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999)}
     )
@@ -112,22 +104,22 @@ class Multifun(ExperimentConfig):
         d_model = config.experiment.d_model
         n_heads = config.experiment.n_heads
         funcs = "-".join(config.experiment.funcs)
-        if isinstance(config.experiment.train_dataset_cfg, FullDatasetCfg):
-            force_adjacent = ",".join(
-                map(str, config.experiment.train_dataset_cfg.force_adjacent)
-            )
-            training_ratio = config.experiment.train_dataset_cfg.training_ratio
-        else:
-            force_adjacent = tuple()
-            training_ratio = None
+        # if isinstance(config.experiment.train_dataset_n_samples, FullDatasetCfg):
+        #     force_adjacent = ",".join(
+        #         map(str, config.experiment.train_dataset_n_samples.force_adjacent)
+        #     )
+        #     training_ratio = config.experiment.train_dataset_n_samples.training_ratio
+        # else:
+        #     force_adjacent = tuple()
+        #     training_ratio = None
         return (
             f"Multifun-{funcs}-Of{config.experiment.seq_len}-{config.train_for[0]}-{config.train_for[1]}"
             f"{f'-{n_layers}L' if n_layers != 1 else ''}"
             f"{f'-{n_heads}h' if n_heads != 1 else ''}"
             f"{f'-{d_vocab}v' if d_vocab != 64 else ''}"
             f"{f'-{d_model}m' if d_model != 32 else ''}"
-            f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
-            f"{f'-training-ratio-{training_ratio:.3f}' if training_ratio is not None else ''}"
+            # f"{f'-adj-{force_adjacent}' if force_adjacent else ''}"
+            # f"{f'-training-ratio-{training_ratio:.3f}' if training_ratio is not None else ''}"
             f"{'-with-eos' if config.experiment.use_end_of_sequence else ''}"
             f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"
@@ -167,18 +159,18 @@ class Multifun(ExperimentConfig):
                 raise ValueError(f"Unknown function {kind}")
 
 
-MULTIFUN_OF_2_CONFIG: Config[Multifun] = Config(
-    experiment=Multifun(
-        train_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
-        test_dataset_cfg=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
-        seq_len=2,
-    ),
-    validate_every=None,
-)
+# MULTIFUN_OF_2_CONFIG: Config[Multifun] = Config(
+#     experiment=Multifun(
+#         train_dataset_n_samples=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
+#         test_dataset_n_samples=FullDatasetCfg(force_adjacent=(0, 1), training_ratio=0.7),
+#         seq_len=2,
+#     ),
+#     validate_every=None,
+# )
 MULTIFUN_OF_10_SINGLE_CONFIG: Config[Multifun] = Config(
     experiment=Multifun(
-        train_dataset_cfg=IterableDatasetCfg(n_samples=None),
-        test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
+        train_dataset_n_samples=None,
+        test_dataset_n_samples=1024,
         seq_len=10,
     ),
     validate_every=None,
@@ -207,8 +199,8 @@ def MULTIFUN_OF_4_CONFIG(seed: int, funcs: FUNCS = ("max", "min")) -> Config[Mul
             seq_len=4,
             optimizer="AdamW",
             optimizer_kwargs={"lr": 0.001, "betas": (0.9, 0.999)},
-            train_dataset_cfg=IterableDatasetCfg(),
-            test_dataset_cfg=IterableDatasetCfg(n_samples=1024),
+            train_dataset_n_samples=None,
+            test_dataset_n_samples=1024,
         ),
         deterministic=True,
         seed=seed,
@@ -542,7 +534,7 @@ class MultifunDataModule(DataModule):
         return data_train, data_test
 
     def build_dataset(
-        self, cfg: DatasetCfg, mode: Literal["train", "test"]
+        self, n_samples: Optional[int], mode: Literal["train", "test"]
     ) -> Dataset[
         Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
     ]:
@@ -550,39 +542,39 @@ class MultifunDataModule(DataModule):
         base_dataset: Dataset[
             Tuple[Integer[Tensor, "n_ctx"], Integer[Tensor, ""]]  # noqa: F821, F722
         ]
-        if isinstance(cfg, IterableDatasetCfg):
-            base_dataset = MultifunIterableDataset(
-                reseed(self.dataset_seed, mode),
-                self.config,
-                max_length=cfg.n_samples,
-            )
-        elif isinstance(cfg, FullDatasetCfg):
-            data_train, data_test = self.get_full_dataset(
-                cfg.force_adjacent, cfg.training_ratio
-            )
-            eos_token = self.config.experiment.get_eos_token()
-            if eos_token is not None:
-                data_train = utils.add_eos(data_train, eos_token)
-                data_test = utils.add_eos(data_test, eos_token)
+        # if isinstance(cfg, IterableDatasetCfg):
+        base_dataset = MultifunIterableDataset(
+            reseed(self.dataset_seed, mode),
+            self.config,
+            max_length=n_samples,
+        )
+        # elif isinstance(cfg, FullDatasetCfg):
+        #     data_train, data_test = self.get_full_dataset(
+        #         cfg.force_adjacent, cfg.training_ratio
+        #     )
+        #     eos_token = self.config.experiment.get_eos_token()
+        #     if eos_token is not None:
+        #         data_train = utils.add_eos(data_train, eos_token)
+        #         data_test = utils.add_eos(data_test, eos_token)
 
-            base_dataset = {
-                "train": TensorDataset(
-                    data_train, self.config.experiment.get_ground_truth(data_train)
-                ),
-                "test": TensorDataset(
-                    data_test, self.config.experiment.get_ground_truth(data_test)
-                ),
-            }[mode]
-        else:
-            raise NotImplementedError
+        #     base_dataset = {
+        #         "train": TensorDataset(
+        #             data_train, self.config.experiment.get_ground_truth(data_train)
+        #         ),
+        #         "test": TensorDataset(
+        #             data_test, self.config.experiment.get_ground_truth(data_test)
+        #         ),
+        #     }[mode]
+        # else:
+        #     raise NotImplementedError
         return base_dataset
 
     def setup(self, stage: str):
         self.data_train = self.build_dataset(
-            self.config.experiment.train_dataset_cfg, "train"
+            self.config.experiment.train_dataset_n_samples, "train"
         )
         self.data_test = self.build_dataset(
-            self.config.experiment.test_dataset_cfg, "test"
+            self.config.experiment.test_dataset_n_samples, "test"
         )
 
     def train_dataloader(self):
@@ -600,11 +592,13 @@ def main(argv: List[str] = sys.argv):
         description="Train a model with configurable attention rate."
     )
     parser.add_arguments(
-        Multifun, dest="experiment_config", default=MULTIFUN_OF_2_CONFIG.experiment
+        Multifun,
+        dest="experiment_config",
+        default=MULTIFUN_OF_10_SINGLE_CONFIG.experiment,
     )
     add_force_argument(parser)
     add_no_save_argument(parser)
-    Config.add_arguments(parser, default=MULTIFUN_OF_2_CONFIG)
+    Config.add_arguments(parser, default=MULTIFUN_OF_10_SINGLE_CONFIG)
 
     args = parser.parse_args(argv[1:])
 

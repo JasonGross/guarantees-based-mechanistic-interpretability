@@ -85,7 +85,7 @@ class ModularArithmetic(ExperimentConfig):
     logging_options: ModelMatrixLoggingOptions = field(
         default_factory=ModelMatrixLoggingOptions
     )
-    version_number: int = 1
+    version_number: int = 2
 
     def get_training_wrapper(self):
         return ModularArithmeticTrainingWrapper
@@ -215,9 +215,11 @@ class ModularArithmeticTrainingWrapper(TrainingWrapper[ModularArithmetic]):
     @staticmethod
     def build_model(config: Config[ModularArithmetic]) -> HookedTransformer:
         model_config = HookedTransformerConfig(
-            d_vocab=config.experiment.p + 1,
+            d_vocab=config.experiment.p
+            + (1 if config.experiment.use_end_of_sequence else 0),
             d_vocab_out=config.experiment.p,
-            n_ctx=config.experiment.seq_len + 1,
+            n_ctx=config.experiment.seq_len
+            + (1 if config.experiment.use_end_of_sequence else 0),
             d_model=config.experiment.d_model,
             d_mlp=config.experiment.d_mlp,
             d_head=config.experiment.d_model // config.experiment.n_heads,

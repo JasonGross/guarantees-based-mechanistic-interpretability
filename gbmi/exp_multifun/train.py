@@ -737,7 +737,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[Multifun], dict]:
     config.experiment.optimizer_kwargs.update(
         {"lr": args.lr, "betas": tuple(args.betas)}
     )
-    if args.argmax_of <= 2:
+    if args.K <= 2:
         if args.force_adjacent_gap:
             force_adjacent = tuple(
                 sorted(

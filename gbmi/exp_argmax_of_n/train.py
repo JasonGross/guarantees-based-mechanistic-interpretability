@@ -653,9 +653,9 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[ArgmaxOfN], dict]:
     args = parser.parse_args(argv[1:])
 
     config = set_params(
-        (ARGMAX_OF_2_CONFIG if args.max_of <= 2 else ARGMAX_OF_10_SINGLE_CONFIG),
+        (ARGMAX_OF_2_CONFIG if args.argmax_of <= 2 else ARGMAX_OF_10_SINGLE_CONFIG),
         {
-            ("experiment", "seq_len"): args.max_of,
+            ("experiment", "seq_len"): args.argmax_of,
             ("experiment", "use_end_of_sequence"): args.use_end_of_sequence,
             ("experiment", "use_log1p"): args.use_log1p,
             ("experiment", "optimizer"): args.optimizer,
@@ -683,7 +683,7 @@ def config_of_argv(argv=sys.argv) -> tuple[Config[ArgmaxOfN], dict]:
     config.experiment.optimizer_kwargs.update(
         {"lr": args.lr, "betas": tuple(args.betas)}
     )
-    if args.max_of <= 2:
+    if args.argmax_of <= 2:
         if args.force_adjacent_gap:
             force_adjacent = tuple(
                 sorted(

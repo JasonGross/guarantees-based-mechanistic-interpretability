@@ -58,7 +58,7 @@ FUNCS = Sequence[Literal["max", "min", "sum", "argmax", "argmin", "summod"]]
 class Multifun(ExperimentConfig):
     # Model config
     n_layers: int = 1
-    n_heads: int = 1
+    n_heads: int = 2
     d_model: int = 32
     d_vocab: int = 64
     attn_only: bool = True
@@ -454,6 +454,12 @@ class MultifunIterableDataset(
             g.manual_seed(self.seed)
             n_samples = 0
             while True:
+                func = (
+                    torch.randint(
+                        0, len(self.config.experiment.funcs), (1,), generator=g
+                    )
+                    + self.config.experiment.d_vocab
+                )
                 max_val = (
                     int(
                         torch.randint(0, self.config.experiment.d_vocab, tuple()).item()
@@ -478,6 +484,7 @@ class MultifunIterableDataset(
                 eos_token = self.config.experiment.get_eos_token()
                 if eos_token is not None:
                     val = utils.add_eos(val, eos_token)
+                val = torch.cat([func, val], dim=0)
                 yield val, self.config.experiment.get_ground_truth(val)
 
                 n_samples += 1
@@ -510,13 +517,20 @@ class MultifunDataModule(DataModule):
     def get_full_dataset(self, force_adjacent: Sequence[int], training_ratio: float):
         rng = np.random.default_rng(self.dataset_seed)
         data = generate_all_sequences(self.config.experiment.d_vocab, self.seq_len)
+        data = torch.cat(
+            [
+                utils.add_bos(func + self.config.experiment.d_vocab, data)
+                for func in range(len(self.config.experiment.funcs))
+            ],
+            dim=0,
+        )
         data = shuffle_data(data, rng)
 
         if force_adjacent:
             assert self.seq_len == 2
-            idxs = torch.zeros_like(data[:, 0], dtype=torch.bool)
+            idxs = torch.zeros_like(data[:, 1], dtype=torch.bool)
             for k in force_adjacent:
-                idxs |= (data[:, 0] - data[:, 1]).abs() == k
+                idxs |= (data[:, 1] - data[:, 2]).abs() == k
             data, extra_data = data[~idxs], data[idxs]
             data = torch.cat([extra_data, data], dim=0)
 

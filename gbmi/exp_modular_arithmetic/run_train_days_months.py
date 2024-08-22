@@ -27,6 +27,7 @@ with tqdm(SEEDS, desc="Seed", position=0, leave=False) as seed_pbar:
                                         cfg,
                                         {
                                             "seed": seed,
+                                            "train_for": (3000, "epochs"),
                                             ("experiment", "p"): p,
                                             (
                                                 "experiment",

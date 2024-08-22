@@ -28,6 +28,7 @@ with tqdm(SEEDS, desc="Seed", position=0, leave=False) as seed_pbar:
                                         {
                                             "seed": seed,
                                             "train_for": (3000, "epochs"),
+                                            ("experiment", "training_ratio"): 0.9,
                                             ("experiment", "p"): p,
                                             (
                                                 "experiment",

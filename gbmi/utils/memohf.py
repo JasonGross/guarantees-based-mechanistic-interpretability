@@ -55,12 +55,16 @@ def memohf(
                     data_modified = True
                 return mem_db[key]
 
-        yield delegate
-
-        if save and data_modified:
-            dataset = cast(DatasetDict, load_dataset(repo_id, **kwargs))
-            dataset[dataset_key] = Dataset.from_dict(db)
-            dataset.push_to_hub(repo_id)
+        try:
+            yield delegate
+        finally:
+            if save and data_modified:
+                try:
+                    dataset = cast(DatasetDict, load_dataset(repo_id, **kwargs))
+                except EmptyDatasetError:
+                    dataset = DatasetDict()
+                dataset[dataset_key] = Dataset.from_dict(db)
+                dataset.push_to_hub(repo_id)
 
     return open_db
 

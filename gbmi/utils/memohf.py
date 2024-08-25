@@ -9,7 +9,7 @@ from gbmi.utils.hashing import get_hash_ascii
 memohf_cache: Dict[str, Dict[str, Any]] = {}
 
 
-def memoshelve(
+def memohf(
     value: Callable,
     repo_id: str,
     dataset_key: str,

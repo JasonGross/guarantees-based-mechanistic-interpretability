@@ -2,9 +2,8 @@ import os
 import shelve
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Optional, Union
 
-from frozendict import frozendict
 
 from gbmi.utils.hashing import get_hash_ascii
 from gbmi.utils import backup as backup_file

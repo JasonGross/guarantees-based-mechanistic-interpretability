@@ -1,9 +1,17 @@
+# %%
 import torch
 
 from gbmi.exp_max_of_n.train import MAX_OF_10_SINGLE_CONFIG
 from gbmi.model import train_or_load_model
 from gbmi.utils import ein
 from gbmi.utils.testing import TestCase
+import plotly.express as px
+
+
+def show(matrix):
+    if len(matrix.shape) == 1:
+        matrix = matrix.unsqueeze(0)
+    px.imshow(matrix.detach().cpu()).show()
 
 
 class TestMaxOfN(TestCase):
@@ -23,6 +31,7 @@ class TestMaxOfN(TestCase):
         )
 
 
+# %%
 class TestOneLayerTransformer(TestCase):
     def test_forward_pass(self):
         model = MAX_OF_10_SINGLE_CONFIG.build_model()
@@ -73,3 +82,6 @@ class TestOneLayerTransformer(TestCase):
             true_logits.argmax(-1).squeeze()[-1],
             """tensor(59)""",
         )
+
+
+# %%

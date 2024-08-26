@@ -163,6 +163,118 @@ class IndHead(ExperimentConfig):
         return cat_bos_uniform_labels(probs, bos=self.bos_token)
 
 
+@dataclass
+class IndHeadMLP(ExperimentConfig):
+    # using int instead of abstract class because i'm clueless what's going on with typing
+    zero_biases: bool = True
+    bos: bool = True
+    seq_length: int = 5
+    num_tokens: int = 3
+    d_model: int = 8
+    ngram: int = 3
+    task: Literal["exact-bigram", "exact-ngram", "abcab", "abcabc", "exhaustive"] = (
+        "exact-bigram"
+    )
+    corpus: Optional[str] = None
+    only_last_tokens: Optional[int] = None
+    only_strong_signal: bool = True
+    random_tokens_at_end: bool = False
+    n_heads: int = 1
+    n_layers: int = 2
+    positional_embedding_type: Literal["standard", "rotary", "shortformer"] = "standard"
+    other_tokens_distinct_from_predicted_token: bool = False
+    alpha_mix_uniform: Optional[float] = None
+    high_precision: bool = True
+    use_kaiming_init: bool = True
+
+    n_train_samples: int = 4096
+    n_test_samples: int = 1
+    n_validate_samples: int = 1024
+
+    optimizer_kwargs: Dict[str, Any] = field(
+        default_factory=lambda: {"lr": 1e-3, "betas": (0.9, 0.999), "weight_decay": 1.0}
+    )
+    summary_slug_extra: str = ""
+    version_number: int = 8
+    datagen_version_number: Optional[int] = None
+    logging_options: ModelMatrixLoggingOptions = field(
+        default_factory=ModelMatrixLoggingOptions
+    )
+
+    @property
+    def corpus_relevant(self):
+        return self.task in ("abcab", "abcabc", "exact-ngram")
+
+    @property
+    def ngram_relevant(self):
+        return self.corpus_relevant and self.corpus is not None
+
+    def __post_init__(self):
+        match self.task:
+            case "exact-bigram" | "exact-ngram" | "abcab" | "exhaustive" | "abcabc":
+                self.datagen_version_number = None
+        exclude: set[str] = set(getattr(self, _EXCLUDE, ()))
+        for field, should_ignore in [
+            ("logging_options", True),
+            ("corpus", self.corpus_relevant),
+            ("ngram", self.ngram == 3 or not self.ngram_relevant),
+            ("use_kaiming_init", not self.use_kaiming_init),
+            ("n_layers", self.n_layers == 2),
+            ("datagen_version_number", self.datagen_version_number is None),
+        ]:
+            if should_ignore:
+                exclude.add(field)
+            else:
+                exclude.discard(field)
+        setattr(self, _EXCLUDE, tuple(sorted(exclude)))
+        self.logging_options.shortformer = (
+            self.positional_embedding_type == "shortformer"
+        )
+        self.logging_options.__post_init__()
+
+    def get_training_wrapper(self):
+        return IndHeadMLPTrainingWrapper
+
+    def get_datamodule(self):
+        return IndHeadDataModule
+
+    def get_summary_slug(self, config: Config[IndHead]) -> str:
+        return (
+            f"IndHead"
+            f"{f'{config.experiment.ngram}gram' if self.ngram != 3 and self.ngram_relevant else ''}"
+            f"-Len{config.experiment.seq_length}"
+            f"{f'-{config.experiment.task}' if config.experiment.task != 'exact-bigram' else ''}"
+            f"-d_model{config.experiment.d_model}"
+            f"-ntok{config.experiment.num_tokens}"
+            f"{f'-pos-{config.experiment.positional_embedding_type}' if config.experiment.positional_embedding_type != 'standard' else ''}"
+            f"{f'-nlayer{config.experiment.n_layers}' if config.experiment.n_layers != 2 else ''}"
+            f"{f'-nhead{config.experiment.n_heads}' if config.experiment.n_heads > 1 else ''}"
+            f"-{config.train_for[0]}-{config.train_for[1]}"
+            f"{'-randend' if config.experiment.random_tokens_at_end else ''}"
+            f"{f'-{config.experiment.corpus}' if config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
+            f"{f'-{config.experiment.alpha_mix_uniform:.2f}U' if config.experiment.alpha_mix_uniform and config.experiment.corpus and config.experiment.task != 'exact-bigram' else ''}"
+            f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
+            f"{'-nondet' if not config.deterministic else ''}"
+        )
+
+    @property
+    def bos_token(self) -> Optional[int]:
+        return self.num_tokens if self.bos else None
+
+    def get_ground_truth(
+        self,
+        x: Integer[Tensor, "... n"],  # noqa: F722
+        readoff: Optional[Bool[Tensor, "... n"]] = None,  # noqa: F722
+    ) -> Integer[Tensor, "..."]:  # noqa: F722
+        x = x[..., 1:] if self.bos else x
+        probs = calculate_batch_probabilities(x, self.num_tokens)
+        if readoff is not None:
+            probs = torch.where(
+                readoff[..., : x.shape[-1]].unsqueeze(-1), probs, torch.nan
+            )
+        return cat_bos_uniform_labels(probs, bos=self.bos_token)
+
+
 DEFAULT_INDHEAD = Config(
     experiment=IndHead(
         seq_length=6,
@@ -235,7 +347,47 @@ ABCAB_1H = Config(
     validate_every=(10, "epochs"),
     validation_batch_size=1,  # we want validation right now only to log the plots
 )
+ABCAB_1HMLP = Config(
+    experiment=IndHeadMLP(
+        seq_length=4,
+        alpha_mix_uniform=None,
+        num_tokens=26,
+        n_heads=1,
+        d_model=64,
+        task="abcab",
+        corpus="webtext",
+        bos=False,
+        only_strong_signal=True,
+        random_tokens_at_end=False,
+        n_train_samples=10240,
+        logging_options=ModelMatrixLoggingOptions.all(
+            use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
+        ),
+        optimizer_kwargs={"lr": 3e-4, "betas": (0.9, 0.999), "weight_decay": 1.0},
+    ),
+    seed=999,
+    deterministic=False,
+    batch_size=10240 // 5,
+    train_for=(5000, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(10, "epochs"),
+    validation_batch_size=1,  # we want validation right now only to log the plots
+)
+ABCAB8_1HMLP = set_params(
+    ABCAB_1HMLP,
+    {
+        ("experiment", "seq_length"): 8,
+    },
+    post_init=True,
+)
 
+ABCAB5_1H = set_params(
+    ABCAB_1H,
+    {
+        ("experiment", "seq_length"): 5,
+    },
+    post_init=True,
+)
 ABCAB5_1H = set_params(
     ABCAB_1H,
     {
@@ -268,6 +420,23 @@ ABCAB8_1H = set_params(
     },
     post_init=True,
 )
+
+ABCAB10_1H = set_params(
+    ABCAB_1H,
+    {
+        ("experiment", "seq_length"): 10,
+    },
+    post_init=True,
+)
+
+ABCAB16_1H = set_params(
+    ABCAB_1H,
+    {
+        ("experiment", "seq_length"): 16,
+    },
+    post_init=True,
+)
+
 
 ABCAB6_SHORTFORMER_1H = set_params(
     ABCAB_1H,
@@ -375,6 +544,105 @@ class IndHeadTrainingWrapper(TrainingWrapper[IndHead]):
             n_heads=cfg.n_heads,
             init_weights=True,
             attn_only=True,
+            normalization_type=None,
+            seed=reseed(config.seed, "model"),
+        )
+        model = HookedTransformer(model_config)
+        if config.experiment.use_kaiming_init:
+            if model.cfg.seed is not None:
+                torch.manual_seed(model.cfg.seed)
+
+            for name, param in model.named_parameters():
+                if "W_" in name:
+                    torch.nn.init.kaiming_uniform_(param)
+        if config.experiment.zero_biases:
+            for name, param in model.named_parameters():
+                if "b_" in name:
+                    param.requires_grad = False
+        return model
+
+    def loss_fn(
+        self,
+        logits: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
+        labels: Float[Tensor, "batch pos num_tokens"],  # noqa: F722
+        *,
+        # xs only for logging purposes
+        _xs: Optional[Integer[Tensor, "batch pos"]] = None,  # noqa: F722
+    ) -> Float[Tensor, ""]:  # noqa: F722
+        return ExactBigramTask.loss_fn(
+            logits,
+            labels,
+            use_bos=self.config.experiment.bos,
+            only_eos=self.config.experiment.only_last_tokens,
+            only_strong_signal=self.config.experiment.only_strong_signal,
+            high_precision=self.config.experiment.high_precision,
+            _xs=_xs,
+        )
+
+    def run_batch(
+        self,
+        x_y: Tuple[
+            Integer[Tensor, "batch pos"],  # noqa F722
+            Float[Tensor, "batch pos num_tokens"],  # noqa F722
+        ],
+        prefix: Optional[str] = None,
+        *,
+        log_output: bool = True,
+        device: Optional[Union[torch.device, str]] = None,
+    ) -> Float[Tensor, ""]:  # noqa F722
+        assert prefix is not None or not log_output, "Must not log if prefix is None"
+        xs, ys = x_y
+        if device is not None:
+            xs = xs.to(device)
+        ys = ys.to(xs.device)
+        self.model.to(xs.device, print_details=False)
+        y_preds = self.model(xs)
+        loss = self.loss_fn(y_preds, ys, _xs=xs)
+        if log_output:
+            self.log(f"{prefix}loss", loss, prog_bar=True)
+
+        if log_output and prefix is not None and prefix != "":
+            assert self.logger is not None
+            self.config.experiment.logging_options.log_matrices(
+                self.logger.experiment,  # type: ignore
+                self.model,
+            )
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        return self.run_batch(batch, prefix="")
+
+    def validation_step(self, batch, batch_idx):
+        self.run_batch(batch, prefix="periodic_test_")
+
+    def test_step(self, batch, batch_idx):
+        self.run_batch(batch, prefix="test_")
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(
+            self.parameters(), **self.config.experiment.optimizer_kwargs
+        )
+
+
+class IndHeadMLPTrainingWrapper(TrainingWrapper[IndHead]):
+    def __init__(self, config: Config[IndHead], model: HookedTransformer):
+        super().__init__(config, model)
+        self.model = model
+        self.config = config
+
+    @staticmethod
+    def build_model(config: Config[IndHead]) -> HookedTransformer:
+        cfg = config.experiment
+        model_config = HookedTransformerConfig(
+            d_vocab=cfg.num_tokens + cfg.bos,
+            d_vocab_out=cfg.num_tokens,
+            n_ctx=cfg.seq_length + cfg.bos,
+            d_model=cfg.d_model,
+            d_head=cfg.d_model // cfg.n_heads,
+            n_layers=cfg.n_layers,
+            n_heads=cfg.n_heads,
+            init_weights=True,
+            act_fn="relu",
             normalization_type=None,
             seed=reseed(config.seed, "model"),
         )

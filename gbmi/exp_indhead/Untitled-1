@@ -1,0 +1,62 @@
+  indexdiffs = []
+for index in range(6):
+
+    if index != 0:
+        worst = (
+            super_pattern[6][:, a] * typical_softmaxes[6][b][-2]
+        ).unsqueeze(0).T - super_pattern[index] * typical_softmaxes[index][a][
+            -2
+        ]
+    else:
+        worst = (
+            super_pattern[6][:, a] * typical_softmaxes[6][b][-2]
+        ).unsqueeze(0).T - super_pattern[index] * typical_softmaxes[index][a][0]
+
+    worst_removed = torch.concat((worst[:, :a], worst[:, (a + 1) :]), dim=1)
+    worst_removed_col = worst_removed.min(dim=1)[0]
+
+    worst_difference = 0
+    sequence2 = []
+    for i in range(5):
+        if i == (index - 1) or i == 5:
+            continue
+
+        if i < index:
+            competing_pattern = (
+                typical_softmaxes[index][a][i] * super_pattern[index]
+            )
+        else:
+            competing_pattern = 0.0 * super_pattern[index]
+
+        difference = (
+            typical_softmaxes[6][b][i] * super_pattern[6] - competing_pattern
+        )
+
+        worst_cols = (
+            #  4 * torch.min(difference, dim=1)[0]
+            +5 * difference.diag()
+            + 2 * difference[a, :]
+            + difference[b, :]
+        ) / 8
+
+        worst_cols = worst_cols + worst_removed_col / 8
+
+        worst_cols[a] = torch.inf
+        worst_difference += worst_cols.min(dim=0)[0]
+
+    worst_index_1 = torch.min(torch.min(worst_removed, dim=0)[0], dim=0)[1]
+    worst_index = worst_index_1 if worst_index_1 < a else worst_index_1 - 1
+
+    totdiff = (
+        (
+            worst_removed_col[a] * 2
+            + worst_removed_col[b]
+            + worst_removed_col[worst_index_1]
+        )
+        / 8
+        + partialscore[6]
+        - partialscore[index]
+        + worst_difference
+    )
+
+    indexdiffs.append(-totdiff.item())

@@ -75,6 +75,7 @@ for b_position in range(8):
     )
 
     EQKE_max = torch.max(EQKE + PQKE[b_position].unsqueeze(0).T, dim=1)
+    print(EQKE_max)
     EQKE_min = torch.min(EQKE + PQKE[b_position].unsqueeze(0).T, dim=1)
 
     index_to_max_min = b_position - 1
@@ -103,7 +104,7 @@ for b_position in range(8):
     minimum_softmaxes.append(minimum_softmax)
     maximum_softmaxes.append(maximum_softmax)
 # %%
-
+print(minimum_softmaxes)
 # %%
 
 evo_pos = (W_E @ v @ o) @ q_1 @ k_1.T @ (W_pos.T) / (attn_scale_1)
@@ -172,7 +173,7 @@ PVOU = W_pos @ W_V_1 @ W_O_1 @ W_U
 PVOVOU = W_pos @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U
 EVOVOU = W_E @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U
 EVOU = W_E @ W_V_1 @ W_O_1 @ W_U
-
+# %%
 bounds = torch.zeros(d_voc, d_voc)
 for a in range(1, 25):
     t = [i[a].tolist() + [0 for i in range(8 - len(i[a]))] for i in typical_softmaxes]
@@ -365,11 +366,11 @@ pos_e = (W_pos[7] @ q_1 @ k_1.T @ W_E.T) / (attn_scale_1)
 posvo_e = (typical_softmaxes[7][b] @ W_pos @ v @ o @ q_1 @ k_1.T @ W_E.T) / (
     attn_scale_1
 )
-
+total = 0
 for i in range(6):
     totmatrix = (
         typical_6.unsqueeze(0).T @ b_patterns[6].unsqueeze(0)
-        + typical_softmaxes[7][b].unsqueeze(0).T @ a_patterns[6].unsqueeze(0)
+        + typical_softmaxes[7][b].unsqueeze(0).T @ a_patterns[4].unsqueeze(0)
         - typical_softmaxes[7][a].unsqueeze(0).T @ (a_patterns[i]).unsqueeze(0)
         - t[i].unsqueeze(0).T @ b_patterns[i].unsqueeze(0)
     )

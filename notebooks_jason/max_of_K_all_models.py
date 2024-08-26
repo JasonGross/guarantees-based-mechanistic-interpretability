@@ -421,7 +421,7 @@ def memoshelve_hf_staged(
                 if save_to_hf_from_cache:
                     with memoshelve(
                         func,
-                        filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}",
+                        filename=cache_dir / f"{SHARED_CACHE_STEM}.{file_suffix}",
                         **kwargs,
                     )() as memo_func:
                         with memo_hf(
@@ -434,7 +434,7 @@ def memoshelve_hf_staged(
                     ) as memo_hf_func:
                         with memoshelve(
                             memo_hf_func,
-                            filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}",
+                            filename=cache_dir / f"{SHARED_CACHE_STEM}.{file_suffix}",
                             **kwargs,
                         )() as memo:
                             yield memo
@@ -445,7 +445,9 @@ def memoshelve_hf_staged(
         @contextmanager
         def inner(func: Callable, file_suffix: str, **kwargs):
             with memoshelve(
-                func, filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}", **kwargs
+                func,
+                filename=cache_dir / f"{SHARED_CACHE_STEM}.{file_suffix}",
+                **kwargs,
             )() as memo:
                 yield memo
 

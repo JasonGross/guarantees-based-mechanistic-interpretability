@@ -399,6 +399,29 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
     sys.exit(0)
 
 # %%
+USE_HF: bool = False
+
+
+@contextmanager
+def memoshelve_hf(func: Callable, file_suffix: str, use_hf: bool = USE_HF, **kwargs):
+    with memoshelve(
+        func,
+        filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}",
+        **kwargs,
+    )() as memo:
+        if use_hf:
+            with memohf(
+                memo,
+                hf_repo_id,
+                hf_sanitize(f"{file_suffix}"),
+                **kwargs,
+            )() as memo_hf:
+                yield memo_hf
+        else:
+            yield memo
+
+
+# %%
 # patch torch.load so that when loading cache from non-CPU devices we can still load
 with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
     with memoshelve(
@@ -549,13 +572,12 @@ def train_seed(seed: int, *, pbar: tqdm):
     datamodule.setup("train")
     dataloader = datamodule.train_dataloader()
     dataloader_iter = iter(dataloader)
-    with memoshelve(
+    with memoshelve_hf(
         partial(_run_train_batch_loss_accuracy, dataloader_iter=dataloader_iter),
-        filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-{cfg_hashes_for_filename[seed]}-{train_measurement_deterministic}",
+        f"run_batch_loss_accuracy-{cfg_hashes_for_filename[seed]}-{train_measurement_deterministic}",
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
-    )() as run_batch_loss_accuracy:
+    ) as run_batch_loss_accuracy:
         for i in range(0, len(dataloader)):
             loss, accuracy, size = run_batch_loss_accuracy(seed, i, cfgs[seed].batch_size)  # type: ignore
             # Accumulate loss and accuracy
@@ -705,26 +727,24 @@ if INCLUDE_BRUTE_FORCE:
         total_duration = 0.0
         # all_incorrect_sequences = []
 
-        with memoshelve(
+        with memoshelve_hf(
             partial(_run_batch_loss_accuracy, all_tokens_dataset, training_wrapper),
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+            f"run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
-        )() as run_batch_loss_accuracy_heavy:
+        ) as run_batch_loss_accuracy_heavy:
 
             def _run_batch_loss_accuracy_lightweight(*args, **kwargs):
                 res = run_batch_loss_accuracy_heavy(*args, **kwargs)
                 ((loss, accuracy, size), incorrect_sequences), duration = res
                 return (loss, accuracy, size), duration
 
-            with memoshelve(
+            with memoshelve_hf(
                 _run_batch_loss_accuracy_lightweight,
-                filename=cache_dir
-                / f"{SHARED_CACHE_STEM}.run_batch_loss_accuracy-lightweight-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+                f"run_batch_loss_accuracy-lightweight-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
                 get_hash_mem=(lambda x: x[0]),
                 get_hash=str,
-            )() as run_batch_loss_accuracy:
+            ) as run_batch_loss_accuracy:
                 for i in range(0, len(all_tokens_dataset), batch_size):
                     (loss, accuracy, size), duration = run_batch_loss_accuracy(i, batch_size)  # type: ignore
                     total_duration += duration
@@ -788,7 +808,7 @@ else:
         cfg_hash_for_filename = cfg_hashes_for_filename[seed]
         _runtime, model = runtime_models[seed]
 
-        with memoshelve(
+        with memoshelve_hf(
             partial(
                 importance_sample,
                 model,
@@ -796,24 +816,22 @@ else:
                 pbar=pbar,
                 seed=reseed(seed, "importance_sample"),
             ),
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.importance-sample-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
+            f"importance-sample-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
-        )() as importance_sample_heavy:
+        ) as importance_sample_heavy:
 
             def _importance_sample_lightweight(*args, **kwargs):
                 res = importance_sample_heavy(*args, **kwargs).copy()
                 del res["incorrect_sequences"]
                 return res
 
-            with memoshelve(
+            with memoshelve_hf(
                 _importance_sample_lightweight,
-                filename=cache_dir
-                / f"{SHARED_CACHE_STEM}.importance-sample-lightweight-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
+                f"importance-sample-lightweight-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
                 get_hash_mem=(lambda x: x[0]),
                 get_hash=str,
-            )() as importance_sample_lightweight:
+            ) as importance_sample_lightweight:
                 results = importance_sample_lightweight((N_SAMPLES_PER_KEY, "per_key"))
 
         row = {"seed": seed, **results}
@@ -999,13 +1017,12 @@ def importance_sample_instruction_count(
 
 if not INCLUDE_BRUTE_FORCE:
     with tqdm(desc="importance sampling instruction counts") as pbar:
-        with memoshelve(
+        with memoshelve_hf(
             partial(importance_sample_instruction_count, some_model, pbar=pbar),
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{EXTRA_D_VOCAB_FILE_SUFFIX}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
+            f"importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{EXTRA_D_VOCAB_FILE_SUFFIX}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
-        )() as memo_importance_sample_instruction_count:
+        ) as memo_importance_sample_instruction_count:
             importance_sample_count, importance_sample_perf = (
                 memo_importance_sample_instruction_count(
                     batch_size, total_importance_sampled_sequences
@@ -1030,13 +1047,12 @@ if INCLUDE_BRUTE_FORCE:
         cfg_hash_for_filename = cfg_hashes_for_filename[seed]
         runtime, model = runtime_models[seed]
 
-        with memoshelve(
+        with memoshelve_hf(
             partial(compute_ablations, model, pbar=pbar),
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.compute_ablations-{cfg_hash_for_filename}",
+            f"compute_ablations-{cfg_hash_for_filename}",
             get_hash=get_hash_ascii,
             get_hash_mem=str,
-        )() as memo_compute_ablations:
+        ) as memo_compute_ablations:
             ablation_results, ablation_time = memo_compute_ablations()
         return latexify_ablation_results(
             ablation_results, float_postfix="", int_postfix=""
@@ -1121,16 +1137,15 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
         duration = time.time() - start
         return cubic_proof_args, duration
 
-    with memoshelve(
+    with memoshelve_hf(
         _find_proof,
-        filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.cubic_find_proof-{cfg_hash_for_filename}",
+        f"cubic_find_proof-{cfg_hash_for_filename}",
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
-    )() as find_proof:
+    ) as find_proof:
         cubic_proof_args, duration_proof_search = find_proof()
 
-    with memoshelve(
+    with memoshelve_hf(
         partial(
             cubic.verify_proof,
             model,
@@ -1139,11 +1154,10 @@ def get_cubic_row(seed: int, *, pbar: tqdm) -> dict:
             print_results=False,
             include_perf=PERF_WORKING,
         ),
-        filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+        f"cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
         get_hash_mem=(lambda x: 0),
         get_hash=(lambda x: "0"),
-    )() as verify_proof:
+    ) as verify_proof:
         cubic_proof_results = verify_proof(cubic_proof_args)
 
     # largest_wrong_logit_cubic = cubic_proof_results["largest_wrong_logit"]
@@ -1263,13 +1277,12 @@ def _cubic_count_verify_proof(
     return cubic_instruction_count, cubic_proof_instruction_count_results
 
 
-with memoshelve(
+with memoshelve_hf(
     partial(_cubic_count_verify_proof, some_model, sanity_check_instructions=False),
-    filename=cache_dir
-    / f"{SHARED_CACHE_STEM}.cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{EXTRA_D_VOCAB_FILE_SUFFIX}-n_ctx_{seq_len}",
+    f"cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{EXTRA_D_VOCAB_FILE_SUFFIX}-n_ctx_{seq_len}",
     get_hash_mem=(lambda x: 0),
     get_hash=(lambda x: "0"),
-)() as count_verify_proof:
+) as count_verify_proof:
     cubic_proof_args = cubic.find_proof(some_model)
     cubic_instruction_count, cubic_proof_instruction_count_results = count_verify_proof(
         cubic_proof_args
@@ -1368,12 +1381,12 @@ for k, v in latex_values_tmp_data.items():
 
 
 # %%
-# with memoshelve(
+# with memoshelve_hf(
 #     (lambda seed, with_attn_scale: compute_EQKE_SVD_analysis(runtime_models[seed][1], with_attn_scale=with_attn_scale)),
-#     filename=cache_dir / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis",
+#     filename=f"compute_EQKE_SVD_analysis",
 #     get_hash_mem=(lambda x: x[0]),
 #     get_hash=str,
-# )() as memo_compute_EQKE_SVD_analysis:
+# ) as memo_compute_EQKE_SVD_analysis:
 EVOU_analyses = {
     seed: analyze_EVOU(runtime_models[seed][1])
     for seed in tqdm(list(sorted(runtime_models.keys())), desc="EVOU analysis")
@@ -1411,17 +1424,16 @@ for k, v in EVOU_analyses_by_key.items():
 def handle_compute_EQKE_SVD_analysis(seed: int):
     runtime, model = runtime_models[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
-    with memoshelve(
+    with memoshelve_hf(
         (
             lambda seed: display_EQKE_SVD_analysis(
                 model, include_figures=False, show=False, do_print=False
             )[1]
         ),
-        filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.compute_EQKE_SVD_analysis-{cfg_hash_for_filename}",
+        f"compute_EQKE_SVD_analysis-{cfg_hash_for_filename}",
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
-    )() as memo_compute_EQKE_SVD_analysis:
+    ) as memo_compute_EQKE_SVD_analysis:
         return memo_compute_EQKE_SVD_analysis(seed)
 
 
@@ -1890,12 +1902,11 @@ def try_all_proofs_subcubic(
 
     rows = []
 
-    with memoshelve(
+    with memoshelve_hf(
         (lambda seed: analysis_subcubic.find_proof_shared(model)),
         # cache={},
-        filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.shared_proof_search-{cfg_hash_for_filename}",
-    )() as shared_proof_search:
+        f"shared_proof_search-{cfg_hash_for_filename}",
+    ) as shared_proof_search:
         (
             W_EP_direction_kwargs,
             find_min_gaps_kwargs,
@@ -1903,7 +1914,7 @@ def try_all_proofs_subcubic(
             shared_proof_search_duration,
         ) = shared_proof_search(seed)
 
-    with memoshelve(
+    with memoshelve_hf(
         (
             lambda cfg: (
                 cfg,
@@ -1919,9 +1930,8 @@ def try_all_proofs_subcubic(
             )
         ),
         # cache={},
-        filename=cache_dir
-        / f"{SHARED_CACHE_STEM}.find_min_gaps-{cfg_hash_for_filename}",
-    )() as find_min_gaps_for:
+        f"find_min_gaps-{cfg_hash_for_filename}",
+    ) as find_min_gaps_for:
         min_gaps_lists = [find_min_gaps_for(cfg) for cfg in all_configs]
 
     for tricks, min_gaps, proof_search_duration in min_gaps_lists:
@@ -1951,13 +1961,12 @@ def try_all_proofs_subcubic(
                 include_perf=PERF_WORKING,
             )
 
-        with memoshelve(
+        with memoshelve_hf(
             _verify_proof,
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+            f"subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
-        )() as verify_proof:
+        ) as verify_proof:
             proof_results = verify_proof(tricks)
 
         err_upper_bound = proof_results["err_upper_bound"]
@@ -1984,7 +1993,7 @@ def try_all_proofs_subcubic(
         else:
             perf_results = {}
 
-        with memoshelve(
+        with memoshelve_hf(
             partial(
                 _subcubic_count_verify_proof,
                 model,
@@ -1997,11 +2006,10 @@ def try_all_proofs_subcubic(
                 min_gaps=min_gaps,
                 sanity_check_instructions=False,
             ),
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.subcubic_count_verify_proof-{cfg_hash_for_filename}",
+            f"subcubic_count_verify_proof-{cfg_hash_for_filename}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
-        )() as count_verify_proof:
+        ) as count_verify_proof:
             (
                 subcubic_instruction_count,
                 subcubic_proof_instruction_count_results,
@@ -2133,13 +2141,12 @@ def try_all_proofs_subcubic(
                 num_std,
             )
 
-        with memoshelve(
+        with memoshelve_hf(
             _analyze_gaps,
-            filename=cache_dir
-            / f"{SHARED_CACHE_STEM}.subcubic_analyze_gaps-{cfg_hash_for_filename}",
+            f"subcubic_analyze_gaps-{cfg_hash_for_filename}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
-        )() as analyze_gaps:
+        ) as analyze_gaps:
             (frac_below, v, weights, most_below_value, mean, std, num_std) = (
                 analyze_gaps(tricks)
             )

@@ -212,6 +212,7 @@ adjusted_file_path = Path(__file__).parent / Path(__file__).name.replace(
 )
 cache_dir = adjusted_file_path.parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
+hf_repo_id = f"JasonGross/{adjusted_file_path.stem.replace('_','-').replace('-all-models', '')}-proofs"
 OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
 EXTRA_D_VOCAB_FILE_SUFFIX: str = f"_d_vocab_{D_VOCAB}" if D_VOCAB != 64 else ""
@@ -503,6 +504,10 @@ def update_csv(
 ):
     new_data = [data[seed] for seed in sorted(data.keys())]
     return update_csv_with_rows(csv_path, new_data, columns=columns, subset=subset)
+
+
+def hf_sanitize(s: str) -> str:
+    return s.replace("-", "_").replace("=", "_").replace("+", "_")
 
 
 # %%

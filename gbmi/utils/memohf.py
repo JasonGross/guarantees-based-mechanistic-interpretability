@@ -1,7 +1,18 @@
 import pickle
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Optional, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+    TypeVar,
+)
 
 from datasets import Dataset, DatasetDict, load_dataset
 from datasets.data_files import EmptyDatasetError
@@ -12,10 +23,15 @@ from gbmi.utils.hashing import get_hash_ascii
 PUSH_INTERVAL: float = (
     10  # Push only if more than 10 seconds have passed since the last push
 )
-USE_ALL_DATA: bool = False
 
 last_push_time: Dict[str, float] = {}
 memohf_cache: Dict[str, Dict[str, Any]] = {}
+
+T = TypeVar("T")
+K1 = TypeVar("K1")
+K2 = TypeVar("K2")
+V = TypeVar("V")
+K = TypeVar("K")
 
 
 def should_push(repo_id: str) -> bool:
@@ -37,7 +53,14 @@ class HFOpenDictLike(dict):
         self.repo_id = repo_id
         self.dataset = dataset
         self.update(self._load_db())  # Load the data and update the internal dict
-        self.modified = False
+        self._reset_hash()
+
+    def _gethash(self):
+        return get_hash_ascii(tuple(self.items()))
+
+    def _reset_hash(self):
+        """Resets the hash to the current state of the database."""
+        self.init_hash = self._gethash()
 
     def _load_db(self) -> Dict[str, Any]:
         """Loads the dataset data from the Hugging Face hub based on the mode."""
@@ -53,46 +76,12 @@ class HFOpenDictLike(dict):
             self.dataset[key] = Dataset.from_dict({"data": [serialized_data]})
         self.dataset.push_to_hub(self.repo_id)
         update_last_push_time(self.repo_id)
-        self.modified = False
+        self._reset_hash()
 
-    def __setitem__(self, key: Any, value: Any):
-        """Set a key in the dictionary and mark as modified."""
-        super().__setitem__(key, value)
-        self.modified = True
-
-    def __delitem__(self, key: Any):
-        """Delete a key in the dictionary and mark as modified."""
-        super().__delitem__(key)
-        self.modified = True
-
-    def clear(self):
-        """Clear all items in the dictionary and mark as modified."""
-        super().clear()
-        self.modified = True
-
-    def pop(self, key: Any, default: Any = None):
-        """Pop a key from the dictionary and mark as modified."""
-        value = super().pop(key, default)
-        self.modified = True
-        return value
-
-    def popitem(self):
-        """Pop the last item from the dictionary and mark as modified."""
-        item = super().popitem()
-        self.modified = True
-        return item
-
-    def update(self, *args, **kwargs):
-        """Update the dictionary and mark as modified."""
-        super().update(*args, **kwargs)
-        self.modified = True
-
-    def setdefault(self, key: Any, default: Any = None):
-        """Set a default value if the key is not in the dictionary and mark as modified."""
-        result = super().setdefault(key, default)
-        if result is default:
-            self.modified = True
-        return result
+    @property
+    def modified(self) -> bool:
+        """Determines if the database has been modified."""
+        return self.init_hash != self._gethash()
 
 
 @contextmanager
@@ -120,10 +109,69 @@ def hf_open(
             db.push_to_hub()
 
 
+def merge_subdicts(
+    *dicts_keys: Tuple[dict[K1, dict[K2, V]], K1],
+    default_factory: Callable[[], dict[K2, V]] = dict,
+) -> dict[K2, V]:
+    """Merges multiple sub dictionaries into a single dictionary."""
+    (dict0, k0), *rest_dicts_keys = dicts_keys
+    merged = dict0.setdefault(k0, default_factory())
+    for d, k in rest_dicts_keys:
+        old = d.setdefault(k, merged)
+        if old is not merged:
+            d[k] = merged
+            merged.update(old)
+
+    return merged
+
+
+StorageMethod = Literal["single_data_file", "named_data_files", "data_splits"]
+
+
 @contextmanager
-def hf_open_staged(repo_id, use_all_data: bool = True, save: bool = True, **kwargs):
+def hf_open_staged(
+    repo_id,
+    storage_methods: Union[StorageMethod, Iterable[StorageMethod]] = "single_data_file",
+    save: bool = True,
+    **kwargs,
+):
     """Context manager for opening a Hugging Face dataset in dict-like format."""
-    if use_all_data:
+    if isinstance(storage_methods, str):
+        storage_methods = [storage_methods]
+    else:
+        storage_methods = list(storage_methods)
+
+    if "single_data_file" in storage_methods or "data_splits" in storage_methods:
+        with hf_open(repo_id, save=save, **kwargs) as db:
+
+            @contextmanager
+            def inner(name: str):
+                db_keys = []
+                if "data_splits" in storage_methods:
+                    db_keys.append((db, name))
+                if "single_data_file" in storage_methods:
+                    db_keys.append((db.setdefault("all", {}), name))
+                if "named_data_files" in storage_methods:
+                    with hf_open(repo_id, name=name, save=save, **kwargs) as db2:
+                        db_keys.append((db2, "all"))
+                        try:
+                            yield merge_subdicts(*db_keys)
+                        finally:
+                            if save and should_push(repo_id):
+                                if db.modified:
+                                    db.push_to_hub()
+                                if db2.modified:
+                                    db2.push_to_hub()
+                else:
+                    try:
+                        yield merge_subdicts(*db_keys)
+                    finally:
+                        if save and db.modified:
+                            db.push_to_hub()
+
+            yield inner
+    else:
+        assert "named_data_files" in storage_methods
 
         @contextmanager
         def inner(name: str):
@@ -131,28 +179,18 @@ def hf_open_staged(repo_id, use_all_data: bool = True, save: bool = True, **kwar
                 yield db.setdefault("all", {})
 
         yield inner
-    else:
-        with hf_open(repo_id, save=save, **kwargs) as db:
-
-            @contextmanager
-            def inner(name: str):
-                try:
-                    yield db.setdefault(name, {})
-                finally:
-                    if save and db.modified and should_push(repo_id):
-                        db.push_to_hub()
-
-            yield inner
 
 
 @contextmanager
 def memohf_staged(
     repo_id: str,
+    *,
     save: bool = True,
+    storage_methods: Union[StorageMethod, Iterable[StorageMethod]] = "single_data_file",
     **kwargs,
 ):
     with hf_open_staged(
-        repo_id, use_all_data=USE_ALL_DATA, save=save, **kwargs
+        repo_id, storage_methods=storage_methods, save=save, **kwargs
     ) as open_db:
 
         @contextmanager
@@ -204,18 +242,22 @@ def memohf(
     value: Callable,
     repo_id: str,
     dataset_key: str,
+    *,
     cache: Dict[str, Dict[str, Any]] = memohf_cache,
     get_hash: Callable = get_hash_ascii,
     get_hash_mem: Optional[Callable] = None,
     print_cache_miss: bool = False,
     save: bool = True,
+    storage_methods: Union[StorageMethod, Iterable[StorageMethod]] = "single_data_file",
     **kwargs,
 ):
     """Memoziation using huggingface + in-memory cache"""
 
     @contextmanager
     def open_db():
-        with memohf_staged(repo_id, save=save, **kwargs) as staged_db:
+        with memohf_staged(
+            repo_id, save=save, storage_methods=storage_methods, **kwargs
+        ) as staged_db:
             with staged_db(
                 value,
                 dataset_key,
@@ -233,6 +275,7 @@ def uncache(
     *args,
     repo_id: str,
     dataset_key: str,
+    storage_methods: Union[StorageMethod, Iterable[StorageMethod]] = "single_data_file",
     cache: Dict[str, Dict[str, Any]] = memohf_cache,
     get_hash: Callable = get_hash_ascii,
     get_hash_mem: Optional[Callable] = None,
@@ -252,7 +295,7 @@ def uncache(
     key = get_hash((args, kwargs))
 
     with hf_open_staged(
-        repo_id, use_all_data=USE_ALL_DATA, save=save, **load_dataset_kwargs
+        repo_id, storage_methods=storage_methods, save=save, **load_dataset_kwargs
     ) as open_db:
         with open_db(dataset_key) as db:
             if key in db:

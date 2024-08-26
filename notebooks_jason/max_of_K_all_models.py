@@ -107,7 +107,7 @@ from contextlib import contextmanager
 from functools import cache, partial
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, Iterator, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Iterator, Literal, Optional, Tuple, Union, Collection
 
 import matplotlib
 import matplotlib.cm
@@ -201,7 +201,7 @@ from gbmi.utils.latex_export import (
     to_latex_defs,
 )
 from gbmi.utils.memoshelve import memoshelve
-from gbmi.utils.memohf import memohf_staged
+from gbmi.utils.memohf import memohf_staged, StorageMethod as MemoHFStorageMethod
 from gbmi.utils.sequences import SequenceDataset
 
 # %%
@@ -401,6 +401,10 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
 # %%
 USE_HF: bool = False
 SAVE_TO_HF_FROM_CACHE: bool = True
+STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = (
+    "single_data_file",
+    "named_data_files",
+)
 
 
 def hf_sanitize(s: str) -> str:
@@ -414,7 +418,9 @@ def memoshelve_hf_staged(
     **kwargs,
 ):
     if use_hf:
-        with memohf_staged(hf_repo_id, **kwargs) as memo_hf:
+        with memohf_staged(
+            hf_repo_id, storage_methods=STOAGE_METHODS, **kwargs
+        ) as memo_hf:
 
             @contextmanager
             def inner(func: Callable, file_suffix: str, **kwargs):

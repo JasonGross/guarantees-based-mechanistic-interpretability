@@ -399,7 +399,7 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
     sys.exit(0)
 
 # %%
-USE_HF: bool = True
+USE_HF: bool = False
 SAVE_TO_HF_FROM_CACHE: bool = True
 
 

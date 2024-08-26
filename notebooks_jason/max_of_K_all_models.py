@@ -400,24 +400,52 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
 
 # %%
 USE_HF: bool = False
+SAVE_TO_HF_FROM_CACHE: bool = True
 
 
 @contextmanager
-def memoshelve_hf(func: Callable, file_suffix: str, use_hf: bool = USE_HF, **kwargs):
-    with memoshelve(
-        func,
-        filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}",
-        **kwargs,
-    )() as memo:
-        if use_hf:
-            with memohf(
-                memo,
-                hf_repo_id,
-                hf_sanitize(f"{file_suffix}"),
+def memoshelve_hf(
+    func: Callable,
+    file_suffix: str,
+    use_hf: bool = USE_HF,
+    save_to_hf_from_cache: bool = SAVE_TO_HF_FROM_CACHE,
+    **kwargs,
+):
+    if save_to_hf_from_cache:
+        with memoshelve(
+            func,
+            filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}",
+            **kwargs,
+        )() as memo:
+            if use_hf:
+                with memohf(
+                    memo,
+                    hf_repo_id,
+                    hf_sanitize(f"{file_suffix}"),
+                    **kwargs,
+                )() as memo_hf:
+                    yield memo_hf
+            else:
+                yield memo
+    elif use_hf:
+        with memohf(
+            func,
+            hf_repo_id,
+            hf_sanitize(f"{file_suffix}"),
+            **kwargs,
+        )() as memo_hf:
+            with memoshelve(
+                memo_hf,
+                filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}",
                 **kwargs,
-            )() as memo_hf:
-                yield memo_hf
-        else:
+            )() as memo:
+                yield memo
+    else:
+        with memoshelve(
+            func,
+            filename=cache_dir / f"{SHARED_CACHE_STEM}{file_suffix}",
+            **kwargs,
+        )() as memo:
             yield memo
 
 

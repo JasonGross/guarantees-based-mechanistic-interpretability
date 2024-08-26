@@ -1,8 +1,10 @@
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Optional, cast
+import pickle
 
 from datasets import Dataset, DatasetDict, load_dataset
 from datasets.data_files import EmptyDatasetError
+from datasets.exceptions import DataFilesNotFoundError
 
 from gbmi.utils.hashing import get_hash_ascii
 
@@ -30,9 +32,12 @@ def memohf(
         data_modified = False  # Flag to track if data was modified
         try:
             dataset = cast(DatasetDict, load_dataset(repo_id, **kwargs))
-            db = cast(dict, dataset[dataset_key].to_dict())
-        except EmptyDatasetError:
-            db = {}
+            db = cast(dict, pickle.loads(dataset[dataset_key]["data"][0]))
+        except Exception as e:
+            if isinstance(e, (EmptyDatasetError, KeyError, DataFilesNotFoundError)):
+                db = {}
+            else:
+                raise e
 
         def delegate(*args, **kwargs):
             nonlocal data_modified  # Ensure we track modifications
@@ -65,9 +70,13 @@ def memohf(
             if save and data_modified:
                 try:
                     dataset = cast(DatasetDict, load_dataset(repo_id, **kwargs))
-                except EmptyDatasetError:
-                    dataset = DatasetDict()
-                dataset[dataset_key] = Dataset.from_dict(db)
+                except Exception as e:
+                    if isinstance(e, (EmptyDatasetError, DataFilesNotFoundError)):
+                        dataset = DatasetDict()
+                    else:
+                        raise e
+                serialized_data = pickle.dumps(db)
+                dataset[dataset_key] = Dataset.from_dict({"data": [serialized_data]})
                 dataset.push_to_hub(repo_id)
 
     return open_db
@@ -102,5 +111,8 @@ def uncache(
             if save:
                 dataset[dataset_key] = Dataset.from_dict(db)
                 dataset.push_to_hub(repo_id)
-    except EmptyDatasetError:
-        pass
+    except Exception as e:
+        if isinstance(e, (EmptyDatasetError, KeyError, DataFilesNotFoundError)):
+            pass
+        else:
+            raise e

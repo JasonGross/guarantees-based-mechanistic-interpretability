@@ -403,6 +403,10 @@ USE_HF: bool = False
 SAVE_TO_HF_FROM_CACHE: bool = True
 
 
+def hf_sanitize(s: str) -> str:
+    return s.replace("-", "_").replace("=", "_").replace("+", "_")
+
+
 @contextmanager
 def memoshelve_hf_staged(
     use_hf: bool = USE_HF,
@@ -554,10 +558,6 @@ def update_csv(
 ):
     new_data = [data[seed] for seed in sorted(data.keys())]
     return update_csv_with_rows(csv_path, new_data, columns=columns, subset=subset)
-
-
-def hf_sanitize(s: str) -> str:
-    return s.replace("-", "_").replace("=", "_").replace("+", "_")
 
 
 # %%

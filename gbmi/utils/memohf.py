@@ -1,6 +1,7 @@
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional, Tuple, cast
 import pickle
+from functools import cache
 
 from datasets import Dataset, DatasetDict, load_dataset
 from datasets.data_files import EmptyDatasetError
@@ -9,6 +10,50 @@ from datasets.exceptions import DataFilesNotFoundError
 from gbmi.utils.hashing import get_hash_ascii
 
 memohf_cache: Dict[str, Dict[str, Any]] = {}
+
+
+@cache
+def _load_dataset_dict_key(*args, **kwargs) -> DatasetDict:
+    return cast(
+        DatasetDict,
+        load_dataset(*args, keep_in_memory=True, **kwargs),
+    )
+
+
+def load_dataset_dict_key(*args, **kwargs) -> DatasetDict:
+    try:
+        return _load_dataset_dict_key(*args, **kwargs)
+    except (EmptyDatasetError, KeyError, DataFilesNotFoundError, ValueError):
+        return DatasetDict()
+
+
+def load_db_from_dataset(
+    lazy_dataset: Callable[..., DatasetDict],
+    *args,
+    default_dataset: Callable[[], DatasetDict] = DatasetDict,
+    **kwargs,
+) -> Tuple[DatasetDict, dict]:
+    try:
+        dataset = lazy_dataset(*args, **kwargs)
+        return dataset, cast(dict, pickle.loads(dataset["all"]["data"][0]))
+    except (EmptyDatasetError, KeyError, DataFilesNotFoundError, ValueError):
+        return default_dataset(), {}
+
+
+def save_db_to_dataset_and_hub(
+    repo_id: str,
+    dataset_key: str,
+    dataset: DatasetDict,
+    db: dict,
+):
+    dataset["all"] = Dataset.from_dict({"data": [pickle.dumps(db)]})
+    dataset.push_to_hub(repo_id, config_name=dataset_key)
+
+
+@cache
+def load_db(*args, **kwargs) -> dict:
+    _dataset, db = load_db_from_dataset(_load_dataset_dict_key, *args, **kwargs)
+    return db
 
 
 def memohf(
@@ -30,14 +75,7 @@ def memohf(
     @contextmanager
     def open_db():
         data_modified = False  # Flag to track if data was modified
-        try:
-            dataset = cast(DatasetDict, load_dataset(repo_id, **kwargs))
-            db = cast(dict, pickle.loads(dataset[dataset_key]["data"][0]))
-        except Exception as e:
-            if isinstance(e, (EmptyDatasetError, KeyError, DataFilesNotFoundError)):
-                db = {}
-            else:
-                raise e
+        db = load_db(repo_id, name=dataset_key, **kwargs)
 
         def delegate(*args, **kwargs):
             nonlocal data_modified  # Ensure we track modifications
@@ -68,16 +106,10 @@ def memohf(
             yield delegate
         finally:
             if save and data_modified:
-                try:
-                    dataset = cast(DatasetDict, load_dataset(repo_id, **kwargs))
-                except Exception as e:
-                    if isinstance(e, (EmptyDatasetError, DataFilesNotFoundError)):
-                        dataset = DatasetDict()
-                    else:
-                        raise e
-                serialized_data = pickle.dumps(db)
-                dataset[dataset_key] = Dataset.from_dict({"data": [serialized_data]})
-                dataset.push_to_hub(repo_id)
+                dataset, db = load_db_from_dataset(
+                    _load_dataset_dict_key, repo_id, name=dataset_key, **kwargs
+                )
+                save_db_to_dataset_and_hub(repo_id, dataset_key, dataset, db)
 
     return open_db
 
@@ -104,15 +136,12 @@ def uncache(
 
     key = get_hash((args, kwargs))
     try:
-        dataset = cast(DatasetDict, load_dataset(repo_id, **load_dataset_kwargs))
-        db = cast(dict, dataset[dataset_key].to_dict())
+        dataset, db = load_db_from_dataset(
+            _load_dataset_dict_key, repo_id, name=dataset_key, **load_dataset_kwargs
+        )
         if key in db:
             del db[key]
             if save:
-                dataset[dataset_key] = Dataset.from_dict(db)
-                dataset.push_to_hub(repo_id)
-    except Exception as e:
-        if isinstance(e, (EmptyDatasetError, KeyError, DataFilesNotFoundError)):
-            pass
-        else:
-            raise e
+                save_db_to_dataset_and_hub(repo_id, dataset_key, dataset, db)
+    except (EmptyDatasetError, KeyError, DataFilesNotFoundError, ValueError):
+        pass

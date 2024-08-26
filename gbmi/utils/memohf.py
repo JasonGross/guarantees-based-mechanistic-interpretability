@@ -12,7 +12,7 @@ from gbmi.utils.hashing import get_hash_ascii
 PUSH_INTERVAL: float = (
     10  # Push only if more than 10 seconds have passed since the last push
 )
-USE_ALL_DATA: bool = True
+USE_ALL_DATA: bool = False
 
 last_push_time: Dict[str, float] = {}
 memohf_cache: Dict[str, Dict[str, Any]] = {}
@@ -108,7 +108,7 @@ def hf_open(
         dataset = cast(
             DatasetDict, load_dataset(repo_id, name=name, keep_in_memory=True, **kwargs)
         )
-    except (EmptyDatasetError, DataFilesNotFoundError):
+    except (EmptyDatasetError, DataFilesNotFoundError, ValueError):
         dataset = DatasetDict()
 
     db = HFOpenDictLike(dataset, repo_id)
@@ -145,27 +145,29 @@ def hf_open_staged(repo_id, use_all_data: bool = True, save: bool = True, **kwar
             yield inner
 
 
-def memohf(
-    value: Callable,
+@contextmanager
+def memohf_staged(
     repo_id: str,
-    dataset_key: str,
-    cache: Dict[str, Dict[str, Any]] = memohf_cache,
-    get_hash: Callable = get_hash_ascii,
-    get_hash_mem: Optional[Callable] = None,
-    print_cache_miss: bool = False,
     save: bool = True,
     **kwargs,
 ):
-    """Lightweight memoziation using shelve + in-memory cache"""
-    mem_db = cache.setdefault(repo_id, {}).setdefault(dataset_key, {})
-    if get_hash_mem is None:
-        get_hash_mem = get_hash
+    with hf_open_staged(
+        repo_id, use_all_data=USE_ALL_DATA, save=save, **kwargs
+    ) as open_db:
 
-    @contextmanager
-    def open_db():
-        with hf_open_staged(
-            repo_id, use_all_data=USE_ALL_DATA, save=save, **kwargs
-        ) as open_db:
+        @contextmanager
+        def inner(
+            value: Callable,
+            dataset_key: str,
+            cache: Dict[str, Dict[str, Any]] = memohf_cache,
+            get_hash: Callable = get_hash_ascii,
+            get_hash_mem: Optional[Callable] = None,
+            print_cache_miss: bool = False,
+        ):
+            mem_db = cache.setdefault(repo_id, {}).setdefault(dataset_key, {})
+            if get_hash_mem is None:
+                get_hash_mem = get_hash
+
             with open_db(dataset_key) as db:
 
                 def delegate(*args, **kwargs):
@@ -194,6 +196,35 @@ def memohf(
                         return mem_db[mkey]
 
                 yield delegate
+
+        yield inner
+
+
+def memohf(
+    value: Callable,
+    repo_id: str,
+    dataset_key: str,
+    cache: Dict[str, Dict[str, Any]] = memohf_cache,
+    get_hash: Callable = get_hash_ascii,
+    get_hash_mem: Optional[Callable] = None,
+    print_cache_miss: bool = False,
+    save: bool = True,
+    **kwargs,
+):
+    """Memoziation using huggingface + in-memory cache"""
+
+    @contextmanager
+    def open_db():
+        with memohf_staged(repo_id, save=save, **kwargs) as staged_db:
+            with staged_db(
+                value,
+                dataset_key,
+                cache=cache,
+                get_hash=get_hash,
+                get_hash_mem=get_hash_mem,
+                print_cache_miss=print_cache_miss,
+            ) as func:
+                yield func
 
     return open_db
 

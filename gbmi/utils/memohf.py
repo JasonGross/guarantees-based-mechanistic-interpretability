@@ -13,6 +13,7 @@ from typing import (
     cast,
     TypeVar,
 )
+import logging
 
 from datasets import Dataset, DatasetDict, load_dataset
 from datasets.data_files import EmptyDatasetError
@@ -20,6 +21,9 @@ from datasets.exceptions import DataFilesNotFoundError
 
 from gbmi.utils.hashing import get_hash_ascii
 from gbmi.utils.contextlib_extra import chain_contextmanagers_data
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
 
 PUSH_INTERVAL: float = (
     10  # Push only if more than 10 seconds have passed since the last push
@@ -106,10 +110,18 @@ def hf_open(
     """Context manager for opening a Hugging Face dataset in dict-like format."""
     try:
         # Load the dataset and keep it in memory
+        logger.debug(
+            f"load_dataset({repo_id!r}, name={name!r}, keep_in_memory=True, **{kwargs!r})"
+        )
         dataset = cast(
             DatasetDict, load_dataset(repo_id, name=name, keep_in_memory=True, **kwargs)
         )
-    except (EmptyDatasetError, DataFilesNotFoundError, ValueError):
+        logger.debug("Dataset loaded")
+    except (EmptyDatasetError, DataFilesNotFoundError) as e:
+        logger.debug(e)
+        dataset = DatasetDict()
+    except ValueError as e:
+        logger.warning(e)
         dataset = DatasetDict()
 
     db = HFOpenDictLike(
@@ -216,7 +228,7 @@ def hf_open_staged(
                                 (
                                     (
                                         lambda db, name: db_keys.append(
-                                            (db.setdefault("all", {}), name)
+                                            (db.setdefault("alldata", {}), name)
                                         )
                                     ),
                                     (),
@@ -260,7 +272,7 @@ def hf_open_staged(
                 if "data_splits" in storage_methods:
                     db_keys.append((db, name))
                 if "single_data_file" in storage_methods:
-                    db_keys.append((db.setdefault("all", {}), name))
+                    db_keys.append((db.setdefault("alldata", {}), name))
                 extra_specific_db_opens = []
                 if "named_data_files" in storage_methods:
                     extra_specific_db_opens.append(
@@ -273,7 +285,7 @@ def hf_open_staged(
                                 hash_function=hash_function,
                                 **kwargs,
                             ),
-                            ((lambda db: db_keys.append((db, "all")), (), {})),
+                            ((lambda db: db_keys.append((db, "alldata")), (), {})),
                         )
                     )
 
@@ -315,7 +327,7 @@ def hf_open_staged(
                                     extra_db.push_to_hub()
 
             yield inner
-    else:
+    elif storage_methods:
         assert "named_data_files" in storage_methods
 
         @contextmanager
@@ -323,7 +335,15 @@ def hf_open_staged(
             with hf_open(
                 repo_id, name=name, save=save, hash_function=hash_function, **kwargs
             ) as db:
-                yield db.setdefault("all", {})
+                yield db.setdefault("alldata", {})
+
+        yield inner
+    else:
+        logger.warning("No storage methods provided for %s", repo_id)
+
+        def inner(name: str):
+            logger.warning("No storage methods provided for %s, %s", repo_id, name)
+            yield {}
 
         yield inner
 

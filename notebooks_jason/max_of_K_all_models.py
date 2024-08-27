@@ -401,7 +401,7 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
 # %%
 USE_HF: bool = False
 SAVE_TO_HF_FROM_CACHE: bool = True
-STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = ("named_data_files",)
+STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = ()  # ("named_data_files",)
 
 
 def hf_sanitize(s: str) -> str:
@@ -413,12 +413,13 @@ def memoshelve_hf_staged(
     short_name: Optional[str] = None,
     use_hf: bool = USE_HF,
     save_to_hf_from_cache: bool = SAVE_TO_HF_FROM_CACHE,
+    storage_methods: tuple[MemoHFStorageMethod, ...] = STOAGE_METHODS,
     **kwargs,
 ):
     if use_hf:
         with memohf_staged(
             hf_repo_id,
-            storage_methods=STOAGE_METHODS
+            storage_methods=storage_methods
             + (() if short_name is None else (("single_named_data_file", short_name),)),
             **kwargs,
         ) as memo_hf:
@@ -1111,7 +1112,7 @@ def importance_sample_instruction_count(
 if not INCLUDE_BRUTE_FORCE:
     with (
         tqdm(desc="importance sampling instruction counts") as pbar,
-        memoshelve_hf_staged() as memoshelve_hf,
+        memoshelve_hf_staged(storage_methods=("named_data_files",)) as memoshelve_hf,
     ):
         with memoshelve_hf(
             partial(importance_sample_instruction_count, some_model, pbar=pbar),
@@ -1408,7 +1409,7 @@ def _cubic_count_verify_proof(
     return cubic_instruction_count, cubic_proof_instruction_count_results
 
 
-with memoshelve_hf_staged() as memoshelve_hf:
+with memoshelve_hf_staged(storage_methods=("named_data_files",)) as memoshelve_hf:
     with memoshelve_hf(
         partial(_cubic_count_verify_proof, some_model, sanity_check_instructions=False),
         f"cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{EXTRA_D_VOCAB_FILE_SUFFIX}-n_ctx_{seq_len}",

@@ -88,6 +88,30 @@ parser.add_argument(
     default=None,
     help="Number of samples per key for importance sampling estimation of accuracy and loss",
 )
+parser.add_argument(
+    "--huggingface",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Use huggingface",
+)
+parser.add_argument(
+    "--save-to-hf-from-cache",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Save to huggingface from cache",
+)
+parser.add_argument(
+    "--hf-store-named-data-files",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Store named data files in huggingface in addition to aggregate ones",
+)
+parser.add_argument(
+    "--hf-store-single-named-data-file",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Store a single named data file in huggingface in addition to aggregate ones",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
@@ -253,6 +277,12 @@ TORCH_VERSION_PATH = (
     / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-torch-version.txt"
 )
 TORCH_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
+USE_HF: bool = cli_args.huggingface
+SAVE_TO_HF_FROM_CACHE: bool = cli_args.save_to_hf_from_cache
+HF_STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = (
+    ("named_data_files",) if cli_args.hf_store_named_data_files else ()
+)
+HF_STORE_SINGLE_NAMED_DATA_FILE: bool = cli_args.hf_store_single_named_data_file
 GIT_DIFF_PATH = (
     adjusted_file_path.with_suffix("")
     / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-diff-info.diff"
@@ -398,12 +428,8 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
     print(f"{stem}" + "{" + f"{train_or_load_model_glob},*{sub_glob}*" + "}")
     sys.exit(0)
 
+
 # %%
-USE_HF: bool = False
-SAVE_TO_HF_FROM_CACHE: bool = True
-STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = ()  # ("named_data_files",)
-
-
 def hf_sanitize(s: str) -> str:
     return s.replace("-", "_").replace("=", "_").replace("+", "_")
 
@@ -413,14 +439,19 @@ def memoshelve_hf_staged(
     short_name: Optional[str] = None,
     use_hf: bool = USE_HF,
     save_to_hf_from_cache: bool = SAVE_TO_HF_FROM_CACHE,
-    storage_methods: tuple[MemoHFStorageMethod, ...] = STOAGE_METHODS,
+    include_single_named_data_file: bool = HF_STORE_SINGLE_NAMED_DATA_FILE,
+    storage_methods: tuple[MemoHFStorageMethod, ...] = HF_STOAGE_METHODS,
     **kwargs,
 ):
     if use_hf:
         with memohf_staged(
             hf_repo_id,
             storage_methods=storage_methods
-            + (() if short_name is None else (("single_named_data_file", short_name),)),
+            + (
+                ()
+                if short_name is None or not include_single_named_data_file
+                else (("single_named_data_file", short_name),)
+            ),
             **kwargs,
         ) as memo_hf:
 

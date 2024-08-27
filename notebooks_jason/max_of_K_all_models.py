@@ -95,6 +95,12 @@ parser.add_argument(
     help="Use huggingface",
 )
 parser.add_argument(
+    "--save-to-hf",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Save to huggingface",
+)
+parser.add_argument(
     "--save-to-hf-from-cache",
     action=BooleanOptionalAction,
     default=True,
@@ -131,7 +137,17 @@ from contextlib import contextmanager
 from functools import cache, partial
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, Iterator, Literal, Optional, Tuple, Union, Collection
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+    Collection,
+    Optional,
+)
 
 import matplotlib
 import matplotlib.cm
@@ -279,6 +295,7 @@ TORCH_VERSION_PATH = (
 TORCH_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
 USE_HF: bool = cli_args.huggingface
 SAVE_TO_HF_FROM_CACHE: bool = cli_args.save_to_hf_from_cache
+SAVE_TO_HF: bool = cli_args.save_to_hf
 HF_STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = (
     ("named_data_files",) if cli_args.hf_store_named_data_files else ()
 )
@@ -438,6 +455,7 @@ def hf_sanitize(s: str) -> str:
 def memoshelve_hf_staged(
     short_name: Optional[str] = None,
     use_hf: bool = USE_HF,
+    save_to_hf: bool = SAVE_TO_HF,
     save_to_hf_from_cache: bool = SAVE_TO_HF_FROM_CACHE,
     include_single_named_data_file: bool = HF_STORE_SINGLE_NAMED_DATA_FILE,
     storage_methods: tuple[MemoHFStorageMethod, ...] = HF_STOAGE_METHODS,
@@ -452,6 +470,7 @@ def memoshelve_hf_staged(
                 if short_name is None or not include_single_named_data_file
                 else (("single_named_data_file", short_name),)
             ),
+            save=save_to_hf,
             **kwargs,
         ) as memo_hf:
 
@@ -570,16 +589,37 @@ training_wrappers = {
 
 
 # %%
+def pd_read_csv_or_hf(
+    csv_path: Path,
+    columns: list[str],
+    *,
+    use_hf: bool = USE_HF,
+    default: Optional[Callable] = pd.DataFrame,
+):
+    if use_hf:
+        # try:
+        return pd.read_parquet(
+            f"hf://datasets/{hf_repo_id}/{csv_path.with_suffix('.parquet').name}"
+        )
+        # except Exception as e:
+        # print(f"Error reading parquet: {e}")
+        # if isinstance(e, KeyboardInterrupt)
+    if csv_path.exists():
+        return pd.read_csv(csv_path)
+    if default:
+        return default(columns=columns)
+
+
 def update_csv_with_rows(
     csv_path: Path,
     new_data: list[dict[str, Union[float, int, str]]],
     *,
     columns: list[str],
     subset: str | list[str] = "seed",
+    use_hf: bool = USE_HF,
+    save_to_hf: bool = SAVE_TO_HF,
 ):
-    results = None
-    if os.path.exists(csv_path):
-        results = pd.read_csv(csv_path)
+    results = pd_read_csv_or_hf(csv_path, columns=columns, use_hf=use_hf, default=None)
 
     new_df = pd.DataFrame(new_data, columns=columns)
     if results is None or results.empty:
@@ -588,7 +628,12 @@ def update_csv_with_rows(
         results = pd.concat([results, new_df], ignore_index=True).drop_duplicates(
             subset=subset, keep="last"
         )
+    results = results.sort_values(subset)
     results.to_csv(csv_path, index=False)
+    if save_to_hf:
+        results.to_parquet(
+            f"hf://datasets/{hf_repo_id}/{csv_path.with_suffix('.parquet').name}"
+        )
     return results
 
 
@@ -735,10 +780,9 @@ brute_force_columns = [
     "cpu",
     "duration",
 ]
-if os.path.exists(BRUTE_FORCE_CSV_PATH):
-    brute_force_results = pd.read_csv(BRUTE_FORCE_CSV_PATH)
-else:
-    brute_force_results = pd.DataFrame(columns=brute_force_columns)
+brute_force_results = pd_read_csv_or_hf(
+    BRUTE_FORCE_CSV_PATH, columns=brute_force_columns
+)
 
 brute_force_proof_deterministic: bool = True  # @param {type:"boolean"}
 

@@ -648,7 +648,7 @@ total_batches = sum(
 
 with tqdm(total=total_batches, desc="batches for training", position=0) as pbar:
     # with PeriodicGarbageCollector(60):
-    with memoshelve_hf_staged() as memoshelve_hf:
+    with memoshelve_hf_staged(short_name="run_batch_loss_accuracy") as memoshelve_hf:
         maybe_parallel_map(
             partial(_handle_train_seed, memoshelve_hf=memoshelve_hf, pbar=pbar),
             sorted(runtime_models.keys()),
@@ -757,7 +757,13 @@ def _run_batch_loss_accuracy(
 
 if INCLUDE_BRUTE_FORCE:
 
-    def get_brute_force_for(seed: int, *, memoshelve_hf: Callable, pbar: tqdm):
+    def get_brute_force_for(
+        seed: int,
+        *,
+        memoshelve_hf: Callable,
+        memoshelve_hf_lightweight: Callable,
+        pbar: tqdm,
+    ):
         cfg_hash_for_filename = cfg_hashes_for_filename[seed]
         training_wrapper = training_wrappers[seed]
         all_tokens_dataset = all_tokens_datasets[seed]
@@ -779,7 +785,7 @@ if INCLUDE_BRUTE_FORCE:
                 ((loss, accuracy, size), incorrect_sequences), duration = res
                 return (loss, accuracy, size), duration
 
-            with memoshelve_hf(
+            with memoshelve_hf_lightweight(
                 _run_batch_loss_accuracy_lightweight,
                 f"run_batch_loss_accuracy-lightweight-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
                 get_hash_mem=(lambda x: x[0]),
@@ -830,27 +836,49 @@ if INCLUDE_BRUTE_FORCE:
         for length in lengths
     )
 
-    def _handle_brute_force_for(seed: int, *, memoshelve_hf: Callable, pbar: tqdm):
+    def _handle_brute_force_for(
+        seed: int,
+        *,
+        memoshelve_hf: Callable,
+        memoshelve_hf_lightweight: Callable,
+        pbar: tqdm,
+    ):
         try:
             brute_force_data[seed] = get_brute_force_for(
-                seed, memoshelve_hf=memoshelve_hf, pbar=pbar
+                seed,
+                memoshelve_hf=memoshelve_hf,
+                memoshelve_hf_lightweight=memoshelve_hf_lightweight,
+                pbar=pbar,
             )
         except Exception as e:
             print(f"Error computing brute force proof for seed {seed}: {e}")
             traceback.print_exc()
 
-    with tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar:
-        # with PeriodicGarbageCollector(60):
-        with memoshelve_hf_staged() as memoshelve_hf:
-            maybe_parallel_map(
-                partial(
-                    _handle_brute_force_for, memoshelve_hf=memoshelve_hf, pbar=pbar
-                ),
-                sorted(relevant_seeds),
-            )
+    with (
+        tqdm(total=total_batches, desc="batches for brute force", position=0) as pbar,
+        memoshelve_hf_staged(short_name="run_batch_loss_accuracy") as memoshelve_hf,
+        memoshelve_hf_staged(
+            short_name="run_batch_loss_accuracy_lightweight"
+        ) as memoshelve_hf_lightweight,
+    ):
+        maybe_parallel_map(
+            partial(
+                _handle_brute_force_for,
+                memoshelve_hf=memoshelve_hf,
+                memoshelve_hf_lightweight=memoshelve_hf_lightweight,
+                pbar=pbar,
+            ),
+            sorted(relevant_seeds),
+        )
 else:
 
-    def get_brute_force_for(seed: int, *, memoshelve_hf: Callable, pbar: tqdm):
+    def get_brute_force_for(
+        seed: int,
+        *,
+        memoshelve_hf: Callable,
+        memoshelve_hf_lightweight: Callable,
+        pbar: tqdm,
+    ):
         cfg_hash_for_filename = cfg_hashes_for_filename[seed]
         _runtime, model = runtime_models[seed]
 
@@ -872,7 +900,7 @@ else:
                 del res["incorrect_sequences"]
                 return res
 
-            with memoshelve_hf(
+            with memoshelve_hf_lightweight(
                 _importance_sample_lightweight,
                 f"importance-sample-lightweight-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
                 get_hash_mem=(lambda x: x[0]),
@@ -884,31 +912,46 @@ else:
         return row
 
     def _handle_brute_force_via_importance_sampling_for(
-        seed: int, *, memoshelve_hf: Callable, pbar: tqdm, subpbar: tqdm
+        seed: int,
+        *,
+        memoshelve_hf: Callable,
+        memoshelve_hf_lightweight: Callable,
+        pbar: tqdm,
+        subpbar: tqdm,
     ):
         pbar.update(1)
         pbar.set_postfix({"seed": seed})
         try:
             brute_force_data[seed] = get_brute_force_for(
-                seed, memoshelve_hf=memoshelve_hf, pbar=subpbar
+                seed,
+                memoshelve_hf=memoshelve_hf,
+                memoshelve_hf_lightweight=memoshelve_hf_lightweight,
+                pbar=subpbar,
             )
         except Exception as e:
             print(f"Error computing brute force proof for seed {seed}: {e}")
             traceback.print_exc()
 
-    with tqdm(total=len(relevant_seeds), desc="brute_force seeds", position=0) as pbar:
-        with tqdm(desc="importance sampling", position=1) as subpbar:
-            # with PeriodicGarbageCollector(60):
-            with memoshelve_hf_staged() as memoshelve_hf:
-                maybe_parallel_map(
-                    partial(
-                        _handle_brute_force_via_importance_sampling_for,
-                        memoshelve_hf=memoshelve_hf,
-                        pbar=pbar,
-                        subpbar=subpbar,
-                    ),
-                    sorted(relevant_seeds),
-                )
+    with (
+        tqdm(total=len(relevant_seeds), desc="brute_force seeds", position=0) as pbar,
+        tqdm(desc="importance sampling", position=1) as subpbar,
+        # with PeriodicGarbageCollector(60):
+        memoshelve_hf_staged(
+            short_name=f"importance-sample-{N_SAMPLES_PER_KEY}"
+        ) as memoshelve_hf,
+        memoshelve_hf_staged(
+            short_name=f"importance-sample-lightweight-{N_SAMPLES_PER_KEY}"
+        ) as memoshelve_hf_lightweight,
+    ):
+        maybe_parallel_map(
+            partial(
+                _handle_brute_force_via_importance_sampling_for,
+                memoshelve_hf=memoshelve_hf,
+                pbar=pbar,
+                subpbar=subpbar,
+            ),
+            sorted(relevant_seeds),
+        )
 
     total_importance_sampled_sequences = (
         brute_force_data[some_seed]["num_correct"]
@@ -1066,19 +1109,21 @@ def importance_sample_instruction_count(
 
 
 if not INCLUDE_BRUTE_FORCE:
-    with tqdm(desc="importance sampling instruction counts") as pbar:
-        with memoshelve_hf_staged() as memoshelve_hf:
-            with memoshelve_hf(
-                partial(importance_sample_instruction_count, some_model, pbar=pbar),
-                f"importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{EXTRA_D_VOCAB_FILE_SUFFIX}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
-                get_hash_mem=(lambda x: x[0]),
-                get_hash=str,
-            ) as memo_importance_sample_instruction_count:
-                importance_sample_count, importance_sample_perf = (
-                    memo_importance_sample_instruction_count(
-                        batch_size, total_importance_sampled_sequences
-                    )
+    with (
+        tqdm(desc="importance sampling instruction counts") as pbar,
+        memoshelve_hf_staged() as memoshelve_hf,
+    ):
+        with memoshelve_hf(
+            partial(importance_sample_instruction_count, some_model, pbar=pbar),
+            f"importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{EXTRA_D_VOCAB_FILE_SUFFIX}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
+            get_hash_mem=(lambda x: x[0]),
+            get_hash=str,
+        ) as memo_importance_sample_instruction_count:
+            importance_sample_count, importance_sample_perf = (
+                memo_importance_sample_instruction_count(
+                    batch_size, total_importance_sampled_sequences
                 )
+            )
     latex_values |= latex_values_of_instruction_count(
         brute_force_key_prefix, importance_sample_count
     )
@@ -1125,27 +1170,29 @@ if INCLUDE_BRUTE_FORCE:
     all_d_vocabs = [model.cfg.d_vocab for _runtime, model in runtime_models.values()]
     assert len(set(all_d_vocabs)) == 1, f"Multiple d_vocabs: {all_d_vocabs}"
 
-    with tqdm(
-        total=len(all_d_vocabs),
-        desc="seeds for ablations",
-        position=0,
-    ) as seed_pbar:
-        with tqdm(
+    with (
+        tqdm(
+            total=len(all_d_vocabs),
+            desc="seeds for ablations",
+            position=0,
+        ) as seed_pbar,
+        tqdm(
             total=sum(all_d_vocabs),
             desc="batches for ablations",
             position=1,
-        ) as pbar:
-            # with PeriodicGarbageCollector(60):
-            with memoshelve_hf_staged() as memoshelve_hf:
-                maybe_parallel_map(
-                    partial(
-                        _handle_ablation_for,
-                        memoshelve_hf=memoshelve_hf,
-                        seed_pbar=seed_pbar,
-                        pbar=pbar,
-                    ),
-                    sorted(all_seeds),
-                )
+        ) as pbar,
+        # with PeriodicGarbageCollector(60):
+        memoshelve_hf_staged(short_name="compute_ablations") as memoshelve_hf,
+    ):
+        maybe_parallel_map(
+            partial(
+                _handle_ablation_for,
+                memoshelve_hf=memoshelve_hf,
+                seed_pbar=seed_pbar,
+                pbar=pbar,
+            ),
+            sorted(all_seeds),
+        )
 # %%
 if INCLUDE_BRUTE_FORCE:
     ablation_data_by_key = defaultdict(dict)
@@ -1186,7 +1233,13 @@ cubic_data = {
 }
 
 
-def get_cubic_row(seed: int, *, memoshelve_hf: Callable, pbar: tqdm) -> dict:
+def get_cubic_row(
+    seed: int,
+    *,
+    memoshelve_hf_find_proof: Callable,
+    memoshelve_hf_verify_proof: Callable,
+    pbar: tqdm,
+) -> dict:
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
     runtime, model = runtime_models[seed]
 
@@ -1198,7 +1251,7 @@ def get_cubic_row(seed: int, *, memoshelve_hf: Callable, pbar: tqdm) -> dict:
         duration = time.time() - start
         return cubic_proof_args, duration
 
-    with memoshelve_hf(
+    with memoshelve_hf_find_proof(
         _find_proof,
         f"cubic_find_proof-{cfg_hash_for_filename}",
         get_hash_mem=(lambda x: x[0]),
@@ -1206,7 +1259,7 @@ def get_cubic_row(seed: int, *, memoshelve_hf: Callable, pbar: tqdm) -> dict:
     ) as find_proof:
         cubic_proof_args, duration_proof_search = find_proof()
 
-    with memoshelve_hf(
+    with memoshelve_hf_verify_proof(
         partial(
             cubic.verify_proof,
             model,
@@ -1248,9 +1301,20 @@ def get_cubic_row(seed: int, *, memoshelve_hf: Callable, pbar: tqdm) -> dict:
     )
 
 
-def _handle_cubic(seed: int, *, memoshelve_hf: Callable, pbar: tqdm):
+def _handle_cubic(
+    seed: int,
+    *,
+    memoshelve_hf_find_proof: Callable,
+    memoshelve_hf_verify_proof: Callable,
+    pbar: tqdm,
+):
     try:
-        cubic_data[seed] = get_cubic_row(seed, memoshelve_hf=memoshelve_hf, pbar=pbar)
+        cubic_data[seed] = get_cubic_row(
+            seed,
+            memoshelve_hf_find_proof=memoshelve_hf_find_proof,
+            memoshelve_hf_verify_proof=memoshelve_hf_verify_proof,
+            pbar=pbar,
+        )
     except Exception as e:
         print(f"Error computing cubic proof for seed {seed}: {e}")
         traceback.print_exc()
@@ -1259,10 +1323,15 @@ def _handle_cubic(seed: int, *, memoshelve_hf: Callable, pbar: tqdm):
 # \sum_{i=0}^{k} i^2 = k * (k+1) * (k*2+1) // 6
 ks = [model_cfgs[seed].d_vocab - 2 for seed in relevant_seeds]
 total_batches = sum(k * (k + 1) * (k * 2 + 1) // 6 for k in ks)
-with tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar:
+with (
+    tqdm(total=total_batches, desc="batches for cubic", position=0) as pbar,
     # with PeriodicGarbageCollector(60):
-    with memoshelve_hf_staged() as memoshelve_hf:
-        maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
+    memoshelve_hf_staged(short_name="cubic_find_proof") as memoshelve_hf_find_proof,
+    memoshelve_hf_staged(
+        short_name=f"cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}"
+    ) as memoshelve_hf_verify_proof,
+):
+    maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
 
 # do this externally, because importance sampling is subject to change
 for seed, row in cubic_data.items():
@@ -1504,7 +1573,7 @@ def handle_compute_EQKE_SVD_analysis(
         return memo_compute_EQKE_SVD_analysis(seed)
 
 
-with memoshelve_hf_staged() as memoshelve_hf:
+with memoshelve_hf_staged(short_name="compute_EQKE_SVD_analysis") as memoshelve_hf:
     EQKE_SVD_analyses = {
         seed: handle_compute_EQKE_SVD_analysis(seed, memoshelve_hf=memoshelve_hf)
         for seed in tqdm(list(sorted(runtime_models.keys())), desc="SVD analysis")
@@ -1957,7 +2026,11 @@ relevant_seeds = all_seeds if OVERWRITE_CSV_FROM_CACHE else unknown_seeds
 def try_all_proofs_subcubic(
     seed: int,
     *,
-    memoshelve_hf: Callable,
+    memoshelve_hf_shared_proof_search: Callable,
+    memoshelve_hf_find_min_gaps: Callable,
+    memoshelve_hf_verify_proof: Callable,
+    memoshelve_hf_count_verify_proof: Callable,
+    memoshelve_hf_analyze_gaps: Callable,
     subcfg_pbar: tqdm,
     cfg_pbar: tqdm,
     proof_pbar: tqdm,
@@ -1971,7 +2044,7 @@ def try_all_proofs_subcubic(
 
     rows = []
 
-    with memoshelve_hf(
+    with memoshelve_hf_shared_proof_search(
         (lambda seed: analysis_subcubic.find_proof_shared(model)),
         # cache={},
         f"shared_proof_search-{cfg_hash_for_filename}",
@@ -1983,7 +2056,7 @@ def try_all_proofs_subcubic(
             shared_proof_search_duration,
         ) = shared_proof_search(seed)
 
-    with memoshelve_hf(
+    with memoshelve_hf_find_min_gaps(
         (
             lambda cfg: (
                 cfg,
@@ -2030,7 +2103,7 @@ def try_all_proofs_subcubic(
                 include_perf=PERF_WORKING,
             )
 
-        with memoshelve_hf(
+        with memoshelve_hf_verify_proof(
             _verify_proof,
             f"subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
             get_hash_mem=(lambda x: x[0]),
@@ -2062,7 +2135,7 @@ def try_all_proofs_subcubic(
         else:
             perf_results = {}
 
-        with memoshelve_hf(
+        with memoshelve_hf_count_verify_proof(
             partial(
                 _subcubic_count_verify_proof,
                 model,
@@ -2210,7 +2283,7 @@ def try_all_proofs_subcubic(
                 num_std,
             )
 
-        with memoshelve_hf(
+        with memoshelve_hf_analyze_gaps(
             _analyze_gaps,
             f"subcubic_analyze_gaps-{cfg_hash_for_filename}",
             get_hash_mem=(lambda x: x[0]),
@@ -2259,7 +2332,11 @@ def try_all_proofs_subcubic(
 def _handle_subcubic(
     seed: int,
     *,
-    memoshelve_hf: Callable,
+    memoshelve_hf_shared_proof_search: Callable,
+    memoshelve_hf_find_min_gaps: Callable,
+    memoshelve_hf_verify_proof: Callable,
+    memoshelve_hf_count_verify_proof: Callable,
+    memoshelve_hf_analyze_gaps: Callable,
     subcfg_pbar: tqdm,
     cfg_pbar: tqdm,
     proof_pbar: tqdm,
@@ -2270,7 +2347,11 @@ def _handle_subcubic(
     try:
         subcubic_data[seed] = try_all_proofs_subcubic(
             seed,
-            memoshelve_hf=memoshelve_hf,
+            memoshelve_hf_shared_proof_search=memoshelve_hf_shared_proof_search,
+            memoshelve_hf_find_min_gaps=memoshelve_hf_find_min_gaps,
+            memoshelve_hf_verify_proof=memoshelve_hf_verify_proof,
+            memoshelve_hf_count_verify_proof=memoshelve_hf_count_verify_proof,
+            memoshelve_hf_analyze_gaps=memoshelve_hf_analyze_gaps,
             subcfg_pbar=subcfg_pbar,
             cfg_pbar=cfg_pbar,
             proof_pbar=proof_pbar,
@@ -2302,12 +2383,29 @@ with (
     tqdm(
         total=n_cfgs, desc="instruction counts for subcubic", position=3
     ) as count_proof_pbar,
-    memoshelve_hf_staged() as memoshelve_hf,
+    memoshelve_hf_staged(
+        short_name="shared_proof_search"
+    ) as memoshelve_hf_shared_proof_search,
+    memoshelve_hf_staged(short_name="find_min_gaps") as memoshelve_hf_find_min_gaps,
+    memoshelve_hf_staged(
+        short_name="subcubic_verify_proof"
+    ) as memoshelve_hf_verify_proof,
+    memoshelve_hf_staged(
+        short_name="subcubic_count_verify_proof"
+    ) as memoshelve_hf_count_verify_proof,
+    memoshelve_hf_staged(
+        short_name="subcubic_analyze_gaps"
+    ) as memoshelve_hf_analyze_gaps,
 ):
     # with PeriodicGarbageCollector(60):
     maybe_parallel_map(
         partial(
             _handle_subcubic,
+            memoshelve_hf_shared_proof_search=memoshelve_hf_shared_proof_search,
+            memoshelve_hf_find_min_gaps=memoshelve_hf_find_min_gaps,
+            memoshelve_hf_verify_proof=memoshelve_hf_verify_proof,
+            memoshelve_hf_count_verify_proof=memoshelve_hf_count_verify_proof,
+            memoshelve_hf_analyze_gaps=memoshelve_hf_analyze_gaps,
             subcfg_pbar=subcfg_pbar,
             cfg_pbar=cfg_pbar,
             proof_pbar=proof_pbar,

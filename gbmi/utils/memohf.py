@@ -341,6 +341,7 @@ def hf_open_staged(
     else:
         logger.warning("No storage methods provided for %s", repo_id)
 
+        @contextmanager
         def inner(name: str):
             logger.warning("No storage methods provided for %s, %s", repo_id, name)
             yield {}

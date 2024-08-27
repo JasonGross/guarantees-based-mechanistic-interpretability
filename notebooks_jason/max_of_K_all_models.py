@@ -401,10 +401,7 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
 # %%
 USE_HF: bool = False
 SAVE_TO_HF_FROM_CACHE: bool = True
-STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = (
-    "single_data_file",
-    "named_data_files",
-)
+STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = ("named_data_files",)
 
 
 def hf_sanitize(s: str) -> str:
@@ -413,13 +410,17 @@ def hf_sanitize(s: str) -> str:
 
 @contextmanager
 def memoshelve_hf_staged(
+    short_name: Optional[str] = None,
     use_hf: bool = USE_HF,
     save_to_hf_from_cache: bool = SAVE_TO_HF_FROM_CACHE,
     **kwargs,
 ):
     if use_hf:
         with memohf_staged(
-            hf_repo_id, storage_methods=STOAGE_METHODS, **kwargs
+            hf_repo_id,
+            storage_methods=STOAGE_METHODS
+            + (() if short_name is None else (("single_named_data_file", short_name),)),
+            **kwargs,
         ) as memo_hf:
 
             @contextmanager
@@ -463,7 +464,9 @@ def memoshelve_hf_staged(
 # %%
 # patch torch.load so that when loading cache from non-CPU devices we can still load
 with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
-    with memoshelve_hf_staged() as memoshelve_hf:
+    with memoshelve_hf_staged(
+        short_name=f"train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}"
+    ) as memoshelve_hf:
         with memoshelve_hf(
             train_or_load_model,
             f"train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}",

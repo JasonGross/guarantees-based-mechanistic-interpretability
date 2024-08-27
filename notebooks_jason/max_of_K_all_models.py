@@ -589,6 +589,12 @@ training_wrappers = {
 
 
 # %%
+def csv_to_hf_path(csv_path: Path, ext: Literal["csv", "parquet"] = "csv") -> str:
+    hf_filename_stem = hf_sanitize(csv_path.stem)
+    suffix = "" if ext == "csv" else f"_{ext}"
+    return f"hf://datasets/{hf_repo_id}/{hf_filename_stem}/alldata{suffix}.{ext}"
+
+
 def pd_read_csv_or_hf(
     csv_path: Path,
     columns: list[str],
@@ -597,9 +603,14 @@ def pd_read_csv_or_hf(
     default: Optional[Callable] = pd.DataFrame,
 ):
     if use_hf:
-        hf_path = f"hf://datasets/{hf_repo_id}/{csv_path.with_suffix('.parquet').name}"
+        hf_path = csv_to_hf_path(csv_path, ext="parquet")
         try:
             return pd.read_parquet(hf_path)
+        except FileNotFoundError as e:
+            print(f"Could not read from huggingface ({hf_path}): {e}")
+        hf_path = csv_to_hf_path(csv_path, ext="csv")
+        try:
+            return pd.read_csv(hf_path)
         except FileNotFoundError as e:
             print(f"Could not read from huggingface ({hf_path}): {e}")
     if csv_path.exists():
@@ -629,9 +640,8 @@ def update_csv_with_rows(
     results = results.sort_values(subset)
     results.to_csv(csv_path, index=False)
     if save_to_hf:
-        results.to_parquet(
-            f"hf://datasets/{hf_repo_id}/{csv_path.with_suffix('.parquet').name}"
-        )
+        results.to_parquet(csv_to_hf_path(csv_path, ext="parquet"))
+        results.to_csv(csv_to_hf_path(csv_path, ext="csv"))
     return results
 
 

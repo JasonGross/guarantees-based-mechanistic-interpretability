@@ -641,7 +641,7 @@ def update_csv_with_rows(
     results.to_csv(csv_path, index=False)
     if save_to_hf:
         results.to_parquet(csv_to_hf_path(csv_path, ext="parquet"))
-        results.to_csv(csv_to_hf_path(csv_path, ext="csv"))
+        results.to_csv(csv_to_hf_path(csv_path, ext="csv"), index=False)
     return results
 
 

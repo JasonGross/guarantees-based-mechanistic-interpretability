@@ -50,11 +50,16 @@ class HFOpenDictLike(dict):
     """A dict-like object that supports push_to_hub."""
 
     def __init__(
-        self, dataset: DatasetDict, repo_id: str, hash_function: Callable = hash
+        self,
+        dataset: DatasetDict,
+        repo_id: str,
+        config_name: str = "default",
+        hash_function: Callable = hash,
     ):
         super().__init__()
         self.repo_id = repo_id
         self.dataset = dataset
+        self.config_name = config_name
         self.update(self._load_db())  # Load the data and update the internal dict
         self.hash_function = hash_function
         self._reset_hash()
@@ -80,7 +85,7 @@ class HFOpenDictLike(dict):
         for key, data in self.items():
             serialized_data = pickle.dumps(data)
             self.dataset[key] = Dataset.from_dict({"data": [serialized_data]})
-        self.dataset.push_to_hub(self.repo_id)
+        self.dataset.push_to_hub(self.repo_id, config_name=self.config_name)
         update_last_push_time(self.repo_id)
         self._reset_hash()
 
@@ -107,7 +112,9 @@ def hf_open(
     except (EmptyDatasetError, DataFilesNotFoundError, ValueError):
         dataset = DatasetDict()
 
-    db = HFOpenDictLike(dataset, repo_id, hash_function=hash_function)
+    db = HFOpenDictLike(
+        dataset, repo_id, hash_function=hash_function, config_name=name or "default"
+    )
 
     try:
         yield db

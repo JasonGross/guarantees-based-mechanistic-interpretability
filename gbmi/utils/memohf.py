@@ -189,6 +189,16 @@ def hf_open_staged(
     ):
         extra_db_opens = []
         db_keys = []
+        db = None
+        if "data_splits" in storage_methods or "single_data_file" in storage_methods:
+            extra_db_opens.append(
+                (
+                    hf_open,
+                    (repo_id,),
+                    dict(save=save, hash_function=hash_function, **kwargs),
+                    ((lambda db: None, (), {}),),
+                )
+            )
         for storage_method in storage_methods:
             if isinstance(storage_method, tuple):
                 match storage_method[0]:
@@ -238,73 +248,73 @@ def hf_open_staged(
                                 ),
                             )
                         )
-        with hf_open(repo_id, save=save, hash_function=hash_function, **kwargs) as db:
-            with chain_contextmanagers_data(*extra_db_opens) as extra_dbs:
+        with chain_contextmanagers_data(*extra_db_opens) as extra_dbs:
+            if (
+                "data_splits" in storage_methods
+                or "single_data_file" in storage_methods
+            ):
+                (db, (_func, _args, _kwargs)), *extra_dbs = extra_dbs
 
-                @contextmanager
-                def inner(name: str):
-                    if "data_splits" in storage_methods:
-                        db_keys.append((db, name))
-                    if "single_data_file" in storage_methods:
-                        db_keys.append((db.setdefault("all", {}), name))
-                    extra_specific_db_opens = []
-                    if "named_data_files" in storage_methods:
-                        extra_specific_db_opens.append(
-                            (
-                                hf_open,
-                                (repo_id,),
-                                dict(
-                                    name=name,
-                                    save=save,
-                                    hash_function=hash_function,
-                                    **kwargs,
-                                ),
-                                ((lambda db: db_keys.append((db, "all")), (), {})),
-                            )
+            @contextmanager
+            def inner(name: str):
+                if "data_splits" in storage_methods:
+                    db_keys.append((db, name))
+                if "single_data_file" in storage_methods:
+                    db_keys.append((db.setdefault("all", {}), name))
+                extra_specific_db_opens = []
+                if "named_data_files" in storage_methods:
+                    extra_specific_db_opens.append(
+                        (
+                            hf_open,
+                            (repo_id,),
+                            dict(
+                                name=name,
+                                save=save,
+                                hash_function=hash_function,
+                                **kwargs,
+                            ),
+                            ((lambda db: db_keys.append((db, "all")), (), {})),
                         )
+                    )
 
-                    if extra_dbs:
-                        for extra_db, (
-                            append_db,
-                            append_db_args,
-                            append_db_kwargs,
-                        ) in extra_dbs:
-                            append_db(
-                                extra_db, name, *append_db_args, **append_db_kwargs
-                            )
+                if extra_dbs:
+                    for extra_db, (
+                        append_db,
+                        append_db_args,
+                        append_db_kwargs,
+                    ) in extra_dbs:
+                        append_db(extra_db, name, *append_db_args, **append_db_kwargs)
 
-                    try:
-                        if extra_specific_db_opens:
-                            with chain_contextmanagers_data(
-                                *extra_specific_db_opens
-                            ) as extra_specific_dbs:
-                                for extra_db, (
-                                    append_db,
-                                    append_db_args,
-                                    append_db_kwargs,
-                                ) in extra_specific_dbs:
-                                    append_db(
-                                        extra_db, *append_db_args, **append_db_kwargs
-                                    )
-                                try:
-                                    yield merge_subdicts(*db_keys)
-                                finally:
-                                    if save and should_push(repo_id):
-                                        for extra_db, _ in extra_specific_dbs:
-                                            if extra_db.modified:
-                                                extra_db.push_to_hub()
-                        else:
-                            yield merge_subdicts(*db_keys)
-                    finally:
-                        if save and should_push(repo_id):
-                            if db.modified:
-                                db.push_to_hub()
-                            if extra_dbs:
-                                for extra_db, _ in extra_dbs:
-                                    if extra_db.modified:
-                                        extra_db.push_to_hub()
+                try:
+                    if extra_specific_db_opens:
+                        with chain_contextmanagers_data(
+                            *extra_specific_db_opens
+                        ) as extra_specific_dbs:
+                            for extra_db, (
+                                append_db,
+                                append_db_args,
+                                append_db_kwargs,
+                            ) in extra_specific_dbs:
+                                append_db(extra_db, *append_db_args, **append_db_kwargs)
+                            try:
+                                yield merge_subdicts(*db_keys)
+                            finally:
+                                if save and should_push(repo_id):
+                                    for extra_db, _ in extra_specific_dbs:
+                                        if extra_db.modified:
+                                            extra_db.push_to_hub()
+                    else:
+                        yield merge_subdicts(*db_keys)
+                finally:
+                    if save and should_push(repo_id):
+                        if db and db.modified:
+                            db.push_to_hub()
+                        if extra_dbs:
+                            for extra_db, _ in extra_dbs:
+                                if extra_db.modified:
+                                    extra_db.push_to_hub()
 
-                yield inner
+            yield inner
     else:
         assert "named_data_files" in storage_methods
 

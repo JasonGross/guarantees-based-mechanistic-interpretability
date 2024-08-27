@@ -597,13 +597,11 @@ def pd_read_csv_or_hf(
     default: Optional[Callable] = pd.DataFrame,
 ):
     if use_hf:
-        # try:
-        return pd.read_parquet(
-            f"hf://datasets/{hf_repo_id}/{csv_path.with_suffix('.parquet').name}"
-        )
-        # except Exception as e:
-        # print(f"Error reading parquet: {e}")
-        # if isinstance(e, KeyboardInterrupt)
+        hf_path = f"hf://datasets/{hf_repo_id}/{csv_path.with_suffix('.parquet').name}"
+        try:
+            return pd.read_parquet(hf_path)
+        except FileNotFoundError as e:
+            print(f"Could not read from huggingface ({hf_path}): {e}")
     if csv_path.exists():
         return pd.read_csv(csv_path)
     if default:

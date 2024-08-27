@@ -1294,10 +1294,7 @@ cubic_columns = [
     "duration-proof-search",
     "duration",
 ]
-if os.path.exists(CUBIC_CSV_PATH):
-    cubic_results = pd.read_csv(CUBIC_CSV_PATH)
-else:
-    cubic_results = pd.DataFrame(columns=cubic_columns)
+cubic_results = pd_read_csv_or_hf(CUBIC_CSV_PATH, columns=cubic_columns)
 
 all_seeds = set(runtime_models.keys())
 unknown_seeds = all_seeds - set(cubic_results["seed"])
@@ -2077,10 +2074,7 @@ subcubic_columns = [
     "proof-int-op-estimate",
     "proof-branch-estimate",
 ]
-if os.path.exists(SUBCUBIC_CSV_PATH):
-    subcubic_results = pd.read_csv(SUBCUBIC_CSV_PATH)
-else:
-    subcubic_results = pd.DataFrame(columns=subcubic_columns)
+subcubic_results = pd_read_csv_or_hf(SUBCUBIC_CSV_PATH, columns=subcubic_columns)
 
 all_seeds = set(runtime_models.keys())
 unknown_seeds = all_seeds - set(

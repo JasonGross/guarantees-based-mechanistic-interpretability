@@ -48,15 +48,18 @@ def update_last_push_time(repo_id: str):
 class HFOpenDictLike(dict):
     """A dict-like object that supports push_to_hub."""
 
-    def __init__(self, dataset: DatasetDict, repo_id: str):
+    def __init__(
+        self, dataset: DatasetDict, repo_id: str, hash_function: Callable = hash
+    ):
         super().__init__()
         self.repo_id = repo_id
         self.dataset = dataset
         self.update(self._load_db())  # Load the data and update the internal dict
+        self.hash_function = hash_function
         self._reset_hash()
 
     def _gethash(self):
-        return get_hash_ascii(tuple(self.items()))
+        return self.hash_function(tuple(self.items()))
 
     def _reset_hash(self):
         """Resets the hash to the current state of the database."""
@@ -89,6 +92,7 @@ def hf_open(
     repo_id: str,
     name: Optional[str] = None,
     save: bool = True,
+    hash_function: Callable = hash,
     **kwargs,
 ):
     """Context manager for opening a Hugging Face dataset in dict-like format."""
@@ -100,7 +104,7 @@ def hf_open(
     except (EmptyDatasetError, DataFilesNotFoundError, ValueError):
         dataset = DatasetDict()
 
-    db = HFOpenDictLike(dataset, repo_id)
+    db = HFOpenDictLike(dataset, repo_id, hash_function=hash_function)
 
     try:
         yield db
@@ -133,6 +137,7 @@ def hf_open_staged(
     repo_id,
     storage_methods: Union[StorageMethod, Iterable[StorageMethod]] = "single_data_file",
     save: bool = True,
+    hash_function: Callable = hash,
     **kwargs,
 ):
     """Context manager for opening a Hugging Face dataset in dict-like format."""
@@ -142,7 +147,7 @@ def hf_open_staged(
         storage_methods = list(storage_methods)
 
     if "single_data_file" in storage_methods or "data_splits" in storage_methods:
-        with hf_open(repo_id, save=save, **kwargs) as db:
+        with hf_open(repo_id, save=save, hash_function=hash_function, **kwargs) as db:
 
             @contextmanager
             def inner(name: str):
@@ -152,7 +157,13 @@ def hf_open_staged(
                 if "single_data_file" in storage_methods:
                     db_keys.append((db.setdefault("all", {}), name))
                 if "named_data_files" in storage_methods:
-                    with hf_open(repo_id, name=name, save=save, **kwargs) as db2:
+                    with hf_open(
+                        repo_id,
+                        name=name,
+                        save=save,
+                        hash_function=hash_function,
+                        **kwargs,
+                    ) as db2:
                         db_keys.append((db2, "all"))
                         try:
                             yield merge_subdicts(*db_keys)
@@ -175,7 +186,9 @@ def hf_open_staged(
 
         @contextmanager
         def inner(name: str):
-            with hf_open(repo_id, name=name, save=save, **kwargs) as db:
+            with hf_open(
+                repo_id, name=name, save=save, hash_function=hash_function, **kwargs
+            ) as db:
                 yield db.setdefault("all", {})
 
         yield inner
@@ -187,10 +200,15 @@ def memohf_staged(
     *,
     save: bool = True,
     storage_methods: Union[StorageMethod, Iterable[StorageMethod]] = "single_data_file",
+    hash_function: Callable = pickle.dumps,
     **kwargs,
 ):
     with hf_open_staged(
-        repo_id, storage_methods=storage_methods, save=save, **kwargs
+        repo_id,
+        storage_methods=storage_methods,
+        save=save,
+        hash_function=hash_function,
+        **kwargs,
     ) as open_db:
 
         @contextmanager
@@ -279,6 +297,7 @@ def uncache(
     cache: Dict[str, Dict[str, Any]] = memohf_cache,
     get_hash: Callable = get_hash_ascii,
     get_hash_mem: Optional[Callable] = None,
+    hash_function: Callable = pickle.dumps,
     save: bool = True,
     load_dataset_kwargs: Dict[str, Any] = {},
     **kwargs,
@@ -295,7 +314,11 @@ def uncache(
     key = get_hash((args, kwargs))
 
     with hf_open_staged(
-        repo_id, storage_methods=storage_methods, save=save, **load_dataset_kwargs
+        repo_id,
+        storage_methods=storage_methods,
+        save=save,
+        hash_function=hash_function,
+        **load_dataset_kwargs,
     ) as open_db:
         with open_db(dataset_key) as db:
             if key in db:

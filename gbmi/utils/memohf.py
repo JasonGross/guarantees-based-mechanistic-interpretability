@@ -75,6 +75,8 @@ class HFOpenDictLike(dict):
 
     def push_to_hub(self):
         """Pushes the current state of the database back to the Hugging Face hub."""
+        if len(self.items()) == 0:
+            return
         for key, data in self.items():
             serialized_data = pickle.dumps(data)
             self.dataset[key] = Dataset.from_dict({"data": [serialized_data]})

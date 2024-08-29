@@ -17,9 +17,11 @@ As = TypeVarTuple("As")
 @contextmanager
 def chain_contextmanagers_data(
     *funcs_data: tuple[
-        # flake8 doesn't yet support TypeVarTuple in type hints apparently
-        Callable[[*As], ContextManager[V]],  # noqs: E999
-        Tuple[*As],  # noqs: E999
+        # py < 3.11 doesn't support TypeVarTuple in type hints apparently
+        # Callable[[*As], ContextManager[V]],  # noqs: E999
+        Callable[..., ContextManager[V]],
+        # Tuple[*As],  # noqs: E999
+        Tuple,
         dict[str, Any],
         T,
     ]

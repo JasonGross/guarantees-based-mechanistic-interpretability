@@ -1,5 +1,5 @@
 # %%
-from gbmi.exp_indhead.train import ABCAB8_1H
+from gbmi.exp_indhead.train import ABCAB8_1HMLP
 from torch import where
 from gbmi.model import train_or_load_model
 import torch
@@ -29,7 +29,7 @@ def show(matrix):
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_default_device("cuda")
-runtime_model_1, model = train_or_load_model(ABCAB8_1H, force="load")
+runtime_model_1, model = train_or_load_model(ABCAB8_1HMLP, force="load")
 model.to(device)
 d_mlp = 256
 sae_dim = 256
@@ -60,13 +60,81 @@ PQKP = (W_pos @ W_Q_0 @ W_K_0.T @ W_pos.T) / (attn_scale_0)
 PQKE = (W_pos @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
 EQKE = (W_E @ W_Q_0 @ W_K_0.T @ W_E.T) / (attn_scale_0)
 # %%
-PVO = W_pos @ W_V_0 @ W_O_0
+PVO = (W_pos @ W_V_0 @ W_O_0) / (attn_scale_1)
 
-EVO = W_E @ W_V_0 @ W_O_0
-PVOU = W_pos @ W_V_1 @ W_O_1 @ W_U
-PVOVOU = W_pos @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U
-EVOVOU = W_E @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U
-EVOU = W_E @ W_V_1 @ W_O_1 @ W_U
+EVO = (W_E @ W_V_0 @ W_O_0) / (attn_scale_1)
+PVOU = (W_pos @ W_V_1 @ W_O_1 @ W_U) / (attn_scale_1)
+PVOVOU = (W_pos @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U) / (attn_scale_1)
+EVOVOU = (W_E @ W_V_0 @ W_O_0 @ W_V_1 @ W_O_1 @ W_U) / (attn_scale_1)
+EVOU = (W_E @ W_V_1 @ W_O_1 @ W_U) / (attn_scale_1)
+
+n_ctx = 8
+
+
+# %%
+n_ctx = 8
+
+
+def compute_chernoff_bound(x, max_val, weighting=[]):
+    if len(weighting) > 0:
+        seq_length = len(weighting)
+    else:
+        seq_length = n_ctx
+    last_percentage = max_val / (
+        (seq_length) * torch.max(x)
+    )  # Calculates whether it can get the max_value with n_ctx tokens
+
+    if last_percentage >= 1:
+        return torch.tensor(0.0)
+    elif last_percentage < 0:
+        return torch.tensor(1.0)
+    else:
+        lambda_ = torch.log(
+            (len(x) - 1) * (last_percentage) / (1 - last_percentage)
+        ) / (torch.max(x))
+
+    chernoff_bound = (torch.exp(x * lambda_).mean()) ** (seq_length) * e ** (
+        -lambda_ * max_val
+    )
+
+    return chernoff_bound
+
+
+# %%
+"""
+
+class IndependentSequence:
+    def __init__(self,seq):
+        self.seq = seq # sequence uses '' to denote independent filler variables
+        self.blank_spaces = []
+        self.non_blanks = []
+        for i in range(len(self.seq)):
+            if self.seq[i] == '':
+                self.blank_spaces.append(i)
+            else:
+                self.non_blanks.append(i)
+
+
+        self.blank_spaces = torch.tensor(self.blank_spaces)
+        self.non_blanks = torch.tensor(self.non_blanks)
+
+   def E_propogate(self,mat,max_val,weighting): # propogate matrix that takes embedding as start point
+        bounder = torch.tensor(0.0)
+        for i in self.non_blanks:
+           bounder+=weighting[i]*mat[self.seq[i]]
+        compute_chernoff_bound(mat,max_val=bound[],weighting=weighting[self.blank_spaces])
+
+sequence_skeleton = ['',a,b,'','',a,'','']
+
+#class KLSoftMaxBound(sequence_skeleton,noise_terms):
+
+
+
+#class KLBound(softmax,eps,column,partial_seq):
+
+
+
+"""
 
 
 # %%

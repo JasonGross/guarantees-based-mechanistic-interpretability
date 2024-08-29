@@ -3384,7 +3384,18 @@ update_csv_with_rows(
 )
 update_csv_with_rows(
     LATEX_VALUES_REDUCED_DATATABLE_PATH,
-    new_data=[{"index": 0} | latex_values],
+    new_data=[
+        {"index": 0}
+        | {
+            k: (
+                str(v)
+                if isinstance(v, int)
+                and (v < np.iinfo(np.int64).min or v > np.iinfo(np.int64).max)
+                else v
+            )
+            for k, v in latex_values.items()
+        }
+    ],
     columns=["index"] + list(sorted(latex_values.keys())),
     subset="index",
 )

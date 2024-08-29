@@ -1,11 +1,13 @@
 # %%
 import math
 import re
-from typing import Any, Literal, Tuple, Union
+from typing import Any, Literal, Tuple, TypeVar, Union
 
 import numpy as np
 
 from gbmi.utils.instructions import InstructionCount, PerfCounter
+
+T = TypeVar("T")
 
 
 def get_float_type(v: Union[float, np.floating]) -> Literal[np.float32 | np.float64]:
@@ -44,6 +46,12 @@ def format_float_full_precision(f: float) -> str:
         return "inf" if f > 0 else "-inf"
     precision = get_precision(f)
     return f"{f:.{precision}f}".rstrip("0").rstrip(".")
+
+
+def format_float_full_precision_if_float(f: Union[T, float]) -> Union[str, T]:
+    if isinstance(f, (float, np.floating)):
+        return format_float_full_precision(f)
+    return f
 
 
 # # Test function to ensure enough precision

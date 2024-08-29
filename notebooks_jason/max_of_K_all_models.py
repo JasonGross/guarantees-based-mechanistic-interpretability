@@ -226,6 +226,7 @@ from gbmi.utils.instructions import (
 )
 from gbmi.utils.latex_export import (
     format_float_full_precision,
+    format_float_full_precision_if_float,
     latex_values_of_counter,
     latex_values_of_instruction_count,
     to_latex_defs,
@@ -316,6 +317,11 @@ LATEX_VALUES_DATATABLE_PATH = (
     / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-all-values.csv"
 )
 LATEX_VALUES_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_VALUES_REDUCED_DATATABLE_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values.csv"
+)
+LATEX_VALUES_REDUCED_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 LATEX_FIGURE_PATH = adjusted_file_path.with_suffix("") / "figures"
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
@@ -3360,8 +3366,29 @@ for k, d in latex_all_values_by_value.items():
     for seed, v in d.items():
         latex_all_values_by_seed[seed][k] = v
 
+all_keys = sorted(latex_all_values_by_value.keys())
+# for saving to HF
+update_csv_with_rows(
+    LATEX_VALUES_DATATABLE_PATH,
+    new_data=[
+        {"seed": seed}
+        | {
+            k: format_float_full_precision_if_float(
+                latex_all_values_by_seed[seed].get(k, "")
+            )
+            for k in all_keys
+        }
+        for seed in sorted(latex_all_values_by_seed.keys())
+    ],
+    columns=["seed"] + all_keys,
+)
+update_csv_with_rows(
+    LATEX_VALUES_REDUCED_DATATABLE_PATH,
+    new_data=[{"index": 0} | latex_values],
+    columns=["index"] + list(sorted(latex_values.keys())),
+    subset="index",
+)
 with open(LATEX_VALUES_DATATABLE_PATH, "w", newline="") as f:
-    all_keys = sorted(latex_all_values_by_value.keys())
     writer = csv.DictWriter(
         f, fieldnames=["seed"] + all_keys, quoting=csv.QUOTE_MINIMAL
     )

@@ -210,7 +210,13 @@ MULTIFUN_OF_10_SINGLE_CONFIG: Config[Multifun] = Config(
 )
 
 
-def MULTIFUN_OF_4_CONFIG(seed: int, funcs: FUNCS = ("max", "min")) -> Config[Multifun]:
+def MULTIFUN_OF_4_CONFIG(
+    seed: int,
+    funcs: FUNCS = ("max", "min"),
+    *,
+    n_heads: int = 2,
+    use_end_of_sequence: bool = False,
+) -> Config[Multifun]:
     return Config(
         experiment=Multifun(
             # act_fn=None,
@@ -221,12 +227,12 @@ def MULTIFUN_OF_4_CONFIG(seed: int, funcs: FUNCS = ("max", "min")) -> Config[Mul
             d_vocab=64,
             # device="cpu",
             # n_ctx= 4,
-            n_heads=1,
+            n_heads=n_heads,
             n_layers=1,
             normalization_type=None,
             zero_biases=True,
             use_log1p=True,
-            use_end_of_sequence=False,
+            use_end_of_sequence=use_end_of_sequence,
             funcs=funcs,
             seq_len=4,
             optimizer="AdamW",
@@ -242,10 +248,17 @@ def MULTIFUN_OF_4_CONFIG(seed: int, funcs: FUNCS = ("max", "min")) -> Config[Mul
 
 
 def MULTIFUN_OF_5_CONFIG(
-    seed: int, funcs: FUNCS = ("max", "min"), *, deterministic: bool = False
+    seed: int,
+    funcs: FUNCS = ("max", "min"),
+    *,
+    n_heads: int = 2,
+    use_end_of_sequence: bool = False,
+    deterministic: bool = False,
 ) -> Config[Multifun]:
     return set_params(
-        MULTIFUN_OF_4_CONFIG(seed, funcs=funcs),
+        MULTIFUN_OF_4_CONFIG(
+            seed, funcs=funcs, n_heads=n_heads, use_end_of_sequence=use_end_of_sequence
+        ),
         {("deterministic",): deterministic, ("experiment", "seq_len"): 5},
         post_init=True,
     )
@@ -256,10 +269,14 @@ def MULTIFUN_OF_10_CONFIG(
     d_vocab: int = 64,
     funcs: FUNCS = ("max", "min"),
     *,
+    n_heads: int = 2,
+    use_end_of_sequence: bool = False,
     deterministic: bool = False,
 ) -> Config[Multifun]:
     return set_params(
-        MULTIFUN_OF_4_CONFIG(seed, funcs=funcs),
+        MULTIFUN_OF_4_CONFIG(
+            seed, funcs=funcs, n_heads=n_heads, use_end_of_sequence=use_end_of_sequence
+        ),
         {
             ("deterministic",): deterministic,
             ("experiment", "seq_len"): 10,
@@ -274,10 +291,14 @@ def MULTIFUN_OF_20_CONFIG(
     d_vocab: int = 64,
     funcs: FUNCS = ("max", "min"),
     *,
+    n_heads: int = 2,
+    use_end_of_sequence: bool = False,
     deterministic: bool = False,
 ) -> Config[Multifun]:
     return set_params(
-        MULTIFUN_OF_4_CONFIG(seed, funcs=funcs),
+        MULTIFUN_OF_4_CONFIG(
+            seed, funcs=funcs, n_heads=n_heads, use_end_of_sequence=use_end_of_sequence
+        ),
         {
             ("deterministic",): deterministic,
             ("experiment", "seq_len"): 20,

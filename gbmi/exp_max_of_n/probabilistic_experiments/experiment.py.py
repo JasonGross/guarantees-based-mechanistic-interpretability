@@ -1,6 +1,6 @@
 # %%
-import transformer_lens
 import torch
+import transformer_lens
 
 model = transformer_lens.HookedTransformer.from_pretrained("gpt2-xl")
 

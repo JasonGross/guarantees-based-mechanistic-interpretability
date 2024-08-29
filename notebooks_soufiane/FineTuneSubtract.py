@@ -1,14 +1,17 @@
-# from gbmi.exp_modular_fine_tuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG
-# from gbmi.exp_modular_fine_tuning.train import MODULAR_ADDITION_113_PIZZA_CONFIG
-from gbmi.exp_modular_fine_tuning.train import ModularFineTuningTrainingWrapper
-from gbmi.exp_modular_fine_tuning.train import modular_addition_config
-from gbmi.model import train_or_load_model
-
-import torch
-import einops
-from torch import tensor
+# from gbmi.exp_modular_fine_tuning.train import  MODULAR_ADDITION_113_CLOCK_CONFIG
+# from gbmi.exp_modular_fine_tuning.train import  MODULAR_ADDITION_113_PIZZA_CONFIG
 from math import sqrt
+
+import einops
+import torch
 import tqdm
+from torch import tensor
+
+from gbmi.exp_modular_fine_tuning.train import (
+    ModularFineTuningTrainingWrapper,
+    modular_addition_config,
+)
+from gbmi.model import train_or_load_model
 
 device = "cuda"
 

@@ -1,13 +1,15 @@
 from dataclasses import dataclass
+
+import numpy as np
 import torch
 from torch import tensor
-import numpy as np
+
 from gbmi.utils import (
-    set_params,
+    cross_entropy,
     deep_getattr_or_item,
     deep_setattr_or_item,
     log_softmax,
-    cross_entropy,
+    set_params,
 )
 from gbmi.utils.testing import TestCase
 

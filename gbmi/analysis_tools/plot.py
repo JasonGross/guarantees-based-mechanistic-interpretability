@@ -1,46 +1,55 @@
 # %%
-from itertools import zip_longest
 import math
+from collections import defaultdict
 from functools import partial
+from itertools import zip_longest
 from pathlib import Path
 from typing import (
+    Any,
     Callable,
     Collection,
     Literal,
     Optional,
-    Tuple,
-    Union,
     Sequence,
-    Any,
+    Tuple,
     TypeVar,
+    Union,
 )
-from collections import defaultdict
+
 import imageio
-from matplotlib.colors import Colormap, hsv_to_rgb, rgb_to_hsv, to_hex, is_color_like
-import torch
-import numpy as np
-from torch import Tensor
-from jaxtyping import Float
-import matplotlib.pyplot as plt
-import matplotlib.figure
 import matplotlib as mpl
 import matplotlib.axes
 import matplotlib.axes._axes
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-from cycler import cycler
+import matplotlib.figure
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-from matplotlib.colors import LinearSegmentedColormap, ListedColormap
-import seaborn as sns
-import plotly.graph_objects as go
 import plotly.express as px
-from tqdm import tqdm
+import plotly.graph_objects as go
+import seaborn as sns
+import torch
+from cycler import cycler
+from jaxtyping import Float
+from matplotlib.colors import (
+    Colormap,
+    LinearSegmentedColormap,
+    ListedColormap,
+    hsv_to_rgb,
+    is_color_like,
+    rgb_to_hsv,
+    to_hex,
+)
 from scipy.optimize import curve_fit
-from transformer_lens import HookedTransformer, utils as utils
+from torch import Tensor
+from tqdm import tqdm
+from transformer_lens import HookedTransformer
+from transformer_lens import utils as utils
 
 import gbmi.analysis_tools
 from gbmi.analysis_tools.fit import linear_func
-from gbmi.analysis_tools.utils import pm_range, pm_mean_std, pm_round
+from gbmi.analysis_tools.utils import pm_mean_std, pm_range, pm_round
 from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 
 Colorscale = Union[str, Collection[Collection[Union[float, str]]]]

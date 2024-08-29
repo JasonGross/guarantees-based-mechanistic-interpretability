@@ -1,7 +1,8 @@
 # %%
 from tqdm.auto import tqdm
-from gbmi.exp_modular_arithmetic.train import train_or_load_model, PIZZA_CONFIG
+
 from gbmi.exp_modular_arithmetic import SEEDS
+from gbmi.exp_modular_arithmetic.train import PIZZA_CONFIG, train_or_load_model
 from gbmi.utils import set_params
 
 with tqdm(SEEDS, desc="Seed") as pbar:
@@ -16,9 +17,9 @@ with tqdm(SEEDS, desc="Seed") as pbar:
         )  # , force="train"
 
 # # %%
-# from pathlib import Path
-# import torch
-# import shutil
+# from pathlib import  Path
+# import  torch
+# import  shutil
 
 # base = Path(__file__).parent
 # wandbs = (base / "artifacts").glob("*/*.pth")

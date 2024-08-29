@@ -1,14 +1,15 @@
 from __future__ import annotations
-from torch import Tensor
-import torch
-from jaxtyping import Float
-from typing import TypeVar, Union, Optional, overload
+
+from typing import Optional, TypeVar, Union, overload
+
 import numpy as np
 import plotly.express as px
+import torch
+from jaxtyping import Float
+from torch import Tensor
 
-# from transformer_lens import FactoredMatrix
+# from transformer_lens import  FactoredMatrix
 from gbmi.utils.FactoredMatrix import FactoredMatrix
-
 
 T = TypeVar("T")
 

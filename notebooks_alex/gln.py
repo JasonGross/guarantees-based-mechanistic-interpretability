@@ -1,30 +1,34 @@
-from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG
-from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_PIZZA_CONFIG
-from gbmi.exp_group_finetuning.train import DIHEDRAL_100_CLOCK_CONFIG
-from gbmi.exp_group_finetuning.train import DIHEDRAL_100_PIZZA_CONFIG
-from gbmi.exp_group_finetuning.train import GL2_P_CLOCK_CONFIG
+from math import sqrt
+
+import einops
+import matplotlib.animation as animation
+import matplotlib.pyplot as plt
+import pandas as pd
+import plotly.express as px
+import plotly.io as pio
+import torch
+import tqdm
 import transformer_lens
 import transformer_lens.utils as utils
-import plotly.express as px
+from matplotlib import rc
+from torch import tensor
+
 from gbmi.exp_group_finetuning.groups import (
-    Group,
-    GroupDict,
     CyclicGroup,
     DihedralGroup,
-    PermutedCyclicGroup,
     GLN_p,
+    Group,
+    GroupDict,
+    PermutedCyclicGroup,
 )
-import plotly.io as pio
-from matplotlib import rc
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+from gbmi.exp_group_finetuning.train import (
+    DIHEDRAL_100_CLOCK_CONFIG,
+    DIHEDRAL_100_PIZZA_CONFIG,
+    GL2_P_CLOCK_CONFIG,
+    MODULAR_ADDITION_113_CLOCK_CONFIG,
+    MODULAR_ADDITION_113_PIZZA_CONFIG,
+)
 from gbmi.model import train_or_load_model
-import torch
-from math import sqrt
-from torch import tensor
-import einops
-import tqdm
-import pandas as pd
 
 
 def imshow(tensor, renderer=None, xaxis="", yaxis="", **kwargs):

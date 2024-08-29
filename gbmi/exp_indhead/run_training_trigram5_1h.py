@@ -1,5 +1,6 @@
 # %%
 import torch
+
 from gbmi.exp_indhead.train import TRIGRAM4, main
 from gbmi.utils import set_params
 

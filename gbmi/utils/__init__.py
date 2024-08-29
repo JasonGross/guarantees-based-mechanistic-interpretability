@@ -27,11 +27,10 @@ from typing import (
     TypeVar,
     Union,
 )
-from jaxtyping import Integer
 
 import numpy as np
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Integer
 from lightning import Callback
 from numpy.random import Generator
 from torch import Tensor

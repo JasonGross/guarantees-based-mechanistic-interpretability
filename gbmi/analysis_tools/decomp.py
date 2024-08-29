@@ -1,27 +1,28 @@
 from typing import (
+    Any,
+    Callable,
+    List,
     Literal,
+    Optional,
+    Sequence,
     Tuple,
     Union,
     overload,
-    Sequence,
-    Optional,
-    Any,
-    List,
-    Callable,
 )
+
+import matplotlib.figure
+import matplotlib.pyplot as plt  # To use the colormap
 import numpy as np
+import plotly.graph_objs as go
 import torch
-from sklearn.manifold import TSNE
-from torch import Tensor
 from jaxtyping import Float, Shaped
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
-from transformer_lens import utils as utils
-import numpy as np
 from sklearn.decomposition import PCA
-import plotly.graph_objs as go
-import matplotlib.pyplot as plt  # To use the colormap
-import matplotlib.figure
+from sklearn.manifold import TSNE
+from torch import Tensor
+from transformer_lens import utils as utils
+
 import gbmi.utils
 from gbmi.analysis_tools.plot import Colorscale, colorscale_to_cmap
 

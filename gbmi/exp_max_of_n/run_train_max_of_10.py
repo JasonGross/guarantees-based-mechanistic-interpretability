@@ -1,5 +1,6 @@
 from tqdm.auto import tqdm
-from gbmi.exp_max_of_n.train import train_or_load_model, SEEDS, MAX_OF_10_CONFIG
+
+from gbmi.exp_max_of_n.train import MAX_OF_10_CONFIG, SEEDS, train_or_load_model
 
 for d_vocab_out in tqdm((64, 128), desc="d_vocab"):
     with tqdm(SEEDS, desc="Seed", leave=False) as pbar:

@@ -1,24 +1,18 @@
 # %%
-from gbmi.exp_indhead.train import ABCAB8_1HMLP
-from torch import where
-from gbmi.model import train_or_load_model
-import torch
-from torch import tensor
-from math import *
-import plotly.express as px
-from gbmi.utils.sequences import generate_all_sequences
 import copy
 from inspect import signature
-import plotly.express as px
-from gbmi import utils
-from gbmi.exp_indhead.train import ABCAB8_1H
-from torch import where
-from gbmi.model import train_or_load_model
-import torch
-import einops
-from gbmi.utils import ein
-from torch import tensor
 from math import *
+
+import einops
+import plotly.express as px
+import torch
+from torch import tensor, where
+
+from gbmi import utils
+from gbmi.exp_indhead.train import ABCAB8_1H, ABCAB8_1HMLP
+from gbmi.model import train_or_load_model
+from gbmi.utils import ein
+from gbmi.utils.sequences import generate_all_sequences
 
 
 def show(matrix):

@@ -1,36 +1,35 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from dataclasses import field
 
 import sys
-from typing import Any, Dict, List, Optional, cast, Literal
-from gbmi import utils
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional, cast
 
 import numpy as np
+import simple_parsing
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset, TensorDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-import simple_parsing
 
+from gbmi import utils
 from gbmi.model import (
-    TrainingWrapper,
     Config,
-    ExperimentConfig,
-    add_HookedTransformerConfig_arguments,
-    train_or_load_model,
     DataModule,
+    ExperimentConfig,
+    TrainingWrapper,
     add_force_argument,
+    add_HookedTransformerConfig_arguments,
     add_no_save_argument,
+    train_or_load_model,
     update_HookedTransformerConfig_from_args,
 )
 from gbmi.utils import (
-    shuffle_data,
-    default_device,
     SingleTensorDataset,
+    default_device,
     reseed,
     set_params,
+    shuffle_data,
 )
 from gbmi.utils.sequences import generate_all_sequences
 

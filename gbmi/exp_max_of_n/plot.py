@@ -1,41 +1,42 @@
-from typing import Optional, Tuple, Literal, Union
+import math
 import re
 from functools import partial, reduce
-import numpy as np
-import torch
-from torch import Tensor
-import math
-from jaxtyping import Float, Integer
-import scipy.stats as stats
-from cycler import cycler
-from transformer_lens import HookedTransformer
-import plotly.express as px
-import plotly.graph_objects as go
+from typing import Literal, Optional, Tuple, Union
+
+import matplotlib.cm as cm
 import matplotlib.figure
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import scipy.stats as stats
+import torch
+from cycler import cycler
+from jaxtyping import Float, Integer
 from matplotlib.ticker import MaxNLocator
-from gbmi.utils import shuffle_tensor
-from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
-from gbmi.utils.dataclass import enumerate_dataclass_values
+from torch import Tensor
+from transformer_lens import HookedTransformer
+
+import gbmi.exp_max_of_n.verification.quadratic as quadratic
+from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
+from gbmi.analysis_tools.plot import (
+    Colorscale,
+    colorscale_to_cmap,
+    hist,
+    imshow,
+    line,
+    scatter,
+    weighted_histogram,
+)
+from gbmi.analysis_tools.utils import data_summary, pm_mean_std, pm_round
 from gbmi.exp_max_of_n.analysis import (
     find_second_singular_contributions,
     find_size_and_query_direction,
 )
-from gbmi.analysis_tools.plot import (
-    Colorscale,
-    weighted_histogram,
-    colorscale_to_cmap,
-    imshow,
-    line,
-    scatter,
-)
+from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
+from gbmi.utils import shuffle_tensor
+from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.images import trim_plotly_figure
-from gbmi.analysis_tools.utils import pm_round, pm_mean_std, data_summary
-from gbmi.analysis_tools.plot import hist
-from gbmi.analysis_tools.decomp import analyze_svd, split_svd_contributions
-import gbmi.exp_max_of_n.verification.quadratic as quadratic
-from gbmi.exp_max_of_n.analysis import find_size_and_query_direction
 from gbmi.verification_tools.l1h1 import all_EQKE, all_EVOU, all_PVOU
 
 

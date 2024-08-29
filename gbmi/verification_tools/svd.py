@@ -1,4 +1,5 @@
-from typing import Union, Sequence, Tuple
+from typing import Sequence, Tuple, Union
+
 import torch
 from jaxtyping import Float
 from torch import Tensor

@@ -1,11 +1,11 @@
 # %%
+import plotly.express as px
 import torch
 
 from gbmi.exp_max_of_n.train import MAX_OF_10_SINGLE_CONFIG
 from gbmi.model import train_or_load_model
 from gbmi.utils import ein
 from gbmi.utils.testing import TestCase
-import plotly.express as px
 
 
 def show(matrix):

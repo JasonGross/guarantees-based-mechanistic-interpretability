@@ -1,19 +1,20 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 from gbmi.model import (
-    TrainingWrapper,
     Config,
-    ExperimentConfig,
-    train_or_load_model,
     DataModule,
+    ExperimentConfig,
+    TrainingWrapper,
+    train_or_load_model,
 )
 from gbmi.utils import reseed, set_params
 

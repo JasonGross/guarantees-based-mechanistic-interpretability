@@ -1,15 +1,16 @@
 import math
-from typing import Optional, Union
 from functools import cache
+from typing import Optional, Union
+
 import numpy as np
 import torch
-from torch import Tensor
 from fancy_einsum import einsum
-from transformer_lens import HookedTransformer
 from jaxtyping import Float
+from torch import Tensor
+from transformer_lens import HookedTransformer
 
-from gbmi.verification_tools.general import EU_PU
 import gbmi.utils.ein as ein
+from gbmi.verification_tools.general import EU_PU
 
 
 @torch.no_grad()

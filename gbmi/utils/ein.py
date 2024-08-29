@@ -6,13 +6,13 @@ import pickle
 from contextlib import contextmanager
 from functools import partial
 from inspect import signature
-from typing import Callable, Optional, List, Union, TypeVar, Generic, Set, Dict
+from typing import Callable, Dict, Generic, List, Optional, Set, TypeVar, Union
 
 import dill
-
 import torch
-from functorch.dim import dims, Dim
+from functorch.dim import Dim
 from functorch.dim import Tensor as DTensor
+from functorch.dim import dims
 from torch import Tensor
 
 TensorLike = Union[Tensor, DTensor]

@@ -33,9 +33,8 @@ from functools import lru_cache
 from typing import List, Tuple, Union, overload
 
 import torch
-from jaxtyping import Float
-
 import transformer_lens.utils as utils
+from jaxtyping import Float
 
 
 class FactoredMatrix:

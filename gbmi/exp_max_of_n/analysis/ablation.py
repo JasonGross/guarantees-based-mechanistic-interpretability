@@ -1,15 +1,17 @@
-from typing import Union, Optional, Tuple, Sequence
+import time
 from collections import defaultdict
 from dataclasses import dataclass
-import time
-import torch
+from typing import Optional, Sequence, Tuple, Union
+
 import numpy as np
+import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
-from gbmi.utils import ein
+
 from gbmi.analysis_tools.utils import data_summary
+from gbmi.utils import ein
 from gbmi.utils.sequences import generate_all_sequences
 
 

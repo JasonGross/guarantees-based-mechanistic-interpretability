@@ -1,17 +1,15 @@
 # %%
-import torch
-from gbmi.exp_max_of_n.train import MAX_OF_4_CONFIG
-import numpy as np
-from gbmi.exp_max_of_n.train import MAX_OF_10_CONFIG
-
-from gbmi.exp_max_of_n.train import MAX_OF_20_CONFIG
-
-from gbmi.model import train_or_load_model
-from math import *
-import scipy.misc
-import plotly.express as px
-from scipy.stats import binom
 import math
+from math import *
+
+import numpy as np
+import plotly.express as px
+import scipy.misc
+import torch
+from scipy.stats import binom
+
+from gbmi.exp_max_of_n.train import MAX_OF_4_CONFIG, MAX_OF_10_CONFIG, MAX_OF_20_CONFIG
+from gbmi.model import train_or_load_model
 
 rundata, model = train_or_load_model(MAX_OF_4_CONFIG(123))
 

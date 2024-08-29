@@ -1,47 +1,35 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from dataclasses import field
-from functools import cache
 
 import sys
-from typing import (
-    Any,
-    Callable,
-    List,
-    Optional,
-    Tuple,
-    Union,
-    Literal,
-)
-from gbmi import utils
+from dataclasses import dataclass, field
+from functools import cache
+from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 
 import numpy as np
-import torch
-from jaxtyping import Float, Integer, Bool
-from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader
-import torch.nn.functional as F
-from transformer_lens import HookedTransformer, HookedTransformerConfig
 import simple_parsing
+import torch
+import torch.nn.functional as F
+from jaxtyping import Bool, Float, Integer
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset, TensorDataset
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+
+import gbmi.utils as utils
+from gbmi import utils
 from gbmi.model import (
-    TrainingWrapper,
     Config,
-    ExperimentConfig,
-    train_or_load_model,
     DataModule,
+    ExperimentConfig,
+    TrainingWrapper,
     add_force_argument,
     add_no_save_argument,
+    train_or_load_model,
 )
 from gbmi.training_tools.logging import ModelMatrixLoggingOptions
-from gbmi.utils import (
-    shuffle_data,
-    reseed,
-    zero_biases_of_HookedTransformer,
-)
+from gbmi.utils import reseed, shuffle_data, zero_biases_of_HookedTransformer
 from gbmi.utils.dataclass import DataclassMapping
 from gbmi.utils.hashing import _EXCLUDE
 from gbmi.utils.sequences import generate_all_sequences
-import gbmi.utils as utils
 
 
 @dataclass

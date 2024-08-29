@@ -1,11 +1,12 @@
 # %%
 from tqdm.auto import tqdm
-from gbmi.exp_modular_arithmetic.train import (
-    train_or_load_model,
-    PIZZA_CONFIG,
-    CLOCK_CONFIG,
-)
+
 from gbmi.exp_modular_arithmetic import SEEDS
+from gbmi.exp_modular_arithmetic.train import (
+    CLOCK_CONFIG,
+    PIZZA_CONFIG,
+    train_or_load_model,
+)
 from gbmi.utils import set_params
 
 with tqdm(SEEDS, desc="Seed", position=0, leave=False) as seed_pbar:

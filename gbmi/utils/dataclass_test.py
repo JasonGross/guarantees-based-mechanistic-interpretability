@@ -1,7 +1,8 @@
 from dataclasses import dataclass, fields
-from typing import Union, Literal
-from gbmi.utils.testing import TestCase
+from typing import Literal, Union
+
 from gbmi.utils.dataclass import enumerate_dataclass_values, get_values_of_type
+from gbmi.utils.testing import TestCase
 
 
 class ConfigTest(TestCase):

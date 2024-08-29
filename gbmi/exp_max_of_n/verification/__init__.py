@@ -1,32 +1,33 @@
-# N.B. DO NOT import annotations from __future__ or else enumerate_dataclass_values will break on LargestWrongLogitQuadraticConfig
+# N.B. DO NOT import  annotations from __future__ or else enumerate_dataclass_values will break on LargestWrongLogitQuadraticConfig
 import dataclasses
-from typing import ClassVar, Literal, Tuple, Union, Dict, Any, Optional
 from enum import Enum
+from functools import cache, reduce
+from typing import Any, ClassVar, Dict, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from functools import reduce, cache
 from transformer_lens import (
-    HookedTransformer,
+    HookedTransformer,  # , FactoredMatrix
     HookedTransformerConfig,
-)  # , FactoredMatrix
-from gbmi.utils.FactoredMatrix import FactoredMatrix
+)
 
-from gbmi.utils import dropnan
 from gbmi.analysis_tools.plot import summarize
 from gbmi.analysis_tools.utils import make_local_tqdm
-from gbmi.utils.sequences import generate_all_sequences_for_model
-from gbmi.utils.sequences import generate_all_sequences
-from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU, all_attention_scores
+from gbmi.utils import bits_of_type, dropnan
+from gbmi.utils.dataclass import enumerate_dataclass_values
+from gbmi.utils.FactoredMatrix import FactoredMatrix
+from gbmi.utils.sequences import (
+    generate_all_sequences,
+    generate_all_sequences_for_model,
+)
 from gbmi.verification_tools.decomp import (
+    bound_max_row_diff_by_SVD,
     max_row_diffs_per_dim,
     max_row_diffs_per_dim_no_multipy,
-    bound_max_row_diff_by_SVD,
 )
-from gbmi.utils.dataclass import enumerate_dataclass_values
-from gbmi.utils import bits_of_type
+from gbmi.verification_tools.l1h1 import all_attention_scores, all_EVOU, all_PVOU
 
 
 @torch.no_grad()

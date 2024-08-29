@@ -1,8 +1,5 @@
 # %%
-from gbmi.exp_indhead.train import (
-    ABCAB6_SMALL_HIDDEN_1H,
-    main,
-)
+from gbmi.exp_indhead.train import ABCAB6_SMALL_HIDDEN_1H, main
 from gbmi.model import train_or_load_model
 
 # %%

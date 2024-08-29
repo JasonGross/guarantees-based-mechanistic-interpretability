@@ -16,19 +16,18 @@ will have the same hash if they have the same attribute/value pairs.
 
 from __future__ import annotations
 
+import base64
 import dataclasses
 import datetime
 import hashlib
 import json
 from collections.abc import Collection
-from typing import Any, Callable, Mapping, Optional, Union
-from typing import Dict
 from functools import partial
-import base64
+from typing import Any, Callable, Dict, Mapping, Optional, Union
 
+import numpy
 import torch
 from transformer_lens import HookedTransformer
-import numpy
 
 # Implemented for https://github.com/lemon24/reader/issues/179
 

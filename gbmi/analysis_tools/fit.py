@@ -1,6 +1,6 @@
 import itertools
 from inspect import signature
-from typing import Optional, Callable, List, Tuple, Iterable
+from typing import Callable, Iterable, List, Optional, Tuple
 
 import numpy as np
 import plotly.colors

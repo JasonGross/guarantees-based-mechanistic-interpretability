@@ -1,26 +1,24 @@
 # %%
-from gbmi import utils
-
-from gbmi.exp_indhead.train import ABCAB8_1H
-from torch import where
-from gbmi.model import train_or_load_model
-import torch
-import einops
-from torch import tensor
-from math import *
-
-# from tqdm.auto import tqdm
-from tqdm import tqdm
-import plotly.express as px
-from gbmi.utils.sequences import generate_all_sequences
-import pandas as pd
-from gbmi.utils import ein
 from functools import partial
 from inspect import signature
-from typing import Callable, Optional, List
-from torch import Tensor
+from math import *
+from typing import Callable, List, Optional
+
+import einops
 import numpy as np
+import pandas as pd
 import plotly.express as px
+import torch
+from torch import Tensor, tensor, where
+
+# from tqdm.auto import  tqdm
+from tqdm import tqdm
+
+from gbmi import utils
+from gbmi.exp_indhead.train import ABCAB8_1H
+from gbmi.model import train_or_load_model
+from gbmi.utils import ein
+from gbmi.utils.sequences import generate_all_sequences
 
 
 def armin(

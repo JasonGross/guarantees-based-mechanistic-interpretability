@@ -1,54 +1,41 @@
 from __future__ import annotations
-from functools import partial, update_wrapper
-from dataclasses import dataclass
-from dataclasses import field
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Union,
-    Literal,
-    Tuple,
-    Iterable,
-)
+
 import sys
-import torch
-from jaxtyping import Float, Integer, Bool
-from torch import Tensor
+from dataclasses import dataclass, field
+from functools import partial, update_wrapper
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
+
 import simple_parsing
-from torch.utils.data import Dataset, TensorDataset, DataLoader
+import torch
+from jaxtyping import Bool, Float, Integer
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
+
 from gbmi.exp_indhead.data_utils import (
-    ExactBigramTask,
-    ExhaustiveTask,
+    ABCABCEnglishTask,
+    ABCABCExhaustiveTask,
+    ABCBCEnglishTask,
     ABCBCTask,
     EnglishExactNgramTask,
-    ABCBCEnglishTask,
-    ABCABCExhaustiveTask,
-    ABCABCEnglishTask,
+    ExactBigramTask,
+    ExhaustiveTask,
     calculate_batch_probabilities,
     cat_bos_token,
     cat_bos_uniform_labels,
 )
 from gbmi.model import (
-    TrainingWrapper,
     Config,
-    ExperimentConfig,
     DataModule,
-    train_or_load_model,
+    ExperimentConfig,
+    TrainingWrapper,
     add_force_argument,
     add_no_save_argument,
+    train_or_load_model,
 )
-from gbmi.utils import (
-    reseed,
-    set_params,
-)
-
+from gbmi.training_tools.logging import ModelMatrixLoggingOptions
+from gbmi.utils import reseed, set_params
 from gbmi.utils.hashing import _EXCLUDE
-from gbmi.training_tools.logging import (
-    ModelMatrixLoggingOptions,
-)
 
 
 @dataclass

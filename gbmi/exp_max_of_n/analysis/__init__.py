@@ -1,32 +1,33 @@
-from typing import Literal, Tuple, Optional, Iterable
+from typing import Iterable, Literal, Optional, Tuple
 
 import numpy as np
+import seaborn as sns
 import torch
 from matplotlib import pyplot as plt
-import seaborn as sns
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.optimize import curve_fit
-from transformer_lens import HookedTransformer, utils as utils
+from transformer_lens import HookedTransformer
+from transformer_lens import utils as utils
 
 import gbmi.analysis_tools
-from gbmi.analysis_tools.decomp import analyze_svd
 import gbmi.utils
 from gbmi.analysis_tools import plot
-from gbmi.analysis_tools.utils import data_summary
+from gbmi.analysis_tools.decomp import analyze_svd
 from gbmi.analysis_tools.fit import (
     cubic_func,
-    quintic_func,
+    inv_sigmoid_func,
     quadratic_func,
     quartic_func,
+    quintic_func,
     show_fits,
     sigmoid_func,
-    inv_sigmoid_func,
 )
 from gbmi.analysis_tools.plot import Colorscale, colorscale_to_cmap, imshow, line
+from gbmi.analysis_tools.utils import data_summary
 from gbmi.verification_tools.decomp import factor_contribution
-from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 from gbmi.verification_tools.general import EU_PU
+from gbmi.verification_tools.l1h1 import all_EVOU, all_PVOU
 
 
 @torch.no_grad()

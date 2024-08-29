@@ -1,2 +1,3 @@
-from gbmi.utils import testing
 from prettyprinter import *
+
+from gbmi.utils import testing

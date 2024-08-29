@@ -1,21 +1,24 @@
-from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG_EPOCH_500
-from gbmi.exp_group_finetuning.train import modular_addition_config
+from math import sqrt
+
+import einops
+import torch
+import tqdm
 import transformer_lens
 import transformer_lens.utils as utils
+from torch import tensor
 
 from gbmi.exp_group_finetuning.groups import (
-    Group,
-    GroupDict,
     CyclicGroup,
     DihedralGroup,
+    Group,
+    GroupDict,
     PermutedCyclicGroup,
 )
+from gbmi.exp_group_finetuning.train import (
+    MODULAR_ADDITION_113_CLOCK_CONFIG_EPOCH_500,
+    modular_addition_config,
+)
 from gbmi.model import train_or_load_model
-import torch
-from math import sqrt
-from torch import tensor
-import einops
-import tqdm
 
 
 def loss_fn(logits, labels, softmax=True):

@@ -1,24 +1,26 @@
 # %%
-from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_CLOCK_CONFIG
-from gbmi.exp_group_finetuning.train import MODULAR_ADDITION_113_PIZZA_CONFIG
-from gbmi.exp_group_finetuning.train import DIHEDRAL_100_CLOCK_CONFIG
-from gbmi.exp_group_finetuning.train import DIHEDRAL_100_PIZZA_CONFIG
-from gbmi.exp_group_finetuning.train import GL2_P_CLOCK_CONFIG
+import matplotlib.animation as animation
+import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.io as pio
 import transformer_lens
 import transformer_lens.utils as utils
-import plotly.express as px
+from matplotlib import rc
+
 from gbmi.exp_group_finetuning.groups import (
-    Group,
-    GroupDict,
     CyclicGroup,
     DihedralGroup,
+    Group,
+    GroupDict,
     PermutedCyclicGroup,
 )
-import plotly.io as pio
-from matplotlib import rc
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-
+from gbmi.exp_group_finetuning.train import (
+    DIHEDRAL_100_CLOCK_CONFIG,
+    DIHEDRAL_100_PIZZA_CONFIG,
+    GL2_P_CLOCK_CONFIG,
+    MODULAR_ADDITION_113_CLOCK_CONFIG,
+    MODULAR_ADDITION_113_PIZZA_CONFIG,
+)
 
 rc("animation", html="jshtml")
 fig, ax = plt.subplots()
@@ -26,12 +28,14 @@ pio.renderers.default = "notebook_connected"
 pio.templates["plotly"].layout.xaxis.title.font.size = 20
 pio.templates["plotly"].layout.yaxis.title.font.size = 20
 pio.templates["plotly"].layout.title.font.size = 30
-from gbmi.model import train_or_load_model
-import torch
 from math import sqrt
-from torch import tensor
+
 import einops
+import torch
 import tqdm
+from torch import tensor
+
+from gbmi.model import train_or_load_model
 
 
 def imshow(tensor, renderer=None, xaxis="", yaxis="", **kwargs):

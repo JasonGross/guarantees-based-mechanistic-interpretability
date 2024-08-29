@@ -1,4 +1,4 @@
-from gbmi.exp_modular_arithmetic.train import train_or_load_model, PIZZA_CONFIG
+from gbmi.exp_modular_arithmetic.train import PIZZA_CONFIG, train_or_load_model
 from gbmi.utils import set_params
 
 runtime, model = train_or_load_model(

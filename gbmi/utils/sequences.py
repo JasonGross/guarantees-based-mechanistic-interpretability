@@ -1,15 +1,14 @@
+import itertools
 import math
 from typing import Callable, Generic, TypeVar, Union, overload
+
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
 from torch.utils.data import Dataset
-from gbmi.utils.instructions import InstructionCount
-
-
-import itertools
-
 from transformer_lens import HookedTransformer
+
+from gbmi.utils.instructions import InstructionCount
 
 T = TypeVar("T")
 

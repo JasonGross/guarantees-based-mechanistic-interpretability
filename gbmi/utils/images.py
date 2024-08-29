@@ -1,11 +1,12 @@
-from typing import Union, Optional, Sequence
-import shutil
-import tempfile
-import subprocess
-from pathlib import Path
-from PIL import Image, ImageChops
 import io
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Optional, Sequence, Union
+
 import plotly.graph_objects as go
+from PIL import Image, ImageChops
 from tqdm.auto import tqdm
 
 

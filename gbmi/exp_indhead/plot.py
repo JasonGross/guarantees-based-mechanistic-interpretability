@@ -1,10 +1,11 @@
-from typing import Optional
-import torch
-from torch import Tensor
 import math
-from jaxtyping import Float
-from transformer_lens import HookedTransformer
+from typing import Optional
+
 import plotly.express as px
+import torch
+from jaxtyping import Float
+from torch import Tensor
+from transformer_lens import HookedTransformer
 
 from gbmi.exp_max_of_n.analysis import find_size_and_query_direction_no_figure
 

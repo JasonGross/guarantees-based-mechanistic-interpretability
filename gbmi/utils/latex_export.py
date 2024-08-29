@@ -1,12 +1,11 @@
 # %%
-import re
 import math
-from typing import Any, Union, Tuple, Literal
+import re
+from typing import Any, Literal, Tuple, Union
+
 import numpy as np
-from gbmi.utils.instructions import (
-    InstructionCount,
-    PerfCounter,
-)
+
+from gbmi.utils.instructions import InstructionCount, PerfCounter
 
 
 def get_float_type(v: Union[float, np.floating]) -> Literal[np.float32 | np.float64]:

@@ -1,23 +1,24 @@
 import math
 import time
-from typing import Callable, Optional, Tuple, Union, overload
 from functools import reduce
+from typing import Callable, Optional, Tuple, Union, overload
+
 import torch
 from jaxtyping import Float
 from torch import Tensor
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
+from gbmi.utils.instructions import (
+    CountTensor,
+    InstructionCount,
+    PerfCollector,
+    PerfCounter,
+)
 from gbmi.utils.sequences import count_sequences, count_sequences_instructions
 from gbmi.verification_tools.general import EU_PU
 from gbmi.verification_tools.l1h1 import all_EQKE, all_EQKP, all_EVOU, all_PVOU
 from gbmi.verification_tools.utils import complexity_of
-from gbmi.utils.instructions import (
-    InstructionCount,
-    CountTensor,
-    PerfCounter,
-    PerfCollector,
-)
 
 
 @torch.no_grad()

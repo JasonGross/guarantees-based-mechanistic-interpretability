@@ -1,11 +1,12 @@
 # %%
+from collections import Counter
 from functools import cache
+
 import nltk
 import nltk.corpus
-from nltk import ngrams
-from collections import Counter
-from nltk.corpus.reader.api import CorpusReader
 import numpy as np
+from nltk import ngrams
+from nltk.corpus.reader.api import CorpusReader
 
 DEFAULT_CORPUS = "webtext"
 

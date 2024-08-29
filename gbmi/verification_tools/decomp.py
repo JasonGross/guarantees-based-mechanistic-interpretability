@@ -6,7 +6,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
-# from transformer_lens import FactoredMatrix
+# from transformer_lens import  FactoredMatrix
 from gbmi.utils.FactoredMatrix import FactoredMatrix
 from gbmi.utils.lowrank import LowRankTensor
 

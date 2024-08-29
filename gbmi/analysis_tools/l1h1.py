@@ -1,6 +1,7 @@
 import torch
 from plotly import express as px
-from transformer_lens import HookedTransformer, utils as utils
+from transformer_lens import HookedTransformer
+from transformer_lens import utils as utils
 
 from gbmi.analysis_tools.decomp import analyze_svd
 from gbmi.analysis_tools.plot import imshow, line

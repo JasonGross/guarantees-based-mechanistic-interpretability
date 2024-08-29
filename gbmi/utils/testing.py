@@ -1,6 +1,7 @@
 import sys
-import expecttest
 from unittest.util import safe_repr
+
+import expecttest
 import torch
 from prettyprinter import install_extras, pformat
 

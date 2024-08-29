@@ -1,5 +1,6 @@
 from tqdm.auto import tqdm
-from gbmi.exp_max_of_n.train import train_or_load_model, SEEDS, MAX_OF_5_CONFIG
+
+from gbmi.exp_max_of_n.train import MAX_OF_5_CONFIG, SEEDS, train_or_load_model
 
 with tqdm(SEEDS, desc="Seed") as pbar:
     for seed in pbar:

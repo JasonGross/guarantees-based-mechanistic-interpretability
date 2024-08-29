@@ -1,12 +1,14 @@
 # %%
-from gbmi.exp_modular_arithmetic.train import train_or_load_model, CLOCK_CONFIG
+from gbmi.exp_modular_arithmetic.train import CLOCK_CONFIG, train_or_load_model
 
 runtime, model = train_or_load_model(CLOCK_CONFIG, force="load")
+from math import *
+
+import einops
+
 # %%
 import plotly.express as px
 import torch
-import einops
-from math import *
 
 n_ctx = 2
 

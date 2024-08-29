@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-from typing import Optional, Sequence
 import argparse
+from typing import Optional, Sequence
 
 
 def parse_arguments(argv: Optional[Sequence[str]] = None):

@@ -1,56 +1,55 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from dataclasses import field
-from collections.abc import Callable
 
-from gbmi.exp_group_finetuning.groups import (
-    Group,
-    GroupDict,
-    CyclicGroup,
-    DihedralGroup,
-    GLN_p,
-)
+import argparse
 import sys
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import (
     Any,
     Dict,
-    List,
-    Optional,
-    cast,
-    Literal,
     Generic,
-    TypeVar,
-    Type,
+    List,
+    Literal,
+    Optional,
     Tuple,
+    Type,
+    TypeVar,
+    cast,
 )
-from gbmi import utils
 
 import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from torch.utils.data import Dataset, TensorDataset, DataLoader, IterableDataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset, TensorDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-import argparse
 
+from gbmi import utils
+from gbmi.exp_group_finetuning.groups import (
+    CyclicGroup,
+    DihedralGroup,
+    GLN_p,
+    Group,
+    GroupDict,
+)
 from gbmi.model import (
-    TrainingWrapper,
     Config,
-    ExperimentConfig,
-    add_HookedTransformerConfig_arguments,
-    train_or_load_model,
     DataModule,
+    ExperimentConfig,
+    TrainingWrapper,
     add_force_argument,
+    add_HookedTransformerConfig_arguments,
     add_no_save_argument,
+    train_or_load_model,
     update_HookedTransformerConfig_from_args,
 )
 from gbmi.utils import (
-    shuffle_data,
-    default_device,
     SingleTensorDataset,
+    default_device,
     reseed,
     set_params,
+    shuffle_data,
 )
 from gbmi.utils.sequences import generate_all_sequences
 

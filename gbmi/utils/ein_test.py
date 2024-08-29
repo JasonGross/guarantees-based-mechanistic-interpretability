@@ -1,9 +1,11 @@
-import os, sys
+import os
+import sys
+
 import functorch
 import torch
 
-from gbmi.utils.testing import TestCase
 from gbmi.utils import ein
+from gbmi.utils.testing import TestCase
 
 
 class EinTest(TestCase):

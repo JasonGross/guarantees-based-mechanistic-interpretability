@@ -2,44 +2,43 @@
 
 # %%
 from __future__ import annotations
-from dataclasses import dataclass, field
-from contextlib import contextmanager
-from ctypes import (
-    c_uint64,
-)
+
 from collections import OrderedDict
-from functools import partial, cache, cached_property
-from itertools import zip_longest
-from types import NoneType
+from contextlib import contextmanager
 from ctypes import c_uint64
+from dataclasses import dataclass, field
+from functools import cache, cached_property, partial
+from itertools import zip_longest
+from types import EllipsisType, NoneType
 from typing import (
-    cast,
-    Iterable,
-    Sequence,
-    Literal,
-    Optional,
-    NamedTuple,
-    SupportsIndex,
-    Union,
-    Tuple,
-    Collection,
-    Callable,
-    Iterator,
     Any,
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Literal,
+    NamedTuple,
+    Optional,
     Protocol,
+    Sequence,
+    SupportsIndex,
+    Tuple,
     TypeVar,
+    Union,
+    cast,
     overload,
 )
-from types import EllipsisType
+
+import einops
+import einops._backends
+import fancy_einsum
 import numpy as np
 import torch
 import torch.nn.functional
 from torch import empty as torch_empty  # for stability under hot patching
 from torch import ones as torch_ones  # for stability under hot patching
 from transformer_lens import HookedTransformer
-import fancy_einsum
-import einops
-import einops._backends
+
 from gbmi.verification_tools.svd import compute_verify_svd_close_matrices
 
 
@@ -77,8 +76,8 @@ except Exception as e:
                 pass
 
     cirron = _cirron
-# from cirron import Collector
-# from cirron.cirron import Counter
+# from cirron import  Collector
+# from cirron.cirron import  Counter
 
 
 class PerfCounter(cirron.cirron.Counter):  # type: ignore

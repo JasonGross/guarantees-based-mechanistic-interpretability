@@ -2,11 +2,11 @@ from contextlib import contextmanager
 from typing import (
     Any,
     Callable,
+    ContextManager,
     Generator,
     Tuple,
     TypeVar,
     TypeVarTuple,
-    ContextManager,
 )
 
 T = TypeVar("T")

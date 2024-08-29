@@ -1,10 +1,12 @@
+import json
+import random
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, cast, Literal, Generic, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Optional, TypeVar, cast
+
+import torch
+
 from gbmi import utils
 from gbmi.utils.sequences import generate_all_sequences
-import random
-import json
-import torch
 
 T = TypeVar("T")
 

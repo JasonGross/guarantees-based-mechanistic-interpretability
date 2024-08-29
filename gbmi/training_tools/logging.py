@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+import logging
 import re
-from functools import partial
+import urllib.parse
 from collections import defaultdict
 from dataclasses import dataclass
-import urllib.parse
+from functools import partial
 from typing import (
     Any,
     Callable,
@@ -15,18 +17,17 @@ from typing import (
     Tuple,
     Union,
 )
-import logging
-from matplotlib import pyplot as plt
-import plotly.express as px
-import torch
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+
 import numpy as np
-from torch import Tensor
-from transformer_lens import HookedTransformer
+import plotly.express as px
+import plotly.graph_objects as go
+import torch
 from jaxtyping import Float
 from lightning.pytorch.loggers.wandb import WandbLogger
-
+from matplotlib import pyplot as plt
+from plotly.subplots import make_subplots
+from torch import Tensor
+from transformer_lens import HookedTransformer
 from wandb.sdk.wandb_run import Run
 
 from gbmi.utils import subscript

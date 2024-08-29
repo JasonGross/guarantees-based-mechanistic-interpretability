@@ -14,16 +14,31 @@ if ipython is not None:
     ipython.run_line_magic("autoreload", "2")
 else:
     print("Not in IPython, not loading autoreload")
-# %%
-from tqdm.auto import tqdm
 import math
 import os
 from pathlib import Path
+from typing import Any, Collection, Dict, List, Optional, Tuple
+
 import imageio
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import torch
+import wandb
+from IPython.display import Image, display
+from jaxtyping import Float
+from plotly.subplots import make_subplots
+from torch import Tensor
+
+# %%
+from tqdm.auto import tqdm
+from transformer_lens import HookedTransformer, HookedTransformerConfig
+
+import gbmi.utils as utils
 from gbmi.exp_max_of_n.plot import (
     compute_l2_norm,
-    compute_QK,
     compute_OV,
+    compute_QK,
     display_basic_interpretation,
 )
 from gbmi.exp_max_of_n.train import (
@@ -32,26 +47,7 @@ from gbmi.exp_max_of_n.train import (
     MaxOfNDataModule,
     train_or_load_model,
 )
-import gbmi.utils as utils
 from gbmi.model import Config, RunData
-from transformer_lens import HookedTransformerConfig, HookedTransformer
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from IPython.display import Image, display
-import torch
-import numpy as np
-import wandb
-from jaxtyping import Float
-from torch import Tensor
-from typing import (
-    Tuple,
-    Dict,
-    Optional,
-    Any,
-    List,
-    Collection,
-)
 
 api = wandb.Api()
 # %% [markdown]

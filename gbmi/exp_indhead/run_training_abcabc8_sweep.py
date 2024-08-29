@@ -1,6 +1,7 @@
 # %%
-import torch
 import numpy as np
+import torch
+
 from gbmi.exp_indhead.train import ABCABC8, IndHeadTrainingWrapper
 from gbmi.model import train_or_load_model
 from gbmi.utils import set_params

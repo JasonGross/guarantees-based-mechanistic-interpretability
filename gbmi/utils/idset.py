@@ -1,5 +1,5 @@
-from typing import Iterable, Sequence, TypeVar
 from collections import OrderedDict
+from typing import Iterable, Sequence, TypeVar
 
 T = TypeVar("T")
 

@@ -1,5 +1,5 @@
-import threading
 import gc
+import threading
 import time
 
 

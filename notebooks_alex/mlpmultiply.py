@@ -1,5 +1,6 @@
-import torch
 import math
+
+import torch
 
 torch.set_default_device("cuda")
 

@@ -1,22 +1,20 @@
 # %%
 
 
-from gbmi.exp_f_g.train import f_g_TrainingWrapper
-from gbmi.exp_f_g.functions import add_sub, max_min, min_max
-from gbmi import utils
-
-from gbmi.exp_f_g.train import f_g_config
-
-from gbmi.model import train_or_load_model
-
-import torch
-import einops
-from torch import tensor
 from math import *
-from tqdm.auto import tqdm
-import plotly.express as px
-from gbmi.utils.sequences import generate_all_sequences
+
+import einops
 import pandas as pd
+import plotly.express as px
+import torch
+from torch import tensor
+from tqdm.auto import tqdm
+
+from gbmi import utils
+from gbmi.exp_f_g.functions import add_sub, max_min, min_max
+from gbmi.exp_f_g.train import f_g_config, f_g_TrainingWrapper
+from gbmi.model import train_or_load_model
+from gbmi.utils.sequences import generate_all_sequences
 
 device = "cuda"
 

@@ -217,10 +217,10 @@ for epoch in range(epochs):
     seq = torch.concat((sequence, bin_bit), dim=1)
 
 
-# %%
-import torch
 import numpy as np
 
+# %%
+import torch
 
 model = torch.nn.Sequential(
     torch.nn.Linear(10, 20), torch.nn.ReLU(), torch.nn.Linear(20, 1)

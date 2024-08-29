@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader, Dataset, IterableDataset, TensorDataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 import gbmi.utils as utils
+from gbmi.exp_max_of_n import SEEDS, SELECTED_SEED
 from gbmi.model import (
     Config,
     DataModule,
@@ -31,7 +32,6 @@ from gbmi.training_tools.logging import ModelMatrixLoggingOptions
 from gbmi.utils import reseed, set_params, shuffle_data
 from gbmi.utils.hashing import _EXCLUDE
 from gbmi.utils.sequences import generate_all_sequences
-from gbmi.exp_max_of_n import SEEDS, SELECTED_SEED
 
 
 @dataclass
@@ -738,7 +738,7 @@ if __name__ == "__main__":
 # # %%
 # runtime, model = main([i for i in "train  --max-of 2 --non-deterministic --train-for-epochs 3000 --validate-every-epochs 20 --force-adjacent-gap 0,1,2 --use-log1p --training-ratio 0.095 --weight-decay 1.0 --betas 0.9 0.98 --optimizer AdamW --use-end-of-sequence --force load".strip().split(" ") if i])
 # # %%
-# from gbmi.analysis_tools.plot import imshow, line
+# from gbmi.analysis_tools.plot import  imshow, line
 # # %%
 # line((model.W_E[-1] + model.W_pos[-1]) @ model.W_Q[0, 0, :, :] @ model.W_K[0, 0, :, :].T @ (model.W_E[:-1] + model.W_pos[:-1].mean(dim=0)).T, renderer='png')
 # # %%

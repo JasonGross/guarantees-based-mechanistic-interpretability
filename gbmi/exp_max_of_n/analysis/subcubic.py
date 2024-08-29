@@ -11,9 +11,9 @@ from transformer_lens import HookedTransformer
 from gbmi.exp_max_of_n.analysis.quadratic import (
     W_EP_direction_for_tricks,
     W_EP_direction_for_tricks_kwargs,
+    compress_min_gaps_over_query,
     find_EKQE_error_directions,
     find_min_gaps,
-    compress_min_gaps_over_query,
 )
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.subcubic import decompose_EQKE_error

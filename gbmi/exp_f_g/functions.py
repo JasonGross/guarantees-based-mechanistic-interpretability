@@ -1,8 +1,10 @@
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, cast, Literal, Generic, TypeVar
-from gbmi.utils.sequences import generate_all_sequences
 import json
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Generic, List, Literal, Optional, TypeVar, cast
+
 import torch
+
+from gbmi.utils.sequences import generate_all_sequences
 
 T = TypeVar("T")
 

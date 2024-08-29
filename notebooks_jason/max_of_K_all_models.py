@@ -137,17 +137,7 @@ from contextlib import contextmanager
 from functools import cache, partial
 from itertools import chain
 from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Iterator,
-    Literal,
-    Optional,
-    Tuple,
-    Union,
-    Collection,
-    Optional,
-)
+from typing import Any, Callable, Collection, Iterator, Literal, Optional, Tuple, Union
 
 import matplotlib
 import matplotlib.cm
@@ -240,8 +230,9 @@ from gbmi.utils.latex_export import (
     latex_values_of_instruction_count,
     to_latex_defs,
 )
+from gbmi.utils.memohf import StorageMethod as MemoHFStorageMethod
+from gbmi.utils.memohf import memohf_staged
 from gbmi.utils.memoshelve import memoshelve
-from gbmi.utils.memohf import memohf_staged, StorageMethod as MemoHFStorageMethod
 from gbmi.utils.sequences import SequenceDataset
 
 # %%

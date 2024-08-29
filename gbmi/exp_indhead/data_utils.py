@@ -1,15 +1,17 @@
 # %%
-from typing import Collection, Iterable, Optional, Sequence, Tuple, Union, Callable
-import math
 import itertools
+import math
 from itertools import chain, cycle
+from typing import Callable, Collection, Iterable, Optional, Sequence, Tuple, Union
+
 import einops
-from jaxtyping import Float, Integer, Bool
 import torch
+from jaxtyping import Bool, Float, Integer
 from torch import Tensor
 from tqdm.auto import tqdm
+
 import gbmi.utils as utils
-from gbmi.utils.english_ngram import ngram_count_table, DEFAULT_CORPUS
+from gbmi.utils.english_ngram import DEFAULT_CORPUS, ngram_count_table
 
 # %%
 

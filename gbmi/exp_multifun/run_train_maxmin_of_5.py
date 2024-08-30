@@ -15,7 +15,9 @@ args = parser.parse_args()
 
 with (
     tqdm((True, False), desc="eos", position=0) as eos_pbar,
-    tqdm(map(int, args.seeds.split(",")), desc="Seed", position=1, leave=False) as pbar,
+    tqdm(
+        sorted(map(int, args.seeds.split(","))), desc="Seed", position=1, leave=False
+    ) as pbar,
     tqdm((2, 1), desc="n_heads", position=2, leave=False) as n_heads_pbar,
 ):
     for eos in eos_pbar:

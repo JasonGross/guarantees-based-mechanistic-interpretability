@@ -442,7 +442,7 @@ class MaxOfNIterableDataset(
                 # Process output
                 eos_token = self.config.experiment.get_eos_token()
                 if eos_token is not None:
-                    val = utils.add_eos(val, eos_token)
+                    val = torch.cat([val, torch.tensor([eos_token])])
                 yield val, self.config.experiment.get_ground_truth(val)
 
                 n_samples += 1

@@ -528,7 +528,7 @@ class MultifunIterableDataset(
                 # Process output
                 eos_token = self.config.experiment.get_eos_token()
                 if eos_token is not None:
-                    val = utils.add_eos(val, eos_token)
+                    val = torch.cat([val, torch.tensor([eos_token])])
                 val = torch.cat([func, val], dim=0)
                 yield val, self.config.experiment.get_ground_truth(val)
 

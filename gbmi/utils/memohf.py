@@ -135,6 +135,25 @@ def hf_open(
             db.push_to_hub()
 
 
+def merge_dicts(dict0: dict[K, V], *dicts: dict[K, V]) -> dict[K, V]:
+    """Merges multiple dictionaries into a single dictionary."""
+    for d in dicts:
+        if d is dict0:
+            continue
+        for k in d:
+            if k not in dict0:
+                dict0[k] = d[k]
+            elif isinstance(d[k], dict):
+                assert isinstance(dict0[k], dict)
+                dict0[k] = d[k] = merge_dicts(dict0[k], d[k])
+            else:
+                dict0[k] = d[k]
+    for d in dicts:
+        if d is not dict0:
+            d.update(dict0)
+    return dict0
+
+
 def merge_subdicts(
     *dicts_keys: Tuple[dict[K1, dict[K2, V]], K1],
     default_factory: Callable[[], dict[K2, V]] = dict,
@@ -145,8 +164,7 @@ def merge_subdicts(
     for d, k in rest_dicts_keys:
         old = d.setdefault(k, merged)
         if old is not merged:
-            d[k] = merged
-            merged.update(old)
+            d[k] = merge_dicts(merged, old)
 
     return merged
 

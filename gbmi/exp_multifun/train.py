@@ -151,12 +151,13 @@ class Multifun(ExperimentConfig):
         kind, x = x[..., 0].long() - self.d_vocab, x[..., 1:]
         # Create masks for each function type
         funcs = np.array(self.funcs)
-        max_mask = funcs[kind] == "max"
-        min_mask = funcs[kind] == "min"
-        sum_mask = funcs[kind] == "sum"
-        argmax_mask = funcs[kind] == "argmax"
-        argmin_mask = funcs[kind] == "argmin"
-        summod_mask = funcs[kind] == "summod"
+        # wrap in tensor to ensure that even if x.ndim == 1, we still get something tensor-like / array-like
+        max_mask = torch.tensor(funcs[kind] == "max")
+        min_mask = torch.tensor(funcs[kind] == "min")
+        sum_mask = torch.tensor(funcs[kind] == "sum")
+        argmax_mask = torch.tensor(funcs[kind] == "argmax")
+        argmin_mask = torch.tensor(funcs[kind] == "argmin")
+        summod_mask = torch.tensor(funcs[kind] == "summod")
 
         results = torch.empty(x.shape[:-1], dtype=x.dtype)
 

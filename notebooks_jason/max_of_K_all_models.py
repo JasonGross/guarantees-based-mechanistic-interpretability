@@ -1409,7 +1409,15 @@ with (
         short_name=f"cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}"
     ) as memoshelve_hf_verify_proof,
 ):
-    maybe_parallel_map(partial(_handle_cubic, pbar=pbar), sorted(relevant_seeds))
+    maybe_parallel_map(
+        partial(
+            _handle_cubic,
+            pbar=pbar,
+            memoshelve_hf_find_proof=memoshelve_hf_find_proof,
+            memoshelve_hf_verify_proof=memoshelve_hf_verify_proof,
+        ),
+        sorted(relevant_seeds),
+    )
 
 # do this externally, because importance sampling is subject to change
 for seed, row in cubic_data.items():

@@ -1028,6 +1028,7 @@ else:
             partial(
                 _handle_brute_force_via_importance_sampling_for,
                 memoshelve_hf=memoshelve_hf,
+                memoshelve_hf_lightweight=memoshelve_hf_lightweight,
                 pbar=pbar,
                 subpbar=subpbar,
             ),

@@ -679,8 +679,7 @@ def _run_train_batch_loss_accuracy(
     loss, accuracy = training_wrappers[seed].run_batch(
         (xs, ys), log_output=False, device=device
     )
-    loss = loss.item()
-    return loss, accuracy, batch_size
+    return loss.item(), accuracy, batch_size
 
 
 def train_seed(seed: int, *, memoshelve_hf: Callable, pbar: tqdm):

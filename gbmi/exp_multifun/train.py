@@ -68,7 +68,7 @@ class Multifun(ExperimentConfig):
     use_end_of_sequence: bool = False  # if set, is final token
     seq_len: int = 64
     funcs: FUNCS = ("max", "min")
-    use_kaiming_init: bool = False
+    use_kaiming_init: bool = True
     summary_slug_extra: str = ""
     log_matrix_on_run_batch_prefixes: set[
         Optional[Literal["", "periodic_test_", "test_"]]
@@ -236,6 +236,7 @@ def MULTIFUN_OF_4_CONFIG(
             use_end_of_sequence=use_end_of_sequence,
             funcs=funcs,
             seq_len=4,
+            use_kaiming_init=True,
             optimizer="AdamW",
             optimizer_kwargs={"lr": 0.001, "betas": (0.9, 0.999)},
             train_dataset_cfg=IterableDatasetCfg(),

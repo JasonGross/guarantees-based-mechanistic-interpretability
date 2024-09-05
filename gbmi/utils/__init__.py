@@ -21,6 +21,7 @@ from typing import (
     Iterator,
     List,
     Literal,
+    Mapping,
     Optional,
     Sequence,
     Tuple,
@@ -665,8 +666,8 @@ def smallest_dtype_holding(
 
 
 def compress_int_tensor(
-    v: Tensor, allow_negative: bool = True, only_signed: bool = False
-) -> Tensor:
+    v: Integer[Tensor, "..."], allow_negative: bool = True, only_signed: bool = False
+) -> Integer[Tensor, "..."]:
     dtype: torch.dtype = smallest_dtype_holding(
         v.min().item(),
         v.max().item(),
@@ -686,3 +687,4 @@ def backup(filename: str | Path, ext: str = ".bak") -> Optional[Path]:
             assert not backup_name.exists()
             filename.rename(backup_name)
             return backup_name
+    return None

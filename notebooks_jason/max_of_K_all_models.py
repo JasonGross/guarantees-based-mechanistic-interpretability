@@ -211,6 +211,7 @@ from gbmi.exp_max_of_n.train import (
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.importance_sample_cubic import importance_sample
 from gbmi.utils import default_device, patch, reseed, to_device
+from gbmi.utils.c_long import str_list_values_if_any_too_big_for_C_long
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.hashing import get_hash_ascii
 from gbmi.utils.instructions import (
@@ -626,6 +627,8 @@ def update_csv_with_rows(
     save_to_hf: bool = SAVE_TO_HF,
 ):
     results = pd_read_csv_or_hf(csv_path, columns=columns, use_hf=use_hf, default=None)
+
+    new_data = str_list_values_if_any_too_big_for_C_long(new_data)
 
     new_df = pd.DataFrame(new_data, columns=columns)
     if results is None or results.empty:
@@ -3392,18 +3395,7 @@ update_csv_with_rows(
 )
 update_csv_with_rows(
     LATEX_VALUES_REDUCED_DATATABLE_PATH,
-    new_data=[
-        {"index": 0}
-        | {
-            k: (
-                str(v)
-                if isinstance(v, int)
-                and (v < np.iinfo(np.int64).min or v > np.iinfo(np.int64).max)
-                else v
-            )
-            for k, v in latex_values.items()
-        }
-    ],
+    new_data=[{"index": 0} | latex_values],
     columns=["index"] + list(sorted(latex_values.keys())),
     subset="index",
 )

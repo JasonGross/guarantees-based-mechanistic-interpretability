@@ -4557,13 +4557,13 @@ test = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "importlib-metadata
 
 [[package]]
 name = "simple-parsing"
-version = "0.1.5"
+version = "0.1.6"
 description = "A small utility for simplifying and cleaning up argument parsing scripts."
 optional = false
-python-versions = ">=3.7"
+python-versions = "<4.0,>=3.8"
 files = [
-    {file = "simple_parsing-0.1.5-py3-none-any.whl", hash = "sha256:46f35ed7002f9bb25dca3a49eac491cc78d2140e4adcbe156225ae643c2874ea"},
-    {file = "simple_parsing-0.1.5.tar.gz", hash = "sha256:d26ac15be5173cf28174e171a68153c11e462ad2cb3c23d3ad8634b00719d1fc"},
+    {file = "simple_parsing-0.1.6-py3-none-any.whl", hash = "sha256:2a6e74b061fb754cc441559e8dcea9d108286d9e0ffaa9cca4eea6bbe85372e1"},
+    {file = "simple_parsing-0.1.6.tar.gz", hash = "sha256:dad192e9633515a5627e343106636590a39a5ce85f6c47ced43507044ed98956"},
 ]
 
 [package.dependencies]
@@ -4571,10 +4571,8 @@ docstring-parser = ">=0.15,<1.0"
 typing-extensions = ">=4.5.0"
 
 [package.extras]
-all = ["numpy", "pytest", "pytest-benchmark", "pytest-regressions", "pytest-xdist", "pyyaml", "tomli", "tomli-w"]
-test = ["numpy", "pytest", "pytest-benchmark", "pytest-regressions", "pytest-xdist"]
-toml = ["tomli", "tomli-w"]
-yaml = ["pyyaml"]
+toml = ["tomli (>=2.0.1,<3.0.0)", "tomli-w (>=1.0.0,<2.0.0)"]
+yaml = ["pyyaml (>=6.0.1,<7.0.0)"]
 
 [[package]]
 name = "six"

@@ -55,6 +55,14 @@ class ModularArithmetic(ExperimentConfig):
     use_float64_log: bool = True
     num_workers: int = 0
     summary_slug_extra: str = ""
+    init_mode: Literal[
+        "gpt2",
+        "xavier_uniform",
+        "xavier_normal",
+        "kaiming_uniform",
+        "kaiming_normal",
+        "muP",
+    ] = "gpt2"
     zero_biases: list[
         Literal["Embed", "Unembed", "PosEmbed", "LayerNorm", "Attention", "MLP"]
     ] = field(
@@ -100,6 +108,9 @@ class ModularArithmetic(ExperimentConfig):
         setattr(
             self, _EXCLUDE, ("validation_max_samples", "num_workers", "logging_options")
         )
+        for attrname, default_val in (("init_mode", "gpt2"),):
+            if getattr(self, attrname, default_val) == default_val:
+                setattr(self, _EXCLUDE, getattr(self, _EXCLUDE) + (attrname,))
         assert (
             self.d_model % self.n_heads == 0
         ), f"d_model {self.d_model} must be divisible by n_heads {self.n_heads}"
@@ -215,6 +226,7 @@ class ModularArithmeticTrainingWrapper(TrainingWrapper[ModularArithmetic]):
             n_heads=config.experiment.n_heads,
             act_fn=config.experiment.act_fn,
             normalization_type=config.experiment.normalization_type,
+            init_mode=config.experiment.init_mode,
             seed=reseed(config.seed, "model"),
         )
         model = HookedTransformer(model_config)

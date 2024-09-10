@@ -10,19 +10,26 @@ from gbmi.exp_modular_arithmetic.train import (
 from gbmi.utils import set_params
 
 with (
-    tqdm(SEEDS, desc="Seed", position=0, leave=False) as seed_pbar,
-    tqdm((7, 12), desc="p", position=1, leave=False) as p_pbar,
-    tqdm((PIZZA_CONFIG, CLOCK_CONFIG), position=2, leave=False) as cfg_pbar,
-    tqdm((True, False), desc="use eos", position=3, leave=False) as eos_pbar,
+    tqdm(total=len(SEEDS), desc="Seed", position=0, leave=True) as seed_pbar,
+    tqdm(total=2, desc="p", position=1, leave=True) as p_pbar,
+    tqdm(total=2, position=2, leave=True) as cfg_pbar,
+    tqdm(total=2, desc="use eos", position=3, leave=True) as eos_pbar,
 ):
-    for seed in seed_pbar:
-        for p in p_pbar:
-            for cfg in cfg_pbar:
-                for use_eos in eos_pbar:
-                    p_pbar.set_postfix({"p": p})
-                    cfg_pbar.set_postfix({"cfg": cfg})
+    for seed in SEEDS:
+        seed_pbar.update(1)
+        seed_pbar.set_postfix({"seed": seed})
+        p_pbar.reset()
+        for p in (7, 12):
+            p_pbar.update(1)
+            p_pbar.set_postfix({"p": p})
+            cfg_pbar.reset()
+            for cfg in (PIZZA_CONFIG, CLOCK_CONFIG):
+                cfg_pbar.update(1)
+                cfg_pbar.set_postfix({"cfg": cfg})
+                eos_pbar.reset()
+                for use_eos in (True, False):
+                    eos_pbar.update(1)
                     eos_pbar.set_postfix({"use_eos": use_eos})
-                    seed_pbar.set_postfix({"seed": seed})
                     runtime, model = train_or_load_model(
                         set_params(
                             cfg,
@@ -37,5 +44,44 @@ with (
                                 ): use_eos,
                             },
                             post_init=True,
-                        )
-                    )  # , force="train")
+                        ),
+                        # force="train",
+                        # force="load",
+                    )
+    eos_pbar.close()
+    cfg_pbar.close()
+    p_pbar.close()
+    seed_pbar.close()
+
+# %%
+import shutil
+from pathlib import Path
+
+import torch
+
+base = Path(".").resolve()
+wandbs = list((base / "artifacts").glob("*/ModularAdd-7-*.pth")) + list(
+    (base / "artifacts").glob("*/ModularAdd-12-*.pth")
+)
+model_base = base / "models"
+model_base.mkdir(exist_ok=True, parents=True)
+
+with tqdm(wandbs) as pbar:
+    for path in pbar:
+        cache = torch.load(path, map_location="cpu")
+        if cache["run_config"]["experiment"]["p"] not in (7, 12):
+            continue
+        pbar.set_postfix(
+            {
+                "seed": cache["run_config"]["seed"],
+                "orig_name": path.name,
+                "suffix_drop": "-".join(path.name.split("-")[-6:]),
+            }
+        )
+        seed = cache["run_config"]["seed"]
+        shutil.copy(
+            path,
+            model_base / f"{'-'.join(path.name.split('-')[:-6])}-{seed}{path.suffix}",
+        )
+    # break
+# %%

@@ -85,3 +85,5 @@ with tqdm(wandbs) as pbar:
         )
     # break
 # %%
+# gtar --transform='s|.*/||' --owner=0 --group=0 --numeric-owner -czf modular-add-7,12-pizza-no-eos-partial.tar.gz models/ModularAdd-{7,12}*attention-rate-1*no-eos*.pth
+# gtar --transform='s|.*/||' --owner=0 --group=0 --numeric-owner -czf modular-add-7,12-pizza-partial.tar.gz $(ls models/ModularAdd-{7,12}*attention-rate-1*.pth | grep -v no-eos)

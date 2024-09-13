@@ -155,10 +155,11 @@ def _apply(
     sizes: Optional[List[Optional[int]]] = None,
     device=None,
 ) -> Tensor:
-    n_args = len(signature(f).parameters)
     if sizes is None:
+        n_args = len(signature(f).parameters)
         sizes = [None for _ in range(n_args)]
-    assert len(sizes) == n_args
+    else:
+        n_args = len(sizes)
 
     return _apply_single_dim(
         (

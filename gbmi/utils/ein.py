@@ -93,9 +93,12 @@ class ConstraintTrackingTensor(Tensor):
 
             if isinstance(args_l[0], ConstraintTrackingTensor):
                 args_l[0] = torch.tensor(args_l[0])
-            return torch.tensor(
-                super().__torch_function__(func, types, tuple(args_l), kwargs)
-            )
+            result = super().__torch_function__(func, types, tuple(args_l), kwargs)
+            if (
+                type(result) is not torch.Tensor
+            ):  # not isinstance, because we want to upcast to torch.Tensor on subclasses (I think - Jason)
+                result = torch.tensor(result)
+            return result
         if kwargs is None:
             kwargs = {}
         return super().__torch_function__(func, types, tuple(args_l), kwargs)

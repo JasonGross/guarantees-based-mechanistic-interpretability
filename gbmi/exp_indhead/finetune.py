@@ -244,7 +244,7 @@ class IndHeadFineTune(ExperimentConfig):
 
 
 class IndHeadFineTuneTrainingWrapper(
-    TrainingWrapper[IndHeadFineTune], IndHeadTrainingWrapper
+    IndHeadTrainingWrapper  # , TrainingWrapper[IndHeadFineTune]
 ):
     def __init__(self, config: Config[IndHeadFineTune], model: HookedTransformer):
         # super().__init__(config, model)
@@ -263,12 +263,12 @@ class IndHeadFineTuneTrainingWrapper(
         )
         return model
 
-    loss_fn = IndHeadTrainingWrapper.loss_fn
-    run_batch = IndHeadTrainingWrapper.run_batch
-    training_step = IndHeadTrainingWrapper.training_step
-    validation_step = IndHeadTrainingWrapper.validation_step
-    test_step = IndHeadTrainingWrapper.test_step
-    configure_optimizers = IndHeadTrainingWrapper.configure_optimizers
+    # loss_fn = IndHeadTrainingWrapper.loss_fn
+    # run_batch = IndHeadTrainingWrapper.run_batch
+    # training_step = IndHeadTrainingWrapper.training_step
+    # validation_step = IndHeadTrainingWrapper.validation_step
+    # test_step = IndHeadTrainingWrapper.test_step
+    # configure_optimizers = IndHeadTrainingWrapper.configure_optimizers
 
 
 class IndHeadFineTuneDataModule(DataModule):

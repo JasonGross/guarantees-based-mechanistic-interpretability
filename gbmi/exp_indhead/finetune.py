@@ -243,7 +243,9 @@ class IndHeadFineTune(ExperimentConfig):
         )
 
 
-class IndHeadFineTuneTrainingWrapper(TrainingWrapper[IndHeadFineTune]):
+class IndHeadFineTuneTrainingWrapper(
+    TrainingWrapper[IndHeadFineTune], IndHeadTrainingWrapper
+):
     def __init__(self, config: Config[IndHeadFineTune], model: HookedTransformer):
         # super().__init__(config, model)
         # self.config = config
@@ -251,9 +253,7 @@ class IndHeadFineTuneTrainingWrapper(TrainingWrapper[IndHeadFineTune]):
         finetune_training_wrapper_module = (
             finetune_config.experiment.get_training_wrapper()
         )
-        finetune_training_wrapper_module.__init__(
-            cast(IndHeadTrainingWrapper, self), finetune_config, model
-        )
+        finetune_training_wrapper_module.__init__(self, finetune_config, model)
 
     @staticmethod
     def build_model(config: Config[IndHeadFineTune]) -> HookedTransformer:

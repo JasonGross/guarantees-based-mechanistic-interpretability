@@ -24,13 +24,13 @@ with tqdm(projects, desc="Projects", position=0) as tq:
     for project in tq:
         tq.set_postfix(dict(project=project))
         runs = list(api.runs(path=f"{entity}/{project}"))
-        with tqdm(runs, desc="Runs", position=0) as pbar_run:
+        with tqdm(runs, desc="Runs", position=1) as pbar_run:
             for r in pbar_run:
                 pbar_run.set_postfix(dict(id=r.id))
                 wandb_id = f"{entity}/{project}/{r.id}"
                 artifact_groups[wandb_id] = {}
                 for artifact in tqdm(
-                    r.logged_artifacts(), desc="Artifacts", position=1, leave=False
+                    r.logged_artifacts(), desc="Artifacts", position=21, leave=False
                 ):
                     name = artifact.name.split(":")[0]
                     if name not in artifact_groups[wandb_id]:
@@ -39,7 +39,7 @@ with tqdm(projects, desc="Projects", position=0) as tq:
                 with tqdm(
                     artifact_groups[wandb_id].items(),
                     desc="Artifacts",
-                    position=1,
+                    position=2,
                     leave=False,
                 ) as pbar:
                     for name, group in pbar:

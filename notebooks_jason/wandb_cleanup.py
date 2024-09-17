@@ -23,15 +23,15 @@ api = wandb.Api(overrides=dict(entity=entity))
 # %%
 def bytes_to_str(size: float) -> str:
     if size < 1024:
-        return f"{size:.2f} B"
+        return f"{size} B"
     size /= 1024
     if size < 1024:
-        return f"{size:.4f} KB"
+        return f"{size} KB"
     size /= 1024
     if size < 1024:
-        return f"{size:.8f} MB"
+        return f"{size} MB"
     size /= 1024
-    return f"{size:.16f} GB"
+    return f"{size} GB"
 
 
 # %%

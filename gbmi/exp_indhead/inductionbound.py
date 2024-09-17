@@ -165,6 +165,7 @@ def diff_1(a, b, i_1, i_2, j, dic):
         return term_1[i_2, a, j, dic[j]] - term_1[i_2, a, i_1, b]
 
 
+"""
 def diff_2(a, b, i_1, i_2, j):
     if j == i_1:
         return 0
@@ -205,6 +206,8 @@ def diff_2_2(a, b, i_1, i_2, j):
         t_2 -= attn_1[:, i_2 - 1].min() * c
 
     return t_2
+
+"""
 
 
 def diff_3(a, b, i_1, i_2, j, dic):
@@ -297,6 +300,8 @@ def diff_3(a, b, i_1, i_2, j, dic):
     return t_3
 
 
+"""
+
 def diff_4(a, b, i_1, i_2, j):
     if j == i_1:
         return 0
@@ -361,7 +366,7 @@ def diff_4(a, b, i_1, i_2, j):
     return t_4
 
 
-"""
+
 def diff_4_2(a, b, i_1, i_2, j):
     if j == i_1:
         return 0
@@ -564,10 +569,10 @@ def diff_2_4(a, b, i_1, i_2, j, dic):
         # print(d)
         if i_1 != 1:
 
-            c = term_4[k, dic[0], i][..., dic[0]].min()
-            print(k)
+            c = term_4[k, dic[k], 0][..., dic[0]].min()
+
             for i in range(1, i_1 - 1):
-                print(i)
+
                 c = torch.min(c, term_4[k, dic[k], i][..., dic[i]].min())
             c = torch.min(c, term_4[k, dic[k], i_1, dic[i_1]].min())
 
@@ -613,7 +618,7 @@ def diff_2_4(a, b, i_1, i_2, j, dic):
 
 def least_attention(a, b, i_1, i_2, j, dic):
     e = diff_2_4(a, b, i_1, i_2, j, dic)
-    return diff_1(a, b, i_1, i_2, j, dic) + diff_3(a, b, i_1, i_2, j, x_j, p, n) + e
+    return diff_1(a, b, i_1, i_2, j, dic) + diff_3(a, b, i_1, i_2, j, dic) + e
 
 
 # %%
@@ -637,8 +642,8 @@ for a in [5]:
         for x_j in tqdm(range(e_p.shape[1])):
             for p in tqdm(range(e_p.shape[1])):
                 for n in range(e_p.shape[1]):
-                    for i_2 in [3]:
-                        for i_1 in [2]:
+                    for i_2 in range(7):
+                        for i_1 in range(7):
                             for j in range(i_2 + 1):
                                 if (
                                     (n != a)

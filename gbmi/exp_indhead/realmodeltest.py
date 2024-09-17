@@ -263,6 +263,8 @@ everything_1_b = ein.array(
     device=device,
     sizes=[e_p.shape[1], e_p.shape[1], e_p.shape[0], e_p.shape[0], e_p.shape[1]],
 )
+
+
 # %%
 """
 armintable_1_1 = ein.array(
@@ -854,7 +856,7 @@ def least_attention(a, b, i_1, i_2, j):
             t_4 += c
         else:
             t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
-    # print(t_1, t_2, t_3, t_4)
+    print(t_1, t_2, t_3, t_4)
     return t_1 + t_2 + t_3 + t_4
 
 

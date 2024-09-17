@@ -1,5 +1,6 @@
 # %%
 from gbmi import utils
+
 from gbmi.exp_indhead.train import ABCAB8_1H
 from torch import where
 from gbmi.model import train_or_load_model
@@ -104,8 +105,6 @@ attn_1 = table.min(dim=1).values.min(dim=2).values
 
 
 # %%
-
-# attn_1=torch.ones(attn_1.shape)
 term_1 = (
     einops.einsum(
         e_p,
@@ -158,23 +157,23 @@ term_4 = (
 )
 
 
-def diff_1(a, b, i_1, i_2, j, dic):
+def diff_1(a, b, i_1, i_2, j):
     if j == i_1:
         return 0
     else:
-        return term_1[i_2, a, j, dic[j]] - term_1[i_2, a, i_1, b]
+        return term_1[i_2, a, j, :].mean() - term_1[i_2, a, i_1, b]
 
 
 def diff_2(a, b, i_1, i_2, j):
     if j == i_1:
         return 0
     diff = term_2[:, :, j, :] - term_2[:, :, i_1, b].unsqueeze(dim=-1)
-    c = torch.max(diff[: i_2 - 1, :, :].max(), diff[i_2, a, :].max())
+    c = torch.max(diff[: i_2 - 1, :, :].mean(), diff[i_2, a, :].mean())
     if c > 0:
         t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
     else:
         t_2 = 0
-    c = diff[i_2 - 1, :, :].max()
+    c = diff[i_2 - 1, :, :].mean()
     if c > 0:
         t_2 += c
     else:
@@ -183,22 +182,22 @@ def diff_2(a, b, i_1, i_2, j):
 
 
 def diff_2_2(a, b, i_1, i_2, j):
-    c = torch.max(term_2[: i_2 - 1, :, j, :].max(), term_2[i_2, a, j, :].max())
+    c = torch.max(term_2[: i_2 - 1, :, j, :].mean(), term_2[i_2, a, j, :].mean())
     if c > 0:
         t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
     else:
         t_2 = 0
-    c = term_2[i_2 - 1, :, j, :].max()
+    c = term_2[i_2 - 1, :, j, :].mean()
     if c > 0:
         t_2 += c
     else:
         t_2 += attn_1[:, i_2 - 1].min() * c
 
-    c = torch.min(term_2[: i_2 - 1, :, i_1, b].min(), term_2[i_2, a, i_1, b].min())
+    c = torch.min(term_2[: i_2 - 1, :, i_1, b].mean(), term_2[i_2, a, i_1, b].mean())
     if c < 0:
         t_2 -= (1 - attn_1[:, i_2 - 1].min()) * c
 
-    c = term_2[i_2 - 1, :, i_1, b].min()
+    c = term_2[i_2 - 1, :, i_1, b].mean()
     if c < 0:
         t_2 -= c
     else:
@@ -207,93 +206,82 @@ def diff_2_2(a, b, i_1, i_2, j):
     return t_2
 
 
-def diff_3(a, b, i_1, i_2, j, dic):
+def diff_3(a, b, i_1, i_2, j):
     if j == i_1:
         return 0
     if j != 0 and j != 1:
-        c = term_3[i_2, dic[i_2], 0, dic[0]].max()
-        for i in range(1, j - 1):
-            c = torch.max(c, term_3[i_2, dic[i_2], i, dic[i]].max())
-        c = torch.max(c, term_3[i_2, dic[i_2], j, dic[j]])
+        c = torch.max(term_3[i_2, a, : j - 1, :].mean(), term_3[i_2, a, j, :].mean())
 
         if c > 0:
-            t_3 = (1 - attn_1[dic[j], j - 1]) * c
+            t_3 = (1 - attn_1[:, j - 1].min()) * c
         else:
             t_3 = 0
 
-        """
         if a != 0 and a != d_voc - 1:
             c = torch.max(
-                term_3[i_2, a, j - 1, :a].max(), term_3[i_2, a, j - 1, a + 1 :].max()
+                term_3[i_2, a, j - 1, :a].mean(), term_3[i_2, a, j - 1, a + 1 :].mean()
             )
         if a == 0:
-            c = term_3[i_2, a, j - 1, a + 1 :].max()
+            c = term_3[i_2, a, j - 1, a + 1 :].mean()
 
         if a == d_voc - 1:
-            c = term_3[i_2, a, j - 1, :a].max()
-        """
-        c = term_3[i_2, a, j - 1, dic[j - 1]]
+            c = term_3[i_2, a, j - 1, :a].mean()
+
         if c > 0:
             t_3 += c
         else:
-            t_3 += attn_1[dic[j], j - 1] * c
-        # print(t_3)
+            t_3 += attn_1[:, j - 1].min() * c
     if j == 1:
-        c = term_3[i_2, a, j, dic[j]]
+        c = term_3[i_2, a, j, :].mean()
         if c > 0:
-            t_3 = (1 - attn_1[dic[j], j - 1]) * c
+            t_3 = (1 - attn_1[:, j - 1].min()) * c
         else:
             t_3 = 0
-        """
+
         if a != 0 and a != d_voc - 1:
 
             c = torch.max(
-                term_3[i_2, a, j - 1, :a].max(), term_3[i_2, a, j - 1, a + 1 :].max()
+                term_3[i_2, a, j - 1, :a].mean(), term_3[i_2, a, j - 1, a + 1 :].mean()
             )
 
         if a == 0:
-            c = term_3[i_2, a, j - 1, a + 1 :].max()
+            c = term_3[i_2, a, j - 1, a + 1 :].mean()
 
         if a == d_voc - 1:
-            c = term_3[i_2, a, j - 1, :a].max()
-        """
-        c = term_3[i_2, a, j - 1, dic[j - 1]]
+            c = term_3[i_2, a, j - 1, :a].mean()
+
         if c > 0:
             t_3 += c
         else:
-            t_3 += attn_1[dic[j], j - 1] * c
-        # print(t_3)
+            t_3 += attn_1[:, j - 1].min() * c
+
     if j == 0:
 
-        t_3 = term_3[i_2, a, j, dic[j]]
-        # print(t_3)
+        t_3 = term_3[i_2, a, j, :].mean()
+
     if i_1 != 1:
-        c = term_3[i_2, dic[i_2], 0, dic[0]].min()
-        for i in range(1, i_1 - 1):
-            c = torch.min(c, term_3[i_2, dic[i_2], i, dic[i]].min())
-        c = torch.min(c, term_3[i_2, dic[i_2], i_1, dic[i_1]])
-
-        # c = torch.min(term_3[i_2, a, : i_1 - 1, a].min(), term_3[i_2, a, i_1, b].min())
+        c = torch.min(
+            term_3[i_2, a, : i_1 - 1, a].mean(), term_3[i_2, a, i_1, b].mean()
+        )
         if c < 0:
-            t_3 -= (1 - attn_1[dic[i_1], i_1 - 1]) * c
+            t_3 -= (1 - attn_1[:, i_1 - 1].min()) * c
 
-        c = term_3[i_2, a, i_1 - 1, a]
+        c = term_3[i_2, a, i_1 - 1, a].mean()
         if c < 0:
             t_3 -= c
         else:
-            t_3 -= attn_1[dic[i_1], i_1 - 1] * c
-        # print(t_3)
+            t_3 -= attn_1[:, i_1 - 1].min() * c
     if i_1 == 1:
-        c = term_3[i_2, a, i_1, b]
+        c = term_3[i_2, a, i_1, b].mean()
         if c < 0:
-            t_3 -= (1 - attn_1[dic[i_1], i_1 - 1]) * c
+            t_3 -= (1 - attn_1[:, i_1 - 1].min()) * c
 
-        c = term_3[i_2, a, i_1 - 1, a]
+        c = term_3[i_2, a, i_1 - 1, a].mean()
         if c < 0:
             t_3 -= c
         else:
-            t_3 -= attn_1[dic[i_1], i_1 - 1] * c
-        # print(t_3)
+            t_3 -= attn_1[:, i_1 - 1].min() * c
+
     return t_3
 
 
@@ -303,44 +291,46 @@ def diff_4(a, b, i_1, i_2, j):
     diff = []
     for k in range(i_2 + 1):
         if j != 0 and j != 1:
-            c = torch.max(term_4[k, :, : j - 1, :].max(), term_4[k, :, j, :].max())
+            c = torch.max(term_4[k, :, : j - 1, :].mean(), term_4[k, :, j, :].mean())
             if c > 0:
                 d = (1 - attn_1[:, j - 1].min()) * c
             else:
                 d = 0
-            c = term_4[k, :, j - 1, :].max()
+            c = term_4[k, :, j - 1, :].mean()
             if c > 0:
                 d += c
             else:
                 d += attn_1[:, j - 1].min() * c
         if j == 0:
-            d = term_4[k, :, j, :].max()
+            d = term_4[k, :, j, :].mean()
 
         if j == 1:
-            c = term_4[k, :, j, :].max()
+            c = term_4[k, :, j, :].mean()
             if c > 0:
                 d = (1 - attn_1[:, j - 1].min()) * c
             else:
                 d = 0
-            c = term_4[k, :, j - 1, :].max()
+            c = term_4[k, :, j - 1, :].mean()
             if c > 0:
                 d += c
             else:
                 d += attn_1[:, j - 1].min() * c
         if i_1 != 1:
-            c = torch.min(term_4[k, :, : i_1 - 1, :].min(), term_4[k, :, i_1, b].min())
+            c = torch.min(
+                term_4[k, :, : i_1 - 1, :].mean(), term_4[k, :, i_1, b].mean()
+            )
             if c < 0:
                 d -= (1 - attn_1[:, i_1 - 1].min()) * c
-            c = term_4[k, :, i_1 - 1, a].min()
+            c = term_4[k, :, i_1 - 1, a].mean()
             if c < 0:
                 d -= c
             else:
                 d -= attn_1[:, i_1 - 1].min() * c
         if i_1 == 1:
-            c = term_4[k, :, i_1, b].min()
+            c = term_4[k, :, i_1, b].mean()
             if c < 0:
                 d -= (1 - attn_1[:, i_1 - 1].min()) * c
-            c = term_4[k, :, i_1 - 1, a].min()
+            c = term_4[k, :, i_1 - 1, a].mean()
             if c < 0:
                 d -= c
             else:
@@ -348,7 +338,7 @@ def diff_4(a, b, i_1, i_2, j):
 
         diff.append(d)
     diff = torch.tensor(diff)
-    c = torch.max(diff[: i_2 - 1].max(), diff[i_2])
+    c = torch.max(diff[: i_2 - 1].mean(), diff[i_2])
     if c > 0:
         t_4 = (1 - attn_1[:, i_2 - 1].min()) * c
     else:
@@ -519,101 +509,84 @@ def diff_4_2(a, b, i_1, i_2, j):
 """
 
 
-def diff_2_4(a, b, i_1, i_2, j, dic):
+def diff_2_4(a, b, i_1, i_2, j, n):
     if j == i_1:
         return 0
-    diff = term_2[:, :, j, dic[j]] - term_2[:, :, i_1, b]
+    diff = term_2[:, :, j, :] - term_2[:, :, i_1, b].unsqueeze(dim=-1)
     f = []
     for k in range(i_2 + 1):
         if j != 0 and j != 1:
-
-            c = term_4[k, dic[k], 0][..., dic[0]].max()
-            for i in range(1, j - 1):
-
-                c = torch.max(c, term_4[k, dic[k], i][..., dic[i]].max())
-            c = torch.max(c, term_4[k, dic[k], j, dic[j]].max())
-
+            c = torch.max(term_4[k, :, : j - 1, :].mean(), term_4[k, :, j, :].mean())
             if c > 0:
-                d = (1 - attn_1[dic[j], j - 1]) * c
+                d = (1 - attn_1[:, j - 1].min()) * c
             else:
                 d = 0
-
-            c = term_4[k, dic[k], j - 1, dic[j - 1]].max()
-
+            c = term_4[k, :, j - 1, :].mean()
             if c > 0:
                 d += c
             else:
-                d += attn_1[dic[j], j - 1] * c
+                d += attn_1[:, j - 1].min() * c
         if j == 0:
-
-            d = term_4[k, dic[k], j, dic[j]].max()
+            d = term_4[k, :, j, :].mean()
 
         if j == 1:
-            c = term_4[k, dic[k], j, dic[j]].max()
+            c = term_4[k, :, j, :].mean()
             if c > 0:
-                d = (1 - attn_1[dic[j], j - 1]) * c
+                d = (1 - attn_1[:, j - 1].min()) * c
             else:
                 d = 0
-
-            c = term_4[k, dic[k], j - 1, dic[j - 1]].max()
-
+            c = term_4[k, :, j - 1, :].mean()
             if c > 0:
                 d += c
             else:
-                d += attn_1[dic[j], j - 1] * c
+                d += attn_1[:, j - 1].min() * c
         # print(d)
         if i_1 != 1:
-
-            c = term_4[k, dic[0], i][..., dic[0]].min()
-            print(k)
-            for i in range(1, i_1 - 1):
-                print(i)
-                c = torch.min(c, term_4[k, dic[k], i][..., dic[i]].min())
-            c = torch.min(c, term_4[k, dic[k], i_1, dic[i_1]].min())
-
+            c = torch.min(
+                term_4[k, :, : i_1 - 1, :].mean(), term_4[k, :, i_1, b].mean()
+            )
             if c < 0:
-                d -= (1 - attn_1[dic[i_1], i_1 - 1]) * c
-
-            c = term_4[k, dic[k], i_1 - 1, a].min()
-
+                d -= (1 - attn_1[:, i_1 - 1].min()) * c
+            c = term_4[k, :, i_1 - 1, a].mean()
             if c < 0:
                 d -= c
             else:
-                d -= attn_1[dic[i_1], i_1 - 1] * c
+                d -= attn_1[:, i_1 - 1].min() * c
         if i_1 == 1:
-            c = term_4[k, dic[k], i_1, b].min()
+            c = term_4[k, :, i_1, b].mean()
             if c < 0:
-                d -= (1 - attn_1[dic[i_1], i_1 - 1]) * c
-
-            c = term_4[k, dic[k], i_1 - 1, a].min()
-
+                d -= (1 - attn_1[:, i_1 - 1].min()) * c
+            c = term_4[k, :, i_1 - 1, a].mean()
             if c < 0:
                 d -= c
             else:
-                d -= attn_1[dic[i_1], i_1 - 1] * c
+                d -= attn_1[:, i_1 - 1].min() * c
         # print(d)
-
-        d += diff[k, dic[k]].max()
-
+        if k != i_2 and k != i_2 - 1:
+            d += diff[k, :, :].mean()
+        if k == i_2:
+            d += diff[i_2, a, :].mean()
+        if k == i_2 - 1:
+            d += diff[i_2 - 1, n, :].mean()
         f.append(d)
     f = torch.tensor(f)
     # print(f)
-    c = torch.max(f[: i_2 - 1].max(), f[i_2])
+    c = torch.max(f[: i_2 - 1].mean(), f[i_2])
     if c > 0:
-        t_4 = (1 - attn_1[dic[i_2], i_2 - 1]) * c
+        t_4 = (1 - attn_1[:, i_2 - 1].min()) * c
     else:
         t_4 = 0
     c = f[i_2 - 1]
     if c > 0:
         t_4 += c
     else:
-        t_4 += c * attn_1[dic[i_2], i_2 - 1]
+        t_4 += c * attn_1[:, i_2 - 1].min()
     return t_4
 
 
-def least_attention(a, b, i_1, i_2, j, dic):
-    e = diff_2_4(a, b, i_1, i_2, j, dic)
-    return diff_1(a, b, i_1, i_2, j, dic) + diff_3(a, b, i_1, i_2, j, x_j, p, n) + e
+def least_attention(a, b, i_1, i_2, j, n):
+    e = diff_2_4(a, b, i_1, i_2, j, n)
+    return diff_1(a, b, i_1, i_2, j) + diff_3(a, b, i_1, i_2, j) + e
 
 
 # %%
@@ -632,54 +605,22 @@ bound = (
 )
 
 
-for a in [5]:
-    for b in [8]:
-        for x_j in tqdm(range(e_p.shape[1])):
-            for p in tqdm(range(e_p.shape[1])):
-                for n in range(e_p.shape[1]):
-                    for i_2 in [3]:
-                        for i_1 in [2]:
-                            for j in range(i_2 + 1):
-                                if (
-                                    (n != a)
-                                    & ((i_2 - 1 != i_1) or n == b)
-                                    & ((j != i_2) or p == n)
-                                    & ((j != i_2 + 1) or p == a)
-                                    & ((j != i_1 + 1) or p == b)
-                                    & ((j != i_1) or p == a)
-                                    & (p != a or (j in [i_1, i_2 + 1]))
-                                    & (i_1 < i_2)
-                                    & (i_1 > 0)
-                                    & (i_2 + 1 > j)
-                                    & (a != b)
-                                    & ((j != i_2) or x_j == a)
-                                    & ((j != i_1) or x_j == b)
-                                    & ((j != i_1 - 1) or x_j == a)
-                                    & ((j != i_2 - 1) or x_j == n)
-                                    & (x_j != a or (j in [i_1 - 1, i_2]))
-                                ):
-                                    dic = {
-                                        i_2: a,
-                                        i_1: b,
-                                        i_1 - 1: a,
-                                        j: x_j,
-                                        j - 1: p,
-                                        i_2 - 1: n,
-                                    }
-                                    for i in range(8):
-                                        dic.setdefault(
-                                            i, torch.arange(8)[torch.arange(8) != a]
-                                        )
+for a in tqdm(range(e_p.shape[1])):
+    for b in tqdm(range(e_p.shape[1])):
 
-                                    bound[x_j, p, n, i_2, i_1, j] = least_attention(
-                                        a, b, i_1, i_2, j, dic
-                                    )
+        for i_2 in range(e_p.shape[0] - 1):
+            for i_1 in range(e_p.shape[0] - 1):
+                for j in range(i_2 + 1):
+                    if (i_1 < i_2) & (i_1 > 0) & (i_2 + 1 > j) & (a != b) & (a != 3):
+                        bound[a, b, 9, i_2, i_1, j] = least_attention(
+                            a, b, i_1, i_2, j, 9
+                        )
 
 
-bound_soft = bound.max(dim=0).values.max(dim=0).values.max(dim=0).values.softmax(dim=-1)
+bound_soft = bound.softmax(dim=-1)
 bound_2 = einops.einsum(
     bound_soft,
-    "i_2 i_1 i_1 -> i_2 i_1",
+    "a b n i_2 i_1 i_1 -> a b n i_2 i_1",
 )
 
 
@@ -1011,26 +952,5 @@ bound_2_a = einops.einsum(
     "a b i_2 i_1 i_1 -> a b i_2 i_1",
 )
 '''
-
-# %%
-import torch
-import matplotlib.pyplot as plt
-
-# Example tensor with more than 2 dimensions
-# Create a 3x4x5 tensor with random elements from a normal distribution
-
-# Flatten the tensor to 1D so that we can plot the histogram of all elements
-flattened_tensor = (bound_2[mask]).flatten().detach().cpu().numpy()
-
-# Plot the histogram
-plt.hist(flattened_tensor, bins=1000, edgecolor="black")
-
-# Add labels and title
-plt.xlabel("Value")
-plt.ylabel("Frequency")
-plt.title("Histogram of Tensor Elements")
-
-# Show the plot
-plt.show()
 
 # %%

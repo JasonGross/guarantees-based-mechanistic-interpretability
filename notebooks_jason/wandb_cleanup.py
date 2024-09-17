@@ -18,22 +18,45 @@ projects = [
     "ModularAdd-7-3000-epochs-attention-rate-1-nondeterministic",
 ]
 api = wandb.Api(overrides=dict(entity=entity))
+
+
+# %%
+def bytes_to_str(size: float) -> str:
+    if size < 1024:
+        return f"{size:.2f} B"
+    size /= 1024
+    if size < 1024:
+        return f"{size:.2f} KB"
+    size /= 1024
+    if size < 1024:
+        return f"{size:.2f} MB"
+    size /= 1024
+    return f"{size:.2f} GB"
+
+
 # %%
 artifact_groups = {}
 with (
-    tqdm(desc="Space cleaned up", position=0) as pbar_space,
-    tqdm(projects, desc="Projects", position=1) as tq,
+    # tqdm(desc="Space cleaned up", position=0) as pbar_space,
+    tqdm(projects, desc="Projects", position=0) as tq,
 ):
+    tq_position = 0
+    runs_position = tq_position + 1
     for project in tq:
-        tq.set_postfix(dict(project=project))
+        total_cleaned = 0
+        tq.set_postfix(dict(project=project, total_cleaned=bytes_to_str(total_cleaned)))
         runs = list(api.runs(path=f"{entity}/{project}"))
-        with tqdm(runs, desc="Runs", position=2) as pbar_run:
+        with tqdm(runs, desc="Runs", position=runs_position) as pbar_run:
+            position = runs_position + 1
             for r in pbar_run:
                 pbar_run.set_postfix(dict(id=r.id))
                 wandb_id = f"{entity}/{project}/{r.id}"
                 artifact_groups[wandb_id] = {}
                 for artifact in tqdm(
-                    r.logged_artifacts(), desc="Artifacts", position=3, leave=False
+                    r.logged_artifacts(),
+                    desc="Artifacts",
+                    position=position,
+                    leave=False,
                 ):
                     name = artifact.name.split(":")[0]
                     if name not in artifact_groups[wandb_id]:
@@ -44,7 +67,7 @@ with (
                         len(group) - 1 for group in artifact_groups[wandb_id].values()
                     ),
                     desc="Artifacts",
-                    position=3,
+                    position=position,
                     leave=False,
                 ) as pbar:
                     for name, group in artifact_groups[wandb_id].items():
@@ -61,7 +84,14 @@ with (
                                     size=artifact.size,
                                 )
                             )
-                            pbar_space.update(artifact.size / 1024 / 1024)
+                            # pbar_space.update(artifact.size / 1024 / 1024)
+                            total_cleaned += artifact.size
+                            tq.set_postfix(
+                                dict(
+                                    project=project,
+                                    total_cleaned=bytes_to_str(total_cleaned),
+                                )
+                            )
                             artifact.delete()
                             pbar.update(1)
 

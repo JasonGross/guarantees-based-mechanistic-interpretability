@@ -26,12 +26,12 @@ def bytes_to_str(size: float) -> str:
         return f"{size:.2f} B"
     size /= 1024
     if size < 1024:
-        return f"{size:.2f} KB"
+        return f"{size:.4f} KB"
     size /= 1024
     if size < 1024:
-        return f"{size:.2f} MB"
+        return f"{size:.8f} MB"
     size /= 1024
-    return f"{size:.2f} GB"
+    return f"{size:.16f} GB"
 
 
 # %%

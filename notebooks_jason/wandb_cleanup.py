@@ -51,7 +51,6 @@ with tqdm(projects, desc="Projects", position=0) as tq:
                         )
                         # Keep the first (latest) version, delete the rest
                         for artifact in sorted_versions[1:]:
-                            pbar.update(1)
                             pbar.set_postfix(
                                 dict(
                                     keeping=sorted_versions[0].name,
@@ -60,6 +59,8 @@ with tqdm(projects, desc="Projects", position=0) as tq:
                                 )
                             )
                             artifact.delete()
+                            pbar.update(1)
+
 
 # artifacts = {r.id: list(r.logged_artifacts()) for r in tqdm(list(api.runs(path=f"{entity}/{project}")))}
 # # %%

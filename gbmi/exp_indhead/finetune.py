@@ -144,7 +144,7 @@ class IndHeadOnlyFineTune:
 class IndHeadFineTune(ExperimentConfig):
     train: Config[IndHead]
     finetune: IndHeadOnlyFineTune
-    base_model_force: Optional[Literal["train", "load"]] = "load"
+    base_model_force: Literal["train", "load", None] = "load"
     version_number: int = 1
 
     def __post_init__(self):
@@ -196,7 +196,7 @@ class IndHeadFineTune(ExperimentConfig):
     def from_IndHead(
         config: Config[IndHead],
         config_finetune: IndHead,
-        base_model_force: Optional[Literal["train", "load"]] = "load",
+        base_model_force: Literal["train", "load", None] = "load",
     ) -> IndHeadFineTune:
         return IndHeadFineTune(
             train=config,
@@ -208,7 +208,7 @@ class IndHeadFineTune(ExperimentConfig):
     def from_IndHeadConfig(
         config: Config[IndHead],
         config_finetune: Config[IndHead],
-        base_model_force: Optional[Literal["train", "load"]] = "load",
+        base_model_force: Literal["train", "load", None] = "load",
     ) -> Config[IndHeadFineTune]:
         return cast(
             Config[IndHeadFineTune],
@@ -329,7 +329,7 @@ class IndHeadFineTuneDataModule(DataModule):
 def make_default_finetune(
     config: Config[IndHead],
     alpha_mix_uniform: float = 1,
-    base_model_force: Optional[Literal["train", "load"]] = "load",
+    base_model_force: Literal["train", "load", None] = "load",
 ) -> Config[IndHeadFineTune]:
     return IndHeadFineTune.from_IndHeadConfig(
         config,
@@ -350,7 +350,7 @@ ABCAB8_1H_FINETUNE = make_default_finetune(ABCAB8_1H)
 def main(
     argv: List[str] = sys.argv,
     default: Config[IndHeadFineTune] = ABCAB8_1H_FINETUNE,
-    default_force: Optional[Literal["train", "load"]] = None,
+    default_force: Literal["train", "load", None] = None,
 ):
     parser = simple_parsing.ArgumentParser(
         description="Train a model with configurable attention rate."

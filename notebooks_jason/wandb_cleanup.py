@@ -20,17 +20,20 @@ projects = [
 api = wandb.Api(overrides=dict(entity=entity))
 # %%
 artifact_groups = {}
-with tqdm(projects, desc="Projects", position=0) as tq:
+with (
+    tqdm(desc="Space cleaned up", position=0) as pbar_space,
+    tqdm(projects, desc="Projects", position=1) as tq,
+):
     for project in tq:
         tq.set_postfix(dict(project=project))
         runs = list(api.runs(path=f"{entity}/{project}"))
-        with tqdm(runs, desc="Runs", position=1) as pbar_run:
+        with tqdm(runs, desc="Runs", position=2) as pbar_run:
             for r in pbar_run:
                 pbar_run.set_postfix(dict(id=r.id))
                 wandb_id = f"{entity}/{project}/{r.id}"
                 artifact_groups[wandb_id] = {}
                 for artifact in tqdm(
-                    r.logged_artifacts(), desc="Artifacts", position=21, leave=False
+                    r.logged_artifacts(), desc="Artifacts", position=3, leave=False
                 ):
                     name = artifact.name.split(":")[0]
                     if name not in artifact_groups[wandb_id]:
@@ -41,7 +44,7 @@ with tqdm(projects, desc="Projects", position=0) as tq:
                         len(group) - 1 for group in artifact_groups[wandb_id].values()
                     ),
                     desc="Artifacts",
-                    position=2,
+                    position=3,
                     leave=False,
                 ) as pbar:
                     for name, group in artifact_groups[wandb_id].items():
@@ -58,6 +61,7 @@ with tqdm(projects, desc="Projects", position=0) as tq:
                                     size=artifact.size,
                                 )
                             )
+                            pbar_space.update(artifact.size / 1024 / 1024)
                             artifact.delete()
                             pbar.update(1)
 

@@ -37,18 +37,21 @@ with tqdm(projects, desc="Projects", position=0) as tq:
                         artifact_groups[wandb_id][name] = []
                     artifact_groups[wandb_id][name].append(artifact)
                 with tqdm(
-                    artifact_groups[wandb_id].items(),
+                    total=sum(
+                        len(group) - 1 for group in artifact_groups[wandb_id].values()
+                    ),
                     desc="Artifacts",
                     position=2,
                     leave=False,
                 ) as pbar:
-                    for name, group in pbar:
+                    for name, group in artifact_groups[wandb_id].items():
                         # Sort versions by creation time, newest first
                         sorted_versions = sorted(
                             group, key=lambda x: x.created_at, reverse=True
                         )
                         # Keep the first (latest) version, delete the rest
                         for artifact in sorted_versions[1:]:
+                            pbar.update(1)
                             pbar.set_postfix(
                                 dict(
                                     keeping=sorted_versions[0].name,

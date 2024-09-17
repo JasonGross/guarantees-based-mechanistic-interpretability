@@ -245,14 +245,13 @@ class IndHeadFineTune(ExperimentConfig):
 
 class IndHeadFineTuneTrainingWrapper(TrainingWrapper[IndHeadFineTune]):
     def __init__(self, config: Config[IndHeadFineTune], model: HookedTransformer):
-        super().__init__(config, model)
-        self.config = config
-        self.finetune_config = IndHeadFineTune.to_IndHeadFineTuneConfig(config)
-        self.finetune_training_wrapper = (
-            self.finetune_config.experiment.get_training_wrapper()(
-                self.finetune_config, model
-            )
+        # super().__init__(config, model)
+        # self.config = config
+        finetune_config = IndHeadFineTune.to_IndHeadFineTuneConfig(config)
+        finetune_training_wrapper_module = (
+            finetune_config.experiment.get_training_wrapper()
         )
+        finetune_training_wrapper_module.__init__(self, finetune_config, model)
 
     @staticmethod
     def build_model(config: Config[IndHeadFineTune]) -> HookedTransformer:
@@ -262,35 +261,12 @@ class IndHeadFineTuneTrainingWrapper(TrainingWrapper[IndHeadFineTune]):
         )
         return model
 
-    def run_batch(
-        self,
-        x_y: Tuple[
-            Integer[Tensor, "batch pos"],  # noqa F722
-            Float[Tensor, "batch pos num_tokens"],  # noqa F722
-        ],
-        prefix: Optional[str] = None,
-        *,
-        log_output: bool = True,
-        device: Optional[Union[torch.device, str]] = None,
-    ) -> Float[Tensor, ""]:  # noqa F722
-        return self.finetune_training_wrapper.run_batch(
-            x_y,
-            prefix=prefix,
-            log_output=log_output,
-            device=device,
-        )
-
-    def training_step(self, batch, batch_idx):
-        return self.finetune_training_wrapper.training_step(batch, batch_idx)
-
-    def validation_step(self, batch, batch_idx):
-        return self.finetune_training_wrapper.validation_step(batch, batch_idx)
-
-    def test_step(self, batch, batch_idx):
-        return self.finetune_training_wrapper.test_step(batch, batch_idx)
-
-    def configure_optimizers(self):
-        return self.finetune_training_wrapper.configure_optimizers()
+    loss_fn = IndHeadTrainingWrapper.loss_fn
+    run_batch = IndHeadTrainingWrapper.run_batch
+    training_step = IndHeadTrainingWrapper.training_step
+    validation_step = IndHeadTrainingWrapper.validation_step
+    test_step = IndHeadTrainingWrapper.test_step
+    configure_optimizers = IndHeadTrainingWrapper.configure_optimizers
 
 
 class IndHeadFineTuneDataModule(DataModule):

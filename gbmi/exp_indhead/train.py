@@ -225,7 +225,7 @@ class IndHeadMLP(ExperimentConfig):
     def get_datamodule(self):
         return IndHeadDataModule
 
-    def get_summary_slug(self, config: Config[IndHead]) -> str:
+    def get_summary_slug(self, config: Config[IndHeadMLP]) -> str:
         return (
             f"IndHead"
             f"{f'{config.experiment.ngram}gram' if self.ngram != 3 and self.ngram_relevant else ''}"

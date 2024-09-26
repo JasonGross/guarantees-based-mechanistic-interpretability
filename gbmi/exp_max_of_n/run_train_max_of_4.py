@@ -21,7 +21,7 @@ args = parser.parse_args()
 if args.force == "none":
     args.force = None
 
-with tqdm(args.seeds, desc="Seed") as pbar:
+with tqdm(sorted(map(int, args.seeds.split(","))), desc="Seed") as pbar:
     for seed in pbar:
         pbar.set_postfix({"seed": seed})
         runtime, model = train_or_load_model(MAX_OF_4_CONFIG(seed), force=args.force)

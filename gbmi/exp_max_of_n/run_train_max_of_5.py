@@ -21,7 +21,7 @@ args = parser.parse_args()
 if args.force == "none":
     args.force = None
 
-with tqdm(args.seeds, desc="Seed") as pbar:
+with tqdm(sorted(map(int, args.seeds.split(","))), desc="Seed") as pbar:
     for seed in pbar:
         cfg = MAX_OF_5_CONFIG(seed, deterministic=False)
         pbar.set_postfix({"seed": seed, "cfg": cfg})

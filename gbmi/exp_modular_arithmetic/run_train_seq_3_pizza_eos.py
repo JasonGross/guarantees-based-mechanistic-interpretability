@@ -10,5 +10,7 @@ runtime, model = train_or_load_model(
             ("experiment", "d_mlp"): 1024,
         },
         post_init=True,
-    )
-)  # , force="train")
+    ),
+    # force="train",
+    # force="load",
+)

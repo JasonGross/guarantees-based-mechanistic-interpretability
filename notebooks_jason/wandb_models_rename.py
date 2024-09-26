@@ -10,9 +10,15 @@ artifact_base = base / "artifacts"
 wandbs = list(artifact_base.glob("*/*.pth"))
 model_base = base / "trained-models"
 model_base.mkdir(exist_ok=True, parents=True)
+known_models = set()
+for path in tqdm(list(model_base.glob("*.pth")), "Known models"):
+    known_models.add(path.read_bytes())
 
 with tqdm(wandbs) as pbar:
     for path in pbar:
+        pbar.set_postfix({})
+        if path.read_bytes() in known_models:
+            continue
         cache = torch.load(path, map_location="cpu")
         # if cache["run_config"]["experiment"]["p"] not in (7, 12):
         #     continue

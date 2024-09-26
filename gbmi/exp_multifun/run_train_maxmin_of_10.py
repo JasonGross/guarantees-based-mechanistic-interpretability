@@ -1,4 +1,4 @@
-from argparse import ArgumentParser, BooleanOptionalAction
+from argparse import ArgumentParser
 
 from tqdm.auto import tqdm
 
@@ -11,7 +11,15 @@ parser.add_argument(
     default=",".join(sorted(map(str, SEEDS))),
     help="Comma-separated list of seeds to use",
 )
+parser.add_argument(
+    "--force",
+    choices=["train", "load", "none"],
+    default="train",
+    help="Force training or loading",
+)
 args = parser.parse_args()
+if args.force == "none":
+    args.force = None
 
 for d_vocab in tqdm((64, 128), desc="d_vocab"):
     with (
@@ -43,4 +51,4 @@ for d_vocab in tqdm((64, 128), desc="d_vocab"):
                             "cfg": cfg,
                         }
                     )
-                    runtime, model = train_or_load_model(cfg)  # , force="train"
+                    runtime, model = train_or_load_model(cfg, force=args.force)

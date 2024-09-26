@@ -6,7 +6,8 @@ import torch
 from tqdm.auto import tqdm
 
 base = Path(".").resolve()
-wandbs = list((base / "artifacts").glob("*/*.pth"))
+artifact_base = base / "artifacts"
+wandbs = list(artifact_base.glob("*/*.pth"))
 model_base = base / "trained-models"
 model_base.mkdir(exist_ok=True, parents=True)
 

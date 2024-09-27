@@ -26,6 +26,7 @@ torch.set_default_device("cuda")
 runtime_model_1, model = train_or_load_model(ABCAB8_1H, force="load")
 model.to(device)
 
+
 attn_scale_0 = model.blocks[0].attn.attn_scale
 attn_scale_1 = model.blocks[1].attn.attn_scale
 W_pos = model.W_pos
@@ -65,12 +66,10 @@ for p in range(2, n_ctx):  #
     tmp = torch.zeros((p, d_voc))
     for t_q in range(d_voc):
         tmp[-1, :] = everything[p - 1, t_q, p - 1, t_q]
+
         for t_k in range(d_voc):
             tmp[-2, :] = everything[p - 1, t_q, p - 2, t_k]
             tmp[:-2, :] = everything[p - 1, t_q, : p - 2, :]
-            if p == n_ctx:
-                print()
-                print(tmp, "TMP")
             tmp_sm = tmp.softmax(dim=0)
             table[t_q, t_k, p - 2, :] = tmp_sm[
                 -2, :
@@ -159,55 +158,11 @@ term_4 = (
 
 
 def diff_1(a, b, i_1, i_2, j, dic):
+
     if j == i_1:
         return 0
     else:
         return term_1[i_2, a, j, dic[j]] - term_1[i_2, a, i_1, b]
-
-
-"""
-def diff_2(a, b, i_1, i_2, j):
-    if j == i_1:
-        return 0
-    diff = term_2[:, :, j, :] - term_2[:, :, i_1, b].unsqueeze(dim=-1)
-    c = torch.max(diff[: i_2 - 1, :, :].max(), diff[i_2, a, :].max())
-    if c > 0:
-        t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
-    else:
-        t_2 = 0
-    c = diff[i_2 - 1, :, :].max()
-    if c > 0:
-        t_2 += c
-    else:
-        t_2 += attn_1[:, i_2 - 1].min() * c
-    return t_2
-
-
-def diff_2_2(a, b, i_1, i_2, j):
-    c = torch.max(term_2[: i_2 - 1, :, j, :].max(), term_2[i_2, a, j, :].max())
-    if c > 0:
-        t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
-    else:
-        t_2 = 0
-    c = term_2[i_2 - 1, :, j, :].max()
-    if c > 0:
-        t_2 += c
-    else:
-        t_2 += attn_1[:, i_2 - 1].min() * c
-
-    c = torch.min(term_2[: i_2 - 1, :, i_1, b].min(), term_2[i_2, a, i_1, b].min())
-    if c < 0:
-        t_2 -= (1 - attn_1[:, i_2 - 1].min()) * c
-
-    c = term_2[i_2 - 1, :, i_1, b].min()
-    if c < 0:
-        t_2 -= c
-    else:
-        t_2 -= attn_1[:, i_2 - 1].min() * c
-
-    return t_2
-
-"""
 
 
 def diff_3(a, b, i_1, i_2, j, dic):
@@ -298,230 +253,6 @@ def diff_3(a, b, i_1, i_2, j, dic):
             t_3 -= attn_1[dic[i_1], i_1 - 1] * c
         # print(t_3)
     return t_3
-
-
-"""
-
-def diff_4(a, b, i_1, i_2, j):
-    if j == i_1:
-        return 0
-    diff = []
-    for k in range(i_2 + 1):
-        if j != 0 and j != 1:
-            c = torch.max(term_4[k, :, : j - 1, :].max(), term_4[k, :, j, :].max())
-            if c > 0:
-                d = (1 - attn_1[:, j - 1].min()) * c
-            else:
-                d = 0
-            c = term_4[k, :, j - 1, :].max()
-            if c > 0:
-                d += c
-            else:
-                d += attn_1[:, j - 1].min() * c
-        if j == 0:
-            d = term_4[k, :, j, :].max()
-
-        if j == 1:
-            c = term_4[k, :, j, :].max()
-            if c > 0:
-                d = (1 - attn_1[:, j - 1].min()) * c
-            else:
-                d = 0
-            c = term_4[k, :, j - 1, :].max()
-            if c > 0:
-                d += c
-            else:
-                d += attn_1[:, j - 1].min() * c
-        if i_1 != 1:
-            c = torch.min(term_4[k, :, : i_1 - 1, :].min(), term_4[k, :, i_1, b].min())
-            if c < 0:
-                d -= (1 - attn_1[:, i_1 - 1].min()) * c
-            c = term_4[k, :, i_1 - 1, a].min()
-            if c < 0:
-                d -= c
-            else:
-                d -= attn_1[:, i_1 - 1].min() * c
-        if i_1 == 1:
-            c = term_4[k, :, i_1, b].min()
-            if c < 0:
-                d -= (1 - attn_1[:, i_1 - 1].min()) * c
-            c = term_4[k, :, i_1 - 1, a].min()
-            if c < 0:
-                d -= c
-            else:
-                d -= attn_1[:, i_1 - 1].min() * c
-
-        diff.append(d)
-    diff = torch.tensor(diff)
-    c = torch.max(diff[: i_2 - 1].max(), diff[i_2])
-    if c > 0:
-        t_4 = (1 - attn_1[:, i_2 - 1].min()) * c
-    else:
-        t_4 = 0
-    c = diff[i_2 - 1]
-    if c > 0:
-        t_4 += c
-    else:
-        t_4 += c * attn_1[:, i_2 - 1].min()
-    return t_4
-
-
-
-def diff_4_2(a, b, i_1, i_2, j):
-    if j == i_1:
-        return 0
-    if j != 0 and j != 1:
-        c = (
-            (1 - attn_1[:, j - 1].min())
-            * (1 - attn_1[:, i_2 - 1].min())
-            * torch.tensor(
-                [
-                    term_4[: i_2 - 1, :, : j - 1, :].max(),
-                    term_4[i_2, :, : j - 1, :].max(),
-                    term_4[: i_2 - 1, :, j, :].max(),
-                    term_4[i_2, :, j, :].max(),
-                ]
-            ).max()
-        )
-        d = (1 - attn_1[:, i_2 - 1].min()) * torch.max(
-            term_4[: i_2 - 1, :, j - 1, :].max(), term_4[i_2, a, j - 1, :].max()
-        )
-        e = (1 - attn_1[:, j - 1].min()) * torch.max(
-            term_4[i_2 - 1, :, : j - 1, :].max(), term_4[i_2 - 1, :, j, :].max()
-        )
-
-        if c > 0:
-            t_4 = c
-        else:
-            t_4 = 0
-
-        if d > 0:
-            t_4 += d
-
-        if e > 0:
-            t_4 += e
-
-        c = term_4[i_2 - 1, :, j - 1, :].max()
-        if c > 0:
-            t_4 += c
-        else:
-            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
-    if j == 1:
-        c = (
-            (1 - attn_1[:, j - 1].min())
-            * (1 - attn_1[:, i_2 - 1].min())
-            * torch.tensor(
-                [
-                    term_4[: i_2 - 1, :, j, :].max(),
-                    term_4[i_2, :, j, :].max(),
-                ]
-            ).max()
-        )
-        d = (1 - attn_1[:, i_2 - 1].min()) * torch.max(
-            term_4[: i_2 - 1, :, j - 1, :].max(), term_4[i_2, a, j - 1, :].max()
-        )
-        e = (1 - attn_1[:, j - 1].min()) * term_4[i_2 - 1, :, j, :].max()
-
-        if c > 0:
-            t_4 = c
-        else:
-            t_4 = 0
-
-        if d > 0:
-            t_4 += d
-
-        if e > 0:
-            t_4 += e
-
-        c = term_4[i_2 - 1, :, j - 1, :].max()
-        if c > 0:
-            t_4 += c
-        else:
-            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
-    if j == 0:
-        c = (1 - attn_1[:, i_2 - 1].min()) * torch.tensor(
-            [
-                term_4[: i_2 - 1, :, j, :].max(),
-                term_4[i_2, :, j, :].max(),
-            ]
-        ).max()
-
-        e = term_4[i_2 - 1, :, j, :].max()
-
-        if c > 0:
-            t_4 = c
-        else:
-            t_4 = 0
-
-        if e > 0:
-            t_4 += e
-
-    if i_1 != 1:
-        c = (
-            (1 - attn_1[:, i_1 - 1].min())
-            * (1 - attn_1[:, i_2 - 1].min())
-            * torch.tensor(
-                [
-                    term_4[: i_2 - 1, :, : i_1 - 1, :].min(),
-                    term_4[i_2, :, : i_1 - 1, :].min(),
-                    term_4[: i_2 - 1, :, i_1, b].min(),
-                    term_4[i_2, :, i_1, b].min(),
-                ]
-            ).max()
-        )
-        d = (1 - attn_1[:, i_2 - 1].min()) * torch.min(
-            term_4[: i_2 - 1, :, i_1 - 1, a].min(), term_4[i_2, a, i_1 - 1, a].min()
-        )
-        e = (1 - attn_1[:, i_1 - 1].min()) * torch.min(
-            term_4[i_2 - 1, :, : i_1 - 1, :].min(), term_4[i_2 - 1, :, i_1, b].min()
-        )
-
-        if c < 0:
-            t_4 -= c
-
-        if d < 0:
-            t_4 -= d
-
-        if e < 0:
-            t_4 -= e
-
-        c = term_4[i_2 - 1, :, i_1 - 1, :].min()
-        if c < 0:
-            t_4 -= c
-        else:
-            t_4 -= attn_1[:, i_2 - 1].min() * attn_1[:, i_1 - 1].min() * c
-    if i_1 == 1:
-        c = (
-            (1 - attn_1[:, i_1 - 1].min())
-            * (1 - attn_1[:, i_2 - 1].min())
-            * torch.tensor(
-                [
-                    term_4[: i_2 - 1, :, i_1, b].min(),
-                    term_4[i_2, :, i_1, b].min(),
-                ]
-            ).max()
-        )
-        d = (1 - attn_1[:, i_2 - 1].min()) * torch.min(
-            term_4[: i_2 - 1, :, i_1 - 1, a].min(), term_4[i_2, a, i_1 - 1, a].min()
-        )
-        e = (1 - attn_1[:, i_1 - 1].min()) * term_4[i_2 - 1, :, i_1, b].min()
-
-        if c < 0:
-            t_4 -= c
-
-        if d < 0:
-            t_4 -= d
-
-        if e < 0:
-            t_4 -= e
-
-        c = term_4[i_2 - 1, :, i_1 - 1, :].min()
-        if c < 0:
-            t_4 -= c
-        else:
-            t_4 -= attn_1[:, i_2 - 1].min() * attn_1[:, i_1 - 1].min() * c
-    return t_4
-"""
 
 
 def diff_2_4(a, b, i_1, i_2, j, dic):
@@ -642,8 +373,8 @@ for a in [5]:
         for x_j in tqdm(range(e_p.shape[1])):
             for p in tqdm(range(e_p.shape[1])):
                 for n in range(e_p.shape[1]):
-                    for i_2 in range(7):
-                        for i_1 in range(7):
+                    for i_2 in [6]:
+                        for i_1 in [5]:
                             for j in range(i_2 + 1):
                                 if (
                                     (n != a)
@@ -686,6 +417,7 @@ bound_2 = einops.einsum(
     bound_soft,
     "i_2 i_1 i_1 -> i_2 i_1",
 )
+# %%
 
 
 # %%
@@ -1016,6 +748,274 @@ bound_2_a = einops.einsum(
     "a b i_2 i_1 i_1 -> a b i_2 i_1",
 )
 '''
+
+"""
+def diff_2(a, b, i_1, i_2, j):
+    if j == i_1:
+        return 0
+    diff = term_2[:, :, j, :] - term_2[:, :, i_1, b].unsqueeze(dim=-1)
+    c = torch.max(diff[: i_2 - 1, :, :].max(), diff[i_2, a, :].max())
+    if c > 0:
+        t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
+    else:
+        t_2 = 0
+    c = diff[i_2 - 1, :, :].max()
+    if c > 0:
+        t_2 += c
+    else:
+        t_2 += attn_1[:, i_2 - 1].min() * c
+    return t_2
+
+
+def diff_2_2(a, b, i_1, i_2, j):
+    c = torch.max(term_2[: i_2 - 1, :, j, :].max(), term_2[i_2, a, j, :].max())
+    if c > 0:
+        t_2 = (1 - attn_1[:, i_2 - 1].min()) * c
+    else:
+        t_2 = 0
+    c = term_2[i_2 - 1, :, j, :].max()
+    if c > 0:
+        t_2 += c
+    else:
+        t_2 += attn_1[:, i_2 - 1].min() * c
+
+    c = torch.min(term_2[: i_2 - 1, :, i_1, b].min(), term_2[i_2, a, i_1, b].min())
+    if c < 0:
+        t_2 -= (1 - attn_1[:, i_2 - 1].min()) * c
+
+    c = term_2[i_2 - 1, :, i_1, b].min()
+    if c < 0:
+        t_2 -= c
+    else:
+        t_2 -= attn_1[:, i_2 - 1].min() * c
+
+    return t_2
+
+"""
+
+
+"""
+
+def diff_4(a, b, i_1, i_2, j):
+    if j == i_1:
+        return 0
+    diff = []
+    for k in range(i_2 + 1):
+        if j != 0 and j != 1:
+            c = torch.max(term_4[k, :, : j - 1, :].max(), term_4[k, :, j, :].max())
+            if c > 0:
+                d = (1 - attn_1[:, j - 1].min()) * c
+            else:
+                d = 0
+            c = term_4[k, :, j - 1, :].max()
+            if c > 0:
+                d += c
+            else:
+                d += attn_1[:, j - 1].min() * c
+        if j == 0:
+            d = term_4[k, :, j, :].max()
+
+        if j == 1:
+            c = term_4[k, :, j, :].max()
+            if c > 0:
+                d = (1 - attn_1[:, j - 1].min()) * c
+            else:
+                d = 0
+            c = term_4[k, :, j - 1, :].max()
+            if c > 0:
+                d += c
+            else:
+                d += attn_1[:, j - 1].min() * c
+        if i_1 != 1:
+            c = torch.min(term_4[k, :, : i_1 - 1, :].min(), term_4[k, :, i_1, b].min())
+            if c < 0:
+                d -= (1 - attn_1[:, i_1 - 1].min()) * c
+            c = term_4[k, :, i_1 - 1, a].min()
+            if c < 0:
+                d -= c
+            else:
+                d -= attn_1[:, i_1 - 1].min() * c
+        if i_1 == 1:
+            c = term_4[k, :, i_1, b].min()
+            if c < 0:
+                d -= (1 - attn_1[:, i_1 - 1].min()) * c
+            c = term_4[k, :, i_1 - 1, a].min()
+            if c < 0:
+                d -= c
+            else:
+                d -= attn_1[:, i_1 - 1].min() * c
+
+        diff.append(d)
+    diff = torch.tensor(diff)
+    c = torch.max(diff[: i_2 - 1].max(), diff[i_2])
+    if c > 0:
+        t_4 = (1 - attn_1[:, i_2 - 1].min()) * c
+    else:
+        t_4 = 0
+    c = diff[i_2 - 1]
+    if c > 0:
+        t_4 += c
+    else:
+        t_4 += c * attn_1[:, i_2 - 1].min()
+    return t_4
+
+
+
+def diff_4_2(a, b, i_1, i_2, j):
+    if j == i_1:
+        return 0
+    if j != 0 and j != 1:
+        c = (
+            (1 - attn_1[:, j - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, : j - 1, :].max(),
+                    term_4[i_2, :, : j - 1, :].max(),
+                    term_4[: i_2 - 1, :, j, :].max(),
+                    term_4[i_2, :, j, :].max(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.max(
+            term_4[: i_2 - 1, :, j - 1, :].max(), term_4[i_2, a, j - 1, :].max()
+        )
+        e = (1 - attn_1[:, j - 1].min()) * torch.max(
+            term_4[i_2 - 1, :, : j - 1, :].max(), term_4[i_2 - 1, :, j, :].max()
+        )
+
+        if c > 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if d > 0:
+            t_4 += d
+
+        if e > 0:
+            t_4 += e
+
+        c = term_4[i_2 - 1, :, j - 1, :].max()
+        if c > 0:
+            t_4 += c
+        else:
+            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
+    if j == 1:
+        c = (
+            (1 - attn_1[:, j - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, j, :].max(),
+                    term_4[i_2, :, j, :].max(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.max(
+            term_4[: i_2 - 1, :, j - 1, :].max(), term_4[i_2, a, j - 1, :].max()
+        )
+        e = (1 - attn_1[:, j - 1].min()) * term_4[i_2 - 1, :, j, :].max()
+
+        if c > 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if d > 0:
+            t_4 += d
+
+        if e > 0:
+            t_4 += e
+
+        c = term_4[i_2 - 1, :, j - 1, :].max()
+        if c > 0:
+            t_4 += c
+        else:
+            t_4 += attn_1[:, i_2 - 1].min() * attn_1[:, j - 1].min() * c
+    if j == 0:
+        c = (1 - attn_1[:, i_2 - 1].min()) * torch.tensor(
+            [
+                term_4[: i_2 - 1, :, j, :].max(),
+                term_4[i_2, :, j, :].max(),
+            ]
+        ).max()
+
+        e = term_4[i_2 - 1, :, j, :].max()
+
+        if c > 0:
+            t_4 = c
+        else:
+            t_4 = 0
+
+        if e > 0:
+            t_4 += e
+
+    if i_1 != 1:
+        c = (
+            (1 - attn_1[:, i_1 - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, : i_1 - 1, :].min(),
+                    term_4[i_2, :, : i_1 - 1, :].min(),
+                    term_4[: i_2 - 1, :, i_1, b].min(),
+                    term_4[i_2, :, i_1, b].min(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.min(
+            term_4[: i_2 - 1, :, i_1 - 1, a].min(), term_4[i_2, a, i_1 - 1, a].min()
+        )
+        e = (1 - attn_1[:, i_1 - 1].min()) * torch.min(
+            term_4[i_2 - 1, :, : i_1 - 1, :].min(), term_4[i_2 - 1, :, i_1, b].min()
+        )
+
+        if c < 0:
+            t_4 -= c
+
+        if d < 0:
+            t_4 -= d
+
+        if e < 0:
+            t_4 -= e
+
+        c = term_4[i_2 - 1, :, i_1 - 1, :].min()
+        if c < 0:
+            t_4 -= c
+        else:
+            t_4 -= attn_1[:, i_2 - 1].min() * attn_1[:, i_1 - 1].min() * c
+    if i_1 == 1:
+        c = (
+            (1 - attn_1[:, i_1 - 1].min())
+            * (1 - attn_1[:, i_2 - 1].min())
+            * torch.tensor(
+                [
+                    term_4[: i_2 - 1, :, i_1, b].min(),
+                    term_4[i_2, :, i_1, b].min(),
+                ]
+            ).max()
+        )
+        d = (1 - attn_1[:, i_2 - 1].min()) * torch.min(
+            term_4[: i_2 - 1, :, i_1 - 1, a].min(), term_4[i_2, a, i_1 - 1, a].min()
+        )
+        e = (1 - attn_1[:, i_1 - 1].min()) * term_4[i_2 - 1, :, i_1, b].min()
+
+        if c < 0:
+            t_4 -= c
+
+        if d < 0:
+            t_4 -= d
+
+        if e < 0:
+            t_4 -= e
+
+        c = term_4[i_2 - 1, :, i_1 - 1, :].min()
+        if c < 0:
+            t_4 -= c
+        else:
+            t_4 -= attn_1[:, i_2 - 1].min() * attn_1[:, i_1 - 1].min() * c
+    return t_4
+"""
 
 # %%
 import torch

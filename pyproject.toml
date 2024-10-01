@@ -51,7 +51,7 @@ cirron = "^0.3"
 eintorch = "^0.2.5"
 numpy = "^2.0.1"
 tikzplotlib-patched = "^0.10.1.post9"
-datasets = "^3.0.0"
+datasets = "^3.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.6.0"

@@ -5299,19 +5299,21 @@ test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess
 
 [[package]]
 name = "wandb"
-version = "0.18.1"
+version = "0.18.2"
 description = "A CLI and library for interacting with the Weights & Biases API."
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "wandb-0.18.1-py3-none-any.whl", hash = "sha256:be936a193eeb940ce03d966f013b847562497e76256852d5fb170cdcdf50f185"},
-    {file = "wandb-0.18.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:1f143b814b0fd51b5f1a676ad8b66bd06a5ee4ad22fc46bcbf24048d76c77d35"},
-    {file = "wandb-0.18.1-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:86b73a9f94f18b07f0e937ae945560244b560b57c16a9dfb8f03e2516d0cc666"},
-    {file = "wandb-0.18.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:cc404682ebfb2477b48cb436a331e1bea0262e002d6fb3ccafe71d13657dd4ee"},
-    {file = "wandb-0.18.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fd4c97d69242efd604c1a2077c8b56341e236cfaca78c40f59dcef9b95464fdc"},
-    {file = "wandb-0.18.1-py3-none-win32.whl", hash = "sha256:33c5a0d74bc28879917b519f24d69b0e81530d72e99aba1c115189a2c9aac9cf"},
-    {file = "wandb-0.18.1-py3-none-win_amd64.whl", hash = "sha256:559cbd6e9ab752622f7d6dacdc334ede7f1bc34f42df3f48ed32bde55db42c6e"},
-    {file = "wandb-0.18.1.tar.gz", hash = "sha256:d625e94d53ff4ff961c58a9a17f0a1ea35720d98b9db710a458235924469fc6b"},
+    {file = "wandb-0.18.2-py3-none-any.whl", hash = "sha256:45eee0a41db776390de97c06dc1d72256acf9ffa63f1be46343670383c9235f7"},
+    {file = "wandb-0.18.2-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:9aa061328605baeda926629ca0907c8c2f7eb7091b48d6be94e2696d20f2e721"},
+    {file = "wandb-0.18.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:4826089be875ac051e59ccc2af5fbaad534b5c3db0857d9a331e9c2210455855"},
+    {file = "wandb-0.18.2-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:eca6d14e0fcfb9ba9369733b977965cf02b22a5803dcb8a68be1087fda0e2543"},
+    {file = "wandb-0.18.2-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ebedaf482e4064ecb9bb977e4c5704bfd23867bda8126700895b284f2cbebff9"},
+    {file = "wandb-0.18.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:21ca6c2b7e75971fa55256e870bd80f9099b2a0bc31f2a6008c397157cb46aa8"},
+    {file = "wandb-0.18.2-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:827854221356aecfb749e6f95f09b22101612bff53836ef449779278de22146e"},
+    {file = "wandb-0.18.2-py3-none-win32.whl", hash = "sha256:cb7b1e40da03efac524879272913cea0df256d0ab9a1781c46bcb60ca7f7b18c"},
+    {file = "wandb-0.18.2-py3-none-win_amd64.whl", hash = "sha256:7cff3f0aa3619cec28bc5328c4763ae5e991741db09e52074deb42120863107c"},
+    {file = "wandb-0.18.2.tar.gz", hash = "sha256:1f1f574e311e9af061326ba213efa11d728310c0c3d4549ff17b51c768a62aa9"},
 ]
 
 [package.dependencies]
@@ -5334,7 +5336,7 @@ gcp = ["google-cloud-storage"]
 importers = ["filelock", "mlflow", "polars (<=1.2.1)", "rich", "tenacity"]
 kubeflow = ["google-cloud-storage", "kubernetes", "minio", "sh"]
 launch = ["awscli", "azure-containerregistry", "azure-identity", "azure-storage-blob", "boto3", "botocore", "chardet", "google-auth", "google-cloud-aiplatform", "google-cloud-artifact-registry", "google-cloud-compute", "google-cloud-storage", "iso8601", "jsonschema", "kubernetes", "kubernetes-asyncio", "nbconvert", "nbformat", "optuna", "pydantic", "pyyaml (>=6.0.0)", "tomli", "typing-extensions"]
-media = ["bokeh", "moviepy", "numpy", "pillow", "plotly (>=5.18.0)", "rdkit-pypi", "soundfile"]
+media = ["bokeh", "imageio", "moviepy", "numpy", "pillow", "plotly (>=5.18.0)", "rdkit-pypi", "soundfile"]
 models = ["cloudpickle"]
 perf = ["orjson"]
 sweeps = ["sweeps (>=0.2.0)"]
@@ -5627,4 +5629,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "886bc8c0ccc3050de65ef78f2d43b16db4631082f892325e91e4f2229a6e79ec"
+content-hash = "c1ce3e080c190392d0f0b182e4fc7e006ac51e5b65bbab4c06c4e93043cd4269"

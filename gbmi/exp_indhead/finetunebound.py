@@ -574,7 +574,7 @@ def loss_bound(model, s, w):
 
 # %%
 optimiser = torch.optim.AdamW(
-    model_1.parameters(), lr=31e-4, betas=(0.9, 0.999), weight_decay=1.0
+    model_1.parameters(), lr=5e-3, betas=(0.9, 0.999), weight_decay=1.0
 )
 
 counter = 0
@@ -628,10 +628,32 @@ while loss > 0.5:
 
 
 # %%
+counter = 0
+optimiser = torch.optim.AdamW(
+    model_1.parameters(), lr=5e-1, betas=(0.9, 0.999), weight_decay=1.0
+)
+
 a = loss_bound(model_1, 3, 8)[4]
 loss = 1 - a[a != 0].mean()
-for i in range(10):
-    print(1 - loss)
+for i in range(1):
+    print(a[a != 0].mean())
+    loss.backward()
+    optimiser.step()
+    optimiser.zero_grad()
+    a = loss_bound(model_1, 3, 8)[4][5]
+    loss = 1 - a[a != 0].mean()
+    counter += 1
+    print(counter)
+
+
+optimiser = torch.optim.AdamW(
+    model_1.parameters(), lr=5e-3, betas=(0.9, 0.999), weight_decay=1.0
+)
+
+a = loss_bound(model_1, 3, 8)[4]
+loss = 1 - a[a != 0].mean()
+for i in range(30):
+    print(a[a != 0].mean())
     loss.backward()
     optimiser.step()
     optimiser.zero_grad()

@@ -628,18 +628,67 @@ while loss > 0.5:
 
 
 # %%
+import wandb
+
+# Initialize a new wandb run
+wandb.init(project="model_training", name="loss_bound_experiment")
+
 a = loss_bound(model_1, 3, 8)[4]
 loss = 1 - a[a != 0].mean()
 for i in range(10):
     print(1 - loss)
+    # Log the loss to wandb
+    wandb.log({"loss": 1 - loss})
+
     loss.backward()
     optimiser.step()
     optimiser.zero_grad()
+
+    # Checkpoint the model on wandb
+    wandb.save(f"model_checkpoint_step_{i}.pt")
+    torch.save(model_1.state_dict(), f"model_checkpoint_step_{i}.pt")
+
     a = loss_bound(model_1, 3, 8)[4][5]
     loss = 1 - a[a != 0].mean()
     counter += 1
     print(counter)
 
+# Finish the wandb run
+wandb.finish()
+# %%
+# %%
+# %%
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
+
+# Initialize a new wandb logger
+wandb_logger = WandbLogger(project="model_training", name="loss_bound_experiment")
+
+
+class ModelTraining(pl.LightningModule):
+    def __init__(self, model, optimiser):
+        super(ModelTraining, self).__init__()
+        self.model = model
+        self.optimiser = optimiser
+
+    def training_step(self, batch, batch_idx):
+        a = loss_bound(self.model, 3, 8)[4]
+        loss = 1 - a[a != 0].mean()
+        self.log("loss", 1 - loss)
+        return loss
+
+    def configure_optimizers(self):
+        return self.optimiser
+
+
+# Create a PyTorch Lightning trainer with the wandb logger
+trainer = pl.Trainer(max_epochs=10, logger=wandb_logger)
+
+# Instantiate the model training class
+model_training = ModelTraining(model_1, optimiser)
+
+# Train the model
+trainer.fit(model_training)
 # %%
 '''
 def least_attention_2(a, b, i_1, i_2, j):

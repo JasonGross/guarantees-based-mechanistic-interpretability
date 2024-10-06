@@ -5075,13 +5075,13 @@ test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,
 
 [[package]]
 name = "transformer-lens"
-version = "2.6.0"
+version = "2.7.0"
 description = "An implementation of transformers tailored for mechanistic interpretability."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "transformer_lens-2.6.0-py3-none-any.whl", hash = "sha256:825d7a9f7b4ccab7181f06adecf3a36adb757b64a0819b8cd625080a7d319307"},
-    {file = "transformer_lens-2.6.0.tar.gz", hash = "sha256:7570957505a965ad94332c00202fcc6912959aafa93ff345d9b113dc962330ec"},
+    {file = "transformer_lens-2.7.0-py3-none-any.whl", hash = "sha256:6a4f38da66ee076342d34a67043ea7455c506a788f97e382b9c844370d5084d6"},
+    {file = "transformer_lens-2.7.0.tar.gz", hash = "sha256:da0a878335b24dc915e60004165b426f4253da2ce13ed3ef76d0ed03e1576f97"},
 ]
 
 [package.dependencies]
@@ -5640,4 +5640,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "a20015494f12b7dafde758c216c4aeb9b5f3a0e80e695de22ccdad0c41542e17"
+content-hash = "3bf40eaff2efc560232e08fdf6d82b4dde182b3bf76c2a29f2514791617c05a2"

@@ -160,17 +160,21 @@ def find_proof_specific(
     shared_proof_search_duration: float = 0,
     *,
     record_time: bool = False,
+    min_gaps: Optional[
+        Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
+    ] = None,
+    proof_search_duration: float = 0,
     **find_min_gaps_with_EQKE_extra_kwargs,
 ) -> Union[dict, Tuple[dict, float]]:
-    proof_search_duration: float
-    min_gaps, proof_search_duration = find_min_gaps_with_EQKE(
-        model=model,
-        **find_min_gaps_kwargs,  # type: ignore
-        **size_and_query_directions_kwargs,
-        tricks=tricks,
-        **find_min_gaps_with_EQKE_extra_kwargs,
-        record_time=True,
-    )
+    if min_gaps is None:
+        min_gaps, proof_search_duration = find_min_gaps_with_EQKE(
+            model=model,
+            **find_min_gaps_kwargs,  # type: ignore
+            **size_and_query_directions_kwargs,
+            tricks=tricks,
+            **find_min_gaps_with_EQKE_extra_kwargs,
+            record_time=True,
+        )
     # TODO: if we want to do this, we'd need to fix the counting procedure and finish threading this argument through
     # compressed_min_gaps, extra_proof_search_duration = compress_min_gaps_over_query(
     #     min_gaps, record_time=True
@@ -198,6 +202,10 @@ def find_proof(
     tricks: LargestWrongLogitQuadraticConfig,
     *,
     record_time: bool = False,
+    min_gaps: Optional[
+        Integer[Tensor, "d_vocab_q d_vocab_max n_ctx_nonmax_copies"]  # noqa: F722
+    ] = None,
+    proof_search_duration: float = 0,
     **find_min_gaps_with_EQKE_extra_kwargs,
 ) -> Union[dict, Tuple[dict, float]]:
     shared_args = find_proof_shared(model)
@@ -206,5 +214,7 @@ def find_proof(
         tricks,
         *shared_args,
         record_time=record_time,
+        min_gaps=min_gaps,
+        proof_search_duration=proof_search_duration,
         **find_min_gaps_with_EQKE_extra_kwargs,
     )

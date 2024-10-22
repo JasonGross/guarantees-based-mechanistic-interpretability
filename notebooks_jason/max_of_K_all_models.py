@@ -323,7 +323,9 @@ LATEX_VALUES_REDUCED_DATATABLE_PATH = (
     / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values.csv"
 )
 LATEX_VALUES_REDUCED_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_FIGURE_PATH = adjusted_file_path.with_suffix("") / "figures"
+LATEX_FIGURE_PATH = (
+    adjusted_file_path.with_suffix("") / f"figures{EXTRA_D_VOCAB_FILE_SUFFIX}"
+)
 LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
     adjusted_file_path.with_suffix("") / "tikzplotlib-preamble.tex"

@@ -190,7 +190,10 @@ def data_summary(
     if isinstance(values, torch.Tensor):
         values = values.cpu().numpy()
     elif not isinstance(values, np.ndarray):
-        values = np.array(values)  # turn to float
+        if any(isinstance(v, str) for v in values):
+            values = np.array([process_value(v) for v in values])
+        else:
+            values = np.array(values)
     if isinstance(weights, torch.Tensor):
         weights = weights.cpu().numpy()
     elif not isinstance(weights, np.ndarray):

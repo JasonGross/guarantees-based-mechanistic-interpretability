@@ -245,7 +245,7 @@ adjusted_file_path = Path(__file__).parent / Path(__file__).name.replace(
     "_K_", f"_{seq_len}_"
 )
 adjusted_file_path_dvocab = Path(__file__).parent / Path(__file__).name.replace(
-    "_K_", f"_{seq_len}{EXTRA_D_VOCAB_FILE_SUFFIX}"
+    "_K_", f"_{seq_len}{EXTRA_D_VOCAB_FILE_SUFFIX}_"
 )
 cache_dir = adjusted_file_path.parent / ".cache"
 cache_dir.mkdir(exist_ok=True)

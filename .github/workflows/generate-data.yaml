@@ -146,6 +146,7 @@ jobs:
           - { nctx: 20, dvocab: 512, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots" }
     needs: [install-deps, build-e-c-t]
     runs-on: ${{ matrix.os }}
+    name: "${{ (startsWith(github.ref, format('refs/heads/max-of-{0}', matrix.cfg.nctx)) && (matrix.cfg.dvocab == 64 || endsWith(github.ref, format('-dvocab-{0}-cache', matrix.cfg.dvocab))) && 'seeds') || 'skipped' }} (${{ matrix.cfg.nctx }}, ${{ matrix.cfg.dvocab }}) (${{ matrix.seeds }})"
     concurrency:
       # group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ github.head_ref || github.run_id }}
       group: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}-${{ github.ref }}

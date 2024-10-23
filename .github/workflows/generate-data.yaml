@@ -171,7 +171,8 @@ jobs:
         poetry-install-extra-args: [""]
         os: [ubuntu-latest]
         default-shared-extra-args: ["--no-huggingface --no-save-to-hf"]
-        cfg: ${{ needs.setup-cfg.outputs.cfg }}
+        cfg:
+          - { nctx: "${{ needs.setup-cfg.outputs.cfg.nctx }}", dvocab: "${{ needs.setup-cfg.outputs.cfg.d_vocab }}", extra-args: "${{ needs.setup-cfg.outputs.cfg.extra-args }}", extra-args-file-descr: "${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}", default-extra-args: "${{ needs.setup-cfg.outputs.cfg.default-extra-args }}" }
     needs: [install-deps, build-e-c-t, setup-cfg]
     runs-on: ${{ matrix.os }}
     name: "seeds (${{ matrix.cfg.nctx }}, ${{ matrix.cfg.dvocab }}) (${{ matrix.seeds }})"

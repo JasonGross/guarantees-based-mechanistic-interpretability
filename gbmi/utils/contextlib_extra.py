@@ -3,10 +3,9 @@ from typing import (
     Any,
     Callable,
     ContextManager,
-    Generator,
+    Generator,  # TypeVarTuple,
     Tuple,
     TypeVar,
-    TypeVarTuple,
 )
 
 T = TypeVar("T")

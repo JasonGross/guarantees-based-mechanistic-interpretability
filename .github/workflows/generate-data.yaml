@@ -3,6 +3,12 @@ on:
   push:
     branches: [ max-of-*-cache ]
   workflow_dispatch:
+    inputs:
+      plots:
+        description: 'Construct plots (passes --no-plots if false)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   install-deps:
@@ -231,7 +237,7 @@ jobs:
       if: steps.check-branch.outputs.match == 'true'
     - run: df -h
       if: steps.check-branch.outputs.match == 'true'
-    - run: timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv ${{ matrix.cfg.extra-args }}
+    - run: timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv ${{ matrix.cfg.extra-args }} ${{ ((github.event_name != 'workflow_dispatch' || github.event.inputs.plots != 'true') && '--no-plots') || '' }}
       if: steps.check-branch.outputs.match == 'true'
     - run: |
         # if [[ "${{ matrix.seeds }}" == *","* ]]; then

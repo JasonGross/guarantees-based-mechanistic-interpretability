@@ -10,6 +10,12 @@ on:
         required: false
         default: '--no-plots'
         type: choice
+      huggingface-args:
+        description: 'Hugging Face arguments'
+        required: false
+        default: ' '
+        type: choice
+        options: [' ', '--no-huggingface --no-save-to-hf']
 
 jobs:
   install-deps:
@@ -130,6 +136,7 @@ jobs:
         poetry-version: ["1.7.1"]
         poetry-install-extra-args: [""]
         os: [ubuntu-latest]
+        default-shared-extra-args: ["--no-huggingface --no-save-to-hf"]
         cfg:
           - { nctx: 4, dvocab: 64, extra-args: "--brute-force", extra-args-file-descr: "brute-force", default-extra-args: "" }
           - { nctx: 5, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "" }
@@ -241,9 +248,9 @@ jobs:
     - name: Generate data
       run: |
         if [ ${{ github.event_name }} == 'workflow_dispatch' ]; then
-          extra_extra_args=(${{ github.event.inputs.plots-arg }})
+          extra_extra_args=(${{ github.event.inputs.plots-arg }} ${{ github.event.inputs.huggingface-args }})
         else
-          extra_extra_args=(${{ matrix.cfg.default-extra-args }})
+          extra_extra_args=(${{ matrix.cfg.default-extra-args }} ${{ matrix.default-shared-extra-args }})
         fi
         timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} ${{ matrix.cfg.extra-args }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv "${extra_extra_args[@]}"
       if: steps.check-branch.outputs.match == 'true'

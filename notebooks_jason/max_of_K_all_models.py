@@ -240,15 +240,18 @@ from gbmi.utils.sequences import SequenceDataset
 # %%
 seq_len: int = cli_args.K
 D_VOCAB: int = cli_args.d_vocab
+EXTRA_D_VOCAB_FILE_SUFFIX: str = f"_d_vocab_{D_VOCAB}" if D_VOCAB != 64 else ""
 adjusted_file_path = Path(__file__).parent / Path(__file__).name.replace(
     "_K_", f"_{seq_len}_"
+)
+adjusted_file_path_dvocab = Path(__file__).parent / Path(__file__).name.replace(
+    "_K_", f"_{seq_len}{EXTRA_D_VOCAB_FILE_SUFFIX}"
 )
 cache_dir = adjusted_file_path.parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 hf_repo_id = f"JasonGross/{adjusted_file_path.stem.replace('_','-').replace('-all-models', '')}-proofs"
 OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
-EXTRA_D_VOCAB_FILE_SUFFIX: str = f"_d_vocab_{D_VOCAB}" if D_VOCAB != 64 else ""
 TRAIN_CSV_PATH = (
     adjusted_file_path.with_suffix("")
     / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-train-values.csv"
@@ -331,9 +334,7 @@ LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
     adjusted_file_path.with_suffix("") / "tikzplotlib-preamble.tex"
 )
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-SHARED_CACHE_STEM = (
-    adjusted_file_path.name.replace("_all_models", "") + EXTRA_D_VOCAB_FILE_SUFFIX
-)
+SHARED_CACHE_STEM = adjusted_file_path_dvocab.name.replace("_all_models", "")
 (cache_dir / SHARED_CACHE_STEM).mkdir(exist_ok=True, parents=True)
 N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
 if N_SAMPLES_PER_KEY is None:

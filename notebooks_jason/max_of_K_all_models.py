@@ -2301,10 +2301,10 @@ def try_all_proofs_subcubic(
             for max_tok in range(d_vocab_max):
                 cur_n_ctx_nonmax_copies = 1 if max_tok == 0 else n_ctx_nonmax_copies
                 for n_copies_nonmax in range(cur_n_ctx_nonmax_copies):
-                    weights[: max_tok + 1, max_tok, n_copies_nonmax] = (
-                        max_tok - 1
-                    ) ** n_copies_nonmax * math.comb(
-                        model.cfg.n_ctx - 1, n_copies_nonmax
+                    # manually convert to float to avoid overflow when unpacking long
+                    weights[: max_tok + 1, max_tok, n_copies_nonmax] = float(
+                        (max_tok - 1) ** n_copies_nonmax
+                        * math.comb(model.cfg.n_ctx - 1, n_copies_nonmax)
                     )
                 weights[:max_tok, max_tok, n_ctx_nonmax_copies - 1] = 0
                 # for q_tok in range(max_tok+1):

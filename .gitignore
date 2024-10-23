@@ -178,14 +178,16 @@ max_of_*.gif
 notebooks_jason/frames/*
 notebooks_jason/max_of_*/figures/*.pdf
 notebooks_jason/max_of_*/figures/*.png
+notebooks_jason/max_of_*/figures/*/*.png
 notebooks_jason/max_of_*/figures/*.svg
 notebooks_jason/max_of_*/figures/*.tex
+notebooks_jason/max_of_*/csvs/*.csv
 notebooks_jason/max_of_*/values.tex
 notebooks_jason/max_of_*/tikzplotlib-preamble.tex
 notebooks_jason/max_of_*/*git-diff-info.diff
 notebooks_jason/max_of_*_all_models/*.csv
 notebooks_jason/max_of_*_all_models/*.txt
-notebooks_jason/max_of_*_all_models/all-models-values.tex
+notebooks_jason/max_of_*_all_models/all-models*-values.tex
 notebooks_jason/max_of_2_grokking.html
 notebooks_jason/max_of_2_grokking_regularized.html
 

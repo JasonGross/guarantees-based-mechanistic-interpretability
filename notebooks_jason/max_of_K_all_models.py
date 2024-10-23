@@ -332,6 +332,7 @@ LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
 )
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 SHARED_CACHE_STEM = adjusted_file_path.name.replace("_all_models", "")
+(cache_dir / SHARED_CACHE_STEM).mkdir(exist_ok=True, parents=True)
 N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
 if N_SAMPLES_PER_KEY is None:
     match seq_len:
@@ -438,11 +439,11 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
     sub_glob = (
         "{" + ",".join(cfg_hash for cfg_hash in cfg_hashes_for_filename.values()) + "}"
     )
-    train_or_load_model_glob = f".train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}"
+    train_or_load_model_glob = f"train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}"
     stem = cache_dir / SHARED_CACHE_STEM
     if not cli_args.print_cache_glob_absolute:
         stem = stem.relative_to(Path.cwd())
-    print(f"{stem}" + "{" + f"{train_or_load_model_glob},*{sub_glob}*" + "}")
+    print(f"{stem}/" + "{" + f"{train_or_load_model_glob},*{sub_glob}*" + "}")
     sys.exit(0)
 
 
@@ -475,24 +476,36 @@ def memoshelve_hf_staged(
         ) as memo_hf:
 
             @contextmanager
-            def inner(func: Callable, file_suffix: str, **kwargs):
+            def inner(
+                func: Callable,
+                file_suffix: str,
+                subfolder: Optional[str] = None,
+                extra_file_suffix: Optional[str] = None,
+                **kwargs,
+            ):
+                hf_filename = hf_sanitize(
+                    f"{file_suffix}"
+                    f"{f'-{subfolder}' if subfolder else ''}"
+                    f"{f'-{extra_file_suffix}' if extra_file_suffix else ''}"
+                )
+                filename = cache_dir / SHARED_CACHE_STEM
+                if subfolder:
+                    filename /= subfolder
+                filename /= f"{file_suffix}{f'-{extra_file_suffix}' if extra_file_suffix else ''}"
+
                 if save_to_hf_from_cache:
                     with memoshelve(
                         func,
-                        filename=cache_dir / f"{SHARED_CACHE_STEM}.{file_suffix}",
+                        filename=filename,
                         **kwargs,
                     )() as memo_func:
-                        with memo_hf(
-                            memo_func, hf_sanitize(file_suffix), **kwargs
-                        ) as memo_hf_func:
+                        with memo_hf(memo_func, hf_filename, **kwargs) as memo_hf_func:
                             yield memo_hf_func
                 else:
-                    with memo_hf(
-                        func, hf_sanitize(file_suffix), **kwargs
-                    ) as memo_hf_func:
+                    with memo_hf(func, hf_filename, **kwargs) as memo_hf_func:
                         with memoshelve(
                             memo_hf_func,
-                            filename=cache_dir / f"{SHARED_CACHE_STEM}.{file_suffix}",
+                            filename=filename,
                             **kwargs,
                         )() as memo:
                             yield memo
@@ -501,10 +514,22 @@ def memoshelve_hf_staged(
     else:
 
         @contextmanager
-        def inner(func: Callable, file_suffix: str, **kwargs):
+        def inner(
+            func: Callable,
+            file_suffix: str,
+            subfolder: Optional[str] = None,
+            extra_file_suffix: Optional[str] = None,
+            **kwargs,
+        ):
+            filename = cache_dir / SHARED_CACHE_STEM
+            if subfolder:
+                filename /= subfolder
+            filename /= (
+                f"{file_suffix}{f'-{extra_file_suffix}' if extra_file_suffix else ''}"
+            )
             with memoshelve(
                 func,
-                filename=cache_dir / f"{SHARED_CACHE_STEM}.{file_suffix}",
+                filename=filename,
                 **kwargs,
             )() as memo:
                 yield memo
@@ -558,22 +583,24 @@ for name, (args, kwargs) in [
     except Exception as e:
         print(f"Error running {name}: {e}")
     else:
-        with open(adjusted_file_path.with_suffix("") / f"{name}.txt", "w") as f:
+        with open(
+            adjusted_file_path.with_suffix("") / f"{name}.txt", "w", encoding="utf-8"
+        ) as f:
             f.write(result)
 
-with open(GIT_DIFF_PATH, "w") as f:
+with open(GIT_DIFF_PATH, "w", encoding="utf-8") as f:
     f.write(git.get_diff())
 
-with open(GIT_SHA_PATH, "w") as f:
+with open(GIT_SHA_PATH, "w", encoding="utf-8") as f:
     f.write(git.get_head_sha(short=False))
 
-with open(GIT_SHA_SHORT_PATH, "w") as f:
+with open(GIT_SHA_SHORT_PATH, "w", encoding="utf-8") as f:
     f.write(git.get_head_sha(short=True))
 
-with open(PYTHON_VERSION_PATH, "w") as f:
+with open(PYTHON_VERSION_PATH, "w", encoding="utf-8") as f:
     f.write(sys.version)
 
-with open(TORCH_VERSION_PATH, "w") as f:
+with open(TORCH_VERSION_PATH, "w", encoding="utf-8") as f:
     f.write(torch.__version__)
 
 

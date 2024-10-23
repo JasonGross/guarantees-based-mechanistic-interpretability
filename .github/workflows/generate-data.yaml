@@ -134,15 +134,35 @@ jobs:
     runs-on: ${{ matrix.os }}
     concurrency:
       # group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ github.head_ref || github.run_id }}
-      group: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}
+      group: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}-${{ github.ref }}
       cancel-in-progress: true
     steps:
+    - name: Check if branch ${{ github.ref }} matches the nctx=${{ matrix.cfg.nctx }} and dvocab=${{ matrix.cfg.dvocab }}
+      id: check-branch
+      run: |
+        branch_name="${GITHUB_REF#refs/heads/}"
+        nctx_value="${branch_name#max-of-}"
+        nctx_value="${nctx_value%-cache}"
+        if [[ "$nctx_value" == *"-dvocab-"* ]]; then
+            dvocab_value="${nctx_value#*-dvocab-}"
+            nctx_value="${nctx_value%-dvocab-*}"
+        else
+            dvocab_value="64"
+        fi
+        printf "GITHUB_REF=%s\nbranch_name=%s\nnctx=%s\ndvocab=%s\n" "$GITHUB_REF" "$branch_name" "$nctx_value" "$dvocab_value"
+        if [ "$nctx_value" = "${{ matrix.cfg.nctx }}" ] && [ "$dvocab_value" = "${{ matrix.cfg.dvocab }}" ]; then
+            echo "match=true" >> $GITHUB_OUTPUT
+        else
+            echo "match=false" >> $GITHUB_OUTPUT
+        fi
     - uses: actions/cache@v4
+      if: steps.check-branch.outputs.match == 'true'
       name: Define a cache for e-c-t
       with:
         path: /tmp/Efficient-Compression-Tool
         key: Efficient-Compression-Tool
     - name: Backup build of Efficient-Compression-Tool
+      if: steps.check-branch.outputs.match == 'true'
       run: |
         cd /tmp
         test -d Efficient-Compression-Tool || {
@@ -154,47 +174,65 @@ jobs:
           make;
         }
     - name: install Efficient-Compression-Tool
+      if: steps.check-branch.outputs.match == 'true'
       run: sudo make install -C /tmp/Efficient-Compression-Tool/build
     - name: free disk space
+      if: steps.check-branch.outputs.match == 'true'
       run: |
         cd /tmp
         wget https://raw.githubusercontent.com/JasonGross/guarantees-based-mechanistic-interpretability-with-data/main/etc/free_disk_space.sh
         chmod +x free_disk_space.sh
         ./free_disk_space.sh 2>&1
     - uses: actions/checkout@v4
+      if: steps.check-branch.outputs.match == 'true'
       with:
         submodules: recursive
     - run: df -h
+      if: steps.check-branch.outputs.match == 'true'
     - name: support perf
+      if: steps.check-branch.outputs.match == 'true'
       run: |
         sudo sh -c 'echo 0 >/proc/sys/kernel/perf_event_paranoid'
         sudo sh -c 'echo 0 >/proc/sys/kernel/kptr_restrict'
     - uses: actions/setup-python@v5
+      if: steps.check-branch.outputs.match == 'true'
       with:
         python-version: ${{ matrix.python-version }}
     - uses: abatilo/actions-poetry@v3
+      if: steps.check-branch.outputs.match == 'true'
       with:
         poetry-version: ${{ matrix.poetry-version }}
     - name: Setup a local virtual environment
+      if: steps.check-branch.outputs.match == 'true'
       run: |
         poetry config virtualenvs.create true --local
         poetry config virtualenvs.in-project true --local
     - uses: actions/cache@v4
+      if: steps.check-branch.outputs.match == 'true'
       name: Define a cache for the virtual environment based
       with:
         path: ./.venv
         key: venv-${{ hashFiles('poetry.lock') }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}
     - run: df -h
+      if: steps.check-branch.outputs.match == 'true'
     - name: Install the project dependencies
+      if: steps.check-branch.outputs.match == 'true'
       run: poetry install ${{ matrix.poetry-install-extra-args }}
     - run: df -h
+      if: steps.check-branch.outputs.match == 'true'
     - name: Login to Hugging Face
+      if: steps.check-branch.outputs.match == 'true'
       run: poetry run huggingface-cli login --token ${{ secrets.HF_TOKEN }}
     - run: poetry run wandb login --anonymously
+      if: steps.check-branch.outputs.match == 'true'
     - run: sudo apt-get update -y
+      if: steps.check-branch.outputs.match == 'true'
     - run: sudo apt-get install -y texlive dvipng texlive-latex-extra texlive-fonts-recommended cm-super pngcrush optipng texlive-extra-utils
+      if: steps.check-branch.outputs.match == 'true'
     - run: df -h
+      if: steps.check-branch.outputs.match == 'true'
     - run: timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv ${{ matrix.cfg.extra-args }}
+      if: steps.check-branch.outputs.match == 'true'
     - run: |
         # if [[ "${{ matrix.seeds }}" == *","* ]]; then
         #   FILES="$( (ls notebooks_jason/.cache/max_of_${{ matrix.cfg.nctx }}.py.*-{${{ matrix.seeds }}}_*; git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache) | sort | uniq)"
@@ -202,22 +240,23 @@ jobs:
         #   FILES="$( (ls notebooks_jason/.cache/max_of_${{ matrix.cfg.nctx }}.py.*-${{ matrix.seeds }}_*; git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache) | sort | uniq)"
         # fi
         { git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache; } | xargs tar -czvf seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
-      if: always ()
+      if: always () && steps.check-branch.outputs.match == 'true'
     - run: tar -czvf plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz notebooks_jason/max_of_${{ matrix.cfg.nctx }}_all_models/
+      if: steps.check-branch.outputs.match == 'true'
     - name: upload seeds ${{ matrix.seeds }}
       uses: actions/upload-artifact@v4
       with:
         name: cache-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.seeds }}-${{ matrix.cfg.extra-args-file-descr }}
         path: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
         retention-days: 3
-      if: always ()
+      if: always () && steps.check-branch.outputs.match == 'true'
     - name: upload plots ${{ matrix.seeds }}
       uses: actions/upload-artifact@v4
       with:
         name: plots-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.seeds }}-${{ matrix.cfg.extra-args-file-descr }}
         path: plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
         retention-days: 3
-      if: always ()
+      if: always () && steps.check-branch.outputs.match == 'true'
 
   merge:
     runs-on: ubuntu-latest

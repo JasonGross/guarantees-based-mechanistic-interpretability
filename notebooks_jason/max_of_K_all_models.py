@@ -331,7 +331,9 @@ LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
     adjusted_file_path.with_suffix("") / "tikzplotlib-preamble.tex"
 )
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-SHARED_CACHE_STEM = adjusted_file_path.name.replace("_all_models", "")
+SHARED_CACHE_STEM = (
+    adjusted_file_path.name.replace("_all_models", "") + EXTRA_D_VOCAB_FILE_SUFFIX
+)
 (cache_dir / SHARED_CACHE_STEM).mkdir(exist_ok=True, parents=True)
 N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
 if N_SAMPLES_PER_KEY is None:
@@ -439,7 +441,7 @@ if cli_args.print_cache_glob or cli_args.print_cache_glob_absolute:
     sub_glob = (
         "{" + ",".join(cfg_hash for cfg_hash in cfg_hashes_for_filename.values()) + "}"
     )
-    train_or_load_model_glob = f"train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}"
+    train_or_load_model_glob = "train_or_load_model"
     stem = cache_dir / SHARED_CACHE_STEM
     if not cli_args.print_cache_glob_absolute:
         stem = stem.relative_to(Path.cwd())
@@ -481,12 +483,14 @@ def memoshelve_hf_staged(
                 file_suffix: str,
                 subfolder: Optional[str] = None,
                 extra_file_suffix: Optional[str] = None,
+                extra_hf_file_suffix: Optional[str] = None,
                 **kwargs,
             ):
                 hf_filename = hf_sanitize(
                     f"{file_suffix}"
                     f"{f'-{subfolder}' if subfolder else ''}"
                     f"{f'-{extra_file_suffix}' if extra_file_suffix else ''}"
+                    f"{f'-{extra_hf_file_suffix}' if extra_hf_file_suffix else ''}"
                 )
                 filename = cache_dir / SHARED_CACHE_STEM
                 if subfolder:
@@ -519,6 +523,7 @@ def memoshelve_hf_staged(
             file_suffix: str,
             subfolder: Optional[str] = None,
             extra_file_suffix: Optional[str] = None,
+            extra_hf_file_suffix: Optional[str] = None,
             **kwargs,
         ):
             filename = cache_dir / SHARED_CACHE_STEM
@@ -545,7 +550,8 @@ with patch(torch, load=partial(torch.load, map_location=torch.device("cpu"))):
     ) as memoshelve_hf:
         with memoshelve_hf(
             train_or_load_model,
-            f"train_or_load_model{EXTRA_D_VOCAB_FILE_SUFFIX}",
+            "train_or_load_model",
+            extra_hf_file_suffix=EXTRA_D_VOCAB_FILE_SUFFIX,
             get_hash=get_hash_ascii,
         ) as memo_train_or_load_model:
             runtime_models = {}
@@ -725,7 +731,9 @@ def train_seed(seed: int, *, memoshelve_hf: Callable, pbar: tqdm):
     dataloader_iter = iter(dataloader)
     with memoshelve_hf(
         partial(_run_train_batch_loss_accuracy, dataloader_iter=dataloader_iter),
-        f"run_batch_loss_accuracy-{cfg_hashes_for_filename[seed]}-{train_measurement_deterministic}",
+        "run_batch_loss_accuracy",
+        subfolder=cfg_hashes_for_filename[seed],
+        extra_file_suffix=train_measurement_deterministic,
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     ) as run_batch_loss_accuracy:
@@ -887,7 +895,9 @@ if INCLUDE_BRUTE_FORCE:
 
         with memoshelve_hf(
             partial(_run_batch_loss_accuracy, all_tokens_dataset, training_wrapper),
-            f"run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+            "run_batch_loss_accuracy",
+            subfolder=cfg_hash_for_filename,
+            extra_file_suffix=brute_force_proof_deterministic,
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         ) as run_batch_loss_accuracy_heavy:
@@ -899,7 +909,9 @@ if INCLUDE_BRUTE_FORCE:
 
             with memoshelve_hf_lightweight(
                 _run_batch_loss_accuracy_lightweight,
-                f"run_batch_loss_accuracy-lightweight-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+                "run_batch_loss_accuracy-lightweight",
+                subfolder=cfg_hash_for_filename,
+                extra_file_suffix=brute_force_proof_deterministic,
                 get_hash_mem=(lambda x: x[0]),
                 get_hash=str,
             ) as run_batch_loss_accuracy:
@@ -1002,7 +1014,8 @@ else:
                 pbar=pbar,
                 seed=reseed(seed, "importance_sample"),
             ),
-            f"importance-sample-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
+            f"importance-sample-{N_SAMPLES_PER_KEY}",
+            subfolder=cfg_hash_for_filename,
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         ) as importance_sample_heavy:
@@ -1014,7 +1027,8 @@ else:
 
             with memoshelve_hf_lightweight(
                 _importance_sample_lightweight,
-                f"importance-sample-lightweight-{N_SAMPLES_PER_KEY}-{cfg_hash_for_filename}",
+                f"importance-sample-lightweight-{N_SAMPLES_PER_KEY}",
+                subfolder=cfg_hash_for_filename,
                 get_hash_mem=(lambda x: x[0]),
                 get_hash=str,
             ) as importance_sample_lightweight:
@@ -1228,7 +1242,8 @@ if not INCLUDE_BRUTE_FORCE:
     ):
         with memoshelve_hf(
             partial(importance_sample_instruction_count, some_model, pbar=pbar),
-            f"importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}{EXTRA_D_VOCAB_FILE_SUFFIX}-{N_SAMPLES_PER_KEY}-n_ctx_{seq_len}",
+            f"importance-sample-instruction-count{'' if not PERF_WORKING else '-with-perf'}-{N_SAMPLES_PER_KEY}",
+            extra_hf_file_suffix=f"{EXTRA_D_VOCAB_FILE_SUFFIX}-n_ctx_{seq_len}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         ) as memo_importance_sample_instruction_count:
@@ -1258,7 +1273,8 @@ if INCLUDE_BRUTE_FORCE:
 
         with memoshelve_hf(
             partial(compute_ablations, model, pbar=pbar),
-            f"compute_ablations-{cfg_hash_for_filename}",
+            "compute_ablations",
+            subfolder=cfg_hash_for_filename,
             get_hash=get_hash_ascii,
             get_hash_mem=str,
         ) as memo_compute_ablations:
@@ -1363,7 +1379,8 @@ def get_cubic_row(
 
     with memoshelve_hf_find_proof(
         _find_proof,
-        f"cubic_find_proof-{cfg_hash_for_filename}",
+        "cubic_find_proof",
+        subfolder=cfg_hash_for_filename,
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     ) as find_proof:
@@ -1378,7 +1395,8 @@ def get_cubic_row(
             print_results=False,
             include_perf=PERF_WORKING,
         ),
-        f"cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+        f"cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}",
+        subfolder=cfg_hash_for_filename,
         get_hash_mem=(lambda x: 0),
         get_hash=(lambda x: "0"),
     ) as verify_proof:
@@ -1529,7 +1547,8 @@ def _cubic_count_verify_proof(
 with memoshelve_hf_staged(storage_methods=("named_data_files",)) as memoshelve_hf:
     with memoshelve_hf(
         partial(_cubic_count_verify_proof, some_model, sanity_check_instructions=False),
-        f"cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{EXTRA_D_VOCAB_FILE_SUFFIX}-n_ctx_{seq_len}",
+        f"cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}",
+        extra_hf_file_suffix=f"{EXTRA_D_VOCAB_FILE_SUFFIX}-n_ctx_{seq_len}",
         get_hash_mem=(lambda x: 0),
         get_hash=(lambda x: "0"),
     ) as count_verify_proof:
@@ -2241,7 +2260,8 @@ def try_all_proofs_subcubic(
 
         with memoshelve_hf_verify_proof(
             _verify_proof,
-            f"subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+            f"subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}",
+            subfolder=cfg_hash_for_filename,
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         ) as verify_proof:
@@ -2284,7 +2304,8 @@ def try_all_proofs_subcubic(
                 min_gaps=min_gaps,
                 sanity_check_instructions=False,
             ),
-            f"subcubic_count_verify_proof-{cfg_hash_for_filename}",
+            "subcubic_count_verify_proof",
+            subfolder=cfg_hash_for_filename,
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         ) as count_verify_proof:
@@ -2421,7 +2442,8 @@ def try_all_proofs_subcubic(
 
         with memoshelve_hf_analyze_gaps(
             _analyze_gaps,
-            f"subcubic_analyze_gaps-{cfg_hash_for_filename}",
+            "subcubic_analyze_gaps",
+            subfolder=cfg_hash_for_filename,
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         ) as analyze_gaps:

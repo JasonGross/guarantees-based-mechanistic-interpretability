@@ -491,7 +491,8 @@ with memoshelve(
     _run_batch_loss_accuracy,
     filename=cache_dir
     / Path(__file__).name
-    / f"run_batch_loss_accuracy-{cfg_hash_for_filename}-{brute_force_proof_deterministic}",
+    / cfg_hash_for_filename
+    / f"run_batch_loss_accuracy-{brute_force_proof_deterministic}",
     get_hash_mem=(lambda x: x[0]),
     get_hash=str,
 )() as run_batch_loss_accuracy:
@@ -558,7 +559,7 @@ for tok in range(model.cfg.d_vocab_out):
 #         for last_tok in range(d_vocab):
 #             for sequences in generate_all_sequences_in_batches(d_vocab, n_ctx - 1, per_batch=per_batch, postfix=[last_tok] + postfix):
 #                 yield sequences
-# with shelve.open(cache_dir / Path(__file__).name / f"brute-force-standalone-{cfg_hash_for_filename}-{brute_force_device}") as shelf:
+# with shelve.open(cache_dir / Path(__file__).name / cfg_hash_for_filename / f"brute-force-standalone-{brute_force_device}") as shelf:
 
 # %%
 # # %% [markdown]
@@ -655,7 +656,8 @@ with memoshelve(
     partial(compute_ablations, model),
     filename=cache_dir
     / Path(__file__).name
-    / f"compute_ablations-{cfg_hash_for_filename}",
+    / cfg_hash_for_filename
+    / "compute_ablations",
     get_hash=get_hash_ascii,
     get_hash_mem=str,
 )() as memo_compute_ablations:
@@ -853,7 +855,8 @@ with memoshelve(
     partial(cubic.verify_proof, model, include_perf=PERF_WORKING),
     filename=cache_dir
     / Path(__file__).name
-    / f"cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+    / cfg_hash_for_filename
+    / f"cubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}",
     get_hash_mem=(lambda x: 0),
     get_hash=(lambda x: "0"),
 )() as verify_proof:
@@ -893,7 +896,8 @@ with memoshelve(
     partial(_cubic_count_verify_proof, model, sanity_check_instructions=False),
     filename=cache_dir
     / Path(__file__).name
-    / f"cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+    / cfg_hash_for_filename
+    / f"cubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}",
     get_hash_mem=(lambda x: 0),
     get_hash=(lambda x: "0"),
 )() as count_verify_proof:
@@ -1996,7 +2000,8 @@ with torch.no_grad():
         # cache={},
         filename=cache_dir
         / Path(__file__).name
-        / f"find_min_gaps-{cfg_hash_for_filename}",
+        / cfg_hash_for_filename
+        / "find_min_gaps",
     )() as find_min_gaps_for:
         min_gaps_lists = [
             find_min_gaps_for(cfg)
@@ -2030,7 +2035,8 @@ with torch.no_grad():
             _verify_proof,
             filename=cache_dir
             / Path(__file__).name
-            / f"subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+            / cfg_hash_for_filename
+            / f"subcubic_verify_proof{'' if not PERF_WORKING else '-with-perf'}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         )() as verify_proof:
@@ -2059,7 +2065,8 @@ with torch.no_grad():
             ),
             filename=cache_dir
             / Path(__file__).name
-            / f"subcubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}-{cfg_hash_for_filename}",
+            / cfg_hash_for_filename
+            / f"subcubic_count_verify_proof{'' if not PERF_WORKING else '-with-perf'}",
             get_hash_mem=(lambda x: x[0]),
             get_hash=str,
         )() as count_verify_proof:

@@ -1513,29 +1513,18 @@ with memoshelve_hf_staged(storage_methods=("named_data_files",)) as memoshelve_h
 
 latex_values |= latex_values_of_instruction_count("Cubic", cubic_instruction_count)
 
+
 # %% [markdown]
 # # Intermediate interp values for export
 # %%
-max_logit_diffs = {
-    seed: EVOU_max_logit_diff(model)
-    for seed, (_runtime, model) in runtime_models.items()
-}
-max_logit_diff_summaries = {
-    seed: data_summary(max_logit_diff, prefix="EVOUMaxRowDiff", float_postfix="")
-    for seed, max_logit_diff in max_logit_diffs.items()
-}
-max_logit_diff_summaries_by_keys = defaultdict(dict)
-for seed, summary in max_logit_diff_summaries.items():
-    for k, v in summary.items():
-        max_logit_diff_summaries_by_keys[k][seed] = v
-for k, v in max_logit_diff_summaries_by_keys.items():
-    latex_values |= data_summary(v, prefix=k)
-    assert all(isinstance(seed, int) for seed in v.keys())
-    latex_all_values_by_value[f"{k}Float"] = v
+def max_logit_diffs_analysis(model: HookedTransformer) -> dict[str, Any]:
+    result = {}
+    max_logit_diff = EVOU_max_logit_diff(model)
+    max_logit_diff_summary = data_summary(
+        max_logit_diff, prefix="EVOUMaxRowDiff", float_postfix=""
+    )
+    result |= max_logit_diff_summary
 
-# hold some data before summarizing it
-latex_values_tmp_data = defaultdict(dict)
-for seed, (_runtime, model) in runtime_models.items():
     for duplicate_by_sequence_count in [False, True]:
         key = "EVOU-hist-min-above-diag"
         if duplicate_by_sequence_count:
@@ -1560,18 +1549,16 @@ for seed, (_runtime, model) in runtime_models.items():
         value_key = "".join(
             v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
         )
-        latex_values_tmp_data[value_key + "MostBelowValue"][seed] = most_below_value
-        latex_values_tmp_data[value_key + "MostBelowValueNumStd"][seed] = num_std
-        latex_values_tmp_data[value_key + "MostBelowValueSequenceFrac"][
-            seed
-        ] = frac_below
+        result[value_key + "MostBelowValue"] = most_below_value
+        result[value_key + "MostBelowValueNumStd"] = num_std
+        result[value_key + "MostBelowValueSequenceFrac"] = frac_below
         for k, v in data_summary(
             max_logit_minus_diag,
             sample_weight=duplication_factors,
             prefix=value_key,
             float_postfix="",
         ).items():
-            latex_values_tmp_data[k][seed] = v
+            result[k] = v
 
     for duplicate_by_sequence_count in [False, True]:
         flat_diffs, duplication_factors = attention_difference_over_gap(
@@ -1589,15 +1576,49 @@ for seed, (_runtime, model) in runtime_models.items():
         value_key = "".join(
             v.capitalize() if v[0] != v[0].capitalize() else v for v in key.split("-")
         )
-        for k, v in data_summary(
+        result |= data_summary(
             flat_diffs,
             sample_weight=duplication_factors,
             prefix=value_key,
             float_postfix="",
-        ).items():
-            latex_values_tmp_data[k][seed] = v
+        )
 
-for k, v in latex_values_tmp_data.items():
+    return result
+
+
+def handle_compute_max_logit_diffs_analysis(
+    seed: int,
+    *,
+    memoshelve_hf: Callable,
+):
+    runtime, model = runtime_models[seed]
+    cfg_hash_for_filename = cfg_hashes_for_filename[seed]
+    with memoshelve_hf(
+        (lambda seed: max_logit_diffs_analysis(model)),
+        f"compute_max_logit_diffs_analysis-{cfg_hash_for_filename}",
+        get_hash_mem=(lambda x: x[0]),
+        get_hash=str,
+    ) as memo_compute_max_logit_diffs_analysis:
+        return memo_compute_max_logit_diffs_analysis(seed)
+
+
+with memoshelve_hf_staged(
+    short_name="compute_max_logit_diffs_analysis"
+) as memoshelve_hf:
+    max_logit_diffs_analyses = {
+        seed: handle_compute_max_logit_diffs_analysis(seed, memoshelve_hf=memoshelve_hf)
+        for seed in tqdm(
+            list(sorted(runtime_models.keys())), desc="max logit diff analysis"
+        )
+    }
+
+# %%
+max_logit_diffs_analyses_by_key = defaultdict(dict)
+for seed, d in max_logit_diffs_analyses.items():
+    for k, v in d.items():
+        max_logit_diffs_analyses_by_key[k][seed] = v
+# %%
+for k, v in max_logit_diffs_analyses_by_key.items():
     latex_values |= data_summary(v, prefix=k)
     assert all(isinstance(seed, int) for seed in v.keys())
     latex_all_values_by_value[f"{k}Float"] = v

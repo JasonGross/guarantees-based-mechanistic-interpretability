@@ -4,11 +4,12 @@ on:
     branches: [ max-of-*-cache ]
   workflow_dispatch:
     inputs:
-      plots:
-        description: 'Construct plots (passes --no-plots if false)'
+      plots-arg:
+        description: 'Construct plots'
+        options: ['--no-plots', ' ']
         required: false
-        default: false
-        type: boolean
+        default: '--no-plots'
+        type: choice
 
 jobs:
   install-deps:
@@ -130,12 +131,12 @@ jobs:
         poetry-install-extra-args: [""]
         os: [ubuntu-latest]
         cfg:
-          - { nctx: 4, dvocab: 64, extra-args: "--brute-force", extra-args-file-descr: "brute-force" }
-          - { nctx: 5, dvocab: 64, extra-args: "", extra-args-file-descr: "" }
-          - { nctx: 10, dvocab: 64, extra-args: "", extra-args-file-descr: "" }
-          - { nctx: 10, dvocab: 128, extra-args: "", extra-args-file-descr: "" }
-          - { nctx: 20, dvocab: 64, extra-args: "", extra-args-file-descr: "" }
-          - { nctx: 20, dvocab: 512, extra-args: "", extra-args-file-descr: "" }
+          - { nctx: 4, dvocab: 64, extra-args: "--brute-force", extra-args-file-descr: "brute-force", default-extra-args: "" }
+          - { nctx: 5, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "" }
+          - { nctx: 10, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots" }
+          - { nctx: 10, dvocab: 128, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots" }
+          - { nctx: 20, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots" }
+          - { nctx: 20, dvocab: 512, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots" }
     needs: [install-deps, build-e-c-t]
     runs-on: ${{ matrix.os }}
     concurrency:
@@ -237,14 +238,16 @@ jobs:
       if: steps.check-branch.outputs.match == 'true'
     - run: df -h
       if: steps.check-branch.outputs.match == 'true'
-    - run: timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv ${{ matrix.cfg.extra-args }} ${{ ((github.event_name != 'workflow_dispatch' || github.event.inputs.plots != 'true') && '--no-plots') || '' }}
+    - name: Generate data
+      run: |
+        if [ ${{ github.event_name }} == 'workflow_dispatch' ]; then
+          extra_extra_args=(${{ github.event.inputs.plots-arg }})
+        else
+          extra_extra_args=(${{ matrix.cfg.default-extra-args }})
+        fi
+        timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} ${{ matrix.cfg.extra-args }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv "${extra_extra_args[@]}"
       if: steps.check-branch.outputs.match == 'true'
     - run: |
-        # if [[ "${{ matrix.seeds }}" == *","* ]]; then
-        #   FILES="$( (ls notebooks_jason/.cache/max_of_${{ matrix.cfg.nctx }}.py.*-{${{ matrix.seeds }}}_*; git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache) | sort | uniq)"
-        # else
-        #   FILES="$( (ls notebooks_jason/.cache/max_of_${{ matrix.cfg.nctx }}.py.*-${{ matrix.seeds }}_*; git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache) | sort | uniq)"
-        # fi
         { git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache; } | xargs tar -czvf seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
       if: always () && steps.check-branch.outputs.match == 'true'
     - run: tar -czvf plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz notebooks_jason/max_of_${{ matrix.cfg.nctx }}_all_models/

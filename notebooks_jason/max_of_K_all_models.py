@@ -497,6 +497,7 @@ def memoshelve_hf_staged(
                 if subfolder:
                     filename /= subfolder
                 filename /= f"{file_suffix}{f'-{extra_file_suffix}' if extra_file_suffix else ''}"
+                filename.parent.mkdir(exist_ok=True, parents=True)
 
                 if save_to_hf_from_cache:
                     with memoshelve(
@@ -533,6 +534,7 @@ def memoshelve_hf_staged(
             filename /= (
                 f"{file_suffix}{f'-{extra_file_suffix}' if extra_file_suffix else ''}"
             )
+            filename.parent.mkdir(exist_ok=True, parents=True)
             with memoshelve(
                 func,
                 filename=filename,

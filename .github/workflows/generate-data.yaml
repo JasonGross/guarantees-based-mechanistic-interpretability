@@ -175,12 +175,19 @@ jobs:
           - { nctx: "${{ needs.setup-cfg.outputs.cfg.nctx }}", dvocab: "${{ needs.setup-cfg.outputs.cfg.d_vocab }}", extra-args: "${{ needs.setup-cfg.outputs.cfg.extra-args }}", extra-args-file-descr: "${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}", default-extra-args: "${{ needs.setup-cfg.outputs.cfg.default-extra-args }}" }
     needs: [install-deps, build-e-c-t, setup-cfg]
     runs-on: ${{ matrix.os }}
-    name: "seeds (${{ matrix.cfg.nctx }}, ${{ matrix.cfg.dvocab }}) (${{ matrix.seeds }})"
+    name: "seeds (${{ needs.setup-cfg.outputs.cfg.nctx }}, ${{ needs.setup-cfg.outputs.cfg.dvocab }}) (${{ matrix.seeds }})"
     concurrency:
-      # group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ github.head_ref || github.run_id }}
-      group: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}-${{ github.ref }}
+      # group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ github.head_ref || github.run_id }}
+      group: seeds-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}-${{ github.ref }}
       cancel-in-progress: true
     steps:
+    - run: |
+        echo 'cfg=${{ needs.setup-cfg.outputs.cfg }}'
+        echo "cfg.nctx=${{ needs.setup-cfg.outputs.cfg.nctx }}"
+        echo "cfg.dvocab=${{ needs.setup-cfg.outputs.cfg.dvocab }}"
+        echo "cfg.extra-args=${{ needs.setup-cfg.outputs.cfg.extra-args }}"
+        echo "cfg.extra-args-file-descr=${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}"
+        echo "cfg.default-extra-args=${{ needs.setup-cfg.outputs.cfg.default-extra-args }}"
     - uses: actions/cache@v4
       name: Define a cache for e-c-t
       with:
@@ -243,25 +250,25 @@ jobs:
         if [ ${{ github.event_name }} == 'workflow_dispatch' ]; then
           extra_extra_args=(${{ github.event.inputs.plots-arg }} ${{ github.event.inputs.huggingface-args }})
         else
-          extra_extra_args=(${{ matrix.cfg.default-extra-args }} ${{ matrix.default-shared-extra-args }})
+          extra_extra_args=(${{ needs.setup-cfg.outputs.cfg.default-extra-args }} ${{ matrix.default-shared-extra-args }})
         fi
-        timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} ${{ matrix.cfg.extra-args }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv "${extra_extra_args[@]}"
+        timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ needs.setup-cfg.outputs.cfg.nctx }} --d_vocab ${{ needs.setup-cfg.outputs.cfg.dvocab }} ${{ needs.setup-cfg.outputs.cfg.extra-args }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv "${extra_extra_args[@]}"
     - run: |
-        { git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache; } | xargs tar -czvf seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
+        { git ls-files --others --exclude-standard notebooks_jason/.cache; git ls-files -m notebooks_jason/.cache; } | xargs tar -czvf seeds-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}.tar.gz
       if: always ()
-    - run: tar -czvf plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz notebooks_jason/max_of_${{ matrix.cfg.nctx }}_all_models/
+    - run: tar -czvf plots-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}.tar.gz notebooks_jason/max_of_${{ needs.setup-cfg.outputs.cfg.nctx }}_all_models/
     - name: upload seeds ${{ matrix.seeds }}
       uses: actions/upload-artifact@v4
       with:
-        name: cache-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.seeds }}-${{ matrix.cfg.extra-args-file-descr }}
-        path: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
+        name: cache-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}
+        path: seeds-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}.tar.gz
         retention-days: 3
       if: always ()
     - name: upload plots ${{ matrix.seeds }}
       uses: actions/upload-artifact@v4
       with:
-        name: plots-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.seeds }}-${{ matrix.cfg.extra-args-file-descr }}
-        path: plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
+        name: plots-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}
+        path: plots-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.cfg.nctx }}-${{ needs.setup-cfg.outputs.cfg.dvocab }}-${{ needs.setup-cfg.outputs.cfg.extra-args-file-descr }}.tar.gz
         retention-days: 3
       if: always ()
 

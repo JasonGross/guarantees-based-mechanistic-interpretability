@@ -131,12 +131,20 @@ jobs:
         printf "GITHUB_REF=%s\nbranch_name=%s\nnctx=%s\ndvocab=%s\n" "$GITHUB_REF" "$branch_name" "$nctx_value" "$dvocab_value"
         if [ "$nctx_value" = "${{ matrix.cfg.nctx }}" ] && [ "$dvocab_value" = "${{ matrix.cfg.dvocab }}" ]; then
             echo "match=true" >> $GITHUB_OUTPUT
-            printf 'cfg={"nctx": %d, "dvocab": %d, "extra-args": "%s", "extra-args-file-descr": "%s", "default-extra-args": "%s"}\n' "${{ matrix.cfg.nctx }}" "${{ matrix.cfg.dvocab }}" "${{ matrix.cfg.extra-args }}" "${{ matrix.cfg.extra-args-file-descr }}" "${{ matrix.cfg.default-extra-args }}" >> $GITHUB_OUTPUT
+            echo "cfg.nctx=${{ matrix.cfg.nctx }}" >> $GITHUB_OUTPUT
+            echo "cfg.dvocab=${{ matrix.cfg.dvocab }}" >> $GITHUB_OUTPUT
+            echo "cfg.extra-args=${{ matrix.cfg.extra-args }}" >> $GITHUB_OUTPUT
+            echo "cfg.extra-args-file-descr=${{ matrix.cfg.extra-args-file-descr }}" >> $GITHUB_OUTPUT
+            echo "cfg.default-extra-args=${{ matrix.cfg.default-extra-args }}" >> $GITHUB_OUTPUT
         else
             echo "match=false" >> $GITHUB_OUTPUT
         fi
     outputs:
-        cfg: ${{ steps.check-branch.outputs.cfg }}
+        cfg.nctx: ${{ steps.check-branch.outputs.cfg.nctx }}
+        cfg.dvocab: ${{ steps.check-branch.outputs.cfg.dvocab }}
+        cfg.extra-args: ${{ steps.check-branch.outputs.cfg.extra-args }}
+        cfg.extra-args-file-descr: ${{ steps.check-branch.outputs.cfg.extra-args-file-descr }}
+        cfg.default-extra-args: ${{ steps.check-branch.outputs.cfg.default-extra-args }}
 
   seeds:
     if: false

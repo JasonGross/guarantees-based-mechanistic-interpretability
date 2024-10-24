@@ -104,50 +104,6 @@ jobs:
     - name: test Efficient-Compression-Tool
       run: ect -h
 
-  setup-cfg:
-    strategy:
-      matrix:
-        cfg:
-          - { nctx: 4, dvocab: 64, extra-args: "--brute-force", extra-args-file-descr: "brute-force", default-extra-args: "", dvocab-extra-path: "" }
-          - { nctx: 5, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "", dvocab-extra-path: "" }
-          - { nctx: 10, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "" }
-          - { nctx: 10, dvocab: 128, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "_d_vocab_128" }
-          - { nctx: 20, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "" }
-          - { nctx: 20, dvocab: 512, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "_d_vocab_512" }
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check if branch ${{ github.ref }} matches the nctx=${{ matrix.cfg.nctx }} and dvocab=${{ matrix.cfg.dvocab }}
-      id: check-branch
-      run: |
-        branch_name="${GITHUB_REF#refs/heads/}"
-        nctx_value="${branch_name#max-of-}"
-        nctx_value="${nctx_value%-cache}"
-        if [[ "$nctx_value" == *"-dvocab-"* ]]; then
-            dvocab_value="${nctx_value#*-dvocab-}"
-            nctx_value="${nctx_value%-dvocab-*}"
-        else
-            dvocab_value="64"
-        fi
-        printf "GITHUB_REF=%s\nbranch_name=%s\nnctx=%s\ndvocab=%s\n" "$GITHUB_REF" "$branch_name" "$nctx_value" "$dvocab_value"
-        if [ "$nctx_value" = "${{ matrix.cfg.nctx }}" ] && [ "$dvocab_value" = "${{ matrix.cfg.dvocab }}" ]; then
-            echo "match=true" >> $GITHUB_OUTPUT
-            echo "nctx=${{ matrix.cfg.nctx }}" >> $GITHUB_OUTPUT
-            echo "dvocab=${{ matrix.cfg.dvocab }}" >> $GITHUB_OUTPUT
-            echo "extra-args=${{ matrix.cfg.extra-args }}" >> $GITHUB_OUTPUT
-            echo "extra-args-file-descr=${{ matrix.cfg.extra-args-file-descr }}" >> $GITHUB_OUTPUT
-            echo "default-extra-args=${{ matrix.cfg.default-extra-args }}" >> $GITHUB_OUTPUT
-            echo "dvocab-extra-path=${{ matrix.cfg.dvocab-extra-path }}" >> $GITHUB_OUTPUT
-        else
-            echo "match=false" >> $GITHUB_OUTPUT
-        fi
-    outputs:
-        nctx: ${{ steps.check-branch.outputs.nctx }}
-        dvocab: ${{ steps.check-branch.outputs.dvocab }}
-        extra-args: ${{ steps.check-branch.outputs.extra-args }}
-        extra-args-file-descr: ${{ steps.check-branch.outputs.extra-args-file-descr }}
-        default-extra-args: ${{ steps.check-branch.outputs.default-extra-args }}
-        dvocab-extra-path: ${{ steps.check-branch.outputs.dvocab-extra-path }}
-
   seeds:
     if: false
     strategy:
@@ -182,23 +138,20 @@ jobs:
         os: [ubuntu-latest]
         default-shared-extra-args: ["--no-huggingface --no-save-to-hf"]
         cfg:
-          - { nctx: "${{ needs.setup-cfg.outputs.nctx }}", dvocab: "${{ needs.setup-cfg.outputs.dvocab }}", extra-args: "${{ needs.setup-cfg.outputs.extra-args }}", extra-args-file-descr: "${{ needs.setup-cfg.outputs.extra-args-file-descr }}", default-extra-args: "${{ needs.setup-cfg.outputs.default-extra-args }}" }
-    needs: [install-deps, build-e-c-t, setup-cfg]
+          - { nctx: 4, dvocab: 64, extra-args: "--brute-force", extra-args-file-descr: "brute-force", default-extra-args: "", dvocab-extra-path: "" }
+          - { nctx: 5, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "", dvocab-extra-path: "" }
+          - { nctx: 10, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "" }
+          - { nctx: 10, dvocab: 128, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "_d_vocab_128" }
+          - { nctx: 20, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "" }
+          - { nctx: 20, dvocab: 512, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "_d_vocab_512" }
+    needs: [install-deps, build-e-c-t]
     runs-on: ${{ matrix.os }}
-    name: "seeds (${{ needs.setup-cfg.outputs.nctx }}, ${{ needs.setup-cfg.outputs.dvocab }}) (${{ matrix.seeds }})"
+    name: "seeds (${{ matrix.cfg.nctx }}, ${{ matrix.cfg.dvocab }}) (${{ matrix.seeds }})"
     concurrency:
-      # group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ github.head_ref || github.run_id }}
-      group: seeds-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ needs.setup-cfg.outputs.extra-args-file-descr }}-${{ github.ref }}
+      # group: ${{ github.workflow }}-${{ matrix.python-version }}-${{ matrix.poetry-version }}-${{ matrix.os }}-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ github.head_ref || github.run_id }}
+      group: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}-${{ github.ref }}
       cancel-in-progress: true
     steps:
-    - run: |
-        echo 'cfg=${{ needs.setup-cfg.outputs }}'
-        echo "cfg.nctx=${{ needs.setup-cfg.outputs.nctx }}"
-        echo "cfg.dvocab=${{ needs.setup-cfg.outputs.dvocab }}"
-        echo "cfg.extra-args=${{ needs.setup-cfg.outputs.extra-args }}"
-        echo "cfg.extra-args-file-descr=${{ needs.setup-cfg.outputs.extra-args-file-descr }}"
-        echo "cfg.default-extra-args=${{ needs.setup-cfg.outputs.default-extra-args }}"
-        echo "cfg.dvocab-extra-path=${{ needs.setup-cfg.outputs.dvocab-extra-path }}"
     - uses: actions/cache@v4
       name: Define a cache for e-c-t
       with:
@@ -262,13 +215,13 @@ jobs:
         if [ ${{ github.event_name }} == 'workflow_dispatch' ]; then
           echo "extra-extra-args=${{ github.event.inputs.plots-arg }} ${{ github.event.inputs.huggingface-args }}" >> $GITHUB_OUTPUT
         else
-          echo "extra-extra-args=${{ needs.setup-cfg.outputs.default-extra-args }} ${{ matrix.default-shared-extra-args }}" >> $GITHUB_OUTPUT
+          echo "extra-extra-args=${{ matrix.cfg.default-extra-args }} ${{ matrix.default-shared-extra-args }}" >> $GITHUB_OUTPUT
         fi
-    - run: git submodule update --init --recursive notebooks_jason/.cache/max_of_${{ needs.setup-cfg.outputs.nctx }}${{ needs.setup-cfg.outputs.dvocab-extra-path }}.py
-    - run: git submodule update --init --recursive notebooks_jason/max_of_${{ needs.setup-cfg.outputs.nctx }}_all_models
+    - run: git submodule update --init --recursive notebooks_jason/.cache/max_of_${{ matrix.cfg.nctx }}${{ matrix.cfg.dvocab-extra-path }}.py
+    - run: git submodule update --init --recursive notebooks_jason/max_of_${{ matrix.cfg.nctx }}_all_models
       if: ! contains(steps.set-args.outputs.extra-extra-args, '--no-plots')
     - name: Generate data
-      run: timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ needs.setup-cfg.outputs.nctx }} --d_vocab ${{ needs.setup-cfg.outputs.dvocab }} ${{ needs.setup-cfg.outputs.extra-args }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv ${{ steps.set-args.outputs.extra-extra-args }}
+      run: timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} ${{ matrix.cfg.extra-args }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv ${{ steps.set-args.outputs.extra-extra-args }}
     - run: |
         { git ls-files --others --exclude-standard notebooks_jason/.cache;
           git ls-files -m notebooks_jason/.cache;
@@ -278,21 +231,21 @@ jobs:
               } | sed "s|^|$path/|"';
             } | grep '^notebooks_jason/.cache/';
           };
-        } | xargs tar -czvf seeds-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ needs.setup-cfg.outputs.extra-args-file-descr }}.tar.gz
+        } | xargs tar -czvf seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
       if: always ()
-    - run: tar -czvf plots-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ needs.setup-cfg.outputs.extra-args-file-descr }}.tar.gz notebooks_jason/max_of_${{ needs.setup-cfg.outputs.nctx }}_all_models/
+    - run: tar -czvf plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz notebooks_jason/max_of_${{ matrix.cfg.nctx }}_all_models/
     - name: upload seeds ${{ matrix.seeds }}
       uses: actions/upload-artifact@v4
       with:
-        name: cache-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.extra-args-file-descr }}
-        path: seeds-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ needs.setup-cfg.outputs.extra-args-file-descr }}.tar.gz
+        name: cache-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.seeds }}-${{ matrix.cfg.extra-args-file-descr }}
+        path: seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
         retention-days: 3
       if: always ()
     - name: upload plots ${{ matrix.seeds }}
       uses: actions/upload-artifact@v4
       with:
-        name: plots-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.extra-args-file-descr }}
-        path: plots-${{ matrix.seeds }}-${{ needs.setup-cfg.outputs.nctx }}-${{ needs.setup-cfg.outputs.dvocab }}-${{ needs.setup-cfg.outputs.extra-args-file-descr }}.tar.gz
+        name: plots-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.seeds }}-${{ matrix.cfg.extra-args-file-descr }}
+        path: plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
         retention-days: 3
       if: always ()
 

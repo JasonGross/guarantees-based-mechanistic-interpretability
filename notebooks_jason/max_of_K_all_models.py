@@ -482,11 +482,14 @@ def memoshelve_hf_staged(
             def inner(
                 func: Callable,
                 file_suffix: str,
-                subfolder: Optional[str] = None,
-                extra_file_suffix: Optional[str] = None,
-                extra_hf_file_suffix: Optional[str] = None,
+                subfolder: str = "",
+                extra_file_suffix: str = "",
+                extra_hf_file_suffix: str = "",
                 **kwargs,
             ):
+                subfolder = str(subfolder)
+                extra_file_suffix = str(extra_file_suffix)
+                extra_hf_file_suffix = str(extra_hf_file_suffix)
                 hf_filename = hf_sanitize(
                     f"{file_suffix}"
                     f"{f'-{subfolder}' if subfolder else ''}"
@@ -523,11 +526,14 @@ def memoshelve_hf_staged(
         def inner(
             func: Callable,
             file_suffix: str,
-            subfolder: Optional[str] = None,
-            extra_file_suffix: Optional[str] = None,
-            extra_hf_file_suffix: Optional[str] = None,
+            subfolder: str = "",
+            extra_file_suffix: str = "",
+            extra_hf_file_suffix: str = "",
             **kwargs,
         ):
+            subfolder = str(subfolder)
+            extra_file_suffix = str(extra_file_suffix)
+            extra_hf_file_suffix = str(extra_hf_file_suffix)
             filename = cache_dir / SHARED_CACHE_STEM
             if subfolder:
                 filename /= subfolder

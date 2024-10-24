@@ -202,3 +202,11 @@ notebooks_jason/max_of_2_grokking_regularized.html
 lightning_logs/
 
 gbmi/exp_modular_arithmetic/models/
+
+!notebooks_jason/.cache
+!notebooks_jason/.cache/max_of_*.py/*.bak
+!notebooks_jason/.cache/max_of_*.py/*.dat
+!notebooks_jason/.cache/max_of_*.py/*.dir
+!notebooks_jason/.cache/max_of_*.py/*.db
+!notebooks_jason/.cache/max_of_*.py/*.pkl
+!notebooks_jason/.cache/max_of_*.py/*.pkl.lock

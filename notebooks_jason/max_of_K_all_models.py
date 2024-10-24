@@ -1644,7 +1644,8 @@ def handle_compute_max_logit_diffs_analysis(
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
     with memoshelve_hf(
         (lambda seed: max_logit_diffs_analysis(model)),
-        f"compute_max_logit_diffs_analysis-{cfg_hash_for_filename}",
+        "compute_max_logit_diffs_analysis",
+        subfolder=cfg_hash_for_filename,
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     ) as memo_compute_max_logit_diffs_analysis:
@@ -2205,7 +2206,8 @@ def try_all_proofs_subcubic(
     with memoshelve_hf_shared_proof_search(
         (lambda seed: analysis_subcubic.find_proof_shared(model)),
         # cache={},
-        f"shared_proof_search-{cfg_hash_for_filename}",
+        "shared_proof_search",
+        subfolder=cfg_hash_for_filename,
     ) as shared_proof_search:
         (
             W_EP_direction_kwargs,
@@ -2230,7 +2232,8 @@ def try_all_proofs_subcubic(
             )
         ),
         # cache={},
-        f"find_min_gaps-{cfg_hash_for_filename}",
+        "find_min_gaps",
+        subfolder=cfg_hash_for_filename,
     ) as find_min_gaps_for:
         min_gaps_lists = [find_min_gaps_for(cfg) for cfg in all_configs]
 

@@ -1,0 +1,40 @@
+[submodule "notebooks_jason/.cache/max_of_4.py"]
+	path = notebooks_jason/.cache/max_of_4.py
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-4-cache
+[submodule "notebooks_jason/.cache/max_of_5.py"]
+	path = notebooks_jason/.cache/max_of_5.py
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-5-cache
+[submodule "notebooks_jason/.cache/max_of_10.py"]
+	path = notebooks_jason/.cache/max_of_10.py
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-10-cache
+[submodule "notebooks_jason/.cache/max_of_20.py"]
+	path = notebooks_jason/.cache/max_of_20.py
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-20-cache
+[submodule "notebooks_jason/.cache/max_of_10_d_vocab_128.py"]
+	path = notebooks_jason/.cache/max_of_10_d_vocab_128.py
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-10-dvocab-128-cache
+[submodule "notebooks_jason/.cache/max_of_20_d_vocab_512.py"]
+	path = notebooks_jason/.cache/max_of_20_d_vocab_512.py
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-20-dvocab-512-cache
+[submodule "notebooks_jason/max_of_4_all_models"]
+	path = notebooks_jason/max_of_4_all_models
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-4-figures
+[submodule "notebooks_jason/max_of_5_all_models"]
+	path = notebooks_jason/max_of_5_all_models
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-5-figures
+[submodule "notebooks_jason/max_of_10_all_models"]
+	path = notebooks_jason/max_of_10_all_models
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-10-figures
+[submodule "notebooks_jason/max_of_20_all_models"]
+	path = notebooks_jason/max_of_20_all_models
+	url = https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-data.git
+	branch = max-of-20-figures

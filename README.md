@@ -29,6 +29,16 @@ Abstract:
 
 ## Setup
 
+To clone only the main branch (and not the other data-heavy branches), use
+
+```bash
+git clone --single-branch --branch main https://github.com/JasonGross/guarantees-based-mechanistic-interpretability-with-data.git
+cd guarantees-based-mechanistic-interpretability-with-data
+git submodule init
+etc/setup-alternatives.py
+git submodule update --single-branch
+```
+
 The code can be run under any environment with Python 3.9 and above.
 
 We use [poetry](https://python-poetry.org) for dependency management, which can be installed following the instructions [here](https://python-poetry.org/docs/#installation).

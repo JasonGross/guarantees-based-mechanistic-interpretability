@@ -1568,7 +1568,7 @@ latex_values |= latex_values_of_instruction_count("Cubic", cubic_instruction_cou
 # %%
 def max_logit_diffs_analysis(model: HookedTransformer) -> dict[str, Any]:
     result = {}
-    max_logit_diff = EVOU_max_logit_diff(model)
+    max_logit_diff = EVOU_max_logit_diff(model).cpu()
     max_logit_diff_summary = data_summary(
         max_logit_diff, prefix="EVOUMaxRowDiff", float_postfix=""
     )
@@ -1581,6 +1581,10 @@ def max_logit_diffs_analysis(model: HookedTransformer) -> dict[str, Any]:
         (max_logit_minus_diag, duplication_factors) = EVOU_max_minus_diag_logit_diff(
             model,
             duplicate_by_sequence_count=duplicate_by_sequence_count,
+        )
+        max_logit_minus_diag, duplication_factors = (
+            max_logit_minus_diag.cpu(),
+            duplication_factors.cpu(),
         )
         mean = np.average(
             max_logit_minus_diag.numpy(), weights=duplication_factors.numpy()
@@ -2398,7 +2402,7 @@ def try_all_proofs_subcubic(
             weights[1, 1, 0] = 1
 
             v = min_gaps.flatten().detach().cpu()
-            mean = np.average(v.numpy(), weights=weights.flatten().numpy())
+            mean = np.average(v.numpy(), weights=weights.flatten().cpu().numpy())
             std = np.average(
                 (v - mean).numpy() ** 2,
                 weights=weights.flatten().numpy(),

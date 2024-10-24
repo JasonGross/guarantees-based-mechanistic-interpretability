@@ -219,7 +219,7 @@ jobs:
         fi
     - run: git submodule update --init --recursive notebooks_jason/.cache/max_of_${{ matrix.cfg.nctx }}${{ matrix.cfg.dvocab-extra-path }}.py
     - run: git submodule update --init --recursive notebooks_jason/max_of_${{ matrix.cfg.nctx }}_all_models
-      if: ! contains(steps.set-args.outputs.extra-extra-args, '--no-plots')
+      if: ${{ !contains(steps.set-args.outputs.extra-extra-args, '--no-plots') }}
     - name: Generate data
       run: timeout 5h poetry run python notebooks_jason/max_of_K_all_models.py --K ${{ matrix.cfg.nctx }} --d_vocab ${{ matrix.cfg.dvocab }} ${{ matrix.cfg.extra-args }} --seeds ${{ matrix.seeds }} -j1 --ignore-csv ${{ steps.set-args.outputs.extra-extra-args }}
     - run: |

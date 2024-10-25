@@ -235,6 +235,7 @@ jobs:
         } | xargs tar -czvf seeds-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz
       if: always ()
     - run: tar -czvf plots-${{ matrix.seeds }}-${{ matrix.cfg.nctx }}-${{ matrix.cfg.dvocab }}-${{ matrix.cfg.extra-args-file-descr }}.tar.gz notebooks_jason/max_of_${{ matrix.cfg.nctx }}_all_models/
+      if: always()
     - name: upload seeds ${{ matrix.seeds }}
       uses: actions/upload-artifact@v4
       with:

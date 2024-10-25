@@ -415,19 +415,16 @@ if SELECTED_SEED in seeds:
     seeds = [SELECTED_SEED] + [s for s in seeds if s != SELECTED_SEED]
 match seq_len:
     case 4:
-        cfgs = {seed: MAX_OF_4_CONFIG(seed) for seed in list(seeds)}
+        make_cfg = MAX_OF_4_CONFIG
     case 5:
-        cfgs = {seed: MAX_OF_5_CONFIG(seed) for seed in list(seeds)}
+        make_cfg = MAX_OF_5_CONFIG
     case 10:
-        cfgs = {
-            seed: MAX_OF_10_CONFIG(seed, d_vocab_out=D_VOCAB) for seed in list(seeds)
-        }
+        make_cfg = partial(MAX_OF_10_CONFIG, d_vocab_out=D_VOCAB)
     case 20:
-        cfgs = {
-            seed: MAX_OF_20_CONFIG(seed, d_vocab_out=D_VOCAB) for seed in list(seeds)
-        }
+        make_cfg = partial(MAX_OF_20_CONFIG, d_vocab_out=D_VOCAB)
     case _:
         raise ValueError(f"Unsupported seq_len: {seq_len}")
+cfgs = {seed: make_cfg(seed) for seed in list(seeds)}
 cfg_hashes = {seed: get_hash_ascii(cfg) for seed, cfg in cfgs.items()}
 model_cfgs = {
     seed: MaxOfNTrainingWrapper.build_model_config(cfg) for seed, cfg in cfgs.items()
@@ -2857,10 +2854,10 @@ def parse_tricks_legacy(tricks):
 
 # TODO: merge this with previous version
 def subcubic_approx_effective_dimension_df(row, df):
-    _, model = runtime_models[row["seed"]]
+    cfg = cfgs[row["seed"]] if row["seed"] in cfgs else make_cfg(row["seed"])
     tricks = parse_tricks_legacy(row["tricks"])
     return (
-        int(tricks.effective_dimension_estimate(model.cfg))
+        int(tricks.effective_dimension_estimate(cfg))
         + subcubic_PVOU_cost
         + subcubic_EPQKP_cost
         + EVOU_cost

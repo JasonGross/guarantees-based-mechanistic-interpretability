@@ -204,6 +204,7 @@ from gbmi.exp_max_of_n.train import (
     MAX_OF_5_CONFIG,
     MAX_OF_10_CONFIG,
     MAX_OF_20_CONFIG,
+    MaxOfN,
     MaxOfNDataModule,
     MaxOfNTrainingWrapper,
     train_or_load_model,
@@ -2854,7 +2855,11 @@ def parse_tricks_legacy(tricks):
 
 # TODO: merge this with previous version
 def subcubic_approx_effective_dimension_df(row, df):
-    cfg = cfgs[row["seed"]] if row["seed"] in cfgs else make_cfg(row["seed"])
+    cfg = (
+        model_cfgs[row["seed"]]
+        if row["seed"] in model_cfgs
+        else MaxOfNTrainingWrapper.build_model_config(make_cfg(row["seed"]))
+    )
     tricks = parse_tricks_legacy(row["tricks"])
     return (
         int(tricks.effective_dimension_estimate(cfg))

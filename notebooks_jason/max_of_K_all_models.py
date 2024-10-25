@@ -1738,7 +1738,8 @@ def handle_compute_EQKE_SVD_analysis(
                 model, include_figures=False, show=False, do_print=False
             )[1]
         ),
-        f"compute_EQKE_SVD_analysis-{cfg_hash_for_filename}",
+        "compute_EQKE_SVD_analysis",
+        subfolder=cfg_hash_for_filename,
         get_hash_mem=(lambda x: x[0]),
         get_hash=str,
     ) as memo_compute_EQKE_SVD_analysis:

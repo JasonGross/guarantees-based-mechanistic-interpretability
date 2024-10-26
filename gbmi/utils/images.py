@@ -1,9 +1,13 @@
 import io
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
+import threading
+from functools import partial
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Callable, Iterable, Optional, Sequence, Union
 
 import plotly.graph_objects as go
 from PIL import Image, ImageChops
@@ -47,7 +51,38 @@ def remove_bak(*files: Union[str, Path], save_bak: bool = True, ext: str = ".bak
             bak_file.unlink()
 
 
-def batch_run(args, *images, batchsize=64, post_args=[], check: bool = True, **kwargs):
+def forward_output(
+    stream: io.BufferedReader,
+    write_func: Callable[[str], None],
+    trim_func: Optional[Callable[[str], Optional[str]]] = None,
+) -> None:
+    buffer = ""
+    for char in iter(lambda: stream.read(1), b""):
+        decoded_char = char.decode()
+        if trim_func is None:
+            write_func(decoded_char, end="")
+        else:
+            buffer += decoded_char
+            if "\n" in buffer:
+                lines = buffer.splitlines(keepends=True)
+                for line in lines[:-1]:
+                    trimmed_line = trim_func(line)
+                    if trimmed_line is not None:
+                        write_func(trimmed_line, end="")
+                buffer = lines[-1]
+
+
+def batch_run(
+    args: Iterable[str],
+    *images: str,
+    batchsize: int = 64,
+    post_args: list[str] = [],
+    check: bool = True,
+    trim_printout: Optional[Callable[[str], Optional[str]]] = None,
+    stdout_write: Optional[Callable] = None,
+    stderr_write: Optional[Callable] = None,
+    **kwargs,
+):
     if len(images) > batchsize:
         return [
             batch_run(
@@ -60,7 +95,44 @@ def batch_run(args, *images, batchsize=64, post_args=[], check: bool = True, **k
             )
             for i in range(0, len(images), batchsize)
         ]
-    return subprocess.run([*args, *images, *post_args], check=check, **kwargs)
+
+    process = subprocess.Popen(
+        [*args, *images, *post_args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        **kwargs,
+    )
+
+    if stdout_write is None:
+        stdout_write = partial(print, file=sys.stdout)
+    if stderr_write is None:
+        stderr_write = partial(print, file=sys.stderr)
+
+    stdout_thread = threading.Thread(
+        target=forward_output, args=(process.stdout, stdout_write, trim_printout)
+    )
+    stderr_thread = threading.Thread(
+        target=forward_output, args=(process.stderr, stderr_write, trim_printout)
+    )
+
+    stdout_thread.start()
+    stderr_thread.start()
+
+    stdout_thread.join()
+    stderr_thread.join()
+
+    process.wait()
+
+    if check and process.returncode != 0:
+        raise subprocess.CalledProcessError(process.returncode, process.args)
+
+    return process
+
+
+def trim_ect(output: str) -> Optional[str]:
+    if output.strip() == "Processed 1 file":
+        return None
+    return output
 
 
 def ect(
@@ -70,6 +142,9 @@ def ect(
     strip: bool = True,
     strict: bool = True,
     extra_args: Sequence[str] = (),
+    trim_printout: bool = False,
+    stdout_write: Optional[Callable] = None,
+    stderr_write: Optional[Callable] = None,
 ):
     if not images:
         return
@@ -82,7 +157,24 @@ def ect(
         extra_args.append("-strip")
     if strict:
         extra_args.append("--strict")
-    return batch_run(["ect", *extra_args], *images, check=True)
+    return batch_run(
+        ["ect", *extra_args],
+        *images,
+        check=True,
+        trim_printout=trim_ect if trim_printout else None,
+        stdout_write=stdout_write,
+        stderr_write=stderr_write,
+    )
+
+
+def trim_optipng(output: str) -> Optional[str]:
+    if output.strip() == "Trying:":
+        return None
+    pattern = r"zc = \d+ zm = \d+ zs = \d+ f = \d+"
+    regex_pattern = pattern.replace(" ", r"\s*")
+    if re.match(regex_pattern, output.strip()):
+        return None
+    return output
 
 
 def optipng(
@@ -91,6 +183,7 @@ def optipng(
     exhaustive: bool = False,
     save_bak: bool = True,
     fix: bool = True,
+    trim_printout: bool = False,
 ):
     if not images:
         return
@@ -99,7 +192,16 @@ def optipng(
     extra_args = [] if not exhaustive else ["-zm1-9"]
     extra_args += ["-fix"] if fix else []
     remove_bak(*images, save_bak=save_bak)
-    return batch_run(["optipng", f"-o{level}", *extra_args], *images, check=True)
+    return batch_run(
+        ["optipng", f"-o{level}", *extra_args],
+        *images,
+        check=True,
+        trim_printout=trim_optipng if trim_printout else None,
+    )
+
+
+def trim_pngcrush(output: str) -> Optional[str]:
+    return output
 
 
 def pngcrush(
@@ -107,6 +209,7 @@ def pngcrush(
     brute: bool = True,
     tmpdir: Optional[Union[str, Path]] = None,
     cleanup: Optional[bool] = None,
+    trim_printout: bool = False,
 ):
     if not images:
         return
@@ -134,7 +237,12 @@ def pngcrush(
     args += ["-d", str(tmpdir_path)]
 
     # Run pngcrush with the specified arguments
-    batch_run(args, *map(str, images), check=True)
+    batch_run(
+        args,
+        *map(str, images),
+        check=True,
+        trim_printout=trim_pngcrush if trim_printout else None,
+    )
 
     # Replace original images with crushed images if they are smaller
     for old_f in map(Path, images):
@@ -153,15 +261,28 @@ def optimize(
     exhaustive: bool = True,
     tmpdir: Optional[Union[str, Path]] = None,
     cleanup: Optional[bool] = None,
+    trim_printout: bool = False,
 ):
     cur_images = images
     cur_sizes = [Path(image).stat().st_size for image in cur_images]
     while cur_images:
         if shutil.which("ect"):
             for img in tqdm(cur_images, desc="ect"):
-                ect(img, exhaustive=exhaustive)
-        optipng(*cur_images, exhaustive=exhaustive)
-        pngcrush(*cur_images, brute=exhaustive, tmpdir=tmpdir, cleanup=cleanup)
+                ect(
+                    img,
+                    exhaustive=exhaustive,
+                    trim_printout=trim_printout,
+                    stdout_write=partial(tqdm.write, file=sys.stdout),
+                    stderr_write=partial(tqdm.write, file=sys.stderr),
+                )
+        optipng(*cur_images, exhaustive=exhaustive, trim_printout=trim_printout)
+        pngcrush(
+            *cur_images,
+            brute=exhaustive,
+            tmpdir=tmpdir,
+            cleanup=cleanup,
+            trim_printout=trim_printout,
+        )
         new_sizes = [Path(image).stat().st_size for image in cur_images]
         cur_images = [
             image

@@ -118,6 +118,12 @@ parser.add_argument(
     default=True,
     help="Store a single named data file in huggingface in addition to aggregate ones",
 )
+parser.add_argument(
+    "--compact-image-optimize-output",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Compact stdout/stderr format for image optimization",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
@@ -335,6 +341,7 @@ LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
     adjusted_file_path.with_suffix("") / "tikzplotlib-preamble.tex"
 )
 LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
+COMPACT_IMAGE_OPTIMIZE_OUTPUT: bool = cli_args.compact_image_optimize_output
 SHARED_CACHE_STEM = adjusted_file_path_dvocab.name.replace("_all_models", "")
 (cache_dir / SHARED_CACHE_STEM).mkdir(exist_ok=True, parents=True)
 N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
@@ -3801,11 +3808,17 @@ if SAVE_PLOTS:
         *LATEX_FIGURE_PATH.glob("*.png"),
         exhaustive=True,
         return_bool=True,
+        trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
     )
 
     if not opt_success:
         for f in LATEX_FIGURE_PATH.glob("*.png"):
-            wrap_err(image_utils.optimize, f, exhaustive=True)
+            wrap_err(
+                image_utils.optimize,
+                f,
+                exhaustive=True,
+                trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
+            )
 
     if errs:
         print("Errors:")

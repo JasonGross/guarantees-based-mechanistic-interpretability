@@ -124,6 +124,18 @@ parser.add_argument(
     default=False,
     help="Compact stdout/stderr format for image optimization",
 )
+parser.add_argument(
+    "--pdf",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Output pdfs",
+)
+parser.add_argument(
+    "--svg",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Output svgs",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
@@ -344,6 +356,8 @@ LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
 COMPACT_IMAGE_OPTIMIZE_OUTPUT: bool = cli_args.compact_image_optimize_output
 SHARED_CACHE_STEM = adjusted_file_path_dvocab.name.replace("_all_models", "")
 (cache_dir / SHARED_CACHE_STEM).mkdir(exist_ok=True, parents=True)
+OUTPUT_PDF: bool = cli_args.pdf
+OUTPUT_SVG: bool = cli_args.svg
 N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
 if N_SAMPLES_PER_KEY is None:
     match seq_len:
@@ -3724,6 +3738,7 @@ def texify_matplotlib_title(
 
 if SAVE_PLOTS:
     errs = []
+    exts = ((".pdf",) if OUTPUT_PDF else ()) + ((".svg",) if OUTPUT_SVG else ())
 
     def wrap_err(f, *args, return_bool: bool = False, **kwargs):
         try:
@@ -3760,7 +3775,7 @@ if SAVE_PLOTS:
             #     tikzplotly.save(p, fig)
             with texify_title(fig, replace_with_macros=False) as fig:
                 if True or unsupported_by_tikzplotly:
-                    for ext in (".pdf", ".svg"):
+                    for ext in exts:
                         p = LATEX_FIGURE_PATH / f"{k}{ext}"
                         print(f"Saving {p} ...")
                         p.parent.mkdir(parents=True, exist_ok=True)
@@ -3788,7 +3803,7 @@ if SAVE_PLOTS:
                 tikzplotlib.save(
                     p, fig, externalize_tables=False, table_row_sep=table_row_sep
                 )
-            for ext in (".pdf", ".svg"):
+            for ext in exts:
                 p = LATEX_FIGURE_PATH / f"{k}{ext}"
                 print(f"Saving {p} ...")
                 p.parent.mkdir(parents=True, exist_ok=True)

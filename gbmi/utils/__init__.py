@@ -688,3 +688,26 @@ def backup(filename: str | Path, ext: str = ".bak") -> Optional[Path]:
             filename.rename(backup_name)
             return backup_name
     return None
+
+
+import sys
+
+
+def deep_getsizeof(obj: object, seen: Optional[set] = None) -> int:
+    """Recursively find the size of objects, including contained objects."""
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0  # Avoid double-counting objects already visited.
+    seen.add(obj_id)
+
+    if isinstance(obj, dict):
+        size += sum(
+            deep_getsizeof(k, seen) + deep_getsizeof(v, seen) for k, v in obj.items()
+        )
+    elif isinstance(obj, (list, tuple, set, frozenset)):
+        size += sum(deep_getsizeof(i, seen) for i in obj)
+
+    return size

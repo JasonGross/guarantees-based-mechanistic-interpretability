@@ -229,7 +229,7 @@ from gbmi.exp_max_of_n.train import (
 )
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.importance_sample_cubic import importance_sample
-from gbmi.utils import default_device, patch, reseed, to_device
+from gbmi.utils import default_device, patch, reseed, to_device, deep_getsizeof
 from gbmi.utils.c_long import str_list_values_if_any_too_big_for_C_long
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.hashing import get_hash_ascii
@@ -3537,7 +3537,30 @@ with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
 \pgfplotsset{title/.append style={align=center}}
 """
     )
-
+# %%
+# @title Clean up data to free memory while exporting figures
+del latex_all_values_by_seed
+del latex_all_values_by_value
+del latex_values
+# %%
+# @title Print out names and sizes of locals
+df_sizes = pd.DataFrame(
+    [
+        {"name": name, "size": deep_getsizeof(var)}
+        for name, var in locals().items()
+        if not name.startswith("_")
+        and (
+            isinstance(var, (pd.DataFrame, dict, list, tuple, torch.Tensor, np.ndarray))
+            or sys.getsizeof(var) > 1000
+        )
+    ],
+    columns=["name", "size"],
+)
+df_sizes = df_sizes.sort_values(by="size", ascending=False)
+print(df_sizes.to_string(index=False))
+df_sizes = df_sizes.sort_values(by="name", ascending=True)
+print(df_sizes.to_string(index=False))
+del df_sizes
 # %%
 # @title export LaTeX figures
 title_reps = {
@@ -3813,6 +3836,11 @@ if SAVE_PLOTS:
         else:
             raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
 
+# %%
+# free up some memory
+del latex_figures
+# %%
+if SAVE_PLOTS:
     # for f in LATEX_FIGURE_PATH.glob("*.png"):
     #     wrap_err(image_utils.ect, f)
     #     wrap_err(image_utils.pngcrush, f)

@@ -3630,9 +3630,91 @@ with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
     )
 # %%
 # @title Clean up data to free memory while exporting figures
-del latex_all_values_by_seed
-del latex_all_values_by_value
-del latex_values
+for var in (
+    "latex_all_values_by_seed",
+    "latex_all_values_by_value",
+    "latex_values",
+    "subcubic_data",
+    "new_data",
+    "subcubic_sing_df",
+    "subcubic_ext_df",
+    "all_subcubic_data",
+    "subcubic_df",
+    "subcubic_results",
+    "df_sorted",
+    "combined_df",
+    "EQKE_SVD_analyses",
+    "EVOU_analyses",
+    "data",
+    "EQKE_SVD_analyses_by_key",
+    "EVOU_analyses_by_key",
+    "max_logit_diffs_analyses",
+    "row",
+    "all_subcubic_analysis_data",
+    "subcubic_analysis_df",
+    "all_keys",
+    "max_logit_diffs_analyses_by_key",
+    "max_rows",
+    "subgroup",
+    "group",
+    "filtered_subcubic_data",
+    "filtered_subcubic_data_best_by_key",
+    "rows",
+    "cubic_data",
+    "all_axis_limits",
+    "brute_force_data",
+    "cubic_data_by_key",
+    "brute_force_data_by_key",
+    "brute_force_ext_df",
+    "train_data",
+    "cubic_ext_df",
+    "df",
+    "values",
+    "runtime_models",
+    "all_cubic_data",
+    "cubic_df",
+    "cfg_hashes_for_filename",
+    "tricks",
+    "subcubic_groups",
+    "cubic_results",
+    "cfg_hashes",
+    "subcubic_leading_complexities",
+    "model_cfgs",
+    "training_wrappers",
+    "cfgs",
+    "datamodules",
+    "all_tokens_datasets",
+    "kwargs",
+    "train_total_samples",
+    "known_seeds",
+    "all_seeds",
+    "train_average_loss",
+    "train_total_loss",
+    "train_average_accuracy",
+    "train_total_accuracy",
+    "default_QK_SVD_colorscale",
+    "default_colorscale_2024_06_16",
+    "default_OV_colorscale",
+    "default_QK_colorscale",
+    "all_brute_force_data",
+    "brute_force_df",
+    "brute_force_results",
+    "all_train_data",
+    "all_configs",
+    "figs",
+    "seeds",
+    "SEEDS",
+    "key_pairs",
+    "subcubic_key_pairs",
+    "best_row",
+    "default_OV_colorscale_2024_06_15",
+    "default_QK_colorscale_2024_06_15",
+    "cur_key_pairs",
+    "category_name_remap",
+    "subcubic_columns",
+):
+    if var in locals():
+        del locals()[var]
 gc.collect()
 # %%
 # @title Print out names and sizes of locals
@@ -3643,7 +3725,7 @@ df_sizes = pd.DataFrame(
         if not name.startswith("_")
         and (
             isinstance(var, (pd.DataFrame, dict, list, tuple, torch.Tensor, np.ndarray))
-            or sys.getsizeof(var) > 1000
+            or sys.getsizeof(var) > 10000
         )
     ],
     columns=["name", "size"],

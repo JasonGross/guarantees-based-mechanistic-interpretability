@@ -25,10 +25,9 @@ def pm_round(
     if total_digits is None:
         if std == 0:
             return f"{mean}{sep}0"
-        total_digits_f = 1 + extra_digits - np.log10(std)
-        if np.isnan(total_digits_f) or np.isinf(total_digits_f):
+        if not np.isfinite(extra_digits) or not np.isfinite(std) or std <= 0:
             return f"{mean}{sep}{std}"
-        total_digits = int(total_digits_f)
+        total_digits = extra_digits + int(1 - np.log10(std))
     if total_digits < 0:
         mean, std = round(mean, total_digits), round(std, total_digits)
         total_digits = 0

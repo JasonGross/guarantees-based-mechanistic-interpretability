@@ -229,7 +229,7 @@ from gbmi.exp_max_of_n.train import (
 )
 from gbmi.exp_max_of_n.verification import LargestWrongLogitQuadraticConfig
 from gbmi.exp_max_of_n.verification.importance_sample_cubic import importance_sample
-from gbmi.utils import default_device, patch, reseed, to_device, deep_getsizeof
+from gbmi.utils import deep_getsizeof, default_device, patch, reseed, to_device
 from gbmi.utils.c_long import str_list_values_if_any_too_big_for_C_long
 from gbmi.utils.dataclass import enumerate_dataclass_values
 from gbmi.utils.hashing import get_hash_ascii
@@ -2790,10 +2790,21 @@ for trick_filter_descr, trick_filter in (
             f"{trick_filter_descr}OnlyBestAccBoundPerSeed{latex_key}Float"
         ] = filtered_subcubic_data_best_by_key[key]
         if any(len(rows) > 1 for rows in filtered_subcubic_data.values()):
-            latex_values |= data_summary(
-                [row[key] for rows in filtered_subcubic_data.values() for row in rows],
-                prefix=f"{trick_filter_descr}{latex_key}",
-            )
+            if all(
+                key in row for rows in filtered_subcubic_data.values() for row in rows
+            ):
+                latex_values |= data_summary(
+                    [
+                        row[key]
+                        for rows in filtered_subcubic_data.values()
+                        for row in rows
+                    ],
+                    prefix=f"{trick_filter_descr}{latex_key}",
+                )
+            else:
+                print(
+                    f"Skipping key {key} since some rows are missing the key: {tuple(row['seed'] if 'seed' in row else row for rows in filtered_subcubic_data.values() for row in rows if key not in row)}"
+                )
         else:
             # print(
             #     f"Skipping key {key} since values have at most one corresponding configuration"

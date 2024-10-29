@@ -710,6 +710,7 @@ def EVOU_max_minus_diag_logit_diff(
     duplicate_by_sequence_count: bool = True,
     num_bins: Optional[int] = None,
     warning: Callable[[str], None] = print,
+    already_warned: set[int] = set(),
 ) -> Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]]:  # noqa: F821
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
@@ -723,9 +724,11 @@ def EVOU_max_minus_diag_logit_diff(
         n_ctx = model.cfg.n_ctx
         indices = torch.arange(max_logit_minus_diag.size(0))
         if n_ctx >= math.log(np.iinfo(np.int64).max, max_logit_minus_diag.size(0)):
-            warning(
-                f"Warning: n_ctx={n_ctx} is too large for {max_logit_minus_diag.size(0)}, using int"
-            )
+            if n_ctx not in already_warned:
+                already_warned.add(n_ctx)
+                warning(
+                    f"Warning: n_ctx={n_ctx} is too large for {max_logit_minus_diag.size(0)}, using int"
+                )
             duplication_factors = torch.tensor(
                 [
                     sum(math.comb(n_ctx, k) * int(idx) ** k for k in range(n_ctx))

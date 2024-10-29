@@ -690,9 +690,6 @@ def backup(filename: str | Path, ext: str = ".bak") -> Optional[Path]:
     return None
 
 
-import sys
-
-
 def deep_getsizeof(obj: object, seen: Optional[set] = None) -> int:
     """Recursively find the size of objects, including contained objects."""
     size = sys.getsizeof(obj)

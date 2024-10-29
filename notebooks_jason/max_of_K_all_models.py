@@ -136,17 +136,203 @@ parser.add_argument(
     default=True,
     help="Output svgs",
 )
+parser.add_argument(
+    "--only-optimize-images",
+    action=BooleanOptionalAction,
+    default=False,
+    help="Only optimize images, then quit",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
+# %%
+import subprocess
+import sys
+from pathlib import Path
+
+import gbmi.utils.images as image_utils
+
+seq_len: int = cli_args.K
+D_VOCAB: int = cli_args.d_vocab
+EXTRA_D_VOCAB_FILE_SUFFIX: str = f"_d_vocab_{D_VOCAB}" if D_VOCAB != 64 else ""
+COMPACT_IMAGE_OPTIMIZE_OUTPUT: bool = cli_args.compact_image_optimize_output
+adjusted_file_path = Path(__file__).parent / Path(__file__).name.replace(
+    "_K_", f"_{seq_len}_"
+)
+adjusted_file_path_dvocab = Path(__file__).parent / Path(__file__).name.replace(
+    "_K_", f"_{seq_len}{EXTRA_D_VOCAB_FILE_SUFFIX}_"
+)
+cache_dir = adjusted_file_path.parent / ".cache"
+cache_dir.mkdir(exist_ok=True)
+
+OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
+compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
+TRAIN_CSV_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-train-values.csv"
+)
+TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+INCLUDE_BRUTE_FORCE: bool = cli_args.brute_force  # @param {type:"boolean"}
+QUIT_AFTER_MODEL_DOWNLOAD: bool = cli_args.only_download  # @param {type:"boolean"}
+BRUTE_FORCE_CSV_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-brute-force-values.csv"
+)
+BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+CUBIC_CSV_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-cubic-values.csv"
+)
+CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+SUBCUBIC_CSV_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-subcubic-values.csv"
+)
+SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+SUBCUBIC_ANALYSIS_CSV_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-subcubic-analysis-values.csv"
+)
+SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
+PYTHON_VERSION_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-python-version.txt"
+)
+PYTHON_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
+TORCH_VERSION_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-torch-version.txt"
+)
+TORCH_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
+
+
+GIT_DIFF_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-diff-info.diff"
+)
+GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
+GIT_SHA_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-sha.txt"
+)
+GIT_SHA_PATH.parent.mkdir(exist_ok=True, parents=True)
+GIT_SHA_SHORT_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-sha-short.txt"
+)
+GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_VALUES_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values.tex"
+)
+LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_VALUES_DATATABLE_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-all-values.csv"
+)
+LATEX_VALUES_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_VALUES_REDUCED_DATATABLE_PATH = (
+    adjusted_file_path.with_suffix("")
+    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values.csv"
+)
+LATEX_VALUES_REDUCED_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
+LATEX_FIGURE_PATH = (
+    adjusted_file_path.with_suffix("") / f"figures{EXTRA_D_VOCAB_FILE_SUFFIX}"
+)
+LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
+LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
+    adjusted_file_path.with_suffix("") / "tikzplotlib-preamble.tex"
+)
+LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
+SHARED_CACHE_STEM = adjusted_file_path_dvocab.name.replace("_all_models", "")
+(cache_dir / SHARED_CACHE_STEM).mkdir(exist_ok=True, parents=True)
+OUTPUT_PDF: bool = cli_args.pdf
+OUTPUT_SVG: bool = cli_args.svg
+N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
+if N_SAMPLES_PER_KEY is None:
+    match seq_len:
+        case 4:
+            N_SAMPLES_PER_KEY = 50
+        case 5:
+            N_SAMPLES_PER_KEY = 30
+        case 10:
+            N_SAMPLES_PER_KEY = 10
+        case _:
+            N_SAMPLES_PER_KEY = max(1, 100 // seq_len)
+assert isinstance(N_SAMPLES_PER_KEY, int), (N_SAMPLES_PER_KEY, type(N_SAMPLES_PER_KEY))
+N_THREADS: Optional[int] = cli_args.n_threads
+DISPLAY_PLOTS: bool = False  # @param {type:"boolean"}
+SAVE_PLOTS: bool = cli_args.plots
+RENDERER: Optional[str] = "png"  # @param ["png", None]
+PLOT_WITH: Literal["plotly", "matplotlib"] = (  # @param ["plotly", "matplotlib"]
+    "matplotlib"
+)
+# %%
+errs = []
+
+
+def wrap_err(f, *args, return_bool: bool = False, **kwargs):
+    try:
+        result = f(*args, **kwargs)
+        return True if return_bool else result
+    except FileNotFoundError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+    except OSError as e:
+        print(f"Warning: {e}")
+        errs.append(e)
+    if return_bool:
+        return False
+
+
+def print_and_raise_errs():
+    if errs:
+        print("Errors:")
+        for e in errs:
+            print(e)
+        print(f"Total errors: {len(errs)}")
+    for e in errs:
+        raise e
+
+
+def optimize_pngs(errs: list[Exception] = []):
+    # for f in LATEX_FIGURE_PATH.glob("*.png"):
+    #     wrap_err(image_utils.ect, f)
+    #     wrap_err(image_utils.pngcrush, f)
+    #     wrap_err(image_utils.optipng, f)
+
+    opt_success = wrap_err(
+        image_utils.optimize,
+        *LATEX_FIGURE_PATH.glob("*.png"),
+        exhaustive=True,
+        return_bool=True,
+        trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
+    )
+
+    if not opt_success:
+        for f in LATEX_FIGURE_PATH.glob("*.png"):
+            wrap_err(
+                image_utils.optimize,
+                f,
+                exhaustive=True,
+                trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
+            )
+
+
+# %%
+if cli_args.only_optimize_images:
+    optimize_pngs()
+    print_and_raise_errs()
+    sys.exit(0)
 # %%
 import csv
 import gc
 import math
 import os
 import re
-import subprocess
-import sys
 import time
 import traceback
 from collections import defaultdict
@@ -154,7 +340,6 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import cache, partial
 from itertools import chain
-from pathlib import Path
 from typing import Any, Callable, Collection, Iterator, Literal, Optional, Tuple, Union
 
 import matplotlib
@@ -182,7 +367,6 @@ import gbmi.exp_max_of_n.verification.quadratic as quadratic
 import gbmi.exp_max_of_n.verification.subcubic as subcubic
 import gbmi.utils.ein as ein
 import gbmi.utils.git as git
-import gbmi.utils.images as image_utils
 import gbmi.utils.instructions as instructions
 from gbmi.analysis_tools.plot import (
     Colorscale,
@@ -257,57 +441,7 @@ from gbmi.utils.memoshelve import memoshelve
 from gbmi.utils.sequences import SequenceDataset
 
 # %%
-seq_len: int = cli_args.K
-D_VOCAB: int = cli_args.d_vocab
-EXTRA_D_VOCAB_FILE_SUFFIX: str = f"_d_vocab_{D_VOCAB}" if D_VOCAB != 64 else ""
-adjusted_file_path = Path(__file__).parent / Path(__file__).name.replace(
-    "_K_", f"_{seq_len}_"
-)
-adjusted_file_path_dvocab = Path(__file__).parent / Path(__file__).name.replace(
-    "_K_", f"_{seq_len}{EXTRA_D_VOCAB_FILE_SUFFIX}_"
-)
-cache_dir = adjusted_file_path.parent / ".cache"
-cache_dir.mkdir(exist_ok=True)
 hf_repo_id = f"JasonGross/{adjusted_file_path.stem.replace('_','-').replace('-all-models', '')}-proofs"
-OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
-compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
-TRAIN_CSV_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-train-values.csv"
-)
-TRAIN_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-INCLUDE_BRUTE_FORCE: bool = cli_args.brute_force  # @param {type:"boolean"}
-QUIT_AFTER_MODEL_DOWNLOAD: bool = cli_args.only_download  # @param {type:"boolean"}
-BRUTE_FORCE_CSV_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-brute-force-values.csv"
-)
-BRUTE_FORCE_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-CUBIC_CSV_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-cubic-values.csv"
-)
-CUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-SUBCUBIC_CSV_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-subcubic-values.csv"
-)
-SUBCUBIC_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-SUBCUBIC_ANALYSIS_CSV_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-subcubic-analysis-values.csv"
-)
-SUBCUBIC_ANALYSIS_CSV_PATH.parent.mkdir(exist_ok=True, parents=True)
-PYTHON_VERSION_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-python-version.txt"
-)
-PYTHON_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
-TORCH_VERSION_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-torch-version.txt"
-)
-TORCH_VERSION_PATH.parent.mkdir(exist_ok=True, parents=True)
 USE_HF: bool = cli_args.huggingface
 SAVE_TO_HF_FROM_CACHE: bool = cli_args.save_to_hf_from_cache
 SAVE_TO_HF: bool = cli_args.save_to_hf
@@ -315,68 +449,7 @@ HF_STOAGE_METHODS: tuple[MemoHFStorageMethod, ...] = (
     ("named_data_files",) if cli_args.hf_store_named_data_files else ()
 )
 HF_STORE_SINGLE_NAMED_DATA_FILE: bool = cli_args.hf_store_single_named_data_file
-GIT_DIFF_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-diff-info.diff"
-)
-GIT_DIFF_PATH.parent.mkdir(exist_ok=True, parents=True)
-GIT_SHA_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-sha.txt"
-)
-GIT_SHA_PATH.parent.mkdir(exist_ok=True, parents=True)
-GIT_SHA_SHORT_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values-git-sha-short.txt"
-)
-GIT_SHA_SHORT_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_VALUES_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values.tex"
-)
-LATEX_VALUES_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_VALUES_DATATABLE_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-all-values.csv"
-)
-LATEX_VALUES_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_VALUES_REDUCED_DATATABLE_PATH = (
-    adjusted_file_path.with_suffix("")
-    / f"all-models{EXTRA_D_VOCAB_FILE_SUFFIX}-values.csv"
-)
-LATEX_VALUES_REDUCED_DATATABLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-LATEX_FIGURE_PATH = (
-    adjusted_file_path.with_suffix("") / f"figures{EXTRA_D_VOCAB_FILE_SUFFIX}"
-)
-LATEX_FIGURE_PATH.mkdir(exist_ok=True, parents=True)
-LATEX_TIKZPLOTLIB_PREAMBLE_PATH = (
-    adjusted_file_path.with_suffix("") / "tikzplotlib-preamble.tex"
-)
-LATEX_TIKZPLOTLIB_PREAMBLE_PATH.parent.mkdir(exist_ok=True, parents=True)
-COMPACT_IMAGE_OPTIMIZE_OUTPUT: bool = cli_args.compact_image_optimize_output
-SHARED_CACHE_STEM = adjusted_file_path_dvocab.name.replace("_all_models", "")
-(cache_dir / SHARED_CACHE_STEM).mkdir(exist_ok=True, parents=True)
-OUTPUT_PDF: bool = cli_args.pdf
-OUTPUT_SVG: bool = cli_args.svg
-N_SAMPLES_PER_KEY = cli_args.nsamples_per_key
-if N_SAMPLES_PER_KEY is None:
-    match seq_len:
-        case 4:
-            N_SAMPLES_PER_KEY = 50
-        case 5:
-            N_SAMPLES_PER_KEY = 30
-        case 10:
-            N_SAMPLES_PER_KEY = 10
-        case _:
-            N_SAMPLES_PER_KEY = max(1, 100 // seq_len)
-assert isinstance(N_SAMPLES_PER_KEY, int), (N_SAMPLES_PER_KEY, type(N_SAMPLES_PER_KEY))
-N_THREADS: Optional[int] = cli_args.n_threads
-DISPLAY_PLOTS: bool = False  # @param {type:"boolean"}
-SAVE_PLOTS: bool = cli_args.plots
-RENDERER: Optional[str] = "png"  # @param ["png", None]
-PLOT_WITH: Literal["plotly", "matplotlib"] = (  # @param ["plotly", "matplotlib"]
-    "matplotlib"
-)
+
 matplotlib.rcParams["text.usetex"] = True
 matplotlib.rcParams[
     "text.latex.preamble"
@@ -3560,6 +3633,7 @@ with open(LATEX_TIKZPLOTLIB_PREAMBLE_PATH, "w") as f:
 del latex_all_values_by_seed
 del latex_all_values_by_value
 del latex_values
+gc.collect()
 # %%
 # @title Print out names and sizes of locals
 df_sizes = pd.DataFrame(
@@ -3778,24 +3852,7 @@ def texify_matplotlib_title(
 
 
 if SAVE_PLOTS:
-    errs = []
     exts = ((".pdf",) if OUTPUT_PDF else ()) + ((".svg",) if OUTPUT_SVG else ())
-
-    def wrap_err(f, *args, return_bool: bool = False, **kwargs):
-        try:
-            result = f(*args, **kwargs)
-            return True if return_bool else result
-        except FileNotFoundError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
-        except subprocess.CalledProcessError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
-        except OSError as e:
-            print(f"Warning: {e}")
-            errs.append(e)
-        if return_bool:
-            return False
 
     for file_path in chain(
         LATEX_FIGURE_PATH.glob("*.png"), LATEX_FIGURE_PATH.glob("*.dat")
@@ -3856,37 +3913,12 @@ if SAVE_PLOTS:
 
 # %%
 # free up some memory
-del latex_figures
+if SAVE_PLOTS:
+    del latex_figures
+    gc.collect()
 # %%
 if SAVE_PLOTS:
-    # for f in LATEX_FIGURE_PATH.glob("*.png"):
-    #     wrap_err(image_utils.ect, f)
-    #     wrap_err(image_utils.pngcrush, f)
-    #     wrap_err(image_utils.optipng, f)
+    optimize_pngs()
 
-    opt_success = wrap_err(
-        image_utils.optimize,
-        *LATEX_FIGURE_PATH.glob("*.png"),
-        exhaustive=True,
-        return_bool=True,
-        trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
-    )
-
-    if not opt_success:
-        for f in LATEX_FIGURE_PATH.glob("*.png"):
-            wrap_err(
-                image_utils.optimize,
-                f,
-                exhaustive=True,
-                trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
-            )
-
-    if errs:
-        print("Errors:")
-        for e in errs:
-            print(e)
-        print(f"Total errors: {len(errs)}")
-    for e in errs:
-        raise e
-
+    print_and_raise_errs()
 # %%

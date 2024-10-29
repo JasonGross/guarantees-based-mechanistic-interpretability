@@ -1591,7 +1591,9 @@ latex_values |= latex_values_of_instruction_count("Cubic", cubic_instruction_cou
 # %% [markdown]
 # # Intermediate interp values for export
 # %%
-def max_logit_diffs_analysis(model: HookedTransformer) -> dict[str, Any]:
+def max_logit_diffs_analysis(
+    model: HookedTransformer, *, warning: Callable[[str], None] = print
+) -> dict[str, Any]:
     result = {}
     max_logit_diff = EVOU_max_logit_diff(model).cpu()
     max_logit_diff_summary = data_summary(
@@ -1606,6 +1608,7 @@ def max_logit_diffs_analysis(model: HookedTransformer) -> dict[str, Any]:
         (max_logit_minus_diag, duplication_factors) = EVOU_max_minus_diag_logit_diff(
             model,
             duplicate_by_sequence_count=duplicate_by_sequence_count,
+            warning=warning,
         )
         max_logit_minus_diag, duplication_factors = (
             max_logit_minus_diag.cpu(),
@@ -1668,11 +1671,12 @@ def handle_compute_max_logit_diffs_analysis(
     seed: int,
     *,
     memoshelve_hf: Callable,
+    warning: Callable[[str], None] = print,
 ):
     runtime, model = runtime_models[seed]
     cfg_hash_for_filename = cfg_hashes_for_filename[seed]
     with memoshelve_hf(
-        (lambda seed: max_logit_diffs_analysis(model)),
+        (lambda seed: max_logit_diffs_analysis(model, warning=warning)),
         "compute_max_logit_diffs_analysis",
         subfolder=cfg_hash_for_filename,
         get_hash_mem=(lambda x: x[0]),
@@ -1685,7 +1689,9 @@ with memoshelve_hf_staged(
     short_name="compute_max_logit_diffs_analysis"
 ) as memoshelve_hf:
     max_logit_diffs_analyses = {
-        seed: handle_compute_max_logit_diffs_analysis(seed, memoshelve_hf=memoshelve_hf)
+        seed: handle_compute_max_logit_diffs_analysis(
+            seed, memoshelve_hf=memoshelve_hf, warning=tqdm.write
+        )
         for seed in tqdm(
             list(sorted(runtime_models.keys())), desc="max logit diff analysis"
         )
@@ -2035,6 +2041,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                     plot_with=PLOT_WITH,
                     renderer=RENDERER,
                     show=DISPLAY_PLOTS,
+                    warning=tqdm.write,
                 )
                 # remove_titles(latex_figures[f"{seed}-{key}"])
 

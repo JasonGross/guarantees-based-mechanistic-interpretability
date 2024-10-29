@@ -1,7 +1,7 @@
 import math
 import re
 from functools import partial, reduce
-from typing import Literal, Optional, Tuple, Union
+from typing import Callable, Literal, Optional, Tuple, Union
 
 import matplotlib.cm as cm
 import matplotlib.figure
@@ -709,6 +709,7 @@ def EVOU_max_minus_diag_logit_diff(
     *,
     duplicate_by_sequence_count: bool = True,
     num_bins: Optional[int] = None,
+    warning: Callable[[str], None] = print,
 ) -> Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]]:  # noqa: F821
     """
     If duplicate_by_sequence_count is True, bins are weighted according to how many sequences have the given maximum.
@@ -722,7 +723,7 @@ def EVOU_max_minus_diag_logit_diff(
         n_ctx = model.cfg.n_ctx
         indices = torch.arange(max_logit_minus_diag.size(0))
         if n_ctx >= math.log(np.iinfo(np.int64).max, max_logit_minus_diag.size(0)):
-            print(
+            warning(
                 f"Warning: n_ctx={n_ctx} is too large for {max_logit_minus_diag.size(0)}, using int"
             )
             duplication_factors = torch.tensor(
@@ -748,6 +749,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
     num_bins: Optional[int] = None,
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     show: bool = True,
+    warning: Callable[[str], None] = print,
 ) -> Tuple[
     Union[go.Figure, matplotlib.figure.Figure],
     Tuple[Float[Tensor, "batch"], Integer[Tensor, "batch"]],  # noqa: F821
@@ -759,6 +761,7 @@ def hist_EVOU_max_minus_diag_logit_diff(
         model,
         duplicate_by_sequence_count=duplicate_by_sequence_count,
         num_bins=num_bins,
+        warning=warning,
     )
     mean = np.average(max_logit_minus_diag.numpy(), weights=duplication_factors.numpy())
     std = np.average(

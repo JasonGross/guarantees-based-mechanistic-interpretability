@@ -10,8 +10,10 @@ from gbmi.utils.instructions import InstructionCount, PerfCounter
 T = TypeVar("T")
 
 
-def get_float_type(v: Union[float, np.floating]) -> Literal[np.float32 | np.float64]:
+def get_float_type(v: Union[float, np.floating]) -> type[np.float32] | type[np.float64]:
     for ty in (np.float32,):
+        if np.isfinite(v) and (v > np.finfo(ty).max or v < np.finfo(ty).min):
+            continue
         if np.array(v, dtype=ty).item() == v:
             return ty
     return np.float64

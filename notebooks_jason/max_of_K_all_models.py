@@ -3722,24 +3722,27 @@ for var in (
 gc.collect()
 # %%
 # @title Print out names and sizes of locals
-df_sizes = pd.DataFrame(
-    [
-        {"name": name, "size": deep_getsizeof(var), "type": str(type(var))}
-        for name, var in locals().items()
-        if not name.startswith("_")
-        and (
-            isinstance(var, (pd.DataFrame, dict, list, tuple, torch.Tensor, np.ndarray))
-            or sys.getsizeof(var) > 10000
-        )
-        and deep_getsizeof(var) > 10000
-    ],
-    columns=["name", "size"],
-)
-df_sizes = df_sizes.sort_values(by="size", ascending=False)
-print(df_sizes.to_string(index=False))
-df_sizes = df_sizes.sort_values(by="name", ascending=True)
-print(df_sizes.to_string(index=False))
-del df_sizes
+sizes = [
+    {"name": name, "size": deep_getsizeof(var), "type": str(type(var))}
+    for name, var in locals().items()
+    if not name.startswith("_")
+    and (
+        isinstance(var, (pd.DataFrame, dict, list, tuple, torch.Tensor, np.ndarray))
+        or sys.getsizeof(var) > 10000
+    )
+    and deep_getsizeof(var) > 10000
+]
+if sizes:
+    df_sizes = pd.DataFrame(
+        sizes,
+        columns=["name", "size", "type"],
+    )
+    df_sizes = df_sizes.sort_values(by="size", ascending=False)
+    print(df_sizes.to_string(index=False))
+    df_sizes = df_sizes.sort_values(by="name", ascending=True)
+    print(df_sizes.to_string(index=False))
+    del df_sizes
+del sizes
 # %%
 # @title export LaTeX figures
 title_reps = {

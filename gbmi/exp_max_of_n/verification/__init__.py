@@ -8,10 +8,8 @@ import numpy as np
 import torch
 from jaxtyping import Float, Integer
 from torch import Tensor
-from transformer_lens import (
-    HookedTransformer,  # , FactoredMatrix
-    HookedTransformerConfig,
-)
+from transformer_lens import HookedTransformer  # , FactoredMatrix
+from transformer_lens import HookedTransformerConfig
 
 from gbmi.analysis_tools.plot import summarize
 from gbmi.analysis_tools.utils import make_local_tqdm
@@ -1074,7 +1072,8 @@ class LargestWrongLogitQuadraticConfig:
     def transform_description(description: str, *, latex: bool = False) -> str:
         if latex:
             return "".join(
-                v.capitalize() for v in description.replace("+", "_").split("_")
+                v.capitalize()
+                for v in description.replace("-", "_").replace("+", "_").split("_")
             )
         else:
             return description.replace("_", "-")

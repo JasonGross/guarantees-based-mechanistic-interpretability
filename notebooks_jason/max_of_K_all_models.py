@@ -3716,6 +3716,7 @@ for var in (
     "ablation_data_by_key",
     "d",
     "all_tokens_datasets_lens",
+    "sub_cfg_counts",
 ):
     if var in locals():
         del locals()[var]

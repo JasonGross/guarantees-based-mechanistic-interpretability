@@ -3724,7 +3724,7 @@ gc.collect()
 # @title Print out names and sizes of locals
 df_sizes = pd.DataFrame(
     [
-        {"name": name, "size": deep_getsizeof(var)}
+        {"name": name, "size": deep_getsizeof(var), "type": str(type(var))}
         for name, var in locals().items()
         if not name.startswith("_")
         and (

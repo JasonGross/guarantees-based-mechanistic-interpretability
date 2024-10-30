@@ -3712,6 +3712,10 @@ for var in (
     "cur_key_pairs",
     "category_name_remap",
     "subcubic_columns",
+    "ablation_data",
+    "ablation_data_by_key",
+    "d",
+    "all_tokens_datasets_lens",
 ):
     if var in locals():
         del locals()[var]
@@ -3727,6 +3731,7 @@ df_sizes = pd.DataFrame(
             isinstance(var, (pd.DataFrame, dict, list, tuple, torch.Tensor, np.ndarray))
             or sys.getsizeof(var) > 10000
         )
+        and deep_getsizeof(var) > 10000
     ],
     columns=["name", "size"],
 )

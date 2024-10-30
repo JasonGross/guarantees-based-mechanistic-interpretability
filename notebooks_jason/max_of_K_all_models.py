@@ -3366,12 +3366,12 @@ df_sorted = combined_df.sort_values(by="normalized-accuracy-bound", ascending=Fa
 category_order = df_sorted["group"].unique().tolist()
 category_name_remap = {
     "brute-force": f"brute force (acc: {pm_mean_std(brute_force_df['accuracy'])})",
-    "importance-sampling": f"importance sampling (acc: {pm_mean_std(brute_force_df['accuracy'])})",
+    "importance-sampling": f"brute force (estimated) (acc: {pm_mean_std(brute_force_df['accuracy'])})",
     "cubic": f"cubic (rel acc: {pm_mean_std(cubic_ext_df['normalized-accuracy-bound'])})",
 }
 category_name_remap_short = {
     "brute-force": f"brute force",
-    "importance-sampling": f"importance sampling",
+    "importance-sampling": f"brute force (estimated)",
     "cubic": f"cubic",
 }
 max_rows = subcubic_ext_df.loc[

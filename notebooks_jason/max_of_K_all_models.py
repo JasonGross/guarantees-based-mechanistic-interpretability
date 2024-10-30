@@ -3951,7 +3951,7 @@ if SAVE_PLOTS:
         file_path.unlink()
         print(f"Deleted: {file_path}")
     table_row_sep = r"\\" + "\n"
-    for k, fig in latex_figures.items():
+    for k, fig in list(latex_figures.items()):
         if isinstance(fig, go.Figure):
             fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
             unsupported_by_tikzplotly = any(
@@ -4001,6 +4001,8 @@ if SAVE_PLOTS:
                     wrap_err(subprocess.run, ["pdfcrop", p, p], check=True)
         else:
             raise TypeError(f"Unsupported figure {fig} of type {type(fig)}")
+        del latex_figures[k]
+        del fig
 
 # %%
 # free up some memory

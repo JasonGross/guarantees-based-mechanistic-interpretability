@@ -3951,7 +3951,7 @@ if SAVE_PLOTS:
         file_path.unlink()
         print(f"Deleted: {file_path}")
     table_row_sep = r"\\" + "\n"
-    for k, fig in list(latex_figures.items()):
+    for k, fig in tqdm(list(latex_figures.items()), descr="Saving figures"):
         if isinstance(fig, go.Figure):
             fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
             unsupported_by_tikzplotly = any(
@@ -3978,7 +3978,7 @@ if SAVE_PLOTS:
             if externalize_this_table:
                 if not latex_only_externalize_tables.get(k, False):
                     p = LATEX_FIGURE_PATH / f"{k}ExternalTables.tex"
-                print(f"Saving {p} ...")
+                tqdm.write(f"Saving {p} ...")
                 with texify_matplotlib_title(fig) as fig:
                     tikzplotlib.save(
                         p,
@@ -3987,14 +3987,14 @@ if SAVE_PLOTS:
                         table_row_sep=table_row_sep,
                     )
             p = LATEX_FIGURE_PATH / f"{k}.tex"
-            print(f"Saving {p} ...")
+            tqdm.write(f"Saving {p} ...")
             with texify_matplotlib_title(fig, replace_with_macros=True) as fig:
                 tikzplotlib.save(
                     p, fig, externalize_tables=False, table_row_sep=table_row_sep
                 )
             for ext in exts:
                 p = LATEX_FIGURE_PATH / f"{k}{ext}"
-                print(f"Saving {p} ...")
+                tqdm.write(f"Saving {p} ...")
                 p.parent.mkdir(parents=True, exist_ok=True)
                 fig.savefig(p)
                 if ext == ".pdf":

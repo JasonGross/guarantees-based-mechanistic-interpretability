@@ -147,7 +147,7 @@ def process_submodules(
         for submodule, git_dir in cur_other_git_dirs.items():
             print(f"Checking submodule: {submodule}")
 
-            print(f"{key} not found in GIT_DIR: {git_dir}")
+            print(f"{sources[key]} not found in GIT_DIR: {git_dir}")
 
             # Check for the alternates file
             alternates_file = get_alternates_file(git_dir)

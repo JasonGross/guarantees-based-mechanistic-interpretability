@@ -129,7 +129,10 @@ def process_submodules(
             ]
         elif not cur_source_git_dirs:
             print(f"Could not find {key} in any GIT_DIR path ({any_git_dirs})")
-            sys.exit(1)
+            if other_git_dirs[key]:
+                sys.exit(1)
+            else:
+                print(f"Skipping {key} because no matching submodules were found")
         else:
             print(
                 f"Found {len(cur_source_git_dirs)} instances of {key} in GIT_DIR paths ({cur_source_git_dirs})"

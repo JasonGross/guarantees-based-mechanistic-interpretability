@@ -1600,7 +1600,7 @@ for key, latex_key in (
     ("correct-count-lower-bound", "CubicCorrectCount"),
     ("duration", "CubicProofTime"),
     # ) + (
-    ("normalized-accuracy-bound", "NormalizedAccuracy"),
+    ("normalized-accuracy-bound", "CubicNormalizedAccuracy"),
     # if INCLUDE_BRUTE_FORCE
     # else ()
 ) + (

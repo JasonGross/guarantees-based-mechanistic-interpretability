@@ -6,14 +6,26 @@ import sys
 from pathlib import Path
 
 
+def resolve_git_dir_recursively(git_dir: str | Path) -> Path:
+    """Recursively resolves the GIT_DIR path."""
+    git_dir = Path(git_dir)
+    if git_dir.is_dir():
+        return git_dir
+    elif git_dir.name == ".git" and git_dir.is_file():
+        git_dir_relative = git_dir.read_text(encoding="utf-8").strip().split(": ")[1]
+        git_dir = (git_dir.parent / git_dir_relative).resolve()
+        return resolve_git_dir_recursively(git_dir)
+    else:
+        parent, name = git_dir.parent, git_dir.name
+        assert parent != git_dir, f"Could not resolve {git_dir}"
+        return resolve_git_dir_recursively(parent) / name
+
+
 def get_git_dir(submodule_path: str | Path) -> Path | None:
     """Gets the actual .git directory for a submodule."""
     git_dir_file = Path(submodule_path) / ".git"
     if git_dir_file.is_file():
-        with git_dir_file.open("r") as f:
-            git_dir_relative = f.read().strip().split(": ")[1]
-        git_dir = Path(submodule_path) / git_dir_relative
-        return git_dir.resolve()
+        return resolve_git_dir_recursively(git_dir_file)
     return None
 
 

@@ -3959,7 +3959,7 @@ if SAVE_PLOTS:
         file_path.unlink()
         print(f"Deleted: {file_path}")
     table_row_sep = r"\\" + "\n"
-    for k, fig in tqdm(list(latex_figures.items()), descr="Saving figures"):
+    for k, fig in tqdm(list(latex_figures.items()), desc="Saving figures"):
         if isinstance(fig, go.Figure):
             fig.update_layout(font_family="Computer Modern")  # Use LaTeX fonts
             unsupported_by_tikzplotly = any(

@@ -782,7 +782,7 @@ def update_csv_with_rows(
             subset=subset, keep="last"
         )
     results = results.sort_values(subset)
-    results.to_csv(csv_path, index=False)
+    results.to_csv(csv_path, index=False, columns=columns)
     if save_to_hf:
         results.to_parquet(csv_to_hf_path(csv_path, ext="parquet"))
         results.to_csv(csv_to_hf_path(csv_path, ext="csv"), index=False)

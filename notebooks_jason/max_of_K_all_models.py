@@ -142,6 +142,12 @@ parser.add_argument(
     default=False,
     help="Only optimize images, then quit",
 )
+parser.add_argument(
+    "--individual-plots",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Output plots for individual seeds",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
@@ -164,6 +170,8 @@ adjusted_file_path_dvocab = Path(__file__).parent / Path(__file__).name.replace(
 )
 cache_dir = adjusted_file_path.parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
+
+INDIVIDUAL_PLOTS: bool = cli_args.individual_plots  # @param {type:"boolean"}
 
 OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
@@ -1891,7 +1899,7 @@ all_subcubic_analysis_data = update_csv_with_rows(
 # %% [markdown]
 # # Plots
 # %%
-if SAVE_PLOTS or DISPLAY_PLOTS:
+if (SAVE_PLOTS or DISPLAY_PLOTS) and INDIVIDUAL_PLOTS:
     all_axis_limits = defaultdict(dict)
     with tqdm(runtime_models.items(), desc="display_basic_interpretation") as pbar:
         for seed, (_runtime, model) in pbar:
@@ -2074,7 +2082,7 @@ if SAVE_PLOTS or DISPLAY_PLOTS:
 
 # %%
 ## %%
-if DISPLAY_PLOTS or SAVE_PLOTS:
+if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
     with tqdm(runtime_models.items(), desc="make_better_slides_plots_00") as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))
@@ -2091,7 +2099,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
             for k, fig in figs.items():
                 latex_figures[f"{seed}-Decomposition-{k}"] = fig
 # %%
-if DISPLAY_PLOTS or SAVE_PLOTS:
+if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
     with tqdm(runtime_models.items(), desc="hist_EVOU_max_logit_diff") as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))
@@ -2120,7 +2128,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
 
 
 # %%
-if DISPLAY_PLOTS or SAVE_PLOTS:
+if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
     with tqdm(
         runtime_models.items(), desc="scatter_attention_difference_vs_gap"
     ) as pbar:
@@ -2150,7 +2158,7 @@ if DISPLAY_PLOTS or SAVE_PLOTS:
                 )
                 latex_figures[f"{seed}-{key}"] = fig
 # %%
-if SAVE_PLOTS or DISPLAY_PLOTS:
+if (SAVE_PLOTS or DISPLAY_PLOTS) and INDIVIDUAL_PLOTS:
     with tqdm(runtime_models.items(), desc="display_EQKE_SVD_analysis") as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))

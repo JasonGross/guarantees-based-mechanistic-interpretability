@@ -335,7 +335,7 @@ def verify_proof(
         lambda: f"Complexity of PVOU: {complexity_of(all_PVOU)}"
     )  # O(n_ctx * d_vocab * d_model)
     W_EP: Float[Tensor, "d_vocab_q d_model"] = add_time(  # noqa: F722
-        lambda: model.W_E + model.W_pos.mean(dim=0, keepdim=True)
+        lambda: model.W_E + model.W_pos[-1]
     )
     print_complexity(lambda: f"Complexity of W_EP: O((d_vocab + n_ctx) * d_model)")
 

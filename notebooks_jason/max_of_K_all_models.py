@@ -417,6 +417,7 @@ from gbmi.exp_max_of_n.plot import (
     EVOU_max_minus_diag_logit_diff,
     attention_difference_over_gap,
     display_basic_interpretation,
+    compute_basic_interpretation_axis_limits,
     display_EQKE_SVD_analysis,
     hist_attention_difference_over_gap,
     hist_EVOU_max_minus_diag_logit_diff,
@@ -1912,13 +1913,67 @@ all_subcubic_analysis_data = update_csv_with_rows(
 
 # %% [markdown]
 # # Plots
+all_axis_limits = defaultdict(dict)
+all_cached_data = {}
+with tqdm(
+    runtime_models.items(), desc="compute_basic_interpretation_axis_limits"
+) as pbar:
+    for seed, (_runtime, model) in pbar:
+        pbar.set_postfix(dict(seed=seed))
+        all_cached_data[seed], axis_limits = compute_basic_interpretation_axis_limits(
+            model,
+            include_uncentered=True,
+            plot_with=PLOT_WITH,
+        )
+        for k, v in axis_limits.items():
+            all_axis_limits[k][seed] = v
+
+axis_limits = {}
+for k, v in all_axis_limits.items():
+    if k.endswith("min"):
+        axis_limits[k] = np.min(list(v.values()))
+    elif k.endswith("max"):
+        axis_limits[k] = np.max(list(v.values()))
+    else:
+        raise ValueError(f"Unknown axis limit key: {k}")
+
+for k in axis_limits.keys():
+    k_no_min_max = (
+        k.replace("zmin", "").replace("zmax", "").replace("min", "").replace("max", "")
+    )
+    latex_key = "".join(
+        [
+            kpart if kpart[:1] == kpart[:1].capitalize() else kpart.capitalize()
+            for kpart in k_no_min_max.replace("-", "_").split("_")
+        ]
+    )
+    k_min = k.replace("max", "min")
+    k_max = k.replace("min", "max")
+    assert k_min in axis_limits, f"Missing {k_min}"
+    assert k_max in axis_limits, f"Missing {k_max}"
+    assert k_min == k or k_max == k, f"Unknown key: {k}"
+    assert k_min != k_max, f"Same key: {k}"
+    if "centered" not in k.lower():
+        v_max = np.max([np.abs(axis_limits[k_min]), np.abs(axis_limits[k_max])])
+        axis_limits[k_min] = -v_max
+        axis_limits[k_max] = v_max
+        assert "OV" in k or "QK" in k, f"Unknown key: {k}"
+
+for k, v in axis_limits.items():
+    k = "".join(
+        [
+            kpart if kpart[0] == kpart[0].capitalize() else kpart.capitalize()
+            for kpart in k.replace("-", "_").split("_")
+        ]
+    )
+    latex_values[f"AxisLimits{k}Float"] = v
+
 # %%
 if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
-    all_axis_limits = defaultdict(dict)
     with tqdm(runtime_models.items(), desc="display_basic_interpretation") as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))
-            figs, axis_limits = display_basic_interpretation(
+            figs, _ = display_basic_interpretation(
                 model,
                 include_uncentered=True,
                 OV_colorscale=default_OV_colorscale,
@@ -1928,9 +1983,8 @@ if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,
                 show=DISPLAY_PLOTS,
+                cached_data=all_cached_data[seed],
             )
-            for k, v in axis_limits.items():
-                all_axis_limits[k][seed] = v
             for attn_scale in ("", "WithAttnScale"):
                 for fig in (
                     figs[f"EQKE{attn_scale}"],
@@ -1970,15 +2024,6 @@ if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
         if unused_keys:
             print(f"Unused keys: {unused_keys}")
 
-    axis_limits = {}
-    for k, v in all_axis_limits.items():
-        if k.endswith("min"):
-            axis_limits[k] = np.min(list(v.values()))
-        elif k.endswith("max"):
-            axis_limits[k] = np.max(list(v.values()))
-        else:
-            raise ValueError(f"Unknown axis limit key: {k}")
-
     seen = set()
     for k in axis_limits.keys():
         k_no_min_max = (
@@ -2001,8 +2046,14 @@ if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
         assert k_min != k_max, f"Same key: {k}"
         if "centered" not in k.lower():
             v_max = np.max([np.abs(axis_limits[k_min]), np.abs(axis_limits[k_max])])
-            axis_limits[k_min] = -v_max
-            axis_limits[k_max] = v_max
+            if axis_limits[k_min] != -v_max:
+                print(
+                    f"Warning: {axis_limits[k_min]} == axix_limits[{k_min}] != -v_max == {-v_max}"
+                )
+            if axis_limits[k_max] != v_max:
+                print(
+                    f"Warning: {axis_limits[k_max]} == axix_limits[{k_max}] != v_max == {v_max}"
+                )
 
             assert "OV" in k or "QK" in k, f"Unknown key: {k}"
             if k_no_min_max in seen:
@@ -2024,15 +2075,6 @@ if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
         latex_figures[f"Colorbar-{latex_key}-Vertical"] = figV
         latex_figures[f"Colorbar-{latex_key}-Horizontal"] = figH
 
-    for k, v in axis_limits.items():
-        k = "".join(
-            [
-                kpart if kpart[0] == kpart[0].capitalize() else kpart.capitalize()
-                for kpart in k.replace("-", "_").split("_")
-            ]
-        )
-        latex_values[f"AxisLimits{k}Float"] = v
-
     with tqdm(
         runtime_models.items(), desc="display_basic_interpretation (uniform limits)"
     ) as pbar:
@@ -2045,6 +2087,7 @@ if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
                 QK_colorscale=default_QK_colorscale,
                 QK_SVD_colorscale=default_QK_SVD_colorscale,
                 tok_dtick=10,
+                cached_data=all_cached_data[seed],
                 **axis_limits,
                 plot_with=PLOT_WITH,
                 renderer=RENDERER,

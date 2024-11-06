@@ -462,6 +462,91 @@ def compute_irrelevant(
 
 
 @torch.no_grad()
+def compute_basic_interpretation_axis_limits(
+    model: HookedTransformer,
+    *,
+    include_uncentered: bool = False,
+    include_equals_OV: bool = False,
+    includes_eos: Optional[bool] = None,
+    plot_with: Literal["plotly", "matplotlib"] = "plotly",
+) -> Tuple[dict, dict[str, float]]:
+    cached_data = {}
+    axis_limits = {
+        "OV_zmin": np.inf,
+        "OV_zmax": -np.inf,
+        "QK_zmin": np.inf,
+        "QK_zmax": -np.inf,
+        "OVCentered_zmin": np.inf,
+        "OVCentered_zmax": -np.inf,
+        "QKWithAttnScale_zmin": np.inf,
+        "QKWithAttnScale_zmax": -np.inf,
+    }
+    if includes_eos is None:
+        includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
+    title_kind = "html" if plot_with == "plotly" else "latex"
+    for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
+        QK = compute_QK(
+            model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
+        )
+        axis_limits[f"QK{attn_scale}_zmin"] = np.min(
+            [axis_limits[f"QK{attn_scale}_zmin"], QK["data"].min()]
+        )
+        axis_limits[f"QK{attn_scale}_zmax"] = np.max(
+            [axis_limits[f"QK{attn_scale}_zmax"], QK["data"].max()]
+        )
+        cached_data[("QK", attn_scale)] = QK
+
+    if include_uncentered:
+        OV = compute_OV(model, centered=False, includes_eos=includes_eos)
+        axis_limits["OV_zmin"] = np.min([axis_limits["OV_zmin"], OV["data"].min()])
+        axis_limits["OV_zmax"] = np.max([axis_limits["OV_zmax"], OV["data"].max()])
+        cached_data[("OV", False)] = OV
+
+    OV = compute_OV(model, centered=True, includes_eos=includes_eos)
+    axis_limits["OVCentered_zmin"] = np.min(
+        [axis_limits["OVCentered_zmin"], OV["data"].min()]
+    )
+    axis_limits["OVCentered_zmax"] = np.max(
+        [axis_limits["OVCentered_zmax"], OV["data"].max()]
+    )
+    cached_data[("OV", True)] = OV
+
+    for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
+        pos_QK = compute_QK_by_position(
+            model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
+        )
+        cached_data[("pos_QK", attn_scale)] = pos_QK
+        if includes_eos:
+            axis_limits[f"QK{attn_scale}_zmin"] = np.min(
+                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"]["QK"].min()]
+            )
+            axis_limits[f"QK{attn_scale}_zmax"] = np.max(
+                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"]["QK"].max()]
+            )
+        else:
+            axis_limits[f"QK{attn_scale}_zmin"] = np.min(
+                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"]["QK"].min()]
+            )
+            axis_limits[f"QK{attn_scale}_zmax"] = np.max(
+                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"]["QK"].max()]
+            )
+
+    irrelevant = compute_irrelevant(
+        model,
+        include_equals_OV=include_equals_OV,
+        includes_eos=includes_eos,
+        title_kind=title_kind,
+    )
+    cached_data["irrelevant"] = irrelevant
+    for key, data in irrelevant["data"].items():
+        if len(data.shape) == 2:
+            axis_limits["OV_zmin"] = np.min([axis_limits["OV_zmin"], data.min()])
+            axis_limits["OV_zmax"] = np.max([axis_limits["OV_zmax"], data.max()])
+
+    return cached_data, axis_limits
+
+
+@torch.no_grad()
 def display_basic_interpretation(
     model: HookedTransformer,
     *,
@@ -485,34 +570,26 @@ def display_basic_interpretation(
     plot_with: Literal["plotly", "matplotlib"] = "plotly",
     renderer: Optional[str] = None,
     show: bool = True,
+    cached_data: Optional[dict] = None,
+    axis_limits: Optional[dict[str, float]] = None,
 ) -> Tuple[dict[str, Union[go.Figure, matplotlib.figure.Figure]], dict[str, float]]:
+    if cached_data is None:
+        cached_data, axis_limits = compute_basic_interpretation_axis_limits(
+            model,
+            include_uncentered=include_uncentered,
+            include_equals_OV=include_equals_OV,
+            includes_eos=includes_eos,
+            plot_with=plot_with,
+        )
     QK_cmap = colorscale_to_cmap(QK_colorscale)
     QK_SVD_cmap = colorscale_to_cmap(QK_SVD_colorscale)
     OV_cmap = colorscale_to_cmap(OV_colorscale)
     if includes_eos is None:
         includes_eos = model.cfg.d_vocab != model.cfg.d_vocab_out
     result = {}
-    axis_limits = {
-        "OV_zmin": np.inf,
-        "OV_zmax": -np.inf,
-        "QK_zmin": np.inf,
-        "QK_zmax": -np.inf,
-        "OVCentered_zmin": np.inf,
-        "OVCentered_zmax": -np.inf,
-        "QKWithAttnScale_zmin": np.inf,
-        "QKWithAttnScale_zmax": -np.inf,
-    }
+    title_kind = "html" if plot_with == "plotly" else "latex"
     for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
-        QK = compute_QK(
-            model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
-        )
-        axis_limits[f"QK{attn_scale}_zmin"] = np.min(
-            [axis_limits[f"QK{attn_scale}_zmin"], QK["data"].min()]
-        )
-        axis_limits[f"QK{attn_scale}_zmax"] = np.max(
-            [axis_limits[f"QK{attn_scale}_zmax"], QK["data"].max()]
-        )
-        title_kind = "html" if plot_with == "plotly" else "latex"
+        QK = cached_data[("QK", attn_scale)]
         if includes_eos:
             match plot_with:
                 case "plotly":
@@ -567,9 +644,7 @@ def display_basic_interpretation(
         result[f"EQKE{attn_scale}"] = fig_qk
 
     if include_uncentered:
-        OV = compute_OV(model, centered=False, includes_eos=includes_eos)
-        axis_limits["OV_zmin"] = np.min([axis_limits["OV_zmin"], OV["data"].min()])
-        axis_limits["OV_zmax"] = np.max([axis_limits["OV_zmax"], OV["data"].max()])
+        OV = cached_data[("OV", False)]
         fig_ov = imshow(
             OV["data"],
             title=OV["title"][title_kind],
@@ -585,13 +660,7 @@ def display_basic_interpretation(
             show=show,
         )
         result["EVOU"] = fig_ov
-    OV = compute_OV(model, centered=True, includes_eos=includes_eos)
-    axis_limits["OVCentered_zmin"] = np.min(
-        [axis_limits["OVCentered_zmin"], OV["data"].min()]
-    )
-    axis_limits["OVCentered_zmax"] = np.max(
-        [axis_limits["OVCentered_zmax"], OV["data"].max()]
-    )
+    OV = cached_data[("OV", True)]
     fig_ov = imshow(
         OV["data"],
         title=OV["title"][title_kind],
@@ -609,16 +678,8 @@ def display_basic_interpretation(
     result["EVOU-centered"] = fig_ov
 
     for attn_scale, with_attn_scale in (("", False), ("WithAttnScale", True)):
-        pos_QK = compute_QK_by_position(
-            model, includes_eos=includes_eos, with_attn_scale=with_attn_scale
-        )
+        pos_QK = cached_data[("pos_QK", attn_scale)]
         if includes_eos:
-            axis_limits[f"QK{attn_scale}_zmin"] = np.min(
-                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"]["QK"].min()]
-            )
-            axis_limits[f"QK{attn_scale}_zmax"] = np.max(
-                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"]["QK"].max()]
-            )
             fig_qk = px.scatter(
                 pos_QK["data"],
                 title=pos_QK["title"][title_kind],
@@ -631,12 +692,6 @@ def display_basic_interpretation(
             if show:
                 fig_qk.show(renderer=renderer)
         else:
-            axis_limits[f"QK{attn_scale}_zmin"] = np.min(
-                [axis_limits[f"QK{attn_scale}_zmin"], pos_QK["data"]["QK"].min()]
-            )
-            axis_limits[f"QK{attn_scale}_zmax"] = np.max(
-                [axis_limits[f"QK{attn_scale}_zmax"], pos_QK["data"]["QK"].max()]
-            )
             fig_qk = imshow(
                 pos_QK["data"]["QK"],
                 title=pos_QK["title"][title_kind],
@@ -653,16 +708,9 @@ def display_basic_interpretation(
             )
         result[f"EQKP{attn_scale}"] = fig_qk
 
-    irrelevant = compute_irrelevant(
-        model,
-        include_equals_OV=include_equals_OV,
-        includes_eos=includes_eos,
-        title_kind=title_kind,
-    )
+    irrelevant = cached_data["irrelevant"]
     for key, data in irrelevant["data"].items():
         if len(data.shape) == 2:
-            axis_limits["OV_zmin"] = np.min([axis_limits["OV_zmin"], data.min()])
-            axis_limits["OV_zmax"] = np.max([axis_limits["OV_zmax"], data.max()])
             fig = imshow(
                 data,
                 title=key,

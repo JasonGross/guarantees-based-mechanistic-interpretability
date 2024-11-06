@@ -3266,7 +3266,7 @@ for best_bound_only in (True, False):
         ]
         print(f"len after: {len(df)}")
 
-    sorted_known_seeds = tuple(sorted(df["seed"].values))
+    sorted_known_seeds = np.unique(np.array(df["seed"].values), return_counts=True)
     # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
     df = df[
         [

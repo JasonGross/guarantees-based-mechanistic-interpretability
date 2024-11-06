@@ -60,7 +60,10 @@ def forward_output(
     buffer = ""
     prev_newline = False
     for char in iter(lambda: stream.read(1), b""):
-        decoded_char = char.decode()
+        try:
+            decoded_char = char.decode()
+        except UnicodeDecodeError:
+            decoded_char = repr(char)
         cur_newline = decoded_char == "\n"
         if suppress_repeated_newlines and prev_newline and cur_newline:
             continue

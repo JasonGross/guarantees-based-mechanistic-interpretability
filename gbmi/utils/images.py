@@ -167,7 +167,7 @@ def ect(
         ["ect", *extra_args],
         *images,
         check=True,
-        trim_printout=trim_ect if trim_printout else None,
+        trim_printout=trim_ect if trim_printout else (lambda x: x),
         stdout_write=stdout_write,
         stderr_write=stderr_write,
     )

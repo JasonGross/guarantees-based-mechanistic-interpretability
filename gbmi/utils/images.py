@@ -55,10 +55,16 @@ def forward_output(
     stream: io.BufferedReader,
     write_func: Callable[[str], None],
     trim_func: Optional[Callable[[str], Optional[str]]] = None,
+    suppress_repeated_newlines: bool = True,
 ) -> None:
     buffer = ""
+    prev_newline = False
     for char in iter(lambda: stream.read(1), b""):
         decoded_char = char.decode()
+        cur_newline = decoded_char == "\n"
+        if suppress_repeated_newlines and prev_newline and cur_newline:
+            continue
+        prev_newline = cur_newline
         if trim_func is None:
             write_func(decoded_char, end="")
         else:

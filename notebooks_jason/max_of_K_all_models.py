@@ -3266,7 +3266,13 @@ for best_bound_only in (True, False):
         ]
         print(f"len after: {len(df)}")
 
-    sorted_known_seeds = np.unique(np.array(df["seed"].values), return_counts=True)
+    sorted_known_seeds, sorted_known_seeds_counts = np.unique(
+        np.array(df["seed"].values), return_counts=True
+    )
+    sorted_known_seeds = tuple(
+        zip(sorted_known_seeds.tolist(), sorted_known_seeds_counts.tolist())
+    )
+
     # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
     df = df[
         [
@@ -3774,6 +3780,7 @@ for var in (
     "all_tokens_datasets_lens",
     "sub_cfg_counts",
     "sorted_known_seeds",
+    "sorted_known_seeds_counts",
 ):
     if var in locals():
         del locals()[var]

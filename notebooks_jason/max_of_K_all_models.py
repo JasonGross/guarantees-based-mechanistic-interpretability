@@ -148,6 +148,12 @@ parser.add_argument(
     default=True,
     help="Output plots for individual seeds",
 )
+parser.add_argument(
+    "--shared-plots",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Output plots shared across seeds",
+)
 cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
@@ -172,6 +178,7 @@ cache_dir = adjusted_file_path.parent / ".cache"
 cache_dir.mkdir(exist_ok=True)
 
 INDIVIDUAL_PLOTS: bool = cli_args.individual_plots  # @param {type:"boolean"}
+SHARED_PLOTS: bool = cli_args.shared_plots  # @param {type:"boolean"}
 
 OVERWRITE_CSV_FROM_CACHE: bool = not cli_args.ignore_csv  # @param {type:"boolean"}
 compute_expensive_average_across_many_models: bool = True  # @param {type:"boolean"}
@@ -1899,7 +1906,7 @@ all_subcubic_analysis_data = update_csv_with_rows(
 # %% [markdown]
 # # Plots
 # %%
-if (SAVE_PLOTS or DISPLAY_PLOTS) and INDIVIDUAL_PLOTS:
+if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
     all_axis_limits = defaultdict(dict)
     with tqdm(runtime_models.items(), desc="display_basic_interpretation") as pbar:
         for seed, (_runtime, model) in pbar:
@@ -2158,7 +2165,7 @@ if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
                 )
                 latex_figures[f"{seed}-{key}"] = fig
 # %%
-if (SAVE_PLOTS or DISPLAY_PLOTS) and INDIVIDUAL_PLOTS:
+if (DISPLAY_PLOTS or SAVE_PLOTS) and INDIVIDUAL_PLOTS:
     with tqdm(runtime_models.items(), desc="display_EQKE_SVD_analysis") as pbar:
         for seed, (_runtime, model) in pbar:
             pbar.set_postfix(dict(seed=seed))
@@ -3310,7 +3317,7 @@ for best_bound_only in (True, False):
         df.drop_duplicates(), column="attention_error_handling"
     )
 
-    if DISPLAY_PLOTS or SAVE_PLOTS:
+    if (DISPLAY_PLOTS or SAVE_PLOTS) and SHARED_PLOTS:
         latex_figures[key] = fig = scatter(
             df,
             yrange=(0, 1),
@@ -3416,7 +3423,7 @@ data = data.sort_values(
     by=["group", "proof-flop-estimate", "effective-dimension-estimate"]
 )
 data["group"] = data["group"].map(category_name_remap_short)
-if DISPLAY_PLOTS or SAVE_PLOTS:
+if (DISPLAY_PLOTS or SAVE_PLOTS) and SHARED_PLOTS:
     latex_externalize_tables["EffectiveDimensionVsFLOP"] = True
     latex_figures["EffectiveDimensionVsFLOP"] = fig = scatter(
         data,
@@ -3501,7 +3508,7 @@ for frontier_only in (True, False):
             ]
         )
         data["group"] = data["group"].map(category_name_remap)
-        if DISPLAY_PLOTS or SAVE_PLOTS:
+        if (DISPLAY_PLOTS or SAVE_PLOTS) and SHARED_PLOTS:
             markersize = (
                 plt.rcParams["lines.markersize"] / 8 if not frontier_only else None
             )

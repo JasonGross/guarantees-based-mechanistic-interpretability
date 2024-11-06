@@ -143,6 +143,12 @@ parser.add_argument(
     help="Only optimize images, then quit",
 )
 parser.add_argument(
+    "--optimize-images",
+    action=BooleanOptionalAction,
+    default=True,
+    help="Optimize images",
+)
+parser.add_argument(
     "--individual-plots",
     action=BooleanOptionalAction,
     default=True,
@@ -281,6 +287,7 @@ assert isinstance(N_SAMPLES_PER_KEY, int), (N_SAMPLES_PER_KEY, type(N_SAMPLES_PE
 N_THREADS: Optional[int] = cli_args.n_threads
 DISPLAY_PLOTS: bool = False  # @param {type:"boolean"}
 SAVE_PLOTS: bool = cli_args.plots
+OPTIMIZE_IMAGES: bool = cli_args.optimize_images
 RENDERER: Optional[str] = "png"  # @param ["png", None]
 PLOT_WITH: Literal["plotly", "matplotlib"] = (  # @param ["plotly", "matplotlib"]
     "matplotlib"
@@ -416,8 +423,8 @@ from gbmi.exp_max_of_n.analysis.ablation import (
 from gbmi.exp_max_of_n.plot import (
     EVOU_max_minus_diag_logit_diff,
     attention_difference_over_gap,
-    display_basic_interpretation,
     compute_basic_interpretation_axis_limits,
+    display_basic_interpretation,
     display_EQKE_SVD_analysis,
     hist_attention_difference_over_gap,
     hist_EVOU_max_minus_diag_logit_diff,
@@ -4118,7 +4125,7 @@ if SAVE_PLOTS:
     del latex_figures
     gc.collect()
 # %%
-if SAVE_PLOTS:
+if SAVE_PLOTS and OPTIMIZE_IMAGES:
     optimize_pngs()
 
     print_and_raise_errs()

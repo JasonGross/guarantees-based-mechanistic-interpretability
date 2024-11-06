@@ -1899,7 +1899,7 @@ all_subcubic_analysis_data = update_csv_with_rows(
     SUBCUBIC_ANALYSIS_CSV_PATH,
     new_data,
     columns=["seed"] + list(EQKE_SVD_analyses_by_key.keys()),
-    subset=["seed"] + list(EQKE_SVD_analyses_by_key.keys()),
+    subset=["seed"],
 )
 
 

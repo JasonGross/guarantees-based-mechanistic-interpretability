@@ -97,7 +97,7 @@ parser.add_argument(
 parser.add_argument(
     "--save-to-hf",
     action=BooleanOptionalAction,
-    default=True,
+    default=False,
     help="Save to huggingface",
 )
 parser.add_argument(

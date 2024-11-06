@@ -3266,6 +3266,7 @@ for best_bound_only in (True, False):
         ]
         print(f"len after: {len(df)}")
 
+    sorted_known_seeds = tuple(sorted(df["seed"].values))
     # Group by 'attention_error_handling' and calculate the max 'normalized-accuracy-bound' for sorting groups
     df = df[
         [
@@ -3329,7 +3330,7 @@ for best_bound_only in (True, False):
                         sing_upper_bound,
                         attn_err_handling_key,
                         best_bound_only,
-                        tuple(sorted(subgroup["seed"].values)),
+                        sorted_known_seeds,
                     )
 
             attn_err_handling_key_latex = (

@@ -3824,6 +3824,7 @@ for var in (
     "sub_cfg_counts",
     "sorted_known_seeds",
     "sorted_known_seeds_counts",
+    "all_cached_data",
 ):
     if var in locals():
         del locals()[var]

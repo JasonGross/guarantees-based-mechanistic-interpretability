@@ -329,13 +329,15 @@ def optimize_pngs(errs: list[Exception] = []):
     #     wrap_err(image_utils.pngcrush, f)
     #     wrap_err(image_utils.optipng, f)
 
-    opt_success = wrap_err(
-        image_utils.optimize,
+    new_errs = []
+    image_utils.optimize(
         *LATEX_FIGURE_PATH.glob("*.png"),
         exhaustive=True,
-        return_bool=True,
         trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
+        wrap_errs=new_errs,
     )
+    opt_success = not new_errs
+    errs.extend(new_errs)
 
     if not opt_success:
         for f in tqdm(

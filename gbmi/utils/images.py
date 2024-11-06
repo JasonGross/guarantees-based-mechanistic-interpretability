@@ -83,13 +83,14 @@ def forward_output(
 
 def batch_run(
     args: Iterable[str],
-    *images: str,
+    *images: str | Path,
     batchsize: int = 64,
     post_args: list[str] = [],
     check: bool = True,
     trim_printout: Optional[Callable[[str], Optional[str]]] = None,
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
+    wrap_errs: Optional[list[Exception]] = None,
     **kwargs,
 ):
     if len(images) > batchsize:
@@ -100,13 +101,14 @@ def batch_run(
                 batchsize=batchsize,
                 post_args=post_args,
                 check=check,
+                wrap_errs=wrap_errs,
                 **kwargs,
             )
             for i in range(0, len(images), batchsize)
         ]
 
     process = subprocess.Popen(
-        [*args, *images, *post_args],
+        [*args, *map(str, images), *post_args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         **kwargs,
@@ -133,7 +135,12 @@ def batch_run(
     process.wait()
 
     if check and process.returncode != 0:
-        raise subprocess.CalledProcessError(process.returncode, process.args)
+        exn = subprocess.CalledProcessError(process.returncode, process.args)
+        if wrap_errs is not None:
+            stderr_write(f"Error: {exn}")
+            wrap_errs.append(exn)
+        else:
+            raise exn
 
     return process
 
@@ -154,6 +161,7 @@ def ect(
     trim_printout: bool = False,
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
+    wrap_errs: Optional[list[Exception]] = None,
 ):
     if not images:
         return
@@ -173,6 +181,7 @@ def ect(
         trim_printout=trim_ect if trim_printout else (lambda x: x),
         stdout_write=stdout_write,
         stderr_write=stderr_write,
+        wrap_errs=wrap_errs,
     )
 
 
@@ -195,6 +204,7 @@ def optipng(
     trim_printout: bool = False,
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
+    wrap_errs: Optional[list[Exception]] = None,
 ):
     if not images:
         return
@@ -210,6 +220,7 @@ def optipng(
         trim_printout=trim_optipng if trim_printout else None,
         stdout_write=stdout_write,
         stderr_write=stderr_write,
+        wrap_errs=wrap_errs,
     )
 
 
@@ -225,6 +236,7 @@ def pngcrush(
     trim_printout: bool = False,
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
+    wrap_errs: Optional[list[Exception]] = None,
 ):
     if not images:
         return
@@ -259,6 +271,7 @@ def pngcrush(
         trim_printout=trim_pngcrush if trim_printout else None,
         stdout_write=stdout_write,
         stderr_write=stderr_write,
+        wrap_errs=wrap_errs,
     )
 
     # Replace original images with crushed images if they are smaller
@@ -283,6 +296,7 @@ def optimize(
     tqdm_leave: Optional[bool] = None,
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
+    wrap_errs: Optional[list[Exception]] = None,
 ):
     cur_images = images
     cur_sizes = [Path(image).stat().st_size for image in cur_images]
@@ -297,6 +311,7 @@ def optimize(
                     trim_printout=trim_printout,
                     stdout_write=partial(tqdm.write, file=sys.stdout),
                     stderr_write=partial(tqdm.write, file=sys.stderr),
+                    wrap_errs=wrap_errs,
                 )
         optipng(
             *cur_images,
@@ -304,6 +319,7 @@ def optimize(
             trim_printout=trim_printout,
             stdout_write=stdout_write,
             stderr_write=stderr_write,
+            wrap_errs=wrap_errs,
         )
         pngcrush(
             *cur_images,
@@ -313,6 +329,7 @@ def optimize(
             trim_printout=trim_printout,
             stdout_write=stdout_write,
             stderr_write=stderr_write,
+            wrap_errs=wrap_errs,
         )
         new_sizes = [Path(image).stat().st_size for image in cur_images]
         cur_images = [

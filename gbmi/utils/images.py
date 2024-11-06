@@ -184,6 +184,8 @@ def optipng(
     save_bak: bool = True,
     fix: bool = True,
     trim_printout: bool = False,
+    stdout_write: Optional[Callable] = None,
+    stderr_write: Optional[Callable] = None,
 ):
     if not images:
         return
@@ -197,6 +199,8 @@ def optipng(
         *images,
         check=True,
         trim_printout=trim_optipng if trim_printout else None,
+        stdout_write=stdout_write,
+        stderr_write=stderr_write,
     )
 
 
@@ -210,6 +214,8 @@ def pngcrush(
     tmpdir: Optional[Union[str, Path]] = None,
     cleanup: Optional[bool] = None,
     trim_printout: bool = False,
+    stdout_write: Optional[Callable] = None,
+    stderr_write: Optional[Callable] = None,
 ):
     if not images:
         return
@@ -242,6 +248,8 @@ def pngcrush(
         *map(str, images),
         check=True,
         trim_printout=trim_pngcrush if trim_printout else None,
+        stdout_write=stdout_write,
+        stderr_write=stderr_write,
     )
 
     # Replace original images with crushed images if they are smaller
@@ -262,12 +270,18 @@ def optimize(
     tmpdir: Optional[Union[str, Path]] = None,
     cleanup: Optional[bool] = None,
     trim_printout: bool = False,
+    tqdm_position: Optional[int] = None,
+    tqdm_leave: Optional[bool] = None,
+    stdout_write: Optional[Callable] = None,
+    stderr_write: Optional[Callable] = None,
 ):
     cur_images = images
     cur_sizes = [Path(image).stat().st_size for image in cur_images]
     while cur_images:
         if shutil.which("ect"):
-            for img in tqdm(cur_images, desc="ect"):
+            for img in tqdm(
+                cur_images, desc="ect", position=tqdm_position, leave=tqdm_leave
+            ):
                 ect(
                     img,
                     exhaustive=exhaustive,
@@ -275,13 +289,21 @@ def optimize(
                     stdout_write=partial(tqdm.write, file=sys.stdout),
                     stderr_write=partial(tqdm.write, file=sys.stderr),
                 )
-        optipng(*cur_images, exhaustive=exhaustive, trim_printout=trim_printout)
+        optipng(
+            *cur_images,
+            exhaustive=exhaustive,
+            trim_printout=trim_printout,
+            stdout_write=stdout_write,
+            stderr_write=stderr_write,
+        )
         pngcrush(
             *cur_images,
             brute=exhaustive,
             tmpdir=tmpdir,
             cleanup=cleanup,
             trim_printout=trim_printout,
+            stdout_write=stdout_write,
+            stderr_write=stderr_write,
         )
         new_sizes = [Path(image).stat().st_size for image in cur_images]
         cur_images = [

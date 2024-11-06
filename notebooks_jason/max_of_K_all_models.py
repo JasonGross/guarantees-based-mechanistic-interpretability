@@ -160,7 +160,10 @@ cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
 # %%
 import subprocess
 import sys
+from functools import cache, partial
 from pathlib import Path
+
+from tqdm.auto import tqdm
 
 import gbmi.utils.images as image_utils
 
@@ -328,12 +331,18 @@ def optimize_pngs(errs: list[Exception] = []):
     )
 
     if not opt_success:
-        for f in LATEX_FIGURE_PATH.glob("*.png"):
+        for f in tqdm(
+            list(LATEX_FIGURE_PATH.glob("*.png")), desc="figures", position=0
+        ):
             wrap_err(
                 image_utils.optimize,
                 f,
                 exhaustive=True,
                 trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
+                tqdm_position=1,
+                tqdm_leave=False,
+                stdout_write=partial(tqdm.write, file=sys.stdout),
+                stderr_write=partial(tqdm.write, file=sys.stderr),
             )
 
 
@@ -353,7 +362,6 @@ import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from functools import cache, partial
 from itertools import chain
 from typing import Any, Callable, Collection, Iterator, Literal, Optional, Tuple, Union
 
@@ -371,7 +379,6 @@ from cycler import cycler
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from torch import Tensor
-from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
 import gbmi.exp_max_of_n.analysis.quadratic as analysis_quadratic

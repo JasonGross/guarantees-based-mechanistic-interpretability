@@ -137,8 +137,8 @@ jobs:
         os: [ubuntu-latest]
         default-shared-extra-args: ["--no-huggingface --no-save-to-hf"]
         cfg:
-          - { nctx: 4, dvocab: 64, extra-args: "--brute-force", extra-args-file-descr: "brute-force", default-extra-args: "", dvocab-extra-path: "" }
-          - { nctx: 5, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "", dvocab-extra-path: "" }
+          - { nctx: 4, dvocab: 64, extra-args: "--brute-force", extra-args-file-descr: "brute-force", default-extra-args: "--no-shared-plots", dvocab-extra-path: "" }
+          - { nctx: 5, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-shared-plots", dvocab-extra-path: "" }
           - { nctx: 10, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "" }
           - { nctx: 10, dvocab: 128, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "_d_vocab_128" }
           - { nctx: 20, dvocab: 64, extra-args: "", extra-args-file-descr: "", default-extra-args: "--no-plots", dvocab-extra-path: "" }

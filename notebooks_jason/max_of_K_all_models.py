@@ -3773,6 +3773,7 @@ for var in (
     "d",
     "all_tokens_datasets_lens",
     "sub_cfg_counts",
+    "sorted_known_seeds",
 ):
     if var in locals():
         del locals()[var]

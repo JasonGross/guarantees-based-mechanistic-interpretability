@@ -300,13 +300,7 @@ def wrap_err(f, *args, return_bool: bool = False, **kwargs):
     try:
         result = f(*args, **kwargs)
         return True if return_bool else result
-    except FileNotFoundError as e:
-        print(f"Warning: {e}")
-        errs.append(e)
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: {e}")
-        errs.append(e)
-    except OSError as e:
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError) as e:
         print(f"Warning: {e}")
         errs.append(e)
     if return_bool:
@@ -330,13 +324,15 @@ def optimize_pngs(errs: list[Exception] = []):
     #     wrap_err(image_utils.optipng, f)
 
     new_errs = []
-    image_utils.optimize(
+    opt_success = wrap_err(
+        image_utils.optimize,
         *LATEX_FIGURE_PATH.glob("*.png"),
         exhaustive=True,
         trim_printout=COMPACT_IMAGE_OPTIMIZE_OUTPUT,
         wrap_errs=new_errs,
+        return_bool=True,
     )
-    opt_success = not new_errs
+    opt_success = opt_success and not new_errs
     errs.extend(new_errs)
 
     if not opt_success:

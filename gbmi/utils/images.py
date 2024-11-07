@@ -107,40 +107,42 @@ def batch_run(
             for i in range(0, len(images), batchsize)
         ]
 
-    process = subprocess.Popen(
-        [*args, *map(str, images), *post_args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        **kwargs,
-    )
-
     if stdout_write is None:
         stdout_write = partial(print, file=sys.stdout)
     if stderr_write is None:
         stderr_write = partial(print, file=sys.stderr)
 
-    stdout_thread = threading.Thread(
-        target=forward_output, args=(process.stdout, stdout_write, trim_printout)
-    )
-    stderr_thread = threading.Thread(
-        target=forward_output, args=(process.stderr, stderr_write, trim_printout)
-    )
+    try:
+        process = subprocess.Popen(
+            [*args, *map(str, images), *post_args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            **kwargs,
+        )
 
-    stdout_thread.start()
-    stderr_thread.start()
+        stdout_thread = threading.Thread(
+            target=forward_output, args=(process.stdout, stdout_write, trim_printout)
+        )
+        stderr_thread = threading.Thread(
+            target=forward_output, args=(process.stderr, stderr_write, trim_printout)
+        )
 
-    stdout_thread.join()
-    stderr_thread.join()
+        stdout_thread.start()
+        stderr_thread.start()
 
-    process.wait()
+        stdout_thread.join()
+        stderr_thread.join()
 
-    if check and process.returncode != 0:
-        exn = subprocess.CalledProcessError(process.returncode, process.args)
+        process.wait()
+
+        if check and process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, process.args)
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError) as e:
         if wrap_errs is not None:
-            stderr_write(f"Error: {exn}")
-            wrap_errs.append(exn)
+            stderr_write(f"Error: {e}")
+            wrap_errs.append(e)
         else:
-            raise exn
+            raise e
 
     return process
 

@@ -91,8 +91,12 @@ def batch_run(
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
     wrap_errs: Optional[list[Exception]] = None,
+    tqdm_position: Optional[int] = 0,
+    tqdm_desc: Optional[str] = None,
     **kwargs,
 ):
+    if tqdm_position is None:
+        tqdm_position = 0
     if len(images) > batchsize:
         return [
             batch_run(
@@ -102,9 +106,17 @@ def batch_run(
                 post_args=post_args,
                 check=check,
                 wrap_errs=wrap_errs,
+                tqdm_position=tqdm_position + 1,
+                tqdm_desc=tqdm_desc,
+                stdout_write=stdout_write or partial(tqdm.write, file=sys.stdout),
+                stderr_write=stderr_write or partial(tqdm.write, file=sys.stderr),
                 **kwargs,
             )
-            for i in range(0, len(images), batchsize)
+            for i in tqdm(
+                range(0, len(images), batchsize),
+                desc=f"Batch{' for {tqdm_desc}' if tqdm_desc else ''}",
+                position=tqdm_position,
+            )
         ]
 
     if stdout_write is None:
@@ -166,6 +178,7 @@ def ect(
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
     wrap_errs: Optional[list[Exception]] = None,
+    tqdm_position: Optional[int] = None,
 ):
     if not images:
         return
@@ -186,6 +199,7 @@ def ect(
         stdout_write=stdout_write,
         stderr_write=stderr_write,
         wrap_errs=wrap_errs,
+        tqdm_position=tqdm_position,
     )
 
 
@@ -209,6 +223,7 @@ def optipng(
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
     wrap_errs: Optional[list[Exception]] = None,
+    tqdm_position: Optional[int] = None,
 ):
     if not images:
         return
@@ -225,6 +240,7 @@ def optipng(
         stdout_write=stdout_write,
         stderr_write=stderr_write,
         wrap_errs=wrap_errs,
+        tqdm_position=tqdm_position,
     )
 
 
@@ -241,6 +257,7 @@ def pngcrush(
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
     wrap_errs: Optional[list[Exception]] = None,
+    tqdm_position: Optional[int] = None,
 ):
     if not images:
         return
@@ -276,6 +293,7 @@ def pngcrush(
         stdout_write=stdout_write,
         stderr_write=stderr_write,
         wrap_errs=wrap_errs,
+        tqdm_position=tqdm_position,
     )
 
     # Replace original images with crushed images if they are smaller
@@ -296,7 +314,7 @@ def optimize(
     tmpdir: Optional[Union[str, Path]] = None,
     cleanup: Optional[bool] = None,
     trim_printout: bool = False,
-    tqdm_position: Optional[int] = None,
+    tqdm_position: int = 0,
     tqdm_leave: Optional[bool] = None,
     stdout_write: Optional[Callable] = None,
     stderr_write: Optional[Callable] = None,
@@ -316,6 +334,7 @@ def optimize(
                     stdout_write=partial(tqdm.write, file=sys.stdout),
                     stderr_write=partial(tqdm.write, file=sys.stderr),
                     wrap_errs=wrap_errs,
+                    tqdm_position=tqdm_position + 1,
                 )
         optipng(
             *cur_images,
@@ -324,6 +343,7 @@ def optimize(
             stdout_write=stdout_write,
             stderr_write=stderr_write,
             wrap_errs=wrap_errs,
+            tqdm_position=tqdm_position,
         )
         pngcrush(
             *cur_images,
@@ -334,6 +354,7 @@ def optimize(
             stdout_write=stdout_write,
             stderr_write=stderr_write,
             wrap_errs=wrap_errs,
+            tqdm_position=tqdm_position,
         )
         new_sizes = [Path(image).stat().st_size for image in cur_images]
         cur_images = [

@@ -112,6 +112,7 @@ def batch_run(
     if stderr_write is None:
         stderr_write = partial(print, file=sys.stderr)
 
+    process = None
     try:
         process = subprocess.Popen(
             [*args, *map(str, images), *post_args],
@@ -137,6 +138,7 @@ def batch_run(
 
         if check and process.returncode != 0:
             raise subprocess.CalledProcessError(process.returncode, process.args)
+
     except (FileNotFoundError, subprocess.CalledProcessError, OSError) as e:
         if wrap_errs is not None:
             stderr_write(f"Error: {e}")

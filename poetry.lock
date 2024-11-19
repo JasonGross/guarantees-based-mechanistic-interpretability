@@ -1642,17 +1642,14 @@ arrow = ">=0.15.0"
 
 [[package]]
 name = "jaxtyping"
-version = "0.2.34"
-description = "Type annotations and runtime checking for shape and dtype of JAX arrays, and PyTrees."
+version = "0.2.36"
+description = "Type annotations and runtime checking for shape and dtype of JAX/NumPy/PyTorch/etc. arrays."
 optional = false
-python-versions = "~=3.9"
+python-versions = ">=3.9"
 files = [
-    {file = "jaxtyping-0.2.34-py3-none-any.whl", hash = "sha256:2f81fb6d1586e497a6ea2d28c06dcab37b108a096cbb36ea3fe4fa2e1c1f32e5"},
-    {file = "jaxtyping-0.2.34.tar.gz", hash = "sha256:eed9a3458ec8726c84ea5457ebde53c964f65d2c22c0ec40d0555ae3fed5bbaf"},
+    {file = "jaxtyping-0.2.36-py3-none-any.whl", hash = "sha256:b19bcbd4009df8734602203402483a4066ad2eb3382904432e370588e9c9707d"},
+    {file = "jaxtyping-0.2.36.tar.gz", hash = "sha256:781ac44a3cf8982063d7ee48b5008ccfad7b13793bf878eb3058d5319aa08f0f"},
 ]
-
-[package.dependencies]
-typeguard = "2.13.3"
 
 [[package]]
 name = "jedi"
@@ -5075,13 +5072,13 @@ test = ["argcomplete (>=3.0.3)", "mypy (>=1.7.0)", "pre-commit", "pytest (>=7.0,
 
 [[package]]
 name = "transformer-lens"
-version = "2.6.0"
+version = "2.9.1"
 description = "An implementation of transformers tailored for mechanistic interpretability."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "transformer_lens-2.6.0-py3-none-any.whl", hash = "sha256:825d7a9f7b4ccab7181f06adecf3a36adb757b64a0819b8cd625080a7d319307"},
-    {file = "transformer_lens-2.6.0.tar.gz", hash = "sha256:7570957505a965ad94332c00202fcc6912959aafa93ff345d9b113dc962330ec"},
+    {file = "transformer_lens-2.9.1-py3-none-any.whl", hash = "sha256:d0d6cf9069e36e4dae01f39074a92b319773f72cd1016dd974ad744611c548d6"},
+    {file = "transformer_lens-2.9.1.tar.gz", hash = "sha256:aeb597df4329503041d9f5bd48d9067dfc7b8bd3975b0f9c7bb9530904d30b4d"},
 ]
 
 [package.dependencies]
@@ -5105,6 +5102,7 @@ torch = [
 ]
 tqdm = ">=4.64.1"
 transformers = ">=4.37.2"
+typeguard = ">=4.2,<5.0"
 typing-extensions = "*"
 wandb = ">=0.13.5"
 
@@ -5200,18 +5198,21 @@ tutorials = ["matplotlib", "pandas", "tabulate"]
 
 [[package]]
 name = "typeguard"
-version = "2.13.3"
+version = "4.4.1"
 description = "Run-time type checker for Python"
 optional = false
-python-versions = ">=3.5.3"
+python-versions = ">=3.9"
 files = [
-    {file = "typeguard-2.13.3-py3-none-any.whl", hash = "sha256:5e3e3be01e887e7eafae5af63d1f36c849aaa94e3a0112097312aabfa16284f1"},
-    {file = "typeguard-2.13.3.tar.gz", hash = "sha256:00edaa8da3a133674796cf5ea87d9f4b4c367d77476e185e80251cc13dfbb8c4"},
+    {file = "typeguard-4.4.1-py3-none-any.whl", hash = "sha256:9324ec07a27ec67fc54a9c063020ca4c0ae6abad5e9f0f9804ca59aee68c6e21"},
+    {file = "typeguard-4.4.1.tar.gz", hash = "sha256:0d22a89d00b453b47c49875f42b6601b961757541a2e1e0ef517b6e24213c21b"},
 ]
 
+[package.dependencies]
+typing-extensions = ">=4.10.0"
+
 [package.extras]
-doc = ["sphinx-autodoc-typehints (>=1.2.0)", "sphinx-rtd-theme"]
-test = ["mypy", "pytest", "typing-extensions"]
+doc = ["Sphinx (>=7)", "packaging", "sphinx-autodoc-typehints (>=1.2.0)", "sphinx-rtd-theme (>=1.3.0)"]
+test = ["coverage[toml] (>=7)", "mypy (>=1.2.0)", "pytest (>=7)"]
 
 [[package]]
 name = "types-python-dateutil"
@@ -5640,4 +5641,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "a20015494f12b7dafde758c216c4aeb9b5f3a0e80e695de22ccdad0c41542e17"
+content-hash = "0c5a73a0c81355fc213a1f92b744f31aa253b3cb3d4f8cf1b309947dc9933cc7"

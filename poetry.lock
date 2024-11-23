@@ -4864,13 +4864,13 @@ files = [
 
 [[package]]
 name = "tikzplotlib-patched"
-version = "0.10.1.post9"
+version = "0.10.1.post12"
 description = "Convert matplotlib figures into TikZ/PGFPlots.  Version of tikzplotlib patched with additional patches."
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "tikzplotlib_patched-0.10.1.post9-py3-none-any.whl", hash = "sha256:dd060577f095856668cb59b786ead4ad2526d03478b24ef05c9c243b7d7645d1"},
-    {file = "tikzplotlib_patched-0.10.1.post9.tar.gz", hash = "sha256:f2f72584fc78d52b3429e67ceabf4b156ff1e86c98b4d50edccbfccf114b8b76"},
+    {file = "tikzplotlib_patched-0.10.1.post12-py3-none-any.whl", hash = "sha256:9363f04cc685207a7272c889894e443d2b66d8bee0c735481a44c2bc3dfc1c6f"},
+    {file = "tikzplotlib_patched-0.10.1.post12.tar.gz", hash = "sha256:323250a1978a71e00a6c5288f092360dcd8ea8d097deb897cb7616e6ac3ef3bb"},
 ]
 
 [package.dependencies]
@@ -5774,4 +5774,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "0c5a73a0c81355fc213a1f92b744f31aa253b3cb3d4f8cf1b309947dc9933cc7"
+content-hash = "d81b9846df7f92adc63d964ce99afae83f466fd9b95d0f187806873de4b61d9b"

@@ -3678,7 +3678,7 @@ for frontier_only in (True, False):
                                 ax.plot(
                                     x_vals,
                                     y_vals,
-                                    linestyle="dotted",
+                                    linestyle="dashed",
                                     color="gold",
                                     label="brute-force linear baseline",
                                 )

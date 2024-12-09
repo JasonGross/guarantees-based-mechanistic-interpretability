@@ -4088,7 +4088,7 @@ def texify_matplotlib_title(
                         else lgnd.legend_handles
                     )
                     for h, s in zip(lgnd_handles, new_leg_sizes):
-                        if s is not None:
+                        if s is not None and hasattr(h, "set_sizes"):
                             h.set_sizes(s)
         yield fig
     finally:

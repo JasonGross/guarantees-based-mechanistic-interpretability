@@ -3615,22 +3615,22 @@ for frontier_only in (True, False):
             min_flop = data["proof-flop-estimate"].min()
             max_flop = data["proof-flop-estimate"].max()
             data["group"] = data["group"].map(category_name_remap)
-            data["linestyle"] = ""
-            if include_baseline:
-                baseline_categories = []  # ["brute-force linear baseline"]
-                x_vals = np.logspace(np.log2(min_flop), np.log2(max_flop), 100, base=2)
-                y_vals = brute_force_slope * x_vals
-                baseline_df = pd.DataFrame(
-                    {
-                        "proof-flop-estimate": x_vals,
-                        f"{norm}accuracy-bound": y_vals,
-                        "group": "brute-force linear baseline",
-                        "linestyle": "dotted",
-                    }
-                )
-                # data = pd.concat([data, baseline_df], ignore_index=True)
-            else:
-                baseline_categories = []
+            # data["linestyle"] = ""
+            # if include_baseline:
+            #     baseline_categories = []  # ["brute-force linear baseline"]
+            #     x_vals = np.logspace(np.log2(min_flop), np.log2(max_flop), 100, base=2)
+            #     y_vals = brute_force_slope * x_vals
+            #     baseline_df = pd.DataFrame(
+            #         {
+            #             "proof-flop-estimate": x_vals,
+            #             f"{norm}accuracy-bound": y_vals,
+            #             "group": "brute-force linear baseline",
+            #             "linestyle": "dotted",
+            #         }
+            #     )
+            #     # data = pd.concat([data, baseline_df], ignore_index=True)
+            # else:
+            #     baseline_categories = []
             if (DISPLAY_PLOTS or SAVE_PLOTS) and SHARED_PLOTS:
                 markersize = (
                     plt.rcParams["lines.markersize"] / 8 if not frontier_only else None
@@ -3650,8 +3650,7 @@ for frontier_only in (True, False):
                         reverse_xaxis=False,
                         xaxis="FLOPs to Verify Proof (approximate)",
                         yaxis=f"{normt}Accuracy Bound",
-                        color_order=baseline_categories
-                        + [category_name_remap[c] for c in category_order],
+                        color_order=[category_name_remap[c] for c in category_order],
                         markersize=markersize,
                         discontinuous_x=discontinuous_x_val,
                         plot_with=PLOT_WITH,

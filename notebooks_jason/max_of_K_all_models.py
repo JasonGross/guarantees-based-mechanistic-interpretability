@@ -160,7 +160,9 @@ parser.add_argument(
     default=True,
     help="Output plots shared across seeds",
 )
-cli_args = parser.parse_args(None if ipython is None else ["--ignore-csv"])
+cli_args = parser.parse_args(
+    None if ipython is None else ["--ignore-csv", "--K", "4", "--brute-force"]
+)
 # %%
 #!sudo apt-get install dvipng texlive-latex-extra texlive-fonts-recommended cm-super pdfcrop optipng pngcrush
 # %%
@@ -3569,112 +3571,179 @@ if (DISPLAY_PLOTS or SAVE_PLOTS) and SHARED_PLOTS:
 plt.rcParams["axes.prop_cycle"] = cycler(color=plt.cm.Paired.colors)
 for frontier_only in (True, False):
     for norm, normt in (("", ""), ("normalized-", "Normalized ")):
-        key = f"{normt.strip()}AccuracyBoundVsFLOPs{'FrontierOnly' if frontier_only else ''}"
-        data = (
-            combined_df[combined_df["frontier"] == True]
-            if frontier_only
-            else combined_df
-        )
-        data = data[["proof-flop-estimate", f"{norm}accuracy-bound", "group"]].copy()
-        data = double_singleton_groups(data.drop_duplicates(), column="group")
-        data = data.sort_values(
-            by=["group", f"{norm}accuracy-bound", "proof-flop-estimate"]
-        )
-        discontinuous_x = (
-            data[(data["group"] == "brute force") | (data["group"] == "cubic")][
-                "proof-flop-estimate"
-            ].mean(),
-        )
-        compress_data = lambda values: (
-            f"{values.item() / 2 ** int(math.log2(values.item()))} \\cdot 2^{{{int(math.log2(values.item()))}}}"
-            if len(values) == 1
-            else f"({pm_mean_std(values / 2 ** int(math.log2(values.mean())))}) \\cdot 2^{{{int(math.log2(values.mean()))}}}"
-        )
-        print(
-            [
-                (
-                    compress_data(
-                        data[data["group"] == c]["proof-flop-estimate"].unique()
-                    ),
-                    category_name_remap[c],
+        for include_baseline in (True, False):  # , True):
+            key = f"{normt.strip()}AccuracyBoundVsFLOPs{'FrontierOnly' if frontier_only else ''}{'WithBaseline' if include_baseline else ''}"
+            data = (
+                combined_df[combined_df["frontier"] == True]
+                if frontier_only
+                else combined_df
+            )
+            data = data[
+                ["proof-flop-estimate", f"{norm}accuracy-bound", "group"]
+            ].copy()
+            data = double_singleton_groups(data.drop_duplicates(), column="group")
+            data = data.sort_values(
+                by=["group", f"{norm}accuracy-bound", "proof-flop-estimate"]
+            )
+            discontinuous_x = (
+                data[(data["group"] == "brute force") | (data["group"] == "cubic")][
+                    "proof-flop-estimate"
+                ].mean(),
+            )
+            compress_data = lambda values: (
+                f"{values.item() / 2 ** int(math.log2(values.item()))} \\cdot 2^{{{int(math.log2(values.item()))}}}"
+                if len(values) == 1
+                else f"({pm_mean_std(values / 2 ** int(math.log2(values.mean())))}) \\cdot 2^{{{int(math.log2(values.mean()))}}}"
+            )
+            print(
+                [
+                    (
+                        compress_data(
+                            data[data["group"] == c]["proof-flop-estimate"].unique()
+                        ),
+                        category_name_remap[c],
+                    )
+                    for c in category_order
+                    if len(data[data["group"] == c]["proof-flop-estimate"]) > 0
+                ]
+            )
+            brute_force_data = data[data["group"] == "brute-force"]
+            brute_force_slope = (
+                brute_force_data[f"{norm}accuracy-bound"]
+                / brute_force_data["proof-flop-estimate"]
+            ).mean()
+            min_flop = data["proof-flop-estimate"].min()
+            max_flop = data["proof-flop-estimate"].max()
+            data["group"] = data["group"].map(category_name_remap)
+            data["linestyle"] = ""
+            if include_baseline:
+                baseline_categories = []  # ["brute-force linear baseline"]
+                x_vals = np.logspace(np.log2(min_flop), np.log2(max_flop), 100, base=2)
+                y_vals = brute_force_slope * x_vals
+                baseline_df = pd.DataFrame(
+                    {
+                        "proof-flop-estimate": x_vals,
+                        f"{norm}accuracy-bound": y_vals,
+                        "group": "brute-force linear baseline",
+                        "linestyle": "dotted",
+                    }
                 )
-                for c in category_order
-                if len(data[data["group"] == c]["proof-flop-estimate"]) > 0
-            ]
-        )
-        data["group"] = data["group"].map(category_name_remap)
-        if (DISPLAY_PLOTS or SAVE_PLOTS) and SHARED_PLOTS:
-            markersize = (
-                plt.rcParams["lines.markersize"] / 8 if not frontier_only else None
-            )
-            latex_externalize_tables[key] = True
-            latex_figures[key] = fig = scatter(
-                data,
-                x="proof-flop-estimate",
-                y=f"{norm}accuracy-bound",
-                color="group",
-                title="",  # "Pareto Frontier" if frontier_only else "",
-                log_x=2,
-                reverse_xaxis=False,
-                xaxis="FLOPs to Verify Proof (approximate)",
-                yaxis=f"{normt}Accuracy Bound",
-                color_order=[category_name_remap[c] for c in category_order],
-                markersize=markersize,
-                plot_with=PLOT_WITH,
-                renderer=RENDERER,
-                show=DISPLAY_PLOTS,
-            )
-            latex_externalize_tables[f"{key}DiscontinuousX"] = True
-            latex_figures[f"{key}DiscontinuousX"] = fig = scatter(
-                data,
-                x="proof-flop-estimate",
-                y=f"{norm}accuracy-bound",
-                color="group",
-                title="",  # "Pareto Frontier" if frontier_only else "",
-                log_x=2,
-                reverse_xaxis=False,
-                xaxis="FLOPs to Verify Proof (approximate)",
-                yaxis=f"{normt}Accuracy Bound",
-                color_order=[category_name_remap[c] for c in category_order],
-                markersize=markersize,
-                discontinuous_x=discontinuous_x,
-                plot_with=PLOT_WITH,
-                renderer=RENDERER,
-                show=DISPLAY_PLOTS,
-            )
+                # data = pd.concat([data, baseline_df], ignore_index=True)
+            else:
+                baseline_categories = []
+            if (DISPLAY_PLOTS or SAVE_PLOTS) and SHARED_PLOTS:
+                markersize = (
+                    plt.rcParams["lines.markersize"] / 8 if not frontier_only else None
+                )
+                latex_externalize_tables[key] = True
+                for discontinuous_x_val, discontinuous_x_t in (
+                    ((), ""),
+                    (discontinuous_x, "DiscontinuousX"),
+                ):
+                    latex_figures[f"{key}{discontinuous_x_t}"] = fig = scatter(
+                        data,
+                        x="proof-flop-estimate",
+                        y=f"{norm}accuracy-bound",
+                        color="group",
+                        title="",  # "Pareto Frontier" if frontier_only else "",
+                        log_x=2,
+                        reverse_xaxis=False,
+                        xaxis="FLOPs to Verify Proof (approximate)",
+                        yaxis=f"{normt}Accuracy Bound",
+                        color_order=baseline_categories
+                        + [category_name_remap[c] for c in category_order],
+                        markersize=markersize,
+                        discontinuous_x=discontinuous_x_val,
+                        plot_with=PLOT_WITH,
+                        renderer=RENDERER,
+                        show=DISPLAY_PLOTS and not include_baseline,
+                    )
+                    if include_baseline:
+                        x_vals = np.logspace(
+                            np.log2(min_flop), np.log2(max_flop), 100, base=2
+                        )
+                        y_vals = brute_force_slope * x_vals
+                        match PLOT_WITH:
+                            case "plotly":
+                                fig.add_scatter(
+                                    x=x_vals,
+                                    y=y_vals,
+                                    mode="lines",
+                                    line=dict(dash="dot", color="gold"),
+                                    name="brute-force linear baseline",
+                                )
+                                if DISPLAY_PLOTS:
+                                    fig.show(RENDERER)
+                            case "matplotlib":
+                                ax = fig.gca()
+                                ax.plot(
+                                    x_vals,
+                                    y_vals,
+                                    linestyle="dotted",
+                                    color="gold",
+                                    label="brute-force linear baseline",
+                                )
+                                if not discontinuous_x_val:
+                                    ax.legend(
+                                        loc="center left", bbox_to_anchor=(1, 0.5)
+                                    )
+                                fig.tight_layout()
+                                if DISPLAY_PLOTS:
+                                    plt.figure(fig)
+                                    plt.show()
+                            case _:
+                                assert False, PLOT_WITH
 
 
 # %%
 for norm, normt in (("", ""), ("normalized-", "Normalized ")):
+    for include_baseline in (False, True):
+        data = combined_df[
+            [
+                "proof-flop-estimate",
+                f"{norm}accuracy-bound",
+                "group",
+                "frontier",
+                "tricks",
+            ]
+        ].copy()
+        data = double_singleton_groups(data.drop_duplicates(), column="group")
+        # data["group"] = data["group"].map({k:k[:7] for k in set(data["group"])})
+        brute_force_data = data[data["group"] == "brute-force"]
+        brute_force_slope = (
+            brute_force_data[f"{norm}accuracy-bound"]
+            / brute_force_data["proof-flop-estimate"]
+        ).mean()
+        min_flop = brute_force_data["proof-flop-estimate"].min()
+        max_flop = brute_force_data["proof-flop-estimate"].max()
+        if DISPLAY_PLOTS:
+            fig = px.scatter(
+                data,
+                x="proof-flop-estimate",
+                y=f"{norm}accuracy-bound",
+                symbol="group",
+                title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
+                log_x=True,
+                color="tricks",
+                # symbol_map={True: "diamond", False: "circle"},
+                # legend=False,
+            )
+            if include_baseline:
+                x_vals = np.logspace(np.log10(min_flop), np.log10(max_flop), 100)
+                y_vals = brute_force_slope * x_vals
+                fig.add_scatter(
+                    x=x_vals,
+                    y=y_vals,
+                    mode="lines",
+                    line=dict(dash="dot", color="gold"),
+                    name="brute-force linear baseline",
+                )
 
-    data = combined_df[
-        [
-            "proof-flop-estimate",
-            f"{norm}accuracy-bound",
-            "group",
-            "frontier",
-            "tricks",
-        ]
-    ].copy()
-    data = double_singleton_groups(data.drop_duplicates(), column="group")
-    # data["group"] = data["group"].map({k:k[:7] for k in set(data["group"])})
-    if DISPLAY_PLOTS:
-        fig = px.scatter(
-            data,
-            x="proof-flop-estimate",
-            y=f"{norm}accuracy-bound",
-            symbol="group",
-            title=f"Scatter Plot of Proof Flop Estimate vs {normt}Accuracy Bound (Logarithmic X-Axis)",
-            log_x=True,
-            color="tricks",
-            # symbol_map={True: "diamond", False: "circle"},
-            # legend=False,
-        )
-        fig.update_layout(showlegend=False)
-        # Flip the x-axis
-        fig.update_layout(xaxis=dict(autorange="reversed"))
+            fig.update_layout(showlegend=False)
+            # Flip the x-axis
+            fig.update_layout(xaxis=dict(autorange="reversed"))
 
-        fig.show()
+            fig.show()
 
 # %%
 latex_values["AllModelsHEADSHA"] = git.get_head_sha(short=False)

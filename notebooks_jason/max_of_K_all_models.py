@@ -4129,7 +4129,11 @@ def texify_matplotlib_title(
                         else lgnd.legend_handles
                     )
                     for h, s in zip(lgnd_handles, orig_leg_sizes):
-                        h.set_sizes(s)
+                        if s is not None:
+                            if hasattr(h, "set_sizes"):
+                                h.set_sizes(s)
+                            else:
+                                print(f"Cannot set size {s} for {h}")
 
 
 if SAVE_PLOTS:

@@ -4038,7 +4038,8 @@ def texify_matplotlib_title(
         for lgnd in orig_legends
     ]
     orig_legends_sizes = [
-        [h._sizes for h in handles] for handles in orig_legends_handles
+        [h._sizes if hasattr(h, "_sizes") else None for h in handles]
+        for handles in orig_legends_handles
     ]
     orig_legend_handles_labels_sizes = [
         (
@@ -4087,7 +4088,8 @@ def texify_matplotlib_title(
                         else lgnd.legend_handles
                     )
                     for h, s in zip(lgnd_handles, new_leg_sizes):
-                        h.set_sizes(s)
+                        if s is not None:
+                            h.set_sizes(s)
         yield fig
     finally:
         if new_suptitle is not None:

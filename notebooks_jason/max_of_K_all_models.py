@@ -3659,7 +3659,10 @@ for frontier_only in (True, False):
                     )
                     if include_baseline:
                         x_vals = np.logspace(
-                            np.log2(min_flop), np.log2(max_flop), 100, base=2
+                            np.log2(float(min_flop)),
+                            np.log2(float(max_flop)),
+                            100,
+                            base=2,
                         )
                         y_vals = brute_force_slope * x_vals
                         match PLOT_WITH:

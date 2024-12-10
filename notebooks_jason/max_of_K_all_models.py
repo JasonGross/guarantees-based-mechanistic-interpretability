@@ -3731,7 +3731,7 @@ for norm, normt in (("", ""), ("normalized-", "Normalized ")):
                 # legend=False,
             )
             if include_baseline:
-                x_vals = np.logspace(np.log10(min_flop), np.log10(max_flop), 100)
+                x_vals = np.logspace(np.log2(min_flop), np.log2(max_flop), 100, base=2)
                 y_vals = brute_force_slope * x_vals
                 fig.add_scatter(
                     x=x_vals,

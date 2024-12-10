@@ -3671,7 +3671,7 @@ for frontier_only in (True, False):
                                     x=x_vals,
                                     y=y_vals,
                                     mode="lines",
-                                    line=dict(dash="dot", color="gold"),
+                                    line=dict(dash="dot", color="orange"),
                                     name="brute-force linear baseline",
                                 )
                                 if DISPLAY_PLOTS:
@@ -3682,7 +3682,7 @@ for frontier_only in (True, False):
                                     x_vals,
                                     y_vals,
                                     linestyle="dashed",
-                                    color="gold",
+                                    color="orange",
                                     label="brute-force linear baseline",
                                 )
                                 if not discontinuous_x_val:
@@ -3737,7 +3737,7 @@ for norm, normt in (("", ""), ("normalized-", "Normalized ")):
                     x=x_vals,
                     y=y_vals,
                     mode="lines",
-                    line=dict(dash="dot", color="gold"),
+                    line=dict(dash="dot", color="orange"),
                     name="brute-force linear baseline",
                 )
 

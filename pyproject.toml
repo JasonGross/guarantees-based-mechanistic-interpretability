@@ -50,7 +50,7 @@ tqdm-multiprocess = "^0.0.11"
 cirron = "^0.4"
 eintorch = "^0.2.5"
 numpy = "^2.0.1"
-tikzplotlib-patched = "^0.10.1-post.0"
+tikzplotlib-patched = "^0.10.1.post13"
 datasets = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]

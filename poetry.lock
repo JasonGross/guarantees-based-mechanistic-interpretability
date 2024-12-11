@@ -1034,13 +1034,13 @@ tests = ["asttokens (>=2.1.0)", "coverage", "coverage-enable-subprocess", "ipyth
 
 [[package]]
 name = "expecttest"
-version = "0.2.1"
+version = "0.3.0"
 description = ""
 optional = false
-python-versions = ">=3.8,<4.0"
+python-versions = "<4.0.0,>=3.8.1"
 files = [
-    {file = "expecttest-0.2.1-py3-none-any.whl", hash = "sha256:36f07b2f2800c12e5a0a5763d420f9f9b91631329bd54537509ebf17f8f81c36"},
-    {file = "expecttest-0.2.1.tar.gz", hash = "sha256:e52b1cf8a6f84506e6962a0bbdd248ea442124d826e849f263ec1c322ebb73f5"},
+    {file = "expecttest-0.3.0-py3-none-any.whl", hash = "sha256:60f88103086e1754240b42175f622be83b6ffeac419434691ee5a5be819d0544"},
+    {file = "expecttest-0.3.0.tar.gz", hash = "sha256:6e8512fb86523ada1f94fd1b14e280f924e379064bb8a29ee399950e513eeccd"},
 ]
 
 [[package]]
@@ -5837,4 +5837,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "e5cb5f7e4336a3afc8a8e9ff037b714be82ecf7ad3e4b263350d9dd9cdc9cb6e"
+content-hash = "b076f59e9470834a45a16383f5a153ddcad0aec16a5959a10fcfaa330f8c6005"

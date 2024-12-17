@@ -118,7 +118,7 @@ def _apply_single_dim(
         if key in c:
             return c[key]
 
-        idx = ConstraintTrackingTensor(torch.tensor(0))
+        idx = ConstraintTrackingTensor(torch.tensor(0, device=device))
         reified = f(idx)  # type: ignore
         if size is None:
             constraints = getattr(idx, "_constraints", [])

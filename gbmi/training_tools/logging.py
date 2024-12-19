@@ -340,11 +340,14 @@ class ModelMatrixLoggingOptions:
         reverse_strs: bool = False,
         *,
         skip_composition: bool = False,
+        include_generalized_direct_path: bool = False,
     ) -> Iterable[
         Tuple[str, str, str, Float[Tensor, "... a d_model"], bool]  # noqa: F722
     ]:
         """Returns an iterable of ("VO"*, "VO"*, "lₙ{l}hₙ{h}"*, value, is_direct) tuples of what x transforms to under repeated applications of apply_VO to layers strictly before l"""
         yield sx_direct, sx_direct_short, "", x_direct, True
+        if include_generalized_direct_path:
+            yield sx, sx_short, "", x, True
         if not skip_composition:
             for svo, svo_short, lh, val in ModelMatrixLoggingOptions._compute_paths(
                 apply_VO, n_heads, x, sx, sx_short, l - 1, reverse_strs=reverse_strs
@@ -697,15 +700,20 @@ class ModelMatrixLoggingOptions:
                 yield f"{sPq[-1]}U", apply_U(W_pos_q[-1], bias=False)
 
             for l in range(W_Q.shape[0]):
+                # include_separate_generalization
+                use_gen = (
+                    l != W_Q.shape[0] - 1
+                    and self.qtok is not None
+                    or self.qpos is not None
+                )
                 for h in range(W_Q.shape[1]):
                     for (
                         (
                             qx,
                             qx_direct,
                             qsx,
-                            qsx_short,
                             qsx_direct,
-                            qsx_direct_short,
+                            qsx_short,
                             qskip_composition,
                             qbias,
                         ),
@@ -713,9 +721,8 @@ class ModelMatrixLoggingOptions:
                             kx,
                             kx_direct,
                             ksx,
-                            ksx_short,
                             ksx_direct,
-                            ksx_direct_short,
+                            ksx_short,
                             kskip_composition,
                             kbias,
                         ),
@@ -727,7 +734,6 @@ class ModelMatrixLoggingOptions:
                                 W_E_v[l],
                                 W_E_q[l],
                                 sEv[l],
-                                "E",
                                 sEq[l],
                                 "E",
                                 False,
@@ -737,7 +743,6 @@ class ModelMatrixLoggingOptions:
                                 W_E_v[l],
                                 W_E_k[l],
                                 sEv[l],
-                                "E",
                                 sEk[l],
                                 "E",
                                 False,
@@ -751,7 +756,6 @@ class ModelMatrixLoggingOptions:
                                 W_E_v[l],
                                 W_E_q[l],
                                 sEv[l],
-                                "E",
                                 sEq[l],
                                 "E",
                                 False,
@@ -761,7 +765,6 @@ class ModelMatrixLoggingOptions:
                                 W_pos_v[l],
                                 W_pos_k[l],
                                 sPv[l],
-                                "P",
                                 sPk[l],
                                 "P",
                                 self.shortformer,
@@ -775,7 +778,6 @@ class ModelMatrixLoggingOptions:
                                 W_pos_v[l],
                                 W_pos_q[l],
                                 sPv[l],
-                                "P",
                                 sPq[l],
                                 "P",
                                 self.shortformer,
@@ -785,7 +787,6 @@ class ModelMatrixLoggingOptions:
                                 W_E_v[l],
                                 W_E_k[l],
                                 sEv[l],
-                                "E",
                                 sEk[l],
                                 "E",
                                 False,
@@ -799,7 +800,6 @@ class ModelMatrixLoggingOptions:
                                 W_pos_v[l],
                                 W_pos_q[l],
                                 sPv[l],
-                                "P",
                                 sPq[l],
                                 "P",
                                 self.shortformer,
@@ -809,7 +809,6 @@ class ModelMatrixLoggingOptions:
                                 W_pos_v[l],
                                 W_pos_k[l],
                                 sPv[l],
-                                "P",
                                 sPk[l],
                                 "P",
                                 self.shortformer,
@@ -839,10 +838,11 @@ class ModelMatrixLoggingOptions:
                                 sx=qsx,
                                 sx_short=qsx_short,
                                 sx_direct=qsx_direct,
-                                sx_direct_short=qsx_direct_short,
+                                sx_direct_short=qsx_short,
                                 l=l,
                                 reverse_strs=False,
                                 skip_composition=qskip_composition,
+                                include_generalized_direct_path=use_gen,
                             ):
                                 for (
                                     sk,
@@ -860,12 +860,13 @@ class ModelMatrixLoggingOptions:
                                     x=kx,
                                     x_direct=kx_direct,
                                     sx=f"{ksx}ᵀ",
-                                    sx_short=f"{ksx_short}",
+                                    sx_short=ksx_short,
                                     sx_direct=ksx_direct,
-                                    sx_direct_short=ksx_direct_short,
+                                    sx_direct_short=ksx_short,
                                     l=l,
                                     reverse_strs=True,
                                     skip_composition=kskip_composition,
+                                    include_generalized_direct_path=False,
                                 ):
                                     if sq != "0" or self.log_zeros:
                                         matrix = apply_Q(
@@ -901,7 +902,6 @@ class ModelMatrixLoggingOptions:
                             sx_short="E",
                             sx_direct=sEv[l],
                             sx_direct_short="E",
-                            sx_direct=sEv[l],
                             l=l,
                             reverse_strs=False,
                         ):

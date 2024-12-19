@@ -356,41 +356,24 @@ class ModelMatrixLoggingOptions:
                 yield svo, svo_short, lh, val, False
 
     @torch.no_grad()
-    def matrices_to_log(
+    def matrices_to_plot(
         self,
-        model: HookedTransformer,
+        W_E: Float[Tensor, "d_vocab d_model"],  # noqa: F722
+        W_pos: Float[Tensor, "n_ctx d_model"],  # noqa: F722
+        W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
+        W_Q: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
+        W_K: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
+        W_V: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
+        W_O: Float[Tensor, "n_layers n_heads d_head d_model"],  # noqa: F722
+        b_U: Float[Tensor, "d_vocab_out"],  # noqa: F821
+        b_Q: Float[Tensor, "n_layers n_heads d_head"],  # noqa: F722
+        b_K: Float[Tensor, "n_layers n_heads d_head"],  # noqa: F722
+        b_V: Float[Tensor, "n_layers n_heads d_head"],  # noqa: F722
+        b_O: Float[Tensor, "n_layers d_model"],  # noqa: F722
         *,
-        unsafe: bool = False,
+        attention_dir: Literal["bidirectional", "causal"] = "causal",
     ) -> Iterable[Tuple[str, Tensor]]:
-        self.assert_model_supported(model, unsafe=unsafe)
-        W_E: Float[Tensor, "d_vocab d_model"]  # noqa: F722
-        W_pos: Float[Tensor, "n_ctx d_model"]  # noqa: F722
-        W_U: Float[Tensor, "d_model d_vocab_out"]  # noqa: F722
-        W_Q: Float[Tensor, "n_layers n_heads d_model d_head"]  # noqa: F722
-        W_K: Float[Tensor, "n_layers n_heads d_model d_head"]  # noqa: F722
-        W_V: Float[Tensor, "n_layers n_heads d_model d_head"]  # noqa: F722
-        W_O: Float[Tensor, "n_layers n_heads d_head d_model"]  # noqa: F722
-        b_U: Float[Tensor, "d_vocab_out"]  # noqa: F821
-        b_Q: Float[Tensor, "n_layers n_heads d_head"]  # noqa: F722
-        b_K: Float[Tensor, "n_layers n_heads d_head"]  # noqa: F722
-        b_V: Float[Tensor, "n_layers n_heads d_head"]  # noqa: F722
-        b_O: Float[Tensor, "n_layers d_model"]  # noqa: F722
-        W_E, W_pos, W_U, W_Q, W_K, W_V, W_O = (
-            model.W_E,
-            model.W_pos,
-            model.W_U,
-            model.W_Q,
-            model.W_K,
-            model.W_V,
-            model.W_O,
-        )
-        b_U, b_Q, b_K, b_V, b_O = (
-            model.b_U,
-            model.b_Q,
-            model.b_K,
-            model.b_V,
-            model.b_O,
-        )
+        _n_layers, n_heads, _d_model, _d_head = W_Q.shape
         if (
             self.EQKE
             or self.EQKP
@@ -447,23 +430,26 @@ class ModelMatrixLoggingOptions:
                         if self.qtok is not None:
                             sEq[l] = f"E[{self.qtok}]"
                             W_E_q[l] = W_E[self.qtok]
-                            if self.qtok % d_vocab == -1 % d_vocab:
-                                sEk[l] = f"(E[:-1]-E[-1])"
-                                W_E_k[l] = W_E[: self.qtok] - W_E_q[l]
-                            elif self.qtok == 0:
-                                sEk[l] = f"(E[1:]-E[0])"
-                                W_E_k[l] = W_E[self.qtok + 1 :] - W_E_q[l]
-                            else:
-                                sEk[l] = (
-                                    f"(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}])"
-                                )
-                                W_E_k[l] = (
-                                    torch.cat(
-                                        [W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0
+                            sEk[l] = f"(E-{sEq[l]})"
+                            W_E_k[l] = W_E - W_E_q[l]
+                            if self.exclude_self_attention:
+                                if self.qtok % d_vocab == -1 % d_vocab:
+                                    sEk[l] = f"(E[:-1]-E[-1])"
+                                    W_E_k[l] = W_E_k[l][: self.qtok]
+                                elif self.qtok == 0:
+                                    sEk[l] = f"(E[1:]-E[0])"
+                                    W_E_k[l] = W_E_k[l][self.qtok + 1 :]
+                                else:
+                                    sEk[l] = (
+                                        f"(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}])"
                                     )
-                                    if self.exclude_self_attention
-                                    else W_E
-                                ) - W_E_q[l]
+                                    W_E_k[l] = torch.cat(
+                                        [
+                                            W_E_k[l][: self.qtok],
+                                            W_E_k[l][self.qtok + 1 :],
+                                        ],
+                                        dim=0,
+                                    )
                         else:
                             sEq[l] = f"E"
                             W_E_q[l] = W_E
@@ -472,24 +458,26 @@ class ModelMatrixLoggingOptions:
                         if self.qpos is not None:
                             sPq[l] = f"P[{self.qpos}]"
                             W_pos_q[l] = W_pos[self.qpos]
-                            if self.qpos % n_ctx == -1 % n_ctx:
-                                sPk[l] = f"(P[:-1]-P[-1])"
-                                W_pos_k[l] = W_pos[: self.qpos] - W_pos_q[l]
-                            elif self.qpos == 0:
-                                sPk[l] = f"(P[1:]-P[0])"
-                                W_pos_k[l] = W_pos[self.qpos + 1 :] - W_pos_q[l]
-                            else:
-                                sPk[l] = (
-                                    f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
-                                )
-                                W_pos_k[l] = (
-                                    torch.cat(
-                                        [W_pos[: self.qpos], W_pos[self.qpos + 1 :]],
+                            sPk[l] = f"(P-{sPq[l]})"
+                            W_pos_k[l] = W_pos - W_pos_q[l]
+                            if self.exclude_self_attention:
+                                if self.qpos % n_ctx == -1 % n_ctx:
+                                    sPk[l] = f"(P[:-1]-P[-1])"
+                                    W_pos_k[l] = W_pos_k[l][: self.qpos]
+                                elif self.qpos == 0:
+                                    sPk[l] = f"(P[1:]-P[0])"
+                                    W_pos_k[l] = W_pos_k[l][self.qpos + 1 :]
+                                else:
+                                    sPk[l] = (
+                                        f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
+                                    )
+                                    W_pos_k[l] = torch.cat(
+                                        [
+                                            W_pos_k[l][: self.qpos],
+                                            W_pos_k[l][self.qpos + 1 :],
+                                        ],
                                         dim=0,
                                     )
-                                    if self.exclude_self_attention
-                                    else W_pos
-                                ) - W_pos_q[l]
                         else:
                             W_pos_q[l] = W_pos
                             sPq[l] = f"P"
@@ -499,23 +487,26 @@ class ModelMatrixLoggingOptions:
                         if self.qtok is not None:
                             sEq[l] = f"E[{self.qtok}]"
                             W_E_q[l] = W_E[self.qtok]
-                            if self.qtok % d_vocab == -1 % d_vocab:
-                                sEk[l] = f"(E[:-1]-E[-1])"
-                                W_E_k[l] = W_E[: self.qtok] - W_E_q[l]
-                            elif self.qtok == 0:
-                                sEk[l] = f"(E[1:]-E[0])"
-                                W_E_k[l] = W_E[self.qtok + 1 :] - W_E_q[l]
-                            else:
-                                sEk[l] = (
-                                    f"(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}])"
-                                )
-                                W_E_k[l] = (
-                                    torch.cat(
-                                        [W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0
+                            sEk[l] = f"(E-{sEq[l]})"
+                            W_E_k[l] = W_E - W_E_q[l]
+                            if self.exclude_self_attention:
+                                if self.qtok % d_vocab == -1 % d_vocab:
+                                    sEk[l] = f"(E[:-1]-E[-1])"
+                                    W_E_k[l] = W_E_k[l][: self.qtok]
+                                elif self.qtok == 0:
+                                    sEk[l] = f"(E[1:]-E[0])"
+                                    W_E_k[l] = W_E_k[l][self.qtok + 1 :]
+                                else:
+                                    sEk[l] = (
+                                        f"(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}])"
                                     )
-                                    if self.exclude_self_attention
-                                    else W_E
-                                ) - W_E_q[l]
+                                    W_E_k[l] = torch.cat(
+                                        [
+                                            W_E_k[l][: self.qtok],
+                                            W_E_k[l][self.qtok + 1 :],
+                                        ],
+                                        dim=0,
+                                    )
                         else:
                             sEq[l] = f"E"
                             W_E_q[l] = W_E
@@ -524,29 +515,33 @@ class ModelMatrixLoggingOptions:
                         if self.qpos is not None:
                             sPq[l] = f"P[{self.qpos}]"
                             W_pos_q[l] = W_pos[self.qpos]
-                            if self.qpos % n_ctx == -1 % n_ctx:
-                                sEk[l] = f"({sEk[l]}+𝔼(P[:-1]-P[-1]))"
-                                sPk[l] = f"(P[:-1]-𝔼P[:-1])"
-                                W_pos_k[l] = W_pos[: self.qpos] - W_pos_q[l]
-                            elif self.qpos == 0:
-                                sEk[l] = f"({sEk[l]}+𝔼(P[1:]-P[0]))"
-                                sPk[l] = f"(P[1:]-𝔼P[1:])"
-                                W_pos_k[l] = W_pos[self.qpos + 1 :] - W_pos_q[l]
-                            else:
-                                sEk[l] = (
-                                    f"({sEk[l]}+𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}]))"
-                                )
-                                sPk[l] = (
-                                    f"(P[:{self.qpos}]+P[{self.qpos+1}:]-𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]))"
-                                )
-                                W_pos_k[l] = (
-                                    torch.cat(
-                                        [W_pos[: self.qpos], W_pos[self.qpos + 1 :]],
+                            W_pos_k[l] = W_pos - W_pos_q[l]
+                            if self.exclude_self_attention:
+                                if self.qpos % n_ctx == -1 % n_ctx:
+                                    sEk[l] = f"({sEk[l]}+𝔼(P[:-1]-P[-1]))"
+                                    sPk[l] = f"(P[:-1]-𝔼P[:-1])"
+                                    W_pos_k[l] = W_pos_k[l][: self.qpos]
+                                elif self.qpos == 0:
+                                    sEk[l] = f"({sEk[l]}+𝔼(P[1:]-P[0]))"
+                                    sPk[l] = f"(P[1:]-𝔼P[1:])"
+                                    W_pos_k[l] = W_pos_k[l][self.qpos + 1 :]
+                                else:
+                                    sEk[l] = (
+                                        f"({sEk[l]}+𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}]))"
+                                    )
+                                    sPk[l] = (
+                                        f"(P[:{self.qpos}]+P[{self.qpos+1}:]-𝔼(P[:{self.qpos}]+P[{self.qpos+1}:]))"
+                                    )
+                                    W_pos_k[l] = torch.cat(
+                                        [
+                                            W_pos_k[l][: self.qpos],
+                                            W_pos_k[l][self.qpos + 1 :],
+                                        ],
                                         dim=0,
                                     )
-                                    if self.exclude_self_attention
-                                    else W_pos
-                                ) - W_pos_q[l]
+                            else:
+                                sEk[l] = f"({sEk[l]}+𝔼(P-{sPq[l]})"
+                                sPk[l] = f"(P-{sPq[l]})"
                             W_E_q[l] = W_E_q[l] + W_pos_q[l]
                             W_pos_q[l] = W_pos_q[l] - W_pos_q[l]
                             W_pos_k_avg = W_pos_k[l].mean(dim=0)
@@ -573,24 +568,26 @@ class ModelMatrixLoggingOptions:
                         if self.qpos is not None:
                             sPq[l] = f"P[{self.qpos}]"
                             W_pos_q[l] = W_pos[self.qpos]
-                            if self.qpos % n_ctx == -1 % n_ctx:
-                                sPk[l] = f"(P[:-1]-P[-1])"
-                                W_pos_k[l] = W_pos[: self.qpos] - W_pos_q[l]
-                            elif self.qpos == 0:
-                                sPk[l] = f"(P[1:]-P[0])"
-                                W_pos_k[l] = W_pos[self.qpos + 1 :] - W_pos_q[l]
-                            else:
-                                sPk[l] = (
-                                    f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
-                                )
-                                W_pos_k[l] = (
-                                    torch.cat(
-                                        [W_pos[: self.qpos], W_pos[self.qpos + 1 :]],
+                            W_pos_k[l] = W_pos - W_pos_q[l]
+                            sPk[l] = f"(P-{sPq[l]})"
+                            if self.exclude_self_attention:
+                                if self.qpos % n_ctx == -1 % n_ctx:
+                                    sPk[l] = f"(P[:-1]-P[-1])"
+                                    W_pos_k[l] = W_pos_k[l][: self.qpos]
+                                elif self.qpos == 0:
+                                    sPk[l] = f"(P[1:]-P[0])"
+                                    W_pos_k[l] = W_pos_k[l][self.qpos + 1 :]
+                                else:
+                                    sPk[l] = (
+                                        f"(P[:{self.qpos}]+P[{self.qpos+1}:]-P[{self.qpos}])"
+                                    )
+                                    W_pos_k[l] = torch.cat(
+                                        [
+                                            W_pos_k[l][: self.qpos],
+                                            W_pos_k[l][self.qpos + 1 :],
+                                        ],
                                         dim=0,
                                     )
-                                    if self.exclude_self_attention
-                                    else W_pos
-                                ) - W_pos_q[l]
                         else:
                             sPq[l] = f"P"
                             W_pos_q[l] = W_pos
@@ -599,28 +596,32 @@ class ModelMatrixLoggingOptions:
                         if self.qtok is not None:
                             sEq[l] = f"E[{self.qtok}]"
                             W_E_q[l] = W_E[self.qtok]
-                            if self.qtok % d_vocab == -1 % d_vocab:
-                                sEk[l] = f"({sEk[l]}+𝔼(E[:-1]-E[-1]))"
-                                sEk[l] = f"(E[:-1]-𝔼E[:-1])"
-                                W_E_k[l] = W_E[: self.qtok] - W_E_q[l]
-                            elif self.qtok == 0:
-                                sEk[l] = f"({sEk[l]}+𝔼(E[1:]-E[0]))"
-                                sEk[l] = f"(E[1:]-𝔼E[1:])"
-                                W_E_k[l] = W_E[self.qtok + 1 :] - W_E_q[l]
-                            else:
-                                sEk[l] = (
-                                    f"({sEk[l]}+𝔼(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}]))"
-                                )
-                                sEk[l] = (
-                                    f"(E[:{self.qtok}]+E[{self.qtok+1}:]-𝔼(E[:{self.qtok}]+E[{self.qtok+1}:]))"
-                                )
-                                W_E_k[l] = (
-                                    torch.cat(
-                                        [W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0
+                            W_E_k[l] = W_E - W_E_q[l]
+                            if self.exclude_self_attention:
+                                if self.qtok % d_vocab == -1 % d_vocab:
+                                    # sEk[l] = f"({sEk[l]}+𝔼(E[:-1]-E[-1]))"
+                                    sEk[l] = f"(E[:-1]-𝔼E[:-1])"
+                                    W_E_k[l] = W_E_k[l][: self.qtok]
+                                elif self.qtok == 0:
+                                    # sEk[l] = f"({sEk[l]}+𝔼(E[1:]-E[0]))"
+                                    sEk[l] = f"(E[1:]-𝔼E[1:])"
+                                    W_E_k[l] = W_E_k[l][self.qtok + 1 :]
+                                else:
+                                    # sEk[l] = (
+                                    #     f"({sEk[l]}+𝔼(E[:{self.qtok}]+E[{self.qtok+1}:]-E[{self.qtok}]))"
+                                    # )
+                                    sEk[l] = (
+                                        f"(E[:{self.qtok}]+E[{self.qtok+1}:]-𝔼(E[:{self.qtok}]+E[{self.qtok+1}:]))"
                                     )
-                                    if self.exclude_self_attention
-                                    else W_E
-                                ) - W_E_q[l]
+                                    W_E_k[l] = torch.cat(
+                                        [
+                                            W_E_k[l][: self.qtok],
+                                            W_E_k[l][self.qtok + 1 :],
+                                        ],
+                                        dim=0,
+                                    )
+                            else:
+                                sEk[l] = f"({sEk[l]}+𝔼(E-{sEq[l]})"
                             W_pos_q[l] = W_pos_q[l] + W_E_q[l]
                             W_E_q[l] = W_E_q[l] - W_E_q[l]
                             W_E_k_avg = W_E_k[l].mean(dim=0)
@@ -822,8 +823,7 @@ class ModelMatrixLoggingOptions:
                                 "pos",
                             ),
                             self.PQKP,
-                            self.nanify_causal_attn
-                            and model.cfg.attention_dir == "causal",
+                            self.nanify_causal_attn and attention_dir == "causal",
                         ),
                     ):
                         if test:
@@ -839,7 +839,7 @@ class ModelMatrixLoggingOptions:
                                         x, l, h, bias=bias[l] == qbias
                                     )
                                 ),
-                                model.cfg.n_heads,
+                                n_heads,
                                 x=qx,
                                 x_direct=qx_direct,
                                 sx=qsx,
@@ -863,7 +863,7 @@ class ModelMatrixLoggingOptions:
                                             x, l, h, bias=bias[l] == kbias
                                         )
                                     ),
-                                    model.cfg.n_heads,
+                                    n_heads,
                                     x=kx,
                                     x_direct=kx_direct,
                                     sx=f"{ksx}ᵀ",
@@ -902,7 +902,7 @@ class ModelMatrixLoggingOptions:
                             _,
                         ) in ModelMatrixLoggingOptions.compute_paths(
                             (lambda x, l, h: apply_VO(x, l, h, bias=bias[l] == "tok")),
-                            model.cfg.n_heads,
+                            n_heads,
                             x=W_E_v[l],
                             x_direct=W_E_v[l],
                             sx=sEv[l],
@@ -928,7 +928,7 @@ class ModelMatrixLoggingOptions:
                             _,
                         ) in ModelMatrixLoggingOptions.compute_paths(
                             (lambda x, l, h: apply_VO(x, l, h, bias=bias[l] == "pos")),
-                            model.cfg.n_heads,
+                            n_heads,
                             x=W_pos_v[l],
                             x_direct=W_pos_v[l],
                             sx=sPv[l],
@@ -946,6 +946,30 @@ class ModelMatrixLoggingOptions:
                                     bias=bias[l] == "pos",
                                 ),
                             )
+
+    @torch.no_grad()
+    def matrices_to_log(
+        self,
+        model: HookedTransformer,
+        *,
+        unsafe: bool = False,
+    ) -> Iterable[Tuple[str, Tensor]]:
+        self.assert_model_supported(model, unsafe=unsafe)
+        yield from self.matrices_to_plot(
+            model.W_E,
+            model.W_pos,
+            model.W_U,
+            model.W_Q,
+            model.W_K,
+            model.W_V,
+            model.W_O,
+            model.b_U,
+            model.b_Q,
+            model.b_K,
+            model.b_V,
+            model.b_O,
+            attention_dir=model.cfg.attention_dir,
+        )
 
     @torch.no_grad()
     def log_matrices(

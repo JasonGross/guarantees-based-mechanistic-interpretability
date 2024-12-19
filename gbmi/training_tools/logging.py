@@ -230,6 +230,7 @@ class ModelMatrixLoggingOptions:
     group_colorbars: bool = True
     shortformer: bool = False
     nanify_causal_attn: bool = True
+    include_short_title: bool = True
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -293,29 +294,35 @@ class ModelMatrixLoggingOptions:
         n_heads: int,
         x: Float[Tensor, "... a d_model"],  # noqa: F722
         sx: str,
+        sx_short: str,
         l: int,  # layer that we're computing input paths to
         reverse_strs: bool = False,
-    ) -> Iterable[Tuple[str, str, Float[Tensor, "... a d_model"]]]:  # noqa: F722
+    ) -> Iterable[Tuple[str, str, str, Float[Tensor, "... a d_model"]]]:  # noqa: F722
         """Returns an iterable of ("VO"*, "lₙ{l}hₙ{h}"*, value) tuples of what x transforms to under repeated applications of apply_VO to layers up to and inlcuding l"""
         if l < 0:
             return
         if l == 0:
             for h in range(n_heads):
                 cur_vo = f"{sx}VO" if not reverse_strs else f"OᵀVᵀ{sx}"
-                yield cur_vo, f"h{subscript(str(l))}{h}", apply_VO(x, l, h)
+                cur_vo_short = (
+                    f"{sx_short}VO" if not reverse_strs else f"OᵀVᵀ{sx_short}"
+                )
+                yield cur_vo, cur_vo_short, f"h{subscript(str(l))}{h}", apply_VO(
+                    x, l, h
+                )
             return
         vo2 = "VO" if not reverse_strs else "OᵀVᵀ"
-        for vo, lh, value in ModelMatrixLoggingOptions._compute_paths(
-            apply_VO, n_heads, x, sx, l - 1, reverse_strs=reverse_strs
+        for vo, vo_short, lh, value in ModelMatrixLoggingOptions._compute_paths(
+            apply_VO, n_heads, x, sx, sx_short, l - 1, reverse_strs=reverse_strs
         ):
             for h in range(n_heads):
                 lh2 = f"h{subscript(str(l-1))}{h}"
-                cur_vo, cur_lh = (
-                    (f"{vo}{vo2}", f"{lh}{lh2}")
+                cur_vo, cur_vo_short, cur_lh = (
+                    (f"{vo}{vo2}", f"{vo_short}{vo2}", f"{lh}{lh2}")
                     if not reverse_strs
-                    else (f"{vo2}{vo}", f"{lh2}{lh}")
+                    else (f"{vo2}{vo}", f"{vo2}{vo_short}", f"{lh2}{lh}")
                 )
-                yield cur_vo, cur_lh, apply_VO(value, l, h)
+                yield cur_vo, cur_vo_short, cur_lh, apply_VO(value, l, h)
 
     @staticmethod
     def compute_paths(
@@ -327,19 +334,23 @@ class ModelMatrixLoggingOptions:
         x: Float[Tensor, "... a d_model"],  # noqa: F722
         x_direct: Float[Tensor, "... a d_model"],  # noqa: F722
         sx: str,
+        sx_short: str,
         sx_direct: str,
+        sx_direct_short: str,
         l: int,  # layer that we're computing input paths to
         reverse_strs: bool = False,
         *,
         skip_composition: bool = False,
-    ) -> Iterable[Tuple[str, str, Float[Tensor, "... a d_model"], bool]]:  # noqa: F722
-        """Returns an iterable of ("VO"*, "lₙ{l}hₙ{h}"*, value, is_direct) tuples of what x transforms to under repeated applications of apply_VO to layers strictly before l"""
-        yield sx_direct, "", x_direct, True
+    ) -> Iterable[
+        Tuple[str, str, str, Float[Tensor, "... a d_model"], bool]  # noqa: F722
+    ]:
+        """Returns an iterable of ("VO"*, "VO"*, "lₙ{l}hₙ{h}"*, value, is_direct) tuples of what x transforms to under repeated applications of apply_VO to layers strictly before l"""
+        yield sx_direct, sx_direct_short, "", x_direct, True
         if not skip_composition:
-            for svo, lh, val in ModelMatrixLoggingOptions._compute_paths(
-                apply_VO, n_heads, x, sx, l - 1, reverse_strs=reverse_strs
+            for svo, svo_short, lh, val in ModelMatrixLoggingOptions._compute_paths(
+                apply_VO, n_heads, x, sx, sx_short, l - 1, reverse_strs=reverse_strs
             ):
-                yield svo, lh, val, False
+                yield svo, svo_short, lh, val, False
 
     @torch.no_grad()
     def matrices_to_log(
@@ -689,24 +700,71 @@ class ModelMatrixLoggingOptions:
             for l in range(W_Q.shape[0]):
                 for h in range(W_Q.shape[1]):
                     for (
-                        (qx, qx_direct, qsx, qsx_direct, qskip_composition, qbias),
-                        (kx, kx_direct, ksx, ksx_direct, kskip_composition, kbias),
+                        (
+                            qx,
+                            qx_direct,
+                            qsx,
+                            qsx_short,
+                            qsx_direct,
+                            qsx_direct_short,
+                            qskip_composition,
+                            qbias,
+                        ),
+                        (
+                            kx,
+                            kx_direct,
+                            ksx,
+                            ksx_short,
+                            ksx_direct,
+                            ksx_direct_short,
+                            kskip_composition,
+                            kbias,
+                        ),
                         test,
                         nanify_above_diagonal_if_query_direct,
                     ) in (
                         (
-                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False, "tok"),
-                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False, "tok"),
+                            (
+                                W_E_v[l],
+                                W_E_q[l],
+                                sEv[l],
+                                "E",
+                                sEq[l],
+                                "E",
+                                False,
+                                "tok",
+                            ),
+                            (
+                                W_E_v[l],
+                                W_E_k[l],
+                                sEv[l],
+                                "E",
+                                sEk[l],
+                                "E",
+                                False,
+                                "tok",
+                            ),
                             self.EQKE,
                             False,
                         ),
                         (
-                            (W_E_v[l], W_E_q[l], sEv[l], sEq[l], False, "tok"),
+                            (
+                                W_E_v[l],
+                                W_E_q[l],
+                                sEv[l],
+                                "E",
+                                sEq[l],
+                                "E",
+                                False,
+                                "tok",
+                            ),
                             (
                                 W_pos_v[l],
                                 W_pos_k[l],
                                 sPv[l],
+                                "P",
                                 sPk[l],
+                                "P",
                                 self.shortformer,
                                 "pos",
                             ),
@@ -718,11 +776,22 @@ class ModelMatrixLoggingOptions:
                                 W_pos_v[l],
                                 W_pos_q[l],
                                 sPv[l],
+                                "P",
                                 sPq[l],
+                                "P",
                                 self.shortformer,
                                 "pos",
                             ),
-                            (W_E_v[l], W_E_k[l], sEv[l], sEk[l], False, "tok"),
+                            (
+                                W_E_v[l],
+                                W_E_k[l],
+                                sEv[l],
+                                "E",
+                                sEk[l],
+                                "E",
+                                False,
+                                "tok",
+                            ),
                             self.PQKE,
                             False,
                         ),
@@ -731,7 +800,9 @@ class ModelMatrixLoggingOptions:
                                 W_pos_v[l],
                                 W_pos_q[l],
                                 sPv[l],
+                                "P",
                                 sPq[l],
+                                "P",
                                 self.shortformer,
                                 "pos",
                             ),
@@ -739,7 +810,9 @@ class ModelMatrixLoggingOptions:
                                 W_pos_v[l],
                                 W_pos_k[l],
                                 sPv[l],
+                                "P",
                                 sPk[l],
+                                "P",
                                 self.shortformer,
                                 "pos",
                             ),
@@ -751,6 +824,7 @@ class ModelMatrixLoggingOptions:
                         if test:
                             for (
                                 sq,
+                                sq_short,
                                 lh_q,
                                 v_q,
                                 is_direct_q,
@@ -764,13 +838,16 @@ class ModelMatrixLoggingOptions:
                                 x=qx,
                                 x_direct=qx_direct,
                                 sx=qsx,
+                                sx_short=qsx_short,
                                 sx_direct=qsx_direct,
+                                sx_direct_short=qsx_direct_short,
                                 l=l,
                                 reverse_strs=False,
                                 skip_composition=qskip_composition,
                             ):
                                 for (
                                     sk,
+                                    sk_short,
                                     lh_k,
                                     v_k,
                                     is_direct_k,
@@ -784,7 +861,9 @@ class ModelMatrixLoggingOptions:
                                     x=kx,
                                     x_direct=kx_direct,
                                     sx=f"{ksx}ᵀ",
+                                    sx_short=f"{ksx_short}ᵀ",
                                     sx_direct=ksx_direct,
+                                    sx_direct_short=ksx_direct_short,
                                     l=l,
                                     reverse_strs=True,
                                     skip_composition=kskip_composition,
@@ -804,41 +883,58 @@ class ModelMatrixLoggingOptions:
                                             )
                                             matrix[..., rows, cols] = float("nan")
                                         yield (
-                                            f"{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
+                                            f"{f'{sq_short}QKᵀ{sk_short}<br>' if self.include_short_title else ''}{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
                                             matrix,
                                         )
                     if self.EVOU:
-                        for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
+                        for (
+                            sv,
+                            sv_short,
+                            lh_v,
+                            v,
+                            _,
+                        ) in ModelMatrixLoggingOptions.compute_paths(
                             (lambda x, l, h: apply_VO(x, l, h, bias=bias[l] == "tok")),
                             model.cfg.n_heads,
                             x=W_E_v[l],
                             x_direct=W_E_v[l],
                             sx=sEv[l],
+                            sx_short="E",
+                            sx_direct=sEv[l],
+                            sx_direct_short="E",
                             sx_direct=sEv[l],
                             l=l,
                             reverse_strs=False,
                         ):
                             yield (
-                                f"{sv}VOU<br>.{lh_v}l{l}h{h}",
+                                f"{f'{sv_short}VOU<br>' if self.include_short_title else ''}{sv}VOU<br>.{lh_v}l{l}h{h}",
                                 apply_U(
                                     apply_VO(v, l, h, bias=bias[l] == "tok"),
                                     bias=bias[l] == "tok",
                                 ),
                             )
                     if self.PVOU:
-                        for sv, lh_v, v, _ in ModelMatrixLoggingOptions.compute_paths(
+                        for (
+                            sv,
+                            sv_short,
+                            lh_v,
+                            v,
+                            _,
+                        ) in ModelMatrixLoggingOptions.compute_paths(
                             (lambda x, l, h: apply_VO(x, l, h, bias=bias[l] == "pos")),
                             model.cfg.n_heads,
                             x=W_pos_v[l],
                             x_direct=W_pos_v[l],
                             sx=sPv[l],
+                            sx_short="P",
                             sx_direct=sPv[l],
+                            sx_direct_short="P",
                             l=l,
                             reverse_strs=False,
                             skip_composition=self.shortformer,
                         ):
                             yield (
-                                f"{sv}VOU<br>.{lh_v}l{l}h{h}",
+                                f"{f'{sv_short}VOU<br>' if self.include_short_title else ''}{sv}VOU<br>.{lh_v}l{l}h{h}",
                                 apply_U(
                                     apply_VO(v, l, h, bias=bias[l] == "pos"),
                                     bias=bias[l] == "pos",

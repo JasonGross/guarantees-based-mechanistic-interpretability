@@ -232,6 +232,8 @@ class ModelMatrixLoggingOptions:
     nanify_causal_attn: bool = True
     include_short_title: bool = True
     exclude_self_attention: bool = False
+    subtract_min_attention: bool = False
+    subtract_max_attention: bool = False
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -884,6 +886,15 @@ class ModelMatrixLoggingOptions:
                                         matrix = apply_Q(
                                             v_q, l, h, bias=bias[l] == qbias
                                         ) @ apply_KT(v_k, l, h, bias=bias[l] == kbias)
+                                        if not self.exclude_self_attention:
+                                            if self.subtract_max_attention:
+                                                matrix = matrix - matrix.amax(
+                                                    dim=-1, keepdim=True
+                                                )
+                                            elif self.subtract_min_attention:
+                                                matrix = matrix - matrix.amin(
+                                                    dim=-1, keepdim=True
+                                                )
                                         if (
                                             nanify_above_diagonal_if_query_direct
                                             and is_direct_q

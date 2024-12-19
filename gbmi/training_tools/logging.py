@@ -403,10 +403,6 @@ class ModelMatrixLoggingOptions:
             sEk: dict[int, str] = {}
             sPq: dict[int, str] = {}
             sPk: dict[int, str] = {}
-            sEq_gen: dict[int, str] = {}
-            sEk_gen: dict[int, str] = {}
-            sPq_gen: dict[int, str] = {}
-            sPk_gen: dict[int, str] = {}
             sEv: dict[int, str] = {}
             sPv: dict[int, str] = {}
             W_E_q: Union[
@@ -431,10 +427,6 @@ class ModelMatrixLoggingOptions:
                     Float[Tensor, "n_ctx d_model"],  # noqa: F722
                 ],
             ] = {}
-            W_E_q_gen: dict[int, Float[Tensor, "d_vocab d_model"]] = {}  # noqa: F722
-            W_E_k_gen: dict[int, Float[Tensor, "d_vocab d_model"]] = {}  # noqa: F722
-            W_pos_q_gen: dict[int, Float[Tensor, "n_ctx d_model"]] = {}  # noqa: F722
-            W_pos_k_gen: dict[int, Float[Tensor, "n_ctx d_model"]] = {}  # noqa: F722
             W_E_v: dict[int, Float[Tensor, "d_vocab d_model"]] = {}  # noqa: F722
             W_pos_v: dict[int, Float[Tensor, "n_ctx d_model"]] = {}  # noqa: F722
 
@@ -448,10 +440,6 @@ class ModelMatrixLoggingOptions:
                 )
                 match add_mean:
                     case None:
-                        sEq_gen[l] = f"E"
-                        W_E_q_gen[l] = W_E
-                        sEk_gen[l] = f"E"
-                        W_E_k_gen[l] = W_E
                         if self.qtok is not None:
                             sEq[l] = f"E[{self.qtok}]"
                             W_E_q[l] = W_E[self.qtok]
@@ -476,10 +464,6 @@ class ModelMatrixLoggingOptions:
                             W_E_q[l] = W_E
                             sEk[l] = f"E"
                             W_E_k[l] = W_E
-                        sPq_gen[l] = f"P"
-                        W_pos_q_gen[l] = W_pos
-                        sPk_gen[l] = f"P"
-                        W_pos_k_gen[l] = W_pos
                         if self.qpos is not None:
                             sPq[l] = f"P[{self.qpos}]"
                             W_pos_q[l] = W_pos[self.qpos]
@@ -506,10 +490,6 @@ class ModelMatrixLoggingOptions:
                             W_pos_k[l] = W_pos
                             sPk[l] = f"P"
                     case "pos_to_tok":
-                        sEq_gen[l] = f"E"
-                        W_E_q_gen[l] = W_E
-                        sEk_gen[l] = f"E"
-                        W_E_k_gen[l] = W_E
                         if self.qtok is not None:
                             sEq[l] = f"E[{self.qtok}]"
                             W_E_q[l] = W_E[self.qtok]
@@ -534,20 +514,6 @@ class ModelMatrixLoggingOptions:
                             W_E_q[l] = W_E
                             sEk[l] = f"E"
                             W_E_k[l] = W_E
-                        sPq_gen[l] = f"P"
-                        W_pos_q_gen[l] = W_pos
-                        sPk_gen[l] = f"P"
-                        W_pos_k_gen[l] = W_pos
-                        W_pos_k_gen_avg = W_pos_k_gen[l].mean(dim=0)
-                        W_pos_q_gen_avg = W_pos_q_gen[l].mean(dim=0)
-                        W_E_q_gen[l] = W_E_q_gen[l] + W_pos_q_gen_avg
-                        W_pos_q_gen[l] = W_pos_q_gen[l] - W_pos_q_gen_avg
-                        W_E_k_gen[l] = W_E_k_gen[l] + W_pos_k_gen_avg
-                        W_pos_k_gen[l] = W_pos_k_gen[l] - W_pos_k_gen_avg
-                        sEq_gen[l] = f"({sEq_gen[l]}+{str_mean(sPq_gen[l])})"
-                        sPq_gen[l] = f"({sPq_gen[l]}-{str_mean(sPq_gen[l])}"
-                        sEk_gen[l] = f"({sEk_gen[l]}+{str_mean(sPk_gen[l])})"
-                        sPk_gen[l] = f"({sPk_gen[l]}-{str_mean(sPk_gen[l])})"
                         if self.qpos is not None:
                             sPq[l] = f"P[{self.qpos}]"
                             W_pos_q[l] = W_pos[self.qpos]
@@ -596,10 +562,6 @@ class ModelMatrixLoggingOptions:
                             sEk[l] = f"({sEk[l]}+{str_mean(sPk[l])})"
                             sPk[l] = f"({sPk[l]}-{str_mean(sPk[l])})"
                     case "tok_to_pos":
-                        sPq_gen[l] = f"P"
-                        W_pos_q_gen[l] = W_pos
-                        sPk_gen[l] = f"P"
-                        W_pos_k_gen[l] = W_pos
                         if self.qpos is not None:
                             sPq[l] = f"P[{self.qpos}]"
                             W_pos_q[l] = W_pos[self.qpos]
@@ -625,20 +587,6 @@ class ModelMatrixLoggingOptions:
                             W_pos_q[l] = W_pos
                             sPk[l] = f"P"
                             W_pos_k[l] = W_pos
-                        W_E_q_gen[l] = W_E
-                        sEq_gen[l] = f"E"
-                        W_E_k_gen[l] = W_E
-                        sEk_gen[l] = f"E"
-                        W_E_k_gen_avg = W_E_k_gen[l].mean(dim=0)
-                        W_E_q_gen_avg = W_E_q_gen[l].mean(dim=0)
-                        W_pos_q_gen[l] = W_pos_q_gen[l] + W_E_q_gen_avg
-                        W_E_q_gen[l] = W_E_q_gen[l] - W_E_q_gen_avg
-                        W_pos_k_gen[l] = W_pos_k_gen[l] + W_E_k_gen_avg
-                        W_E_k_gen[l] = W_E_k_gen[l] - W_E_k_gen_avg
-                        sPq_gen[l] = f"({sPq_gen[l]}+{str_mean(sEq_gen[l])})"
-                        sEq_gen[l] = f"({sEq_gen[l]}-{str_mean(sEq_gen[l])})"
-                        sPk_gen[l] = f"({sPk_gen[l]}+{str_mean(sEk_gen[l])})"
-                        sEk_gen[l] = f"({sEk_gen[l]}-{str_mean(sEk_gen[l])})"
                         if self.qtok is not None:
                             sEq[l] = f"E[{self.qtok}]"
                             W_E_q[l] = W_E[self.qtok]

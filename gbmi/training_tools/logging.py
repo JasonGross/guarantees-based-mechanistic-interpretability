@@ -231,6 +231,7 @@ class ModelMatrixLoggingOptions:
     shortformer: bool = False
     nanify_causal_attn: bool = True
     include_short_title: bool = True
+    exclude_self_attention: bool = False
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -460,8 +461,9 @@ class ModelMatrixLoggingOptions:
                                     torch.cat(
                                         [W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0
                                     )
-                                    - W_E_q[l]
-                                )
+                                    if self.exclude_self_attention
+                                    else W_E
+                                ) - W_E_q[l]
                         else:
                             sEq[l] = f"E"
                             W_E_q[l] = W_E
@@ -485,8 +487,9 @@ class ModelMatrixLoggingOptions:
                                         [W_pos[: self.qpos], W_pos[self.qpos + 1 :]],
                                         dim=0,
                                     )
-                                    - W_pos_q[l]
-                                )
+                                    if self.exclude_self_attention
+                                    else W_pos
+                                ) - W_pos_q[l]
                         else:
                             W_pos_q[l] = W_pos
                             sPq[l] = f"P"
@@ -510,8 +513,9 @@ class ModelMatrixLoggingOptions:
                                     torch.cat(
                                         [W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0
                                     )
-                                    - W_E_q[l]
-                                )
+                                    if self.exclude_self_attention
+                                    else W_E
+                                ) - W_E_q[l]
                         else:
                             sEq[l] = f"E"
                             W_E_q[l] = W_E
@@ -540,8 +544,9 @@ class ModelMatrixLoggingOptions:
                                         [W_pos[: self.qpos], W_pos[self.qpos + 1 :]],
                                         dim=0,
                                     )
-                                    - W_pos_q[l]
-                                )
+                                    if self.exclude_self_attention
+                                    else W_pos
+                                ) - W_pos_q[l]
                             W_E_q[l] = W_E_q[l] + W_pos_q[l]
                             W_pos_q[l] = W_pos_q[l] - W_pos_q[l]
                             W_pos_k_avg = W_pos_k[l].mean(dim=0)
@@ -583,8 +588,9 @@ class ModelMatrixLoggingOptions:
                                         [W_pos[: self.qpos], W_pos[self.qpos + 1 :]],
                                         dim=0,
                                     )
-                                    - W_pos_q[l]
-                                )
+                                    if self.exclude_self_attention
+                                    else W_pos
+                                ) - W_pos_q[l]
                         else:
                             sPq[l] = f"P"
                             W_pos_q[l] = W_pos
@@ -612,8 +618,9 @@ class ModelMatrixLoggingOptions:
                                     torch.cat(
                                         [W_E[: self.qtok], W_E[self.qtok + 1 :]], dim=0
                                     )
-                                    - W_E_q[l]
-                                )
+                                    if self.exclude_self_attention
+                                    else W_E
+                                ) - W_E_q[l]
                             W_pos_q[l] = W_pos_q[l] + W_E_q[l]
                             W_E_q[l] = W_E_q[l] - W_E_q[l]
                             W_E_k_avg = W_E_k[l].mean(dim=0)

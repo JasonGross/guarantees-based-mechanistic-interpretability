@@ -716,10 +716,8 @@ class ModelMatrixLoggingOptions:
 
             for l in range(W_Q.shape[0]):
                 # include_separate_generalization
-                use_gen = (
-                    l != W_Q.shape[0] - 1
-                    and self.qtok is not None
-                    or self.qpos is not None
+                use_gen = (l != W_Q.shape[0] - 1) and (
+                    self.qtok is not None or self.qpos is not None
                 )
                 for h in range(W_Q.shape[1]):
                     for (

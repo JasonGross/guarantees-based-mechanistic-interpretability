@@ -304,9 +304,7 @@ class ModelMatrixLoggingOptions:
         if l == 0:
             for h in range(n_heads):
                 cur_vo = f"{sx}VO" if not reverse_strs else f"OᵀVᵀ{sx}"
-                cur_vo_short = (
-                    f"{sx_short}VO" if not reverse_strs else f"OᵀVᵀ{sx_short}"
-                )
+                cur_vo_short = f"{sx_short}VO" if not reverse_strs else f"OV{sx_short}"
                 yield cur_vo, cur_vo_short, f"h{subscript(str(l))}{h}", apply_VO(
                     x, l, h
                 )
@@ -861,7 +859,7 @@ class ModelMatrixLoggingOptions:
                                     x=kx,
                                     x_direct=kx_direct,
                                     sx=f"{ksx}ᵀ",
-                                    sx_short=f"{ksx_short}ᵀ",
+                                    sx_short=f"{ksx_short}",
                                     sx_direct=ksx_direct,
                                     sx_direct_short=ksx_direct_short,
                                     l=l,
@@ -883,7 +881,7 @@ class ModelMatrixLoggingOptions:
                                             )
                                             matrix[..., rows, cols] = float("nan")
                                         yield (
-                                            f"{f'{sq_short}QKᵀ{sk_short}<br>' if self.include_short_title else ''}{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
+                                            f"{f'{sq_short}QK{sk_short}<br>' if self.include_short_title else ''}{sq}QKᵀ{sk}<br>.{lh_q}l{l}h{h}{lh_k}",
                                             matrix,
                                         )
                     if self.EVOU:

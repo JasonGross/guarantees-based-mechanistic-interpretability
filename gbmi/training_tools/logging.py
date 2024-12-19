@@ -364,16 +364,21 @@ class ModelMatrixLoggingOptions:
         W_Q: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
         W_K: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
         W_V: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
-        W_O: Float[Tensor, "n_layers n_heads d_head d_model"],  # noqa: F722
-        b_U: Float[Tensor, "d_vocab_out"],  # noqa: F821
-        b_Q: Float[Tensor, "n_layers n_heads d_head"],  # noqa: F722
-        b_K: Float[Tensor, "n_layers n_heads d_head"],  # noqa: F722
-        b_V: Float[Tensor, "n_layers n_heads d_head"],  # noqa: F722
-        b_O: Float[Tensor, "n_layers d_model"],  # noqa: F722
+        W_O: Float[Tensor, "n_layers n_heads d_head d_model"],  # noqa: F722# noqa: F722
+        b_U: Optional[Float[Tensor, "d_vocab_out"]] = None,  # noqa: F821
+        b_Q: Optional[Float[Tensor, "n_layers n_heads d_head"]] = None,  # noqa: F722
+        b_K: Optional[Float[Tensor, "n_layers n_heads d_head"]] = None,  # noqa: F722
+        b_V: Optional[Float[Tensor, "n_layers n_heads d_head"]] = None,  # noqa: F722
+        b_O: Optional[Float[Tensor, "n_layers d_model"]] = None,  # noqa: F722
         *,
         attention_dir: Literal["bidirectional", "causal"] = "causal",
     ) -> Iterable[Tuple[str, Tensor]]:
         _n_layers, n_heads, _d_model, _d_head = W_Q.shape
+        b_U = b_U if b_U is not None else torch.zeros_like(W_U[0])
+        b_Q = b_Q if b_Q is not None else torch.zeros_like(W_Q[:, :, 0])
+        b_K = b_K if b_K is not None else torch.zeros_like(W_K[:, :, 0])
+        b_V = b_V if b_V is not None else torch.zeros_like(W_V[:, :, 0])
+        b_O = b_O if b_O is not None else torch.zeros_like(W_O[:, 0, 0])
         if (
             self.EQKE
             or self.EQKP

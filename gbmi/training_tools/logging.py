@@ -245,6 +245,8 @@ class ModelMatrixLoggingOptions:
     exclude_self_attention: bool = False
     subtract_min_attention: bool = False
     subtract_max_attention: bool = False
+    subtract_min_logit: bool = False
+    subtract_max_logit: bool = False
 
     @staticmethod
     def all(**kwargs) -> ModelMatrixLoggingOptions:
@@ -937,12 +939,17 @@ class ModelMatrixLoggingOptions:
                             l=l,
                             reverse_strs=False,
                         ):
+                            matrix = apply_U(
+                                apply_VO(v, l, h, bias=bias[l] == "tok"),
+                                bias=bias[l] == "tok",
+                            )
+                            if self.subtract_max_logit:
+                                matrix = matrix - matrix.amax(dim=-1, keepdim=True)
+                            elif self.subtract_min_logit:
+                                matrix = matrix - matrix.amin(dim=-1, keepdim=True)
                             yield (
                                 f"{f'{sv_short}VOU<br>' if self.include_short_title else ''}{sv}VOU<br>.{lh_v}l{l}h{h}",
-                                apply_U(
-                                    apply_VO(v, l, h, bias=bias[l] == "tok"),
-                                    bias=bias[l] == "tok",
-                                ),
+                                matrix,
                             )
                     if self.PVOU:
                         for (
@@ -964,12 +971,17 @@ class ModelMatrixLoggingOptions:
                             reverse_strs=False,
                             skip_composition=self.shortformer,
                         ):
+                            matrix = apply_U(
+                                apply_VO(v, l, h, bias=bias[l] == "pos"),
+                                bias=bias[l] == "pos",
+                            )
+                            if self.subtract_max_logit:
+                                matrix = matrix - matrix.amax(dim=-1, keepdim=True)
+                            elif self.subtract_min_logit:
+                                matrix = matrix - matrix.amin(dim=-1, keepdim=True)
                             yield (
                                 f"{f'{sv_short}VOU<br>' if self.include_short_title else ''}{sv}VOU<br>.{lh_v}l{l}h{h}",
-                                apply_U(
-                                    apply_VO(v, l, h, bias=bias[l] == "pos"),
-                                    bias=bias[l] == "pos",
-                                ),
+                                matrix,
                             )
 
     @torch.no_grad()

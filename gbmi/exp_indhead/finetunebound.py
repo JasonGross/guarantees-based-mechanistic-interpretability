@@ -409,7 +409,7 @@ def loss_bound(model, s, w):
                             i_1 - 1: a,
                         }
                         for i in range(8):
-                            dic.setdefault(i, torch.arange(8)[torch.arange(8) != a])
+                            dic.setdefault(i, torch.arange(26)[torch.arange(26) != a])
                         bound[a, i_2, i_1, j] = least_attention(a, i_1, i_2, j, dic)
 
     bound_soft = bound.softmax(dim=-1)
@@ -425,7 +425,9 @@ def loss_bound(model, s, w):
 
         n = torch.arange(d_voc)[torch.arange(d_voc) != b]
 
-        return (term_5[i, :, n] - term_5[i, :, b].unsqueeze(dim=-1)).max()
+        return (
+            term_5[i_2, dic[i_2]][..., n] - term_5[i_2, :, b].unsqueeze(dim=-1)
+        ).max()
 
     def loss_diff_2(b, i_1, i_2, dic):
 
@@ -563,7 +565,7 @@ def loss_bound(model, s, w):
                 if (i_1 < i_2) & (i_1 > 0):
                     dic = {i_1: b}
                     for i in range(8):
-                        dic.setdefault(i, torch.arange(8))
+                        dic.setdefault(i, torch.arange(26))
 
                     out[b, i_2, i_1] = total_bound(b, i_1, i_2, dic)
 

@@ -1009,16 +1009,41 @@ class ModelMatrixLoggingOptions:
         )
 
     @torch.no_grad()
-    def log_matrices(
+    def plot_matrices(
         self,
-        logger: Run,
-        model: HookedTransformer,
+        W_E: Float[Tensor, "d_vocab d_model"],  # noqa: F722
+        W_pos: Float[Tensor, "n_ctx d_model"],  # noqa: F722
+        W_U: Float[Tensor, "d_model d_vocab_out"],  # noqa: F722
+        W_Q: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
+        W_K: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
+        W_V: Float[Tensor, "n_layers n_heads d_model d_head"],  # noqa: F722
+        W_O: Float[Tensor, "n_layers n_heads d_head d_model"],  # noqa: F722# noqa: F722
+        b_U: Optional[Float[Tensor, "d_vocab_out"]] = None,  # noqa: F821
+        b_Q: Optional[Float[Tensor, "n_layers n_heads d_head"]] = None,  # noqa: F722
+        b_K: Optional[Float[Tensor, "n_layers n_heads d_head"]] = None,  # noqa: F722
+        b_V: Optional[Float[Tensor, "n_layers n_heads d_head"]] = None,  # noqa: F722
+        b_O: Optional[Float[Tensor, "n_layers d_model"]] = None,  # noqa: F722
         *,
-        unsafe: bool = False,
+        attention_dir: Literal["bidirectional", "causal"] = "causal",
         default_heatmap_kwargs: dict[str, Any] = {},
-        **kwargs,
-    ):
-        matrices = dict(self.matrices_to_log(model, unsafe=unsafe))
+    ) -> dict[str, go.Figure]:
+        matrices = dict(
+            self.matrices_to_plot(
+                W_E=W_E,
+                W_pos=W_pos,
+                W_U=W_U,
+                W_Q=W_Q,
+                W_K=W_K,
+                W_V=W_V,
+                W_O=W_O,
+                b_U=b_U,
+                b_Q=b_Q,
+                b_K=b_K,
+                b_V=b_V,
+                b_O=b_O,
+                attention_dir=attention_dir,
+            )
+        )
         if self.use_subplots:
             OVs = tuple(name for name, _ in matrices.items() if "U" in name)
             QKs = tuple(name for name, _ in matrices.items() if "U" not in name)
@@ -1060,6 +1085,35 @@ class ModelMatrixLoggingOptions:
                 )
                 for name, matrix in matrices.items()
             }
+        return figs
+
+    @torch.no_grad()
+    def log_matrices(
+        self,
+        logger: Run,
+        model: HookedTransformer,
+        *,
+        unsafe: bool = False,
+        default_heatmap_kwargs: dict[str, Any] = {},
+        **kwargs,
+    ):
+        self.assert_model_supported(model, unsafe=unsafe)
+        figs = self.plot_matrices(
+            model.W_E,
+            model.W_pos,
+            model.W_U,
+            model.W_Q,
+            model.W_K,
+            model.W_V,
+            model.W_O,
+            model.b_U,
+            model.b_Q,
+            model.b_K,
+            model.b_V,
+            model.b_O,
+            attention_dir=model.cfg.attention_dir,
+            default_heatmap_kwargs=default_heatmap_kwargs,
+        )
         logger.log(
             {encode_4_byte_unicode(k): v for k, v in figs.items()},
             commit=False,

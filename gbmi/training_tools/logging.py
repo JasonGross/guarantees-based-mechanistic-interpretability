@@ -1088,17 +1088,15 @@ class ModelMatrixLoggingOptions:
         return figs
 
     @torch.no_grad()
-    def log_matrices(
+    def plot_matrices_from_model(
         self,
-        logger: Run,
         model: HookedTransformer,
         *,
         unsafe: bool = False,
         default_heatmap_kwargs: dict[str, Any] = {},
-        **kwargs,
     ):
         self.assert_model_supported(model, unsafe=unsafe)
-        figs = self.plot_matrices(
+        return self.plot_matrices(
             model.W_E,
             model.W_pos,
             model.W_U,
@@ -1113,6 +1111,20 @@ class ModelMatrixLoggingOptions:
             model.b_O,
             attention_dir=model.cfg.attention_dir,
             default_heatmap_kwargs=default_heatmap_kwargs,
+        )
+
+    @torch.no_grad()
+    def log_matrices(
+        self,
+        logger: Run,
+        model: HookedTransformer,
+        *,
+        unsafe: bool = False,
+        default_heatmap_kwargs: dict[str, Any] = {},
+        **kwargs,
+    ):
+        figs = self.plot_matrices_from_model(
+            model, unsafe=unsafe, default_heatmap_kwargs=default_heatmap_kwargs
         )
         logger.log(
             {encode_4_byte_unicode(k): v for k, v in figs.items()},

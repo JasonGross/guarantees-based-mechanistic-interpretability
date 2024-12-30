@@ -189,71 +189,30 @@ term_8 = einops.einsum(
 )
 
 
-def hand_bound(s, v):
+def hand_bound(
+    W_E, W_pos, W_V_0, W_V_1, W_O_0, W_O_1, W_Q_0, W_Q_1, W_K_0, W_K_1, W_U, s, v
+):
 
-    W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float().to(device)
     W_E = noise(W_E, v)
-    W_pos = (
-        ein.array(lambda i, j: ((i + d_voc) == j) * 1.0, sizes=[n_ctx, d_model])
-        .float()
-        .to(device)
-    )
+
     W_pos = noise(W_pos, v)
-    W_O_0 = (
-        ein.array(lambda i, j: ((i + n_ctx + d_voc) == j) * 1.0, sizes=[d_voc, d_model])
-        .float()
-        .to(device)
-    )
+
     W_O_0 = noise(W_O_0, v)
-    W_V_0 = (
-        ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc])
-        .float()
-        .to(device)
-    )
+
     W_V_0 = noise(W_V_0, v)
-    W_V_1 = (
-        ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc])
-        .float()
-        .to(device)
-    )
+
     W_V_1 = noise(W_V_1, v)
-    W_O_1 = (
-        ein.array(lambda i, j: (i == j) * 100, sizes=[d_voc, d_model])
-        .float()
-        .to(device)
-    )
+
     W_O_1 = noise(W_O_1, v)
-    W_Q_0 = (
-        ein.array(
-            lambda i, j: where((i + d_voc + 1) == j, c, 0), sizes=[n_ctx, d_model]
-        )
-        .float()
-        .to(device)
-        .T
-    )
+
     W_Q_0 = noise(W_Q_0, v)
-    W_Q_1 = (
-        ein.array(lambda i, j: where(i == j, d, 0), sizes=[d_voc, d_model])
-        .float()
-        .T.to(device)
-    )
+
     W_Q_1 = noise(W_Q_1, v)
-    W_K_0 = (
-        ein.array(lambda i, j: where((i + d_voc) == j, c, 0), sizes=[n_ctx, d_model])
-        .float()
-        .T
-    ).to(device)
+
     W_K_0 = noise(W_K_0, v)
-    W_K_1 = (
-        ein.array(
-            lambda i, j: where((i + n_ctx + d_voc) == j, d, 0),
-            sizes=[d_voc, d_model],
-        )
-        .float()
-        .T
-    ).to(device)
+
     W_K_1 = noise(W_K_1, v)
-    W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
+
     W_U = noise(W_U, v)
 
     e_p = W_E.unsqueeze(dim=0) + W_pos.unsqueeze(dim=1)
@@ -334,6 +293,9 @@ def hand_bound(s, v):
         W_U,
         "q_pos q_val k, k l, l m, m n, n p, p q -> q_pos q_val q",
     )
+
+    if s == -1:
+        return (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8)
 
     table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
         "nan"
@@ -706,24 +668,49 @@ def hand_bound(s, v):
             + loss_diff_4(b, i_1, i_2, dic)
         )
 
-    out = torch.zeros((d_voc, n_ctx, n_ctx)) + torch.inf
+    if s == 3:
+
+        out = torch.zeros((d_voc, n_ctx, n_ctx)) + torch.inf
+        # b i_2 i_1
+
+        for b in range(e_p.shape[1]):
+
+            for i_2 in range(e_p.shape[0] - 1):
+                for i_1 in range(1, i_2):
+
+                    if (i_1 < i_2) & (i_1 > 0):
+                        dic = {i_1: b}
+                        for i in range(8):
+                            dic.setdefault(i, torch.arange(26))
+
+                        out[b, i_2, i_1] = total_bound(b, i_1, i_2, dic)
+
+        out_2 = 1 / (1 + ((d_voc - 1) * torch.exp(out)))
+
+        return (attn_1, bound, bound_2, out, out_2)
+
+        out = torch.zeros((d_voc, n_ctx, n_ctx, d_voc)) + torch.inf
     # b i_2 i_1
 
     for b in range(e_p.shape[1]):
+        for n in range(e_p.shape[1]):
+            for i_2 in range(e_p.shape[0] - 1):
+                for i_1 in range(1, i_2):
 
-        for i_2 in range(e_p.shape[0] - 1):
-            for i_1 in range(1, i_2):
+                    if (i_1 < i_2) & (i_1 > 0):
+                        dic = {i_1: b}
+                        for i in range(8):
+                            dic.setdefault(i, torch.arange(26))
 
-                if (i_1 < i_2) & (i_1 > 0):
-                    dic = {i_1: b}
-                    for i in range(8):
-                        dic.setdefault(i, torch.arange(26))
+                        out[b, i_2, i_1, n] = total_bound(b, i_1, i_2, dic, n)
 
-                    out[b, i_2, i_1] = total_bound(b, i_1, i_2, dic)
+    out_2 = einops.einsum(out.softmax(dim=-1), "b i_2 i_1 b -> b i_2 i_1")
 
-    out_2 = 1 / (1 + ((d_voc - 1) * torch.exp(out)))
+    out_3 = einops.einsum(
+        out - out.max(dim=-1).values.unsqueeze(dim=-1), "b i_2 i_1 b -> b i_2 i_1"
+    )
 
-    return (attn_1, bound, bound_2, out, out_2)
+    return (attn_1, bound, bound_2, out, out_2, out_3)
 
 
 # %%

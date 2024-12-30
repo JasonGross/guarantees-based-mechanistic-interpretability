@@ -1,4 +1,10 @@
 # %%
+import torch
+from gbmi.exp_max_of_n.train import MAX_OF_4_CONFIG
+import numpy as np
+from gbmi.exp_max_of_n.train import MAX_OF_10_CONFIG
+from gbmi.exp_max_of_n.train import MAX_OF_20_CONFIG
+from gbmi.model import train_or_load_model
 from math import *
 
 import numpy as np
@@ -6,15 +12,13 @@ import plotly.express as px
 import torch
 from scipy.stats import binom
 
-from gbmi.exp_max_of_n.train import MAX_OF_4_CONFIG, MAX_OF_10_CONFIG
-from gbmi.model import train_or_load_model
+# rundata, model = train_or_load_model(MAX_OF_4_CONFIG(123))
 
-rundata, model = train_or_load_model(MAX_OF_4_CONFIG(123))
-
-# rundata, model = train_or_load_model(MAX_OF_10_CONFIG)
+rundata, model = train_or_load_model(MAX_OF_10_CONFIG(123))
+# rundata, model = train_or_load_model(MAX_OF_20_CONFIG(123))
 
 torch.set_default_device("cuda")
-length = 4
+length = model.cfg.n_ctx
 attn_scale_0 = model.blocks[0].attn.attn_scale
 W_pos = model.W_pos
 W_E = model.W_E
@@ -275,6 +279,7 @@ for row in range(
                 1,
             )
         bounds[row][k] = currbound / (length - 1)
+        print(bounds[row][k])
 # %%
 mean_accuracy = []
 bounds = torch.tensor(bounds)

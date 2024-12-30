@@ -49,9 +49,21 @@ dill = "^0.3.8"
 tqdm-multiprocess = "^0.0.11"
 cirron = "^0.4"
 eintorch = "^0.2.5"
+<<<<<<< HEAD
 numpy = "^2.0.1"
 tikzplotlib-patched = "^0.10.1.post13"
 datasets = "^3.0.0"
+||||||| parent of 7287967 (added stuff)
+numpy = "^2.0.1"
+tikzplotlib-patched = "^0.10.1.post6"
+datasets = "^2.21.0"
+=======
+numpy = "^1.10"
+tikzplotlib-patched = "^0.10.1.post6"
+datasets = "^2.21.0"
+circuitsvis = "^1.43.2"
+plotly-gif = "^0.0.4"
+>>>>>>> 7287967 (added stuff)
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.0.0"

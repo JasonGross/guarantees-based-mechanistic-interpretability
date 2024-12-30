@@ -57,9 +57,10 @@ for i in range(1000):
         continue
     logits, cache = model.run_with_cache(sequence)
     softmax = cache["attn", 0].squeeze()[-1]
+    print(softmax)
     kl = kl_divergence(softmax, torch.tensor([1 / 4, 1 / 4, 1 / 4, 1 / 4]))
     kl_divergences.append(kl)
-
+# %%
 kl_clusters = []
 distance = 0.01
 for i in range(1000):

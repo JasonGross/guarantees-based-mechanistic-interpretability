@@ -35,12 +35,12 @@ from gbmi.model import train_or_load_model
 from gbmi.utils import ein
 from gbmi.utils.sequences import generate_all_sequences
 
-
+"""
 def armin(
     f: Callable[..., Tensor], sizes: Optional[List[Optional[int]]] = None
 ) -> Tensor:
     return ein.apply(f, collect=lambda xs, d: xs.max(d).indices, sizes=sizes)
-
+"""
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_default_device("cuda")
@@ -54,7 +54,12 @@ n_ctx = W_pos.shape[0]
 d_voc = W_E.shape[0]
 d_model = W_E.shape[1]
 
+
 # %%
+def noise(M, v):
+    return M + (torch.rand_like(M) - 0.5) * 2 * v
+
+
 W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float().to(device)
 W_pos = (
     ein.array(lambda i, j: ((i + d_voc) == j) * 1.0, sizes=[n_ctx, d_model])
@@ -72,7 +77,9 @@ W_V_0 = (
 W_V_1 = (
     ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc]).float().to(device)
 )
-W_O_1 = ein.array(lambda i, j: (i == j) * 10, sizes=[d_voc, d_model]).float().to(device)
+W_O_1 = (
+    ein.array(lambda i, j: (i == j) * 100, sizes=[d_voc, d_model]).float().to(device)
+)
 W_Q_0 = (
     ein.array(lambda i, j: where((i + d_voc + 1) == j, c, 0), sizes=[n_ctx, d_model])
     .float()
@@ -182,7 +189,151 @@ term_8 = einops.einsum(
 )
 
 
-def hand_bound(s):
+def hand_bound(s, v):
+
+    W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float().to(device)
+    W_E = noise(W_E, v)
+    W_pos = (
+        ein.array(lambda i, j: ((i + d_voc) == j) * 1.0, sizes=[n_ctx, d_model])
+        .float()
+        .to(device)
+    )
+    W_pos = noise(W_pos, v)
+    W_O_0 = (
+        ein.array(lambda i, j: ((i + n_ctx + d_voc) == j) * 1.0, sizes=[d_voc, d_model])
+        .float()
+        .to(device)
+    )
+    W_O_0 = noise(W_O_0, v)
+    W_V_0 = (
+        ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc])
+        .float()
+        .to(device)
+    )
+    W_V_0 = noise(W_V_0, v)
+    W_V_1 = (
+        ein.array(lambda i, j: (i == j) * 1.0, sizes=[d_model, d_voc])
+        .float()
+        .to(device)
+    )
+    W_V_1 = noise(W_V_1, v)
+    W_O_1 = (
+        ein.array(lambda i, j: (i == j) * 100, sizes=[d_voc, d_model])
+        .float()
+        .to(device)
+    )
+    W_O_1 = noise(W_O_1, v)
+    W_Q_0 = (
+        ein.array(
+            lambda i, j: where((i + d_voc + 1) == j, c, 0), sizes=[n_ctx, d_model]
+        )
+        .float()
+        .to(device)
+        .T
+    )
+    W_Q_0 = noise(W_Q_0, v)
+    W_Q_1 = (
+        ein.array(lambda i, j: where(i == j, d, 0), sizes=[d_voc, d_model])
+        .float()
+        .T.to(device)
+    )
+    W_Q_1 = noise(W_Q_1, v)
+    W_K_0 = (
+        ein.array(lambda i, j: where((i + d_voc) == j, c, 0), sizes=[n_ctx, d_model])
+        .float()
+        .T
+    ).to(device)
+    W_K_0 = noise(W_K_0, v)
+    W_K_1 = (
+        ein.array(
+            lambda i, j: where((i + n_ctx + d_voc) == j, d, 0),
+            sizes=[d_voc, d_model],
+        )
+        .float()
+        .T
+    ).to(device)
+    W_K_1 = noise(W_K_1, v)
+    W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
+    W_U = noise(W_U, v)
+
+    e_p = W_E.unsqueeze(dim=0) + W_pos.unsqueeze(dim=1)
+    term_0 = (
+        einops.einsum(
+            e_p,
+            W_Q_0,
+            W_K_0,
+            e_p,
+            "q_pos q_val k, k l, m l, k_pos k_val m -> q_pos q_val k_pos k_val",
+        )
+        / attn_scale_0
+    )
+    term_1 = (
+        einops.einsum(
+            e_p,
+            W_Q_1,
+            W_K_1,
+            e_p,
+            "q_pos q_val k, k l, m l, k_pos k_val m -> q_pos q_val k_pos k_val",
+        )
+        / attn_scale_1
+    )
+    term_2 = (
+        einops.einsum(
+            e_p,
+            W_V_0,
+            W_O_0,
+            W_Q_1,
+            W_K_1,
+            e_p,
+            "q_pos q_val k, k l, l m, m n, o n, k_pos k_val o -> q_pos q_val k_pos k_val",
+        )
+        / attn_scale_1
+    )
+
+    term_3 = (
+        einops.einsum(
+            e_p,
+            W_Q_1,
+            W_K_1,
+            W_O_0,
+            W_V_0,
+            e_p,
+            "q_pos q_val k, k l, m l, n m, o n, k_pos k_val o -> q_pos q_val k_pos k_val",
+        )
+        / attn_scale_1
+    )
+
+    term_4 = (
+        einops.einsum(
+            e_p,
+            W_V_0,
+            W_O_0,
+            W_Q_1,
+            W_K_1,
+            W_O_0,
+            W_V_0,
+            e_p,
+            "q_pos q_val k, k l, l m, m n, o n, p o, q p, k_pos k_val q -> q_pos q_val k_pos k_val",
+        )
+        / attn_scale_1
+    )
+
+    term_5 = einops.einsum(e_p, W_U, "q_pos q_val k, k l -> q_pos q_val l")
+    term_6 = einops.einsum(
+        e_p, W_V_0, W_O_0, W_U, "q_pos q_val k, k l, l m, m n -> q_pos q_val n"
+    )
+    term_7 = einops.einsum(
+        e_p, W_V_1, W_O_1, W_U, "q_pos q_val k, k l, l m, m n -> q_pos q_val n"
+    )
+    term_8 = einops.einsum(
+        e_p,
+        W_V_0,
+        W_O_0,
+        W_V_1,
+        W_O_1,
+        W_U,
+        "q_pos q_val k, k l, l m, m n, n p, p q -> q_pos q_val q",
+    )
 
     table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
         "nan"
@@ -696,4 +847,20 @@ for j in range(7):
             },
         )
     )
+# %%
+valid = (
+    ein.array(
+        lambda i, j, k: where(k > 1, where(j > k, where(j < 7, 1, 0), 0), 0),
+        sizes=[d_voc, n_ctx, n_ctx],
+    )
+    .bool()
+    .to(device)
+)
+bound = []
+for v in range(50, 70):
+    r = hand_bound(45, v / 1000)
+    a = r[4]
+    print(a[valid].min())
+    bound.append(a[valid].min())
+
 # %%

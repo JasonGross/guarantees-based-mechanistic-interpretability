@@ -653,22 +653,16 @@ while loss > 0.02:
     print(counter)
 # %%
 
-a = loss_bound(model_1, 2)[2]
-loss = 1 - a[~torch.isnan(a)].mean()
-while loss > 0.1:
-    print(1 - loss)
-    loss.backward()
-    optimiser.step()
-    optimiser.zero_grad()
-    a = loss_bound(model_1, 2)[2]
-    loss = 1 - a[~torch.isnan(a)].mean()
-    counter += 1
-    print(counter)
-# %%
+optimiser = torch.optim.AdamW(
+    model_1.parameters(), lr=1e-3, betas=(0.9, 0.999), weight_decay=1.0
+)
+
 a = loss_bound(model_1, 2)[2]
 loss = 1 - a[~torch.isnan(a)].min()
-while loss > 0.5:
-    print(1 - loss)
+while loss > 0.1:
+    print(a[~torch.isnan(a)].min())
+    print(a[~torch.isnan(a)].mean())
+    print(a[~torch.isnan(a)].max())
     loss.backward()
     optimiser.step()
     optimiser.zero_grad()

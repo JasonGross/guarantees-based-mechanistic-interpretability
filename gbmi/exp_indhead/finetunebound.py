@@ -628,71 +628,53 @@ optimiser = torch.optim.AdamW(
 
 counter = 0
 # %%
-loss = loss_bound(model_1, 0, 5)
+loss = loss_bound(model_1, 0)
 for i in range(100):
     print(loss)
     loss.backward()
     optimiser.step()
     optimiser.zero_grad()
-    loss = loss_bound(model_1, 0, 5)
+    loss = loss_bound(model_1, 0)
     counter += 1
     print(counter)
 
 
 # %%
-loss = 1 - loss_bound(model_1, 1, 5).min()
+loss = 1 - loss_bound(model_1, 1).min()
 while loss > 0.02:
     print(1 - loss)
     loss.backward()
     optimiser.step()
     optimiser.zero_grad()
-    loss = 1 - loss_bound(model_1, 1, 5).min()
+    loss = 1 - loss_bound(model_1, 1).min()
     counter += 1
     print(counter)
 # %%
 
-a = loss_bound(model_1, 2, 6)[2]
+a = loss_bound(model_1, 2)[2]
 loss = 1 - a[~torch.isnan(a)].mean()
 while loss > 0.1:
     print(1 - loss)
     loss.backward()
     optimiser.step()
     optimiser.zero_grad()
-    a = loss_bound(model_1, 2, 6)[2]
+    a = loss_bound(model_1, 2)[2]
     loss = 1 - a[~torch.isnan(a)].mean()
     counter += 1
     print(counter)
 # %%
-a = loss_bound(model_1, 2, 8)[2]
+a = loss_bound(model_1, 2)[2]
 loss = 1 - a[~torch.isnan(a)].min()
 while loss > 0.5:
     print(1 - loss)
     loss.backward()
     optimiser.step()
     optimiser.zero_grad()
-    a = loss_bound(model_1, 2, 8)[2]
+    a = loss_bound(model_1, 2)[2]
     loss = 1 - a[~torch.isnan(a)].min()
     counter += 1
     print(counter)
 
-
-# %%
-counter = 0
-optimiser = torch.optim.AdamW(
-    model_1.parameters(), lr=5e-1, betas=(0.9, 0.999), weight_decay=1.0
-)
-
-a = loss_bound(model_1, 3, 8)[4]
-loss = 1 - a[a != 0].mean()
-for i in range(1):
-    print(a[a != 0].mean())
-    loss.backward()
-    optimiser.step()
-    optimiser.zero_grad()
-    a = loss_bound(model_1, 3, 8)[4][5]
-    loss = 1 - a[a != 0].mean()
-    counter += 1
-    print(counter)
 
 # %%
 valid = (
@@ -704,11 +686,13 @@ valid = (
     .to(device)
 )
 optimiser = torch.optim.AdamW(
-    model_1.parameters(), lr=0.5, betas=(0.9, 0.999), weight_decay=0
+    model_1.parameters(), lr=1, betas=(0.9, 0.999), weight_decay=0
 )
 # %%
+optimiser = torch.optim.SGD(model_1.parameters(), lr=100)
+# %%
 a = loss_bound(model_1, 3)[4]
-loss = 1 - a[valid].min()
+loss = 1 - a[valid].mean()
 print(a[valid].min())
 print(a[valid].mean())
 print(a[valid].max())
@@ -717,9 +701,13 @@ for i in range(1):
 
     loss.backward()
     optimiser.step()
+    for param in model_1.parameters():
+        if param.requires_grad:
+            print(param.grad.norm())  # Check gradient norms
+
     optimiser.zero_grad()
     a = loss_bound(model_1, 3)[4]
-    loss = 1 - a[valid].min()
+    loss = 1 - a[valid].mean()
     print(a[valid].min())
     print(a[valid].mean())
     print(a[valid].max())

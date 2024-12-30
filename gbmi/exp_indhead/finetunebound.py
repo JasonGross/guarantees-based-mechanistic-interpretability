@@ -63,52 +63,7 @@ def loss_bound(model, s):
         )
         / attn_scale_0
     )
-    table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
-        "nan"
-    )  # p Represents the position of 'b' at index + 1
 
-    for p in range(2, n_ctx):  #
-        tmp = torch.zeros((p, d_voc))
-        for t_q in range(d_voc):
-            tmp[-1, :] = term_0[p - 1, t_q, p - 1, t_q]
-
-            for t_k in range(d_voc):
-                tmp[-2, :] = term_0[p - 1, t_q, p - 2, t_k]
-                tmp[:-2, :] = term_0[p - 1, t_q, : p - 2, :]
-                tmp_sm = tmp.softmax(dim=0)
-                table[t_q, t_k, p - 2, :] = tmp_sm[-2, :]
-    # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is used as the first entry, at pth poisition
-
-    # term_0 looks like EQKE, table looks like you're indexing by query, key, position (of key?), and other token in the sequence.
-    # They you're computing softmax of d_voc - 2 copies of the other token, one copy of t_k in p-2, and the query in p-1.
-    # Then you store the post-softmax attention paid to t_k.
-    #
-    #
-    #
-    ##       xEQKE^tx^t
-    #
-    ##
-    #                               t_q vocab paying attention to t_k another letter, if other one gets spammed
-    #
-    ##
-    #
-    #
-    #
-    ##
-    #
-    #
-    #
-    #
-    #
-    #
-    #
-    #
-    attn_1 = table.min(dim=1).values.min(dim=2).values
-
-    if s == 1:
-        return attn_1
-
-    # attn_1=torch.ones(attn_1.shape)
     term_1 = (
         einops.einsum(
             e_p,
@@ -205,6 +160,53 @@ def loss_bound(model, s):
                 T_7.max() - reduced_7.min(),
             ]
         ).max()
+
+    table = torch.zeros((d_voc, d_voc, n_ctx - 2, d_voc)) + float(
+        "nan"
+    )  # p Represents the position of 'b' at index + 1
+
+    for p in range(2, n_ctx):  #
+        tmp = torch.zeros((p, d_voc))
+        for t_q in range(d_voc):
+            tmp[-1, :] = term_0[p - 1, t_q, p - 1, t_q]
+
+            for t_k in range(d_voc):
+                tmp[-2, :] = term_0[p - 1, t_q, p - 2, t_k]
+                tmp[:-2, :] = term_0[p - 1, t_q, : p - 2, :]
+                tmp_sm = tmp.softmax(dim=0)
+                table[t_q, t_k, p - 2, :] = tmp_sm[-2, :]
+    # Table represents post softmax attention paid to t_k, if the final entry is spammed everywhere, and t_q is used as the first entry, at pth poisition
+
+    # term_0 looks like EQKE, table looks like you're indexing by query, key, position (of key?), and other token in the sequence.
+    # They you're computing softmax of d_voc - 2 copies of the other token, one copy of t_k in p-2, and the query in p-1.
+    # Then you store the post-softmax attention paid to t_k.
+    #
+    #
+    #
+    ##       xEQKE^tx^t
+    #
+    ##
+    #                               t_q vocab paying attention to t_k another letter, if other one gets spammed
+    #
+    ##
+    #
+    #
+    #
+    ##
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    attn_1 = table.min(dim=1).values.min(dim=2).values
+
+    if s == 1:
+        return attn_1
+
+    # attn_1=torch.ones(attn_1.shape)
 
     def diff_1(a, i_1, i_2, j, dic):
 

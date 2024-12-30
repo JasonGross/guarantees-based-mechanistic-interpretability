@@ -624,6 +624,8 @@ def loss_bound(model, s):
 
 
 # %%
+runtime_model_1, model_1 = train_or_load_model(ABCAB8_1H, force="load")
+# %%
 optimiser = torch.optim.AdamW(
     model_1.parameters(), lr=5e-3, betas=(0.9, 0.999), weight_decay=1.0
 )
@@ -656,10 +658,25 @@ while loss > 0.02:
 optimiser = torch.optim.AdamW(
     model_1.parameters(), lr=1e-3, betas=(0.9, 0.999), weight_decay=1.0
 )
+# %%
+a = loss_bound(model_1, 2)[2]
+loss = 1 - a[~torch.isnan(a)].mean()
+while loss > 0.5:
+    print(a[~torch.isnan(a)].min())
+    print(a[~torch.isnan(a)].mean())
+    print(a[~torch.isnan(a)].max())
+    loss.backward()
+    optimiser.step()
+    optimiser.zero_grad()
+    a = loss_bound(model_1, 2)[2]
+    loss = 1 - a[~torch.isnan(a)].mean()
+    counter += 1
+    print(counter)
 
+# %%
 a = loss_bound(model_1, 2)[2]
 loss = 1 - a[~torch.isnan(a)].min()
-while loss > 0.1:
+while loss > 0.5:
     print(a[~torch.isnan(a)].min())
     print(a[~torch.isnan(a)].mean())
     print(a[~torch.isnan(a)].max())
@@ -670,8 +687,6 @@ while loss > 0.1:
     loss = 1 - a[~torch.isnan(a)].min()
     counter += 1
     print(counter)
-
-
 # %%
 valid = (
     ein.array(
@@ -681,6 +696,7 @@ valid = (
     .bool()
     .to(device)
 )
+# %%
 optimiser = torch.optim.AdamW(
     model_1.parameters(), lr=1, betas=(0.9, 0.999), weight_decay=0
 )
@@ -714,6 +730,9 @@ for i in range(1):
         print(r[valid].max())
 
 # %%
+ModelMatrixLoggingOptions.all(
+    use_subplots=True, add_mean={-1: None, 0: "tok_to_pos", 1: None}
+).plot_matrices_from_model(model)
 '''
 def least_attention_2(a, b, i_1, i_2, j):
 

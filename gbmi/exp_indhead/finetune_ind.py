@@ -38,7 +38,7 @@ attn_scale_1 = model_1.blocks[1].attn.attn_scale
 # %%
 
 
-def matrices(model):
+def terms(model):
     W_pos = model.W_pos
     W_E = model.W_E
     W_K_1 = model.W_K[1, 0]
@@ -311,29 +311,33 @@ def diff_2_4(a, i_1, i_2, j, dic, matrices, attn_1):
     return t_4
 
 
-def least_attention(a, i_1, i_2, j, dic):
-    e = diff_2_4(a, i_1, i_2, j, dic)
+def least_attention(a, i_1, i_2, j, dic, matrices, attn_1):
+    e = diff_2_4(a, i_1, i_2, j, dic, matrices, attn_1)
 
-    return diff_1(a, i_1, i_2, j, dic) + diff_3(a, i_1, i_2, j, dic) + e
+    return (
+        diff_1(a, i_1, i_2, j, dic, matrices)
+        + diff_3(a, i_1, i_2, j, dic, matrices, attn_1)
+        + e
+    )
 
 
-def loss_bound(model, s):
-
+def second_layer_attention(matrices, attn_1):
+    term_0 = matrices[0]
     bound = (
         torch.zeros(
             (
-                e_p.shape[1],
-                e_p.shape[0],
-                e_p.shape[0],
-                e_p.shape[0],
+                term_0.shape[1],
+                term_0.shape[0],
+                term_0.shape[0],
+                term_0.shape[0],
             )
         )
         - torch.inf
     )
 
-    for a in range(e_p.shape[1]):
+    for a in range(term_0.shape[1]):
 
-        for i_2 in range(e_p.shape[0] - 1):
+        for i_2 in range(term_0.shape[0] - 1):
             for i_1 in range(i_2):
                 for j in range(i_2 + 1):
                     if (i_1 < i_2) & (i_1 > 0) & (i_2 + 1 > j):
@@ -343,186 +347,203 @@ def loss_bound(model, s):
                         }
                         for i in range(8):
                             dic.setdefault(i, torch.arange(26)[torch.arange(26) != a])
-                        bound[a, i_2, i_1, j] = least_attention(a, i_1, i_2, j, dic)
+                        bound[a, i_2, i_1, j] = least_attention(
+                            a, i_1, i_2, j, dic, matrices, attn_1
+                        )
 
     bound_soft = bound.softmax(dim=-1)
     bound_2 = einops.einsum(
         bound_soft,
         "a i_2 i_1 i_1 ->a i_2 i_1",
     )
+    return bound_2
 
-    if s == 2:
-        return (attn_1, bound, bound_2)
 
-    def loss_diff_1(b, i_1, i_2, dic, n=None):
+def loss_diff_1(b, i_1, i_2, dic, matrices, attn_1, bound_2, n=None):
 
-        if n == b:
-            return 0
+    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = matrices
 
-        if n is None:
+    if n == b:
+        return 0
 
-            n = torch.arange(d_voc)[torch.arange(d_voc) != b]
+    if n is None:
 
-        return (
-            term_5[i_2, dic[i_2]][..., n] - term_5[i_2, dic[i_2], b].unsqueeze(dim=-1)
-        ).max()
+        n = torch.arange(d_voc)[torch.arange(d_voc) != b]
 
-    def loss_diff_2(b, i_1, i_2, dic, n=None):
+    return (
+        term_5[i_2, dic[i_2]][..., n] - term_5[i_2, dic[i_2], b].unsqueeze(dim=-1)
+    ).max()
 
-        if n == b:
-            return 0
 
-        if n is None:
+def loss_diff_2(b, i_1, i_2, dic, matrices, attn_1, bound_2, n=None):
 
-            n = torch.arange(d_voc)[torch.arange(d_voc) != b]
+    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = matrices
 
-        c = (
-            term_6[i_2 - 1, dic[i_2 - 1]][..., n]
-            - term_6[i_2 - 1, dic[i_2 - 1], b].unsqueeze(dim=-1)
-        ).max()
-        ld_2 = c * attn_1[dic[i_2], i_2 - 1].min()
+    if n == b:
+        return 0
 
-        for i in range(i_2 - 1):
-            c = torch.max(
-                c,
-                (
-                    term_6[i, dic[i]][..., n] - term_6[i, dic[i], b].unsqueeze(dim=-1)
-                ).max(),
-            )
+    if n is None:
+
+        n = torch.arange(d_voc)[torch.arange(d_voc) != b]
+
+    c = (
+        term_6[i_2 - 1, dic[i_2 - 1]][..., n]
+        - term_6[i_2 - 1, dic[i_2 - 1], b].unsqueeze(dim=-1)
+    ).max()
+    ld_2 = c * attn_1[dic[i_2], i_2 - 1].min()
+
+    for i in range(i_2 - 1):
         c = torch.max(
             c,
-            (
-                term_6[i_2, dic[i_2]][..., n]
-                - term_6[i_2, dic[i_2], b].unsqueeze(dim=-1)
-            ).max(),
+            (term_6[i, dic[i]][..., n] - term_6[i, dic[i], b].unsqueeze(dim=-1)).max(),
         )
-        ld_2 += (1 - attn_1[dic[i_2], i_2 - 1].min()) * c
-        return ld_2
+    c = torch.max(
+        c,
+        (
+            term_6[i_2, dic[i_2]][..., n] - term_6[i_2, dic[i_2], b].unsqueeze(dim=-1)
+        ).max(),
+    )
+    ld_2 += (1 - attn_1[dic[i_2], i_2 - 1].min()) * c
+    return ld_2
 
-    def loss_diff_3(b, i_1, i_2, dic, n=None):
-        if n == b:
-            return 0
 
-        if n is None:
-            n = torch.arange(d_voc)[torch.arange(d_voc) != b]
-        c = (
-            term_7[i_1, dic[i_1]][..., n] - term_7[i_1, dic[i_1], b].unsqueeze(dim=-1)
-        ).max()
-        ld_3 = c * bound_2[dic[i_2], i_2, i_1].min()
-        for i in range(i_1):
+def loss_diff_3(b, i_1, i_2, dic, matrices, attn_1, bound_2, n=None):
+    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = matrices
+    if n == b:
+        return 0
+
+    if n is None:
+        n = torch.arange(d_voc)[torch.arange(d_voc) != b]
+    c = (
+        term_7[i_1, dic[i_1]][..., n] - term_7[i_1, dic[i_1], b].unsqueeze(dim=-1)
+    ).max()
+    ld_3 = c * bound_2[dic[i_2], i_2, i_1].min()
+    for i in range(i_1):
+        c = torch.max(
+            c,
+            (term_7[i, dic[i]][..., n] - term_7[i, dic[i], b].unsqueeze(dim=-1)).max(),
+        )
+    for i in range(i_2, i_1, -1):
+        c = torch.max(
+            c,
+            (term_7[i, dic[i]][..., n] - term_7[i, dic[i], b].unsqueeze(dim=-1)).max(),
+        )
+
+    ld_3 += (1 - bound_2[dic[i_2], i_2, i_1].min()) * c
+    return ld_3
+
+
+def loss_diff_4(b, i_1, i_2, dic, matrices, attn_1, bound_2, n=None):
+
+    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = matrices
+
+    if n == b:
+        return 0
+
+    if n is None:
+
+        n = torch.arange(d_voc)[torch.arange(d_voc) != b]
+
+    for k in range(i_2 + 1):
+        if k != 0 and k != 1:
+            c = (
+                term_8[k - 1, dic[k - 1]][..., n]
+                - term_8[k - 1, dic[k - 1], b].unsqueeze(dim=-1)
+            ).max()
+            d = c * attn_1[dic[k], k - 1].min()
+            for i in range(k - 1):
+                c = torch.max(
+                    c,
+                    (
+                        term_8[i, dic[i]][..., n]
+                        - term_8[i, dic[i], b].unsqueeze(dim=-1)
+                    ).max(),
+                )
             c = torch.max(
                 c,
                 (
-                    term_7[i, dic[i]][..., n] - term_7[i, dic[i], b].unsqueeze(dim=-1)
+                    term_8[k, dic[k]][..., n] - term_8[k, dic[k], b].unsqueeze(dim=-1)
                 ).max(),
             )
-        for i in range(i_2, i_1, -1):
+            d += (1 - attn_1[dic[k], k - 1].min()) * c
+
+        if k == 0:
+            d = (
+                term_8[0, dic[0]][..., n] - term_8[0, dic[0], b].unsqueeze(dim=-1)
+            ).max()
+
+        if k == 1:
+            c = (
+                term_8[0, dic[0]][..., n] - term_8[0, dic[0], b].unsqueeze(dim=-1)
+            ).max()
+            d = c * attn_1[dic[k], k - 1].min()
             c = torch.max(
                 c,
                 (
-                    term_7[i, dic[i]][..., n] - term_7[i, dic[i], b].unsqueeze(dim=-1)
+                    term_8[1, dic[1]][..., n] - term_8[1, dic[1], b].unsqueeze(dim=-1)
                 ).max(),
             )
+            d += (1 - attn_1[dic[k], k - 1].min()) * c
+        if k == 0:
+            f = d
+        if k != 0:
+            f = torch.max(f, d)
+        if k == i_1:
+            g = d
+    ld_4 = g * (bound_2[dic[i_2], i_2, i_1].min())
+    ld_4 += (1 - bound_2[dic[i_2], i_2, i_1].min()) * f
+    return ld_4
 
-        ld_3 += (1 - bound_2[dic[i_2], i_2, i_1].min()) * c
-        return ld_3
 
-    def loss_diff_4(b, i_1, i_2, dic, n=None):
+def total_bound(b, i_1, i_2, dic, matrices, attn_1, bound_2, n=None):
+    return (
+        loss_diff_1(b, i_1, i_2, dic, matrices, attn_1, bound_2, n)
+        + loss_diff_2(b, i_1, i_2, dic, matrices, attn_1, bound_2, n)
+        + loss_diff_3(b, i_1, i_2, dic, matrices, attn_1, bound_2, n)
+        + loss_diff_4(b, i_1, i_2, dic, matrices, attn_1, bound_2, n)
+    )
 
-        if n == b:
-            return 0
 
-        if n is None:
+def loss_bound(model):
+    matrices = terms(model)
+    term_0 = matrices[0]
+    attn_1 = first_layer_attention(matrices)
+    bound_2 = second_layer_attention(matrices, attn_1)
 
-            n = torch.arange(d_voc)[torch.arange(d_voc) != b]
+    out = torch.zeros((d_voc, n_ctx, n_ctx)) + torch.inf
+    # b i_2 i_1
 
-        for k in range(i_2 + 1):
-            if k != 0 and k != 1:
-                c = (
-                    term_8[k - 1, dic[k - 1]][..., n]
-                    - term_8[k - 1, dic[k - 1], b].unsqueeze(dim=-1)
-                ).max()
-                d = c * attn_1[dic[k], k - 1].min()
-                for i in range(k - 1):
-                    c = torch.max(
-                        c,
-                        (
-                            term_8[i, dic[i]][..., n]
-                            - term_8[i, dic[i], b].unsqueeze(dim=-1)
-                        ).max(),
+    for b in range(term_0.shape[1]):
+
+        for i_2 in range(term_0.shape[0] - 1):
+            for i_1 in range(1, i_2):
+
+                if (i_1 < i_2) & (i_1 > 0):
+                    dic = {i_1: b}
+                    for i in range(8):
+                        dic.setdefault(i, torch.arange(26))
+
+                    out[b, i_2, i_1] = total_bound(
+                        b, i_1, i_2, dic, matrices, attn_1, bound_2, n=None
                     )
-                c = torch.max(
-                    c,
-                    (
-                        term_8[k, dic[k]][..., n]
-                        - term_8[k, dic[k], b].unsqueeze(dim=-1)
-                    ).max(),
-                )
-                d += (1 - attn_1[dic[k], k - 1].min()) * c
-
-            if k == 0:
-                d = (
-                    term_8[0, dic[0]][..., n] - term_8[0, dic[0], b].unsqueeze(dim=-1)
-                ).max()
-
-            if k == 1:
-                c = (
-                    term_8[0, dic[0]][..., n] - term_8[0, dic[0], b].unsqueeze(dim=-1)
-                ).max()
-                d = c * attn_1[dic[k], k - 1].min()
-                c = torch.max(
-                    c,
-                    (
-                        term_8[1, dic[1]][..., n]
-                        - term_8[1, dic[1], b].unsqueeze(dim=-1)
-                    ).max(),
-                )
-                d += (1 - attn_1[dic[k], k - 1].min()) * c
-            if k == 0:
-                f = d
-            if k != 0:
-                f = torch.max(f, d)
-            if k == i_1:
-                g = d
-        ld_4 = g * (bound_2[dic[i_2], i_2, i_1].min())
-        ld_4 += (1 - bound_2[dic[i_2], i_2, i_1].min()) * f
-        return ld_4
-
-    def total_bound(b, i_1, i_2, dic, n=None):
-        return (
-            loss_diff_1(b, i_1, i_2, dic, n)
-            + loss_diff_2(b, i_1, i_2, dic, n)
-            + loss_diff_3(b, i_1, i_2, dic, n)
-            + loss_diff_4(b, i_1, i_2, dic, n)
-        )
-
-    if s == 3:
-
-        out = torch.zeros((d_voc, n_ctx, n_ctx)) + torch.inf
-        # b i_2 i_1
-
-        for b in range(e_p.shape[1]):
-
-            for i_2 in range(e_p.shape[0] - 1):
-                for i_1 in range(1, i_2):
-
-                    if (i_1 < i_2) & (i_1 > 0):
-                        dic = {i_1: b}
-                        for i in range(8):
-                            dic.setdefault(i, torch.arange(26))
-
-                        out[b, i_2, i_1] = total_bound(b, i_1, i_2, dic)
 
         out_2 = 1 / (1 + ((d_voc - 1) * torch.exp(out)))
 
-        return (attn_1, bound, bound_2, out, out_2)
+        return (out, out_2)
+
+
+def good_loss_bound(model):
+    matrices = terms(model)
+    term_0 = matrices[0]
+    attn_1 = first_layer_attention(matrices)
+    bound_2 = second_layer_attention(matrices, attn_1)
 
     out = torch.zeros((d_voc, n_ctx, n_ctx, d_voc)) + torch.inf
     # b i_2 i_1
 
-    for b in range(e_p.shape[1]):
-        for n in range(e_p.shape[1]):
-            for i_2 in range(e_p.shape[0] - 1):
+    for b in range(term_0.shape[1]):
+        for n in range(term_0.shape[1]):
+            for i_2 in range(term_0.shape[0] - 1):
                 for i_1 in range(1, i_2):
 
                     if (i_1 < i_2) & (i_1 > 0):
@@ -530,7 +551,9 @@ def loss_bound(model, s):
                         for i in range(8):
                             dic.setdefault(i, torch.arange(26))
 
-                        out[b, i_2, i_1, n] = total_bound(b, i_1, i_2, dic, n)
+                        out[b, i_2, i_1, n] = total_bound(
+                            b, i_1, i_2, dic, matrices, attn_1, bound_2, n
+                        )
 
     out_2 = einops.einsum(out.softmax(dim=-1), "b i_2 i_1 b -> b i_2 i_1")
 
@@ -538,7 +561,7 @@ def loss_bound(model, s):
         out - out.max(dim=-1).values.unsqueeze(dim=-1), "b i_2 i_1 b -> b i_2 i_1"
     )
 
-    return (attn_1, bound, bound_2, out, out_2, out_3)
+    return (out, out_2, out_3)
 
 
 # %%

@@ -696,7 +696,7 @@ attn_1 = first_layer_attention(matrices)
 a = second_layer_attention(matrices, attn_1)
 loss = 1 - (torch.nansum(a * weights_1) / (weights_1.sum()))
 print(a[~torch.isnan(a)].min())
-print(a[~torch.isnan(a)].mean())
+print(torch.nansum(a * weights_1) / (weights_1.sum()))
 print(a[~torch.isnan(a)].max())
 while loss > 0.5:
     # torch.autograd.set_detect_anomaly(True)
@@ -724,38 +724,37 @@ valid = (
     .bool()
     .to(device)
 )
+weights_2 = ein.array(
+    lambda i, j, k: where(k > 0, where(j > k, where(j < 7, 1, 0), 0), 0)
+    * ((d_voc - 1) * ((d_voc - 1) ** (j - 2))),
+    sizes=[d_voc, n_ctx, n_ctx],
+).to(device)
 # %%
 optimiser = torch.optim.AdamW(
-    model_1.parameters(), lr=1, betas=(0.9, 0.999), weight_decay=0
+    model_1.parameters(), lr=1e-2, betas=(0.9, 0.999), weight_decay=1.0
 )
 # %%
-optimiser = torch.optim.SGD(model_1.parameters(), lr=100)
+# optimiser = torch.optim.SGD(model_1.parameters(), lr=100)
 # %%
-a = loss_bound(model_1, 3)[4]
-loss = 1 - a[valid].mean()
-print(a[valid].min())
-print(a[valid].mean())
-print(a[valid].max())
-for i in range(1):
-    print(i + 1)
-
+bound = loss_bound(model_1)[1]
+loss = 1 - (torch.nansum(bound * weights_2) / (weights_2.sum()))
+print(bound[valid].min())
+print(torch.nansum(bound * weights_2) / (weights_2.sum()))
+print(bound[valid].max())
+while loss > 0.5:
+    # torch.autograd.set_detect_anomaly(True)
     loss.backward()
+    # torch.nn.utils.clip_grad_norm_(model_1.parameters(), max_norm=1.0)
     optimiser.step()
-    for param in model_1.parameters():
-        if param.requires_grad:
-            print(param.grad.norm())  # Check gradient norms
-
     optimiser.zero_grad()
-    a = loss_bound(model_1, 3)[4]
-    loss = 1 - a[valid].mean()
-    print(a[valid].min())
-    print(a[valid].mean())
-    print(a[valid].max())
-    if i % 10 == 1:
-        r = loss_bound(model_1, 4)[5]
-        print(r[valid].min())
-        print(r[valid].mean())
-        print(r[valid].max())
+    bound = loss_bound(model_1)[1]
+    loss = 1 - (torch.nansum(bound * weights_2) / (weights_2.sum()))
+    counter += 1
+    print(counter)
+    print(bound[valid].min())
+    print(torch.nansum(bound * weights_2) / (weights_2.sum()))
+    print(bound[valid].max())
+
 
 # %%
 ModelMatrixLoggingOptions.all(

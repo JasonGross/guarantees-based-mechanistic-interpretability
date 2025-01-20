@@ -4710,13 +4710,13 @@ type = ["importlib_metadata (>=7.0.2)", "jaraco.develop (>=7.21)", "mypy (>=1.12
 
 [[package]]
 name = "simple-parsing"
-version = "0.1.6"
+version = "0.1.7"
 description = "A small utility for simplifying and cleaning up argument parsing scripts."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "simple_parsing-0.1.6-py3-none-any.whl", hash = "sha256:2a6e74b061fb754cc441559e8dcea9d108286d9e0ffaa9cca4eea6bbe85372e1"},
-    {file = "simple_parsing-0.1.6.tar.gz", hash = "sha256:dad192e9633515a5627e343106636590a39a5ce85f6c47ced43507044ed98956"},
+    {file = "simple_parsing-0.1.7-py3-none-any.whl", hash = "sha256:5276e6c90c157362dd0173d1eecebe58361a66b457129cc9bba13b78a4e85092"},
+    {file = "simple_parsing-0.1.7.tar.gz", hash = "sha256:225e6b35252d68f7894716101fe3bd7e6dd3d30ab7b1c3c023f77a42dbe1336f"},
 ]
 
 [package.dependencies]

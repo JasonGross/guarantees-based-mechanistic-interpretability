@@ -205,7 +205,7 @@ def diff_3(a, i_1, i_2, j, dic, matrices, attn_1):
         for i in range(0, j - 1):
             c = torch.max(c, term_3[i_2, dic[i_2], i, dic[i]].max())
         c = torch.max(c, term_3[i_2, dic[i_2], j, dic[j]].max())
-        t_3 = t_3 + (1 - attn_1[dic[j], j - 1].min()) * c
+        t_3 += (1 - attn_1[dic[j], j - 1].min()) * c
 
         # print(t_3)
     if j == 1:
@@ -213,7 +213,7 @@ def diff_3(a, i_1, i_2, j, dic, matrices, attn_1):
         # new=c.clone()
         t_3 = c * attn_1[dic[j], j - 1].min()
         c = torch.max(c, term_3[i_2, a, j, dic[j]].max())
-        t_3 = t_3 + (1 - attn_1[dic[j], j - 1].min()) * c
+        t_3 += (1 - attn_1[dic[j], j - 1].min()) * c
 
     if j == 0:
 
@@ -349,10 +349,10 @@ def second_layer_attention(matrices, attn_1):
         - torch.inf
     )
 
-    for a in range(term_0.shape[1]):
+    for a in range(0, term_0.shape[1]):
 
-        for i_2 in range(2, term_0.shape[0] - 1):
-            for i_1 in range(1, i_2):
+        for i_2 in range(3, term_0.shape[0] - 1):
+            for i_1 in range(2, i_2):
                 for j in range(i_2 + 1):
                     if (i_1 < i_2) & (i_1 > 0) & (i_2 + 1 > j):
                         dic = {
@@ -607,8 +607,8 @@ def loss_bound(model):
 
     for b in range(term_0.shape[1]):
 
-        for i_2 in range(2, term_0.shape[0] - 1):
-            for i_1 in range(1, i_2):
+        for i_2 in range(3, term_0.shape[0] - 1):
+            for i_1 in range(2, i_2):
 
                 if (i_1 < i_2) & (i_1 > 0):
                     dic = {i_1: b}
@@ -621,7 +621,7 @@ def loss_bound(model):
 
     out_2 = 1 / (1 + ((d_voc - 1) * torch.exp(out)))
 
-    return (out, out_2)
+    return (attn_1, bound_2, out, out_2)
 
 
 def good_loss_bound(model):
@@ -630,13 +630,13 @@ def good_loss_bound(model):
     attn_1 = first_layer_attention(matrices)
     bound_2 = second_layer_attention(matrices, attn_1)
 
-    out = torch.zeros((d_voc, n_ctx, n_ctx, d_voc)) + torch.inf
+    out = torch.zeros((d_voc, n_ctx, n_ctx, d_voc))
     # b i_2 i_1
 
     for b in range(term_0.shape[1]):
         for n in range(term_0.shape[1]):
-            for i_2 in range(term_0.shape[0] - 1):
-                for i_1 in range(1, i_2):
+            for i_2 in range(3, term_0.shape[0] - 1):
+                for i_1 in range(2, i_2):
 
                     if (i_1 < i_2) & (i_1 > 0):
                         dic = {i_1: b}
@@ -687,8 +687,8 @@ torch.autograd.set_detect_anomaly(False)
 # %%
 weights_1 = torch.zeros((d_voc, n_ctx, n_ctx))
 for a in range(d_voc):
-    for i_2 in range(2, n_ctx - 1):
-        for i_1 in range(1, i_2):
+    for i_2 in range(3, n_ctx - 1):
+        for i_1 in range(2, i_2):
             weights_1[a, i_2, i_1] = (d_voc - 1) ** (i_2 - 1)
 # %%
 matrices = terms(model_1)
@@ -718,30 +718,30 @@ while loss > 0.5:
 # %%
 valid = (
     ein.array(
-        lambda i, j, k: where(k > 0, where(j > k, where(j < 7, 1, 0), 0), 0),
+        lambda i, j, k: where(k > 1, where(j > k, where(j < 7, 1, 0), 0), 0),
         sizes=[d_voc, n_ctx, n_ctx],
     )
     .bool()
     .to(device)
 )
 weights_2 = ein.array(
-    lambda i, j, k: where(k > 0, where(j > k, where(j < 7, 1, 0), 0), 0)
+    lambda i, j, k: where(k > 1, where(j > k, where(j < 7, 1, 0), 0), 0)
     * ((d_voc - 1) * ((d_voc - 1) ** (j - 2))),
     sizes=[d_voc, n_ctx, n_ctx],
 ).to(device)
 # %%
 optimiser = torch.optim.AdamW(
-    model_1.parameters(), lr=1e-2, betas=(0.9, 0.999), weight_decay=1.0
+    model_1.parameters(), lr=5e-2, betas=(0.9, 0.999), weight_decay=1.0
 )
 # %%
 # optimiser = torch.optim.SGD(model_1.parameters(), lr=100)
 # %%
-bound = loss_bound(model_1)[1]
+bound = loss_bound(model_1)[3]
 loss = 1 - (torch.nansum(bound * weights_2) / (weights_2.sum()))
 print(bound[valid].min())
 print(torch.nansum(bound * weights_2) / (weights_2.sum()))
 print(bound[valid].max())
-while loss > 0.5:
+while loss > 0.05:
     # torch.autograd.set_detect_anomaly(True)
     loss.backward()
     # torch.nn.utils.clip_grad_norm_(model_1.parameters(), max_norm=1.0)
@@ -754,6 +754,19 @@ while loss > 0.5:
     print(bound[valid].min())
     print(torch.nansum(bound * weights_2) / (weights_2.sum()))
     print(bound[valid].max())
+
+
+# %%
+for i in range(10):
+    print(i)
+    a = loss_bound(model_1)
+    loss = 1 - ((torch.nansum(a[3] * weights_2) / (weights_2.sum())))
+    print(a[0].min())
+    print(torch.nansum(a[3] * weights_2) / (weights_2.sum()))
+    print(torch.nansum(a[1] * weights_1) / (weights_1.sum()))
+    loss.backward()
+    optimiser.step()
+    optimiser.zero_grad()
 
 
 # %%

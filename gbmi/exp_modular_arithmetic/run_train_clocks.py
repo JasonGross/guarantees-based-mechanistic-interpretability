@@ -15,6 +15,7 @@ with tqdm(SEEDS, desc="Seed") as pbar:
                 {
                     "seed": seed,
                     "train_for": (10000, "epochs"),
+                    "checkpoint_every": (2000, "epochs"),
                     ("experiment", "logging_options"): ModelMatrixLoggingOptions.none(),
                 },
                 post_init=True,

@@ -14,7 +14,7 @@ with tqdm(SEEDS, desc="Seed") as pbar:
                 CLOCK_CONFIG,
                 {
                     "seed": seed,
-                    ("experiment", "train_for"): (10000, "epochs"),
+                    "train_for": (10000, "epochs"),
                     ("experiment", "logging_options"): ModelMatrixLoggingOptions.none(),
                 },
                 post_init=True,

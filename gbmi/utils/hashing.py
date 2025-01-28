@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 import numpy
 import torch
+import transformer_lens
 from transformer_lens import HookedTransformer
 
 # Implemented for https://github.com/lemon24/reader/issues/179
@@ -146,6 +147,16 @@ def _json_default(
     elif isinstance(thing, torch.nn.modules.container.ModuleList):
         return _json_dumps(
             [module for module in thing],
+            exclude_filter=exclude_filter,
+            dictify_by_default=dictify_by_default,
+        )
+    elif isinstance(thing, torch.nn.Module):
+        return _json_dumps(
+            {
+                "type": type(thing),
+                "repr": repr(thing),
+                "module.parameters": list(thing.parameters()),
+            },
             exclude_filter=exclude_filter,
             dictify_by_default=dictify_by_default,
         )

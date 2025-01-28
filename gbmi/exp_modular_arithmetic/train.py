@@ -192,6 +192,7 @@ FAST_CLOCK_CONFIG = Config(
         p=113,
         training_ratio=0.8,
         logging_options=ModelMatrixLoggingOptions.none(),
+        init_mode="kaiming_uniform",
     ),
     seed=0,
     deterministic=False,

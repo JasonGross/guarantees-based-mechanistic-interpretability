@@ -1,11 +1,18 @@
 import os
 import shelve
 from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Union
 
+from dill import Pickler, Unpickler
+
 from gbmi.utils import backup as backup_file
 from gbmi.utils.hashing import get_hash_ascii
+
+# monkeypatch shelve as per https://stackoverflow.com/q/52927236/377022
+shelve.Pickler = Pickler
+shelve.Unpickler = Unpickler
 
 memoshelve_cache: Dict[str, Dict[str, Any]] = {}
 
@@ -95,3 +102,36 @@ def uncache(
         key = get_hash((args, kwargs))
         if key in db:
             del db[key]
+
+
+# for decorators
+def cache(
+    filename: Path | str | None = None,
+    cache: Dict[str, Dict[str, Any]] = memoshelve_cache,
+    get_hash: Callable = get_hash_ascii,
+    get_hash_mem: Optional[Callable] = None,
+    print_cache_miss: bool = False,
+    disable: bool = False,
+):
+    def wrap(value: Callable):
+        path = Path(filename or f".cache/{value.__name__}.shelve")
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        @wraps(value)
+        def wrapper(*args, **kwargs):
+            if disable:
+                return value(*args, **kwargs)
+            else:
+                with memoshelve(
+                    value,
+                    filename=path,
+                    cache=cache,
+                    get_hash=get_hash,
+                    get_hash_mem=get_hash_mem,
+                    print_cache_miss=print_cache_miss,
+                )() as f:
+                    return f(*args, **kwargs)
+
+        return wrapper
+
+    return wrap

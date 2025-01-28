@@ -143,6 +143,12 @@ def _json_default(
             exclude_filter=exclude_filter,
             dictify_by_default=dictify_by_default,
         )
+    elif isinstance(thing, torch.nn.modules.container.ModuleList):
+        return _json_dumps(
+            [module for module in thing],
+            exclude_filter=exclude_filter,
+            dictify_by_default=dictify_by_default,
+        )
     elif isinstance(thing, type):
         return f"{thing.__module__}.{thing.__name__}"
     elif (

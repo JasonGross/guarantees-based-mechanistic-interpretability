@@ -187,6 +187,20 @@ CLOCK_CONFIG = Config(
     checkpoint_every=(500, "epochs"),
 )
 
+FAST_CLOCK_CONFIG = Config(
+    experiment=ModularArithmetic(
+        p=113,
+        training_ratio=0.8,
+        logging_options=ModelMatrixLoggingOptions.none(),
+    ),
+    seed=0,
+    deterministic=False,
+    train_for=(10000, "epochs"),
+    log_every_n_steps=1,
+    validate_every=(100, "epochs"),
+    checkpoint_every=(2000, "epochs"),
+)
+
 PIZZA_CONFIG = Config(
     experiment=ModularArithmetic(
         p=59,

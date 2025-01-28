@@ -866,7 +866,7 @@ def dist(model):
 
 # %%
 optimiser = torch.optim.AdamW(
-    model.parameters(), lr=5e-3, betas=(0.9, 0.999), weight_decay=1.0
+    model_1.parameters(), lr=5e-3, betas=(0.9, 0.999), weight_decay=0.1
 )
 # %%
 for i in range(10):
@@ -927,4 +927,56 @@ for v in range(iterations):
     a = loss_bound(matrices)
     print(a[3][valid].mean())
     bounds.append(a[3][valid].mean().item())
+# %%
+
+
+def weighted_dist(model):
+    wrong_terms = terms(model)
+    index_0 = (
+        ein.array(
+            lambda i, j, k, l: where(i == k + 1, 1, 0),
+            sizes=[n_ctx, d_voc, n_ctx, d_voc],
+        )
+        .bool()
+        .to(device)
+    )
+    index_3 = (
+        ein.array(
+            lambda i, j, k, l: where(j == l, 1, 0), sizes=[n_ctx, d_voc, n_ctx, d_voc]
+        )
+        .bool()
+        .to(device)
+    )
+    index_7 = (
+        ein.array(lambda i, j, k: where(j == k, 1, 0), sizes=[n_ctx, d_voc, d_voc])
+        .bool()
+        .to(device)
+    )
+    index = [index_0, index_3, index_7]
+    loss = 0
+    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8]:
+        # loss = loss + (
+        #    ((wrong_terms[i] - correct_terms[i]))**2).mean()
+        loss = loss + (((wrong_terms[i] - correct_terms[i])) ** 2).sum()
+        # a=(torch.norm(wrong_terms[i] - correct_terms[i]))
+        # loss = loss + a
+        # print(a==((wrong_terms[i] - correct_terms[i])**2).sum().sqrt())
+
+    # for i in [1]:
+    # loss = loss + (
+    #    ((wrong_terms[[0,3,7][i]] - correct_terms[[0,3,7][i]]))**2)[index[i]].mean()
+    # loss = loss + (
+    #    ((wrong_terms[[0,3,7][i]] - correct_terms[[0,3,7][i]]))**2).mean()
+    return loss
+
+
+for i in range(2000):
+    print(i)
+    loss = weighted_dist(model_1)
+    print(loss)
+    loss.backward()
+    optimiser.step()
+    optimiser.zero_grad()
+# %%
+runtime_model_1, model_1 = train_or_load_model(ABCAB8_1H, force="load")
 # %%

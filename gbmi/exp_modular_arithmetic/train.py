@@ -96,6 +96,8 @@ class ModularArithmetic(ExperimentConfig):
             f"{f'-{config.experiment.seq_len}' if config.experiment.seq_len != 2 else ''}"
             f"-{config.train_for[0]}-{config.train_for[1]}"
             f"{f'-attention-rate-{config.experiment.attention_rate}' if config.experiment.attention_rate != 0 else ''}"
+            f"{f'-train-ratio-{config.experiment.training_ratio}' if config.experiment.training_ratio != 0.3 else ''}"
+            f"{f'-init-{config.experiment.init_mode}' if config.experiment.init_mode != 'gpt2' else ''}"
             f"{'-no-eos' if not config.experiment.use_end_of_sequence else ''}"
             f"{'-' + config.experiment.summary_slug_extra if config.experiment.summary_slug_extra else ''}"
             f"{'-nondeterministic' if not config.deterministic else ''}"

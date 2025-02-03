@@ -23,17 +23,40 @@ import plotly.express as px
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_default_device("cuda")
+runtime_model, model_2 = train_or_load_model(ABCAB8_1H, force="load")
 runtime_model_1, model_1 = train_or_load_model(ABCAB8_1H, force="load")
 model_1.to(device)
-
+c = 10
+d = 10
 W_pos_1 = model_1.W_pos
 W_E_1 = model_1.W_E
 n_ctx = W_pos_1.shape[0]
 d_voc = W_E_1.shape[0]
 d_model = W_E_1.shape[1]
+d_head = model_1.W_O.shape[3]
 attn_scale_0 = model_1.blocks[0].attn.attn_scale
 attn_scale_1 = model_1.blocks[1].attn.attn_scale
 # %%
+
+
+class LogExp(torch.autograd.Function):
+    """Custom logexp to avoid numerical instability of gradients"""
+
+    @staticmethod
+    def forward(ctx, input, d_vocab):
+        # Perform the operation and save any values needed for backward
+        ctx.save_for_backward(input)
+        ctx.d_vocab = d_vocab
+        output = torch.log(1 + (ctx.d_vocab - 1) * torch.exp(input))
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # Retrieve saved tensors
+        (input,) = ctx.saved_tensors
+        # Compute the gradient
+        grad_input = grad_output * 1 / (1 + 1 / (ctx.d_vocab - 1) * torch.exp(-input))
+        return grad_input, None
 
 
 def terms(model):
@@ -540,7 +563,7 @@ def loss_bound(model):
     attn_1 = first_layer_attention(matrices)
     bound_2 = second_layer_attention(matrices, attn_1)
 
-    out = torch.zeros((d_voc, n_ctx, n_ctx)) + torch.inf
+    out = torch.zeros((d_voc, n_ctx, n_ctx))
     # b i_2 i_1
 
     for b in range(term_0.shape[1]):
@@ -556,10 +579,22 @@ def loss_bound(model):
                     out[b, i_2, i_1] = total_bound(
                         b, i_1, i_2, dic, matrices, attn_1, bound_2, n=None
                     )
+    logexp = LogExp.apply
+    loss_t = logexp(out, d_voc)
+    weight = ein.array(
+        lambda i, j, k: where(k > 1, where(j > k, where(j < 7, 1, 0), 0), 0)
+        * ((d_voc - 1) * ((d_voc - 1) ** (j - 2))),
+        sizes=[d_voc, n_ctx, n_ctx],
+    ).to(device)
 
-    out_2 = 1 / (1 + ((d_voc - 1) * torch.exp(out)))
-
-    return (attn_1, bound_2, out, out_2)
+    return (
+        attn_1,
+        bound_2,
+        out,
+        loss_t,
+        ((loss_t * weight).sum()) / (weight.sum()),
+        ((((loss_t < torch.log(torch.tensor(26)))) * weight).sum()) / (weight.sum()),
+    )
 
 
 def good_loss_bound(model):
@@ -591,7 +626,84 @@ def good_loss_bound(model):
         out - out.max(dim=-1).values.unsqueeze(dim=-1), "b i_2 i_1 b -> b i_2 i_1"
     )
 
-    return (out, out_2, out_3)
+    logexp = LogExp.apply
+    loss_t = -torch.log(out_2)
+    weight = ein.array(
+        lambda i, j, k: where(k > 1, where(j > k, where(j < 7, 1, 0), 0), 0)
+        * ((d_voc - 1) * ((d_voc - 1) ** (j - 2))),
+        sizes=[d_voc, n_ctx, n_ctx],
+    ).to(device)
+    return (
+        out,
+        out_2,
+        out_3,
+        loss_t,
+        ((loss_t * weight).sum()) / (weight.sum()),
+        (((out_3 == 0) * weight).sum()) / (weight.sum()),
+    )
+
+
+def sample(a, b, i, d_voc):
+    # i goes from 1 to n_ctx-3
+    # randomly fill with tokens which are not equal to a
+    seq = torch.randint(low=0, high=d_voc - 1, size=(i + 3,))
+    seq = seq + (seq >= a).int()
+
+    # fill last position with a
+    seq[-1] = a
+
+    # pick position of first a
+    m = torch.randint(low=0, high=i, size=(1,)).item()
+
+    # fill position m with b
+    seq[m + 1] = a
+    seq[m + 2] = b
+    return seq
+
+
+def sample_acc_and_loss(model, batch_size=15000):
+    d_vocab = model.W_E.shape[0]
+    n_ctx = model.W_pos.shape[0]
+
+    acc = 0
+    loss = 0
+
+    loss_CE = torch.nn.CrossEntropyLoss()
+
+    # Compute probability of each sequence length
+    sample_seq_length = torch.arange(1, n_ctx - 3)
+    prob_sample_seq_len = torch.tensor(
+        [i * (d_vocab - 1) ** i for i in sample_seq_length]
+    )
+    prob_sample_seq_len = prob_sample_seq_len / prob_sample_seq_len.sum()
+
+    # sample the sequence length
+    sampled = sample_seq_length[
+        torch.multinomial(prob_sample_seq_len, num_samples=batch_size, replacement=True)
+    ]
+
+    # sample a
+    sample_a = torch.randint(0, d_vocab, (batch_size,))
+
+    with torch.no_grad():
+        for i in range(batch_size):
+            # sample a
+            a = sample_a[i].item()
+
+            # sample b unequal to a
+            b = torch.randint(0, d_vocab - 1, (1,)).item()
+            b = b + (b >= a)
+            length = sampled[i]
+
+            # sample sequence
+            seq = sample(a, b, length, d_vocab)
+
+            # measure accuracy and loss
+            logit = model(seq).squeeze()[-1]
+            acc += logit.argmax() == b
+            loss += loss_CE(logit.unsqueeze(0), torch.tensor([b]))
+
+    return acc / batch_size, loss / batch_size
 
 
 W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float().to(device)
@@ -678,3 +790,337 @@ W_K_1 = (
 ).to(device)
 
 W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
+
+
+index_0_d = (
+    ein.array(
+        lambda i, j, k, l: where(i == k + 1, 1, 0),
+        sizes=[n_ctx, d_voc, n_ctx, d_voc],
+    )
+    .bool()
+    .to(device)
+)
+index_0_o = (
+    ein.array(
+        lambda i, j, k, l: where(i != k + 1, where(i >= k, 1, 0), 0),
+        sizes=[n_ctx, d_voc, n_ctx, d_voc],
+    )
+    .bool()
+    .to(device)
+)
+index_3_d = (
+    ein.array(
+        lambda i, j, k, l: where(j == l, where(i >= k, 1, 0), 0),
+        sizes=[n_ctx, d_voc, n_ctx, d_voc],
+    )
+    .bool()
+    .to(device)
+)
+index_3_o = (
+    ein.array(
+        lambda i, j, k, l: where(j != l, where(i >= k, 1, 0), 0),
+        sizes=[n_ctx, d_voc, n_ctx, d_voc],
+    )
+    .bool()
+    .to(device)
+)
+index_7_d = (
+    ein.array(lambda i, j, k: where(j == k, 1, 0), sizes=[n_ctx, d_voc, d_voc])
+    .bool()
+    .to(device)
+)
+index_7_o = (
+    ein.array(lambda i, j, k: where(j != k, 1, 0), sizes=[n_ctx, d_voc, d_voc])
+    .bool()
+    .to(device)
+)
+causal_mask = (
+    ein.array(
+        lambda i, j, k, l: where(i >= k, 1, 0), sizes=[n_ctx, d_voc, n_ctx, d_voc]
+    )
+    .bool()
+    .to(device)
+)
+# %%
+t_0_d = []
+t_0_o = []
+t_1 = []
+t_2 = []
+t_3_d = []
+t_3_o = []
+t_4 = []
+t_5 = []
+t_6 = []
+t_7_d = []
+t_7_o = []
+t_8 = []
+loss_b = []
+acc_b = []
+loss_a = []
+acc_a = []
+optimiser = torch.optim.AdamW(
+    model_1.parameters(), lr=2e-3, betas=(0.9, 0.999), weight_decay=1.0
+)
+# %%
+for i in range(500):
+    print(i)
+    a = loss_bound(model_1)
+    l_bound = a[-2]
+    accuracy_bound = a[-1]
+    (acc, loss) = sample_acc_and_loss(model_1, batch_size=5000)
+    print(l_bound)
+    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = terms(
+        model_1
+    )
+    loss_b.append(l_bound)
+    acc_b.append(accuracy_bound)
+    loss_a.append(loss)
+    acc_a.append(acc)
+    t_0_d.append(((term_0[index_0_d])).mean())
+    t_0_o.append(((term_0[index_0_o])).mean())
+    t_1.append(((term_1[causal_mask]) ** 2).mean().sqrt())
+    t_2.append(((term_2[causal_mask]) ** 2).mean().sqrt())
+    t_3_d.append(((term_3[index_3_d])).mean())
+    t_3_o.append(((term_3[index_3_o])).mean())
+    t_4.append(((term_4[causal_mask]) ** 2).mean().sqrt())
+    t_5.append(((term_5) ** 2).mean().sqrt())
+    t_6.append(((term_6) ** 2).mean().sqrt())
+    t_7_d.append(((term_7[index_7_d])).mean())
+    t_7_o.append(((term_7[index_7_o])).mean())
+    t_8.append(((term_8) ** 2).mean().sqrt())
+    term_dic = {
+        "l_b": torch.tensor(loss_b),
+        "a_b": torch.tensor(acc_b),
+        "l_a": torch.tensor(loss_a),
+        "a_a": torch.tensor(acc_a),
+        "0_d": torch.tensor(t_0_d),
+        "0_o": torch.tensor(t_0_o),
+        "1": torch.tensor(t_1),
+        "2": torch.tensor(t_2),
+        "3_d": torch.tensor(t_3_d),
+        "3_o": torch.tensor(t_3_o),
+        "4": torch.tensor(t_4),
+        "5": torch.tensor(t_5),
+        "6": torch.tensor(t_6),
+        "7_d": torch.tensor(t_7_d),
+        "7_o": torch.tensor(t_7_o),
+        "8": torch.tensor(t_8),
+    }
+    # torch.save(term_dic,"term.pt")
+    l_bound.backward()
+    optimiser.step()
+    optimiser.zero_grad()
+# torch.save(model_1,"finetuned_model.pth")
+
+
+# %%
+data_1 = torch.load("term.pt")
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def plot_loss(data):
+    l_b = data["l_b"].detach().cpu()
+    l_a = data["l_a"].detach().cpu()
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(500)
+
+    # Plot both lines
+    plt.plot(x, l_b, "r-", label="loss bound", linewidth=1, marker=".", markersize=2)
+    plt.plot(
+        x, l_a, color="orange", label="loss", linewidth=1, marker=".", markersize=2
+    )
+
+    # Add horizontal line at ln(26)
+    plt.axhline(y=np.log(26), color="grey", linestyle="--", label="ln(26)")
+    plt.text(x[-1], np.log(26), "ln(26)", verticalalignment="bottom")
+
+    # Set scale and labels
+    plt.yscale("log")
+    plt.title("Loss as model is finetuned")
+    plt.xlabel("Gradient Steps")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+def plot_accuracy(data):
+    a_b = data["a_b"].detach().cpu()
+    a_a = data["a_a"].detach().cpu()
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(500)
+
+    plt.plot(
+        x, a_b, "b-", label="accuracy bound", linewidth=1, marker=".", markersize=2
+    )
+    plt.plot(x, a_a, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
+
+    plt.title("Accuracy as model is finetuned")
+    plt.xlabel("Gradient Steps")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+def plot_zero(data):
+    tr_1 = data["1"].detach().cpu()
+    tr_2 = data["2"].detach().cpu()
+    tr_4 = data["4"].detach().cpu()
+    tr_5 = data["5"].detach().cpu()
+    tr_6 = data["6"].detach().cpu()
+    tr_8 = data["8"].detach().cpu()
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(500)
+
+    plt.plot(x, tr_1, "b-", label="l_2 norm", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_2, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_4, "r-", label="accuracy", linewidth=1, marker=".", markersize=2)
+    plt.plot(
+        x, tr_5, color="orange", label="accuracy", linewidth=1, marker=".", markersize=2
+    )
+    plt.plot(x, tr_6, "y-", label="accuracy", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_8, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
+
+    plt.title("Accuracy as model is finetuned")
+    plt.xlabel("Gradient Steps")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+def plot_diag(data, i):
+    tr_1_d = data[str(i) + "_d"].detach().cpu()
+    tr_1_o = data[str(i) + "_o"].detach().cpu()
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(500)
+
+    plt.plot(x, tr_1_d, "b-", label="l_2 norm", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_1_o, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
+
+    plt.title("Accuracy as model is finetuned")
+    plt.xlabel("Gradient Steps")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+# %%
+def put_in_model(model):
+    model.W_U.data = W_U
+    model.blocks[0].attn.W_K.data[0] = W_K_0
+    model.blocks[1].attn.W_K.data[0] = W_K_1
+    model.blocks[0].attn.W_Q.data[0] = W_Q_0
+    model.blocks[1].attn.W_Q.data[0] = W_Q_1
+    model.blocks[0].attn.W_V.data[0] = W_V_0
+    model.blocks[1].attn.W_V.data[0] = W_V_1
+
+    model.W_E.data = W_E
+    model.blocks[0].attn.W_O.data[0] = W_O_0
+    model.blocks[1].attn.W_O.data[0] = W_O_1
+    model.W_pos.data = W_pos
+
+
+put_in_model(model_2)
+correct_terms = terms(model_2)
+correct_terms = tuple(term.clone().detach() for term in correct_terms)
+
+
+def l_2_2(model):
+    wrong_terms = terms(model)
+    loss = torch.tensor(0.0, requires_grad=True).to(wrong_terms[0].device)
+    for i in range(9):
+        loss = loss + (((wrong_terms[i] - correct_terms[i])) ** 2).mean()
+    return loss
+
+
+def l_2(model):
+    wrong_terms = terms(model)
+    loss = 0
+    for i in range(9):
+        loss = loss + (((wrong_terms[i] - correct_terms[i])) ** 2).mean().sqrt()
+    return loss
+
+
+# %%
+def get_graphs(fun, model):
+    t_0_d = []
+    t_0_o = []
+    t_1 = []
+    t_2 = []
+    t_3_d = []
+    t_3_o = []
+    t_4 = []
+    t_5 = []
+    t_6 = []
+    t_7_d = []
+    t_7_o = []
+    t_8 = []
+    loss_b = []
+    acc_b = []
+    loss_a = []
+    acc_a = []
+    optimiser = torch.optim.AdamW(
+        model_1.parameters(), lr=2e-3, betas=(0.9, 0.999), weight_decay=1.0
+    )
+    for i in range(500):
+        print(i)
+        a = loss_bound(model)
+        l_bound = a[-2]
+        accuracy_bound = a[-1]
+        (acc, loss) = sample_acc_and_loss(model, batch_size=5000)
+        print(l_bound)
+
+        (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = (
+            terms(model)
+        )
+        loss_b.append(l_bound)
+        acc_b.append(accuracy_bound)
+        loss_a.append(loss)
+        acc_a.append(acc)
+        t_0_d.append(((term_0[index_0_d])).mean())
+        t_0_o.append(((term_0[index_0_o])).mean())
+        t_1.append(((term_1[causal_mask]) ** 2).mean().sqrt())
+        t_2.append(((term_2[causal_mask]) ** 2).mean().sqrt())
+        t_3_d.append(((term_3[index_3_d])).mean())
+        t_3_o.append(((term_3[index_3_o])).mean())
+        t_4.append(((term_4[causal_mask]) ** 2).mean().sqrt())
+        t_5.append(((term_5) ** 2).mean().sqrt())
+        t_6.append(((term_6) ** 2).mean().sqrt())
+        t_7_d.append(((term_7[index_7_d])).mean())
+        t_7_o.append(((term_7[index_7_o])).mean())
+        t_8.append(((term_8) ** 2).mean().sqrt())
+        term_dic = {
+            "l_b": torch.tensor(loss_b),
+            "a_b": torch.tensor(acc_b),
+            "l_a": torch.tensor(loss_a),
+            "a_a": torch.tensor(acc_a),
+            "0_d": torch.tensor(t_0_d),
+            "0_o": torch.tensor(t_0_o),
+            "1": torch.tensor(t_1),
+            "2": torch.tensor(t_2),
+            "3_d": torch.tensor(t_3_d),
+            "3_o": torch.tensor(t_3_o),
+            "4": torch.tensor(t_4),
+            "5": torch.tensor(t_5),
+            "6": torch.tensor(t_6),
+            "7_d": torch.tensor(t_7_d),
+            "7_o": torch.tensor(t_7_o),
+            "8": torch.tensor(t_8),
+        }
+        a_loss = fun(model)
+        print(a_loss)
+        a_loss.backward()
+        optimiser.step()
+        optimiser.zero_grad()
+    return term_dic
+
+
+# %%

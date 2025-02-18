@@ -58,7 +58,7 @@ d_head = model.W_O.shape[3]
 
 # %%
 def noise(M, v):
-    return M + (torch.rand_like(M) - 0.5) * 2 * v
+    return M + torch.randn_like(M) * v
 
 
 W_E = ein.array(lambda i, j: i == j, sizes=[d_voc, d_model]).float().to(device)

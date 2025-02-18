@@ -791,6 +791,7 @@ W_K_1 = (
 
 W_U = ein.array(lambda i, j: i == j, sizes=[d_model, d_voc]).float().to(device)
 
+raw_terms = [W_U, W_K_1, W_K_0, W_Q_0, W_Q_1, W_V_0, W_V_1, W_E, W_O_0, W_O_1, W_pos]
 
 index_0_d = (
     ein.array(
@@ -1013,22 +1014,24 @@ def plot_diag(data, i):
 
 
 # %%
-def put_in_model(model):
-    model.W_U.data = W_U
-    model.blocks[0].attn.W_K.data[0] = W_K_0
-    model.blocks[1].attn.W_K.data[0] = W_K_1
-    model.blocks[0].attn.W_Q.data[0] = W_Q_0
-    model.blocks[1].attn.W_Q.data[0] = W_Q_1
-    model.blocks[0].attn.W_V.data[0] = W_V_0
-    model.blocks[1].attn.W_V.data[0] = W_V_1
-
-    model.W_E.data = W_E
-    model.blocks[0].attn.W_O.data[0] = W_O_0
-    model.blocks[1].attn.W_O.data[0] = W_O_1
-    model.W_pos.data = W_pos
 
 
-put_in_model(model_2)
+def put_in_model(model, raw):
+    model.W_U.data = raw[0]
+    model.blocks[0].attn.W_K.data[0] = raw[2]
+    model.blocks[1].attn.W_K.data[0] = raw[1]
+    model.blocks[0].attn.W_Q.data[0] = raw[3]
+    model.blocks[1].attn.W_Q.data[0] = raw[4]
+    model.blocks[0].attn.W_V.data[0] = raw[5]
+    model.blocks[1].attn.W_V.data[0] = raw[6]
+
+    model.W_E.data = raw[7]
+    model.blocks[0].attn.W_O.data[0] = raw[8]
+    model.blocks[1].attn.W_O.data[0] = raw[9]
+    model.W_pos.data = raw[10]
+
+
+put_in_model(model_2, raw_terms)
 correct_terms = terms(model_2)
 correct_terms = tuple(term.clone().detach() for term in correct_terms)
 
@@ -1121,6 +1124,19 @@ def get_graphs(fun, model):
         optimiser.step()
         optimiser.zero_grad()
     return term_dic
+
+
+# %%
+def noise(M, v):
+    return M + torch.randn_like(M) * v
+
+
+def add_noise(model, v):
+    new_raw_terms = []
+    for i in range(len(raw_terms)):
+        new_raw_terms.append(noise(raw_terms[i].detach().clone(), v))
+        new_raw_terms[i].requires_grad = True
+    put_in_model(model, new_raw_terms)
 
 
 # %%

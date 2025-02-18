@@ -206,6 +206,8 @@ def diff_3(a, i_1, i_2, j, dic, matrices, attn_1):
             c = torch.max(c, term_3[i_2, dic[i_2], i, dic[i]].max())
         c = torch.max(c, term_3[i_2, dic[i_2], j, dic[j]].max())
         t_3 += (1 - attn_1[dic[j], j - 1].min()) * c
+        print(a, i_1, i_2, j)
+        print(c)
 
         # print(t_3)
     if j == 1:
@@ -256,6 +258,8 @@ def diff_2_4(a, i_1, i_2, j, dic, matrices, attn_1):
                 c = torch.max(c, term_4[k, dic[k], i][..., dic[i]].max())
             c = torch.max(c, term_4[k, dic[k], j][..., dic[j]].max())
             d = d + (1 - attn_1[dic[j], j - 1].min()) * c
+            if k == 0:
+                print(c)
 
         if j == 0:
 
@@ -353,6 +357,8 @@ def diff_2_3_4(a, i_1, i_2, j, dic, matrices, attn_1):
                 + term_3[i_2, dic[i_2], j, dic[j]].max(),
             )
             d = d + (1 - attn_1[dic[j], j - 1].min()) * c
+            if k == 0:
+                print(c)
 
         if j == 0:
 
@@ -445,13 +451,16 @@ def diff_2_3_4(a, i_1, i_2, j, dic, matrices, attn_1):
 
 
 def least_attention(a, i_1, i_2, j, dic, matrices, attn_1):
-    e = diff_2_4(a, i_1, i_2, j, dic, matrices, attn_1)
 
-    return (
-        diff_1(a, i_1, i_2, j, dic, matrices)
-        + e
-        + diff_3(a, i_1, i_2, j, dic, matrices, attn_1)
-    )
+    g = diff_3(a, i_1, i_2, j, dic, matrices, attn_1)
+    f = diff_2_4(a, i_1, i_2, j, dic, matrices, attn_1)
+    e = diff_2_3_4(a, i_1, i_2, j, dic, matrices, attn_1)
+
+    # print(a, i_1, i_2, j)
+    # print(e)
+    # print(f+g)
+    # print(e-f-g)
+    return diff_1(a, i_1, i_2, j, dic, matrices) + f + g
 
 
 def second_layer_attention(matrices, attn_1):
@@ -1026,5 +1035,70 @@ plt.title("Histogram of Tensor Elements")
 
 # Show the plot
 plt.show()
+
+# %%
+import torch as t
+
+
+def sample(a, b, i, d_voc):
+    # i goes from 1 to n_ctx-3
+    # randomly fill with tokens which are not equal to a
+    seq = t.randint(low=0, high=d_voc - 1, size=(i + 3,))
+    seq = seq + (seq >= a).int()
+
+    # fill last position with a
+    seq[-1] = a
+
+    # pick position of first a
+    m = t.randint(low=0, high=i, size=(1,)).item()
+
+    # fill position m with b
+    seq[m + 1] = a
+    seq[m + 2] = b
+    return seq
+
+
+def sample_acc_and_loss(model, batch_size=15000):
+    d_vocab = model.W_E.shape[0]
+    n_ctx = model.W_pos.shape[0]
+
+    acc = 0
+    loss = 0
+
+    loss_CE = t.nn.CrossEntropyLoss()
+
+    # Compute probability of each sequence length
+    sample_seq_length = t.arange(1, n_ctx - 3)
+    prob_sample_seq_len = t.tensor([i * (d_vocab - 1) ** i for i in sample_seq_length])
+    prob_sample_seq_len = prob_sample_seq_len / prob_sample_seq_len.sum()
+
+    # sample the sequence length
+    sampled = sample_seq_length[
+        torch.multinomial(prob_sample_seq_len, num_samples=batch_size, replacement=True)
+    ]
+
+    # sample a
+    sample_a = t.randint(0, d_vocab, (batch_size,))
+
+    with t.no_grad():
+        for i in range(batch_size):
+            # sample a
+            a = sample_a[i].item()
+
+            # sample b unequal to a
+            b = t.randint(0, d_vocab - 1, (1,)).item()
+            b = b + (b >= a)
+            length = sampled[i]
+
+            # sample sequence
+            seq = sample(a, b, length, d_vocab)
+
+            # measure accuracy and loss
+            logit = model(seq).squeeze()[-1]
+            acc += logit.argmax() == b
+            loss += loss_CE(logit.unsqueeze(0), t.tensor([b]))
+
+    return acc / batch_size, loss / batch_size
+
 
 # %%

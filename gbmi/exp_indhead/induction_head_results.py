@@ -862,57 +862,77 @@ acc_a = []
 optimiser = torch.optim.AdamW(
     model_1.parameters(), lr=2e-3, betas=(0.9, 0.999), weight_decay=1.0
 )
+
+
 # %%
+@torch.no_grad()
+def metric_tracking(term_dic, l_bound, accuracy_bound):
+    (acc, loss) = sample_acc_and_loss(model_1, batch_size=5000)
+    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = terms(
+        model_1
+    )
+    term_dic["l_b"].append(l_bound)
+    term_dic["a_b"].append(accuracy_bound)
+    term_dic["l_a"].append(loss)
+    term_dic["a_a"].append(acc)
+    term_dic["0_d"].append(((term_0[index_0_d])).mean())
+    term_dic["0_o"].append(((term_0[index_0_o])).mean())
+    term_dic["1"].append(((term_1[causal_mask]) ** 2).mean().sqrt())
+    term_dic["2"].append(((term_2[causal_mask]) ** 2).mean().sqrt())
+    term_dic["3_d"].append(((term_3[index_3_d])).mean())
+    term_dic["3_o"].append(((term_3[index_3_o])).mean())
+    term_dic["4"].append(((term_4[causal_mask]) ** 2).mean().sqrt())
+    term_dic["5"].append(((term_5) ** 2).mean().sqrt())
+    term_dic["6"].append(((term_6) ** 2).mean().sqrt())
+    term_dic["7_d"].append(((term_7[index_7_d])).mean())
+    term_dic["7_o"].append(((term_7[index_7_o])).mean())
+    term_dic["8"].append(((term_8) ** 2).mean().sqrt())
+
+
+import wandb
+
+wandb.init(project="induction_head_finetune_results")
+term_dic = {
+    "l_b": [],
+    "a_b": [],
+    "l_a": [],
+    "a_a": [],
+    "0_d": [],
+    "0_o": [],
+    "1": [],
+    "2": [],
+    "3_d": [],
+    "3_o": [],
+    "4": [],
+    "5": [],
+    "6": [],
+    "7_d": [],
+    "7_o": [],
+    "8": [],
+}
+
 for i in range(500):
+    if i % 100 == 0:
+        torch.save(model_1, f"finetuned_model_{i}.pth")
     print(i)
     a = loss_bound(model_1)
     l_bound = a[-2]
     accuracy_bound = a[-1]
-    (acc, loss) = sample_acc_and_loss(model_1, batch_size=5000)
+
     print(l_bound)
-    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = terms(
-        model_1
-    )
-    loss_b.append(l_bound)
-    acc_b.append(accuracy_bound)
-    loss_a.append(loss)
-    acc_a.append(acc)
-    t_0_d.append(((term_0[index_0_d])).mean())
-    t_0_o.append(((term_0[index_0_o])).mean())
-    t_1.append(((term_1[causal_mask]) ** 2).mean().sqrt())
-    t_2.append(((term_2[causal_mask]) ** 2).mean().sqrt())
-    t_3_d.append(((term_3[index_3_d])).mean())
-    t_3_o.append(((term_3[index_3_o])).mean())
-    t_4.append(((term_4[causal_mask]) ** 2).mean().sqrt())
-    t_5.append(((term_5) ** 2).mean().sqrt())
-    t_6.append(((term_6) ** 2).mean().sqrt())
-    t_7_d.append(((term_7[index_7_d])).mean())
-    t_7_o.append(((term_7[index_7_o])).mean())
-    t_8.append(((term_8) ** 2).mean().sqrt())
-    term_dic = {
-        "l_b": torch.tensor(loss_b),
-        "a_b": torch.tensor(acc_b),
-        "l_a": torch.tensor(loss_a),
-        "a_a": torch.tensor(acc_a),
-        "0_d": torch.tensor(t_0_d),
-        "0_o": torch.tensor(t_0_o),
-        "1": torch.tensor(t_1),
-        "2": torch.tensor(t_2),
-        "3_d": torch.tensor(t_3_d),
-        "3_o": torch.tensor(t_3_o),
-        "4": torch.tensor(t_4),
-        "5": torch.tensor(t_5),
-        "6": torch.tensor(t_6),
-        "7_d": torch.tensor(t_7_d),
-        "7_o": torch.tensor(t_7_o),
-        "8": torch.tensor(t_8),
-    }
-    # torch.save(term_dic,"term.pt")
     l_bound.backward()
+    metric_tracking(term_dic, l_bound.detach().cpu(), accuracy_bound.detach().cpu())
     optimiser.step()
     optimiser.zero_grad()
-# torch.save(model_1,"finetuned_model.pth")
 
+torch.save(model_1, "finetuned_model_test.pth")
+for a, b in term_dic.items():
+    b = torch.tensor(b)
+
+torch.save(term_dic, "term_test.pt")
+wandb.save("finetuned_model_test.pth")
+wandb.log(term_dic)
+wandb.finish()
 
 # %%
 data_1 = torch.load("term.pt")
@@ -1137,6 +1157,55 @@ def add_noise(model, v):
         new_raw_terms.append(noise(raw_terms[i].detach().clone(), v))
         new_raw_terms[i].requires_grad = True
     put_in_model(model, new_raw_terms)
+
+
+# %%
+def display_model(m):
+    a = terms(m)
+    plt.figure(figsize=(8, 6))
+    plt.imshow(
+        (a[0].mean(dim=(1, 3))).detach().cpu().numpy(), cmap="viridis", aspect="auto"
+    )
+    plt.colorbar(label="Value")  # Add color scale label
+
+    # Axis labels
+    plt.xlabel("Key Position")
+    plt.ylabel("Query Position")
+    plt.title("term_0.mean(dim=(1,3))")
+
+    plt.grid(False)
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(
+        (a[3].mean(dim=(0, 2))).detach().cpu().numpy(), cmap="viridis", aspect="auto"
+    )
+    plt.colorbar(label="Value")  # Add color scale label
+
+    # Axis labels
+    plt.xlabel("Key Token")
+    plt.ylabel("Query Token")
+    plt.title("term_3.mean(dim=(0,2))")
+
+    plt.grid(False)
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(
+        (a[7].mean(dim=(0))).detach().cpu().numpy(), cmap="viridis", aspect="auto"
+    )
+    plt.colorbar(label="Value")  # Add color scale label
+
+    # Axis labels
+    plt.xlabel("Key Token")
+    plt.ylabel("Ouput Token")
+    plt.title("term_7.mean(dim=(0))")
+
+    plt.grid(False)
+    plt.tight_layout()
+    plt.show()
 
 
 # %%

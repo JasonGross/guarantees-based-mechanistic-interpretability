@@ -910,6 +910,7 @@ term_dic = {
     "7_o": [],
     "8": [],
 }
+# %%
 
 for i in range(500):
     if i % 100 == 0:
@@ -925,17 +926,17 @@ for i in range(500):
     optimiser.step()
     optimiser.zero_grad()
 
-torch.save(model_1, "finetuned_model_test.pth")
+# torch.save(model_1, "finetuned_model_test.pth")
 for a, b in term_dic.items():
     b = torch.tensor(b)
 
-torch.save(term_dic, "term_test.pt")
-wandb.save("finetuned_model_test.pth")
-wandb.log(term_dic)
+# torch.save(term_dic, "term_test.pt")
+# wandb.save("finetuned_model_test.pth")
+# wandb.log(term_dic)
 wandb.finish()
 
 # %%
-data_1 = torch.load("term.pt")
+data_1 = torch.load("term_test.pt")
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -998,18 +999,20 @@ def plot_zero(data):
     plt.figure(figsize=(10, 6))
     x = np.arange(500)
 
-    plt.plot(x, tr_1, "b-", label="l_2 norm", linewidth=1, marker=".", markersize=2)
-    plt.plot(x, tr_2, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
-    plt.plot(x, tr_4, "r-", label="accuracy", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_1, "b-", label="term_1", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_2, "g-", label="term_2", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_4, "r-", label="term_4", linewidth=1, marker=".", markersize=2)
     plt.plot(
-        x, tr_5, color="orange", label="accuracy", linewidth=1, marker=".", markersize=2
+        x, tr_5, color="orange", label="term_5", linewidth=1, marker=".", markersize=2
     )
-    plt.plot(x, tr_6, "y-", label="accuracy", linewidth=1, marker=".", markersize=2)
-    plt.plot(x, tr_8, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_6, "y-", label="term_6", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_8, "p-", label="term_8", linewidth=1, marker=".", markersize=2)
 
-    plt.title("Accuracy as model is finetuned")
+    plt.title(
+        "Root Mean Square value of terms that are not used in our mechanistic interpretation as model is finetuned"
+    )
     plt.xlabel("Gradient Steps")
-    plt.ylabel("Accuracy")
+    plt.ylabel("RMS value")
     plt.legend()
     plt.grid(True)
     plt.show()
@@ -1022,12 +1025,14 @@ def plot_diag(data, i):
     plt.figure(figsize=(10, 6))
     x = np.arange(500)
 
-    plt.plot(x, tr_1_d, "b-", label="l_2 norm", linewidth=1, marker=".", markersize=2)
-    plt.plot(x, tr_1_o, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
+    plt.plot(x, tr_1_d, "b-", label="diagonal", linewidth=1, marker=".", markersize=2)
+    plt.plot(
+        x, tr_1_o, "g-", label="off diagonal", linewidth=1, marker=".", markersize=2
+    )
 
-    plt.title("Accuracy as model is finetuned")
+    plt.title("Mean of off and on diagonal elements of term_" + str(i))
     plt.xlabel("Gradient Steps")
-    plt.ylabel("Accuracy")
+    plt.ylabel("Mean")
     plt.legend()
     plt.grid(True)
     plt.show()
@@ -1148,15 +1153,59 @@ def get_graphs(fun, model):
 
 # %%
 def noise(M, v):
-    return M + torch.randn_like(M) * v
+    return M + torch.normal(mean=0, std=v, size=M.shape).to(device)
+
+
+model_2.to(device)
 
 
 def add_noise(model, v):
+
     new_raw_terms = []
     for i in range(len(raw_terms)):
         new_raw_terms.append(noise(raw_terms[i].detach().clone(), v))
         new_raw_terms[i].requires_grad = True
     put_in_model(model, new_raw_terms)
+
+
+noise_plot = {"noise": [], "acc": [], "loss": [], "l_b": [], "a_b": []}
+for i in range(25, 51):
+    loss_b = 0
+    acc_b = 0
+    loss = 0
+    acc = 0
+    for j in range(10):
+        add_noise(model_2, i / 1000)
+        a = loss_bound(model_2)
+        loss_b += a[-2]
+        acc_b += a[-1]
+        b = sample_acc_and_loss(model_2, batch_size=5000)
+        loss += b[1]
+        acc += b[0]
+    noise_plot["l_b"].append(loss_b / 10)
+    noise_plot["a_b"].append(acc_b / 10)
+    noise_plot["loss"].append(loss / 10)
+    noise_plot["acc"].append(acc / 10)
+    noise_plot["noise"].append(i / 1000)
+
+
+plt.plot(noise_plot["noise"], noise_plot["l_b"], label="Loss Bound")
+plt.plot(noise_plot["noise"], noise_plot["loss"], label="Loss")
+plt.xlabel("Noise Level")
+plt.ylabel("Loss")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+plt.plot(noise_plot["noise"], noise_plot["a_b"], label="Accuracy Bound")
+plt.plot(noise_plot["noise"], noise_plot["acc"], label="Accuracy")
+plt.xlabel("Noise Level")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 
 # %%

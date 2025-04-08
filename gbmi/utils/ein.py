@@ -111,41 +111,42 @@ def _apply_single_dim(
     size: Optional[int] = None,
     device=None,
 ) -> TensorLike:
+    # TODO: This currently slows down computation by 1-2 OOMs on cpu and gpu resp.
     # no_dim is called if the dim we're 'iterating' over isn't in the returned expression
-    c: Dict[str, TensorLike]
-    with tensor_cache.access() as c:
-        key = lambda_hash((f, collect, no_dim, hash(size)))
-        if key in c:
-            return c[key]
+    # c: Dict[str, TensorLike]
+    # with tensor_cache.access() as c:
+    #     key = lambda_hash((f, collect, no_dim, hash(size)))
+    #     if key in c:
+    #         return c[key]
 
-        idx = ConstraintTrackingTensor(torch.tensor(0, device=device))
-        reified = f(idx)  # type: ignore
-        if size is None:
-            constraints = getattr(idx, "_constraints", [])
-            if len(constraints) > 1:
-                # TODO: name the dimension argument with the error
-                raise ValueError(
-                    f"Error: incompatible constraints for dimension ({constraints})"
-                )
-            elif len(constraints) == 0:
-                # TODO: introduce warning if we fail
-                size = None
-            else:
-                size = list(constraints)[0]
-
-        dim = dims(sizes=[size])
-        if size is not None:
-            idx = torch.arange(size).to(reified.device if device is None else device)
-            xs = f(idx[dim])  # type: ignore
+    idx = ConstraintTrackingTensor(torch.tensor(0, device=device))
+    reified = f(idx)  # type: ignore
+    if size is None:
+        constraints = getattr(idx, "_constraints", [])
+        if len(constraints) > 1:
+            # TODO: name the dimension argument with the error
+            raise ValueError(
+                f"Error: incompatible constraints for dimension ({constraints})"
+            )
+        elif len(constraints) == 0:
+            # TODO: introduce warning if we fail
+            size = None
         else:
-            xs = f(dim)
-        if isinstance(xs, DTensor) and hash(dim) in [hash(i) for i in xs.dims]:
-            result = collect(xs, dim)
-        else:
-            result = no_dim(xs, dim)
+            size = list(constraints)[0]
 
-        c[key] = result
-        return result
+    dim = dims(sizes=[size])
+    if size is not None:
+        idx = torch.arange(size).to(reified.device if device is None else device)
+        xs = f(idx[dim])  # type: ignore
+    else:
+        xs = f(dim)
+    if isinstance(xs, DTensor) and hash(dim) in [hash(i) for i in xs.dims]:
+        result = collect(xs, dim)
+    else:
+        result = no_dim(xs, dim)
+
+    # c[key] = result
+    return result
 
 
 def _apply(

@@ -866,10 +866,10 @@ optimiser = torch.optim.AdamW(
 
 # %%
 @torch.no_grad()
-def metric_tracking(term_dic, l_bound, accuracy_bound):
-    (acc, loss) = sample_acc_and_loss(model_1, batch_size=5000)
+def metric_tracking(model, term_dic, l_bound, accuracy_bound):
+    (acc, loss) = sample_acc_and_loss(model, batch_size=5000)
     (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = terms(
-        model_1
+        model
     )
     term_dic["l_b"].append(l_bound)
     term_dic["a_b"].append(accuracy_bound)
@@ -941,12 +941,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_loss(data):
+def plot_loss(data, n, m, rand):
     l_b = data["l_b"].detach().cpu()
     l_a = data["l_a"].detach().cpu()
 
     plt.figure(figsize=(10, 6))
-    x = np.arange(500)
+    x = np.arange(0, n, m)
 
     # Plot both lines
     plt.plot(x, l_b, "r-", label="loss bound", linewidth=1, marker=".", markersize=2)
@@ -955,8 +955,9 @@ def plot_loss(data):
     )
 
     # Add horizontal line at ln(26)
-    plt.axhline(y=np.log(26), color="grey", linestyle="--", label="ln(26)")
-    plt.text(x[-1], np.log(26), "ln(26)", verticalalignment="bottom")
+    if rand:
+        plt.axhline(y=np.log(26), color="grey", linestyle="--", label="ln(26)")
+        plt.text(x[-1], np.log(26), "ln(26)", verticalalignment="bottom")
 
     # Set scale and labels
     plt.yscale("log")
@@ -968,17 +969,21 @@ def plot_loss(data):
     plt.show()
 
 
-def plot_accuracy(data):
+def plot_accuracy(data, n, m, rand):
     a_b = data["a_b"].detach().cpu()
     a_a = data["a_a"].detach().cpu()
 
     plt.figure(figsize=(10, 6))
-    x = np.arange(500)
+    x = np.arange(0, n, m)
 
     plt.plot(
         x, a_b, "b-", label="accuracy bound", linewidth=1, marker=".", markersize=2
     )
     plt.plot(x, a_a, "g-", label="accuracy", linewidth=1, marker=".", markersize=2)
+
+    if rand:
+        plt.axhline(y=1 / 26, color="grey", linestyle="--", label="ln(26)")
+        plt.text(x[-1], 1 / 26, "1/26", verticalalignment="bottom")
 
     plt.title("Accuracy as model is finetuned")
     plt.xlabel("Gradient Steps")
@@ -988,7 +993,7 @@ def plot_accuracy(data):
     plt.show()
 
 
-def plot_zero(data):
+def plot_zero(data, n, m):
     tr_1 = data["1"].detach().cpu()
     tr_2 = data["2"].detach().cpu()
     tr_4 = data["4"].detach().cpu()
@@ -997,7 +1002,7 @@ def plot_zero(data):
     tr_8 = data["8"].detach().cpu()
 
     plt.figure(figsize=(10, 6))
-    x = np.arange(500)
+    x = np.arange(0, n, m)
 
     plt.plot(x, tr_1, "b-", label="term_1", linewidth=1, marker=".", markersize=2)
     plt.plot(x, tr_2, "g-", label="term_2", linewidth=1, marker=".", markersize=2)
@@ -1018,12 +1023,12 @@ def plot_zero(data):
     plt.show()
 
 
-def plot_diag(data, i):
+def plot_diag(data, i, n, m):
     tr_1_d = data[str(i) + "_d"].detach().cpu()
     tr_1_o = data[str(i) + "_o"].detach().cpu()
 
     plt.figure(figsize=(10, 6))
-    x = np.arange(500)
+    x = np.arange(0, n, m)
 
     plt.plot(x, tr_1_d, "b-", label="diagonal", linewidth=1, marker=".", markersize=2)
     plt.plot(
@@ -1078,76 +1083,46 @@ def l_2(model):
 
 
 # %%
-def get_graphs(fun, model):
-    t_0_d = []
-    t_0_o = []
-    t_1 = []
-    t_2 = []
-    t_3_d = []
-    t_3_o = []
-    t_4 = []
-    t_5 = []
-    t_6 = []
-    t_7_d = []
-    t_7_o = []
-    t_8 = []
-    loss_b = []
-    acc_b = []
-    loss_a = []
-    acc_a = []
+def get_graphs(fun, model, term_name, model_name):
+    term_dic = {
+        "l_b": [],
+        "a_b": [],
+        "l_a": [],
+        "a_a": [],
+        "0_d": [],
+        "0_o": [],
+        "1": [],
+        "2": [],
+        "3_d": [],
+        "3_o": [],
+        "4": [],
+        "5": [],
+        "6": [],
+        "7_d": [],
+        "7_o": [],
+        "8": [],
+    }
     optimiser = torch.optim.AdamW(
         model_1.parameters(), lr=2e-3, betas=(0.9, 0.999), weight_decay=1.0
     )
-    for i in range(500):
+    for i in range(5000):
         print(i)
-        a = loss_bound(model)
-        l_bound = a[-2]
-        accuracy_bound = a[-1]
-        (acc, loss) = sample_acc_and_loss(model, batch_size=5000)
-        print(l_bound)
-
-        (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = (
-            terms(model)
-        )
-        loss_b.append(l_bound)
-        acc_b.append(accuracy_bound)
-        loss_a.append(loss)
-        acc_a.append(acc)
-        t_0_d.append(((term_0[index_0_d])).mean())
-        t_0_o.append(((term_0[index_0_o])).mean())
-        t_1.append(((term_1[causal_mask]) ** 2).mean().sqrt())
-        t_2.append(((term_2[causal_mask]) ** 2).mean().sqrt())
-        t_3_d.append(((term_3[index_3_d])).mean())
-        t_3_o.append(((term_3[index_3_o])).mean())
-        t_4.append(((term_4[causal_mask]) ** 2).mean().sqrt())
-        t_5.append(((term_5) ** 2).mean().sqrt())
-        t_6.append(((term_6) ** 2).mean().sqrt())
-        t_7_d.append(((term_7[index_7_d])).mean())
-        t_7_o.append(((term_7[index_7_o])).mean())
-        t_8.append(((term_8) ** 2).mean().sqrt())
-        term_dic = {
-            "l_b": torch.tensor(loss_b),
-            "a_b": torch.tensor(acc_b),
-            "l_a": torch.tensor(loss_a),
-            "a_a": torch.tensor(acc_a),
-            "0_d": torch.tensor(t_0_d),
-            "0_o": torch.tensor(t_0_o),
-            "1": torch.tensor(t_1),
-            "2": torch.tensor(t_2),
-            "3_d": torch.tensor(t_3_d),
-            "3_o": torch.tensor(t_3_o),
-            "4": torch.tensor(t_4),
-            "5": torch.tensor(t_5),
-            "6": torch.tensor(t_6),
-            "7_d": torch.tensor(t_7_d),
-            "7_o": torch.tensor(t_7_o),
-            "8": torch.tensor(t_8),
-        }
         a_loss = fun(model)
         print(a_loss)
         a_loss.backward()
         optimiser.step()
         optimiser.zero_grad()
+        if i % 100 == 0:
+            a = loss_bound(model)
+            l_bound = a[-2]
+            accuracy_bound = a[-1]
+            metric_tracking(
+                model, term_dic, l_bound.detach().cpu(), accuracy_bound.detach().cpu()
+            )
+            print(l_bound)
+            display_model(model)
+            torch.save(term_dic, term_name)
+    torch.save(model, model_name)
     return term_dic
 
 
@@ -1168,27 +1143,67 @@ def add_noise(model, v):
     put_in_model(model, new_raw_terms)
 
 
-noise_plot = {"noise": [], "acc": [], "loss": [], "l_b": [], "a_b": []}
+@torch.no_grad()
+def noise_metric_tracking(term_dic, l_bound, accuracy_bound, noise):
+    (acc, loss) = sample_acc_and_loss(model_2, batch_size=5000)
+    (term_0, term_1, term_2, term_3, term_4, term_5, term_6, term_7, term_8) = terms(
+        model_2
+    )
+    term_dic["noise"].append(noise)
+    term_dic["l_b"].append(l_bound)
+    term_dic["a_b"].append(accuracy_bound)
+    term_dic["l_a"].append(loss)
+    term_dic["a_a"].append(acc)
+    term_dic["0_d"].append(((term_0[index_0_d])).mean())
+    term_dic["0_o"].append(((term_0[index_0_o])).mean())
+    term_dic["1"].append(((term_1[causal_mask]) ** 2).mean().sqrt())
+    term_dic["2"].append(((term_2[causal_mask]) ** 2).mean().sqrt())
+    term_dic["3_d"].append(((term_3[index_3_d])).mean())
+    term_dic["3_o"].append(((term_3[index_3_o])).mean())
+    term_dic["4"].append(((term_4[causal_mask]) ** 2).mean().sqrt())
+    term_dic["5"].append(((term_5) ** 2).mean().sqrt())
+    term_dic["6"].append(((term_6) ** 2).mean().sqrt())
+    term_dic["7_d"].append(((term_7[index_7_d])).mean())
+    term_dic["7_o"].append(((term_7[index_7_o])).mean())
+    term_dic["8"].append(((term_8) ** 2).mean().sqrt())
+
+
+noise_data = {
+    "noise": [],
+    "l_b": [],
+    "a_b": [],
+    "l_a": [],
+    "a_a": [],
+    "0_d": [],
+    "0_o": [],
+    "1": [],
+    "2": [],
+    "3_d": [],
+    "3_o": [],
+    "4": [],
+    "5": [],
+    "6": [],
+    "7_d": [],
+    "7_o": [],
+    "8": [],
+}
 for i in range(25, 51):
-    loss_b = 0
-    acc_b = 0
-    loss = 0
-    acc = 0
+    print(i)
     for j in range(10):
         add_noise(model_2, i / 1000)
         a = loss_bound(model_2)
-        loss_b += a[-2]
-        acc_b += a[-1]
-        b = sample_acc_and_loss(model_2, batch_size=5000)
-        loss += b[1]
-        acc += b[0]
-    noise_plot["l_b"].append(loss_b / 10)
-    noise_plot["a_b"].append(acc_b / 10)
-    noise_plot["loss"].append(loss / 10)
-    noise_plot["acc"].append(acc / 10)
-    noise_plot["noise"].append(i / 1000)
+        l_bound = a[-2]
+        accuracy_bound = a[-1]
+
+        print(l_bound)
+        noise_metric_tracking(
+            noise_data, l_bound.detach().cpu(), accuracy_bound.detach().cpu(), i / 1000
+        )
+    torch.save(noise_data, "noise_term.pt")
+torch.save(noise_data, "noise_term.pt")
 
 
+# %%
 plt.plot(noise_plot["noise"], noise_plot["l_b"], label="Loss Bound")
 plt.plot(noise_plot["noise"], noise_plot["loss"], label="Loss")
 plt.xlabel("Noise Level")
@@ -1250,7 +1265,7 @@ def display_model(m):
     # Axis labels
     plt.xlabel("Key Token")
     plt.ylabel("Ouput Token")
-    plt.title("term_7.mean(dim=(0))")
+    plt.title("term_7.mean(dim=0)")
 
     plt.grid(False)
     plt.tight_layout()
